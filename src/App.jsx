@@ -524,7 +524,7 @@ function DashboardModule({ customers, isMobile }) {
   );
 }
 
-function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
+function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('search');
   const [showForm, setShowForm] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
@@ -709,7 +709,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
         })).filter(c => c.firstName || c.lastName);
 
         if (newCustomers.length === 0) {
-          alert('Excel dosyasında geçerli müşteri bulunamadı!');
+          showToast?.('Excel dosyasında geçerli müşteri bulunamadı!', 'error');
           return;
         }
 
@@ -718,11 +718,11 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
         for (const c of newCustomers) {
         }
         
-        alert(`${newCustomers.length} müşteri başarıyla eklendi!`);
+        showToast?.(`${newCustomers.length} müşteri başarıyla eklendi!`, 'success');
         setShowExcelModal(false);
       } catch (err) {
         console.error(err);
-        alert('Excel dosyası okunamadı!');
+        showToast?.('Excel dosyası okunamadı!', 'error');
       }
     };
     reader.readAsBinaryString(file);
@@ -796,7 +796,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
   const handleImageUpload = (callback) => (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { alert('Dosya boyutu 2MB\'dan küçük olmalı'); return; }
+      if (file.size > 2 * 1024 * 1024) { showToast?.('Dosya boyutu 2MB\'dan küçük olmalı', 'error'); return; }
       const reader = new FileReader();
       reader.onloadend = () => callback(reader.result);
       reader.readAsDataURL(file);
@@ -805,7 +805,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
 
   const handleSubmit = async () => {
     if (!formData.firstName || !formData.lastName || !formData.phone) {
-      alert('Ad, Soyad ve Telefon alanları zorunludur!');
+      showToast?.('Ad, Soyad ve Telefon alanları zorunludur!', 'error');
       setFormTab('info');
       return;
     }
@@ -2079,15 +2079,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const handleChecklistNext = () => {
     if (checklist.passportValid !== 'yes') {
-      alert('⚠️ Pasaport geçerlilik tarihi uygun değil!\n\nSeyahat dönüş tarihinden itibaren 6 ay geçerli olmalı.');
+      showToast?.('Pasaport geçerlilik tarihi uygun değil! Seyahat dönüş tarihinden itibaren 6 ay geçerli olmalı.', 'error');
       return;
     }
     if (checklist.passportCondition !== 'no') {
-      alert('⚠️ Pasaportta yırtık/çizik var!\n\nBaşvuru yapılamaz, yeni pasaport gerekli.');
+      showToast?.('Pasaportta yırtık/çizik var! Başvuru yapılamaz, yeni pasaport gerekli.', 'error');
       return;
     }
     if (checklist.addressChecked !== 'yes') {
-      alert('⚠️ İkametgah adresi kontrol edilmeli!\n\nBölge ayrımı önemli, doğru konsolosluk belirlenmeli.');
+      showToast?.('İkametgah adresi kontrol edilmeli! Bölge ayrımı önemli, doğru konsolosluk belirlenmeli.', 'warning');
       return;
     }
     setFormStep('category');
@@ -2121,7 +2121,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const sendWhatsAppReminder = (visa) => {
     if (!visa.appointmentDate || !visa.customerPhone) {
-      alert('Randevu tarihi veya telefon numarası eksik!');
+      showToast?.('Randevu tarihi veya telefon numarası eksik!', 'error');
       return;
     }
     let message = appSettings?.whatsappTemplate || 'Randevu bilgileriniz: {tarih}';
@@ -2139,7 +2139,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const sendEmail = (visa) => {
     if (!visa.customerEmail) {
-      alert('Müşteri e-posta adresi bulunamadı!');
+      showToast?.('Müşteri e-posta adresi bulunamadı!', 'error');
       return;
     }
     const subject = `${visa.country} Vize Randevu Bilgisi`;
@@ -2664,7 +2664,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/90${phone}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                   💬 WhatsApp
                 </button>
-                <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else showToast?.('E-posta adresi bulunamadı', 'error'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                   📧 E-posta
                 </button>
               </div>
@@ -2672,7 +2672,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {/* Randevu Bilgisi Gönder */}
               {formData.appointmentDate && (
                 <button type="button" onClick={() => {
-                  if (!formData.customerPhone) { alert('Telefon numarası bulunamadı!'); return; }
+                  if (!formData.customerPhone) { showToast?.('Telefon numarası bulunamadı!', 'error'); return; }
                   let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
                   message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
                   const phone = formData.customerPhone.replace(/\D/g, '');
@@ -4145,7 +4145,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 
   const handleSave = () => {
     if (!formData.type || !formData.customer || !formData.subject) {
-      alert('Tür, müşteri ve konu zorunludur!');
+      showToast?.('Tür, müşteri ve konu zorunludur!', 'error');
       return;
     }
 
@@ -4585,7 +4585,7 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.cardName || !formData.cardNumber) {
-      alert('Kart adı ve numara zorunludur!');
+      showToast?.('Kart adı ve numara zorunludur!', 'error');
       return;
     }
 
@@ -4863,7 +4863,7 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.link) {
-      alert('Acente adı ve link zorunludur!');
+      showToast?.('Acente adı ve link zorunludur!', 'error');
       return;
     }
 
@@ -5096,7 +5096,7 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
 }
 
 // AYARLAR MODÜLÜ
-function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings }) {
+function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -5130,7 +5130,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     if (!userFormData.name || !userFormData.email) {
-      alert('Ad ve e-posta zorunlu');
+      showToast?.('Ad ve e-posta zorunlu', 'error');
       return;
     }
 
@@ -5150,7 +5150,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       
     } else {
       if (!userFormData.password) {
-        alert('Yeni kullanıcı için şifre zorunlu');
+        showToast?.('Yeni kullanıcı için şifre zorunlu', 'error');
         return;
       }
       const newUser = { ...userFormData, id: generateUniqueId(), createdAt: new Date().toISOString() };
@@ -5163,7 +5163,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
 
   const deleteUser = async (id) => {
     if (id === currentUser.id) {
-      alert('Kendi hesabınızı silemezsiniz!');
+      showToast?.('Kendi hesabınızı silemezsiniz!', 'error');
       return;
     }
     if (!confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')) return;
