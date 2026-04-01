@@ -3,7 +3,8 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db } from './lib/firebase';
-import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
 const defaultCustomers = [];
@@ -524,10 +525,14 @@ function DashboardModule({ customers, isMobile }) {
   );
 }
 
-function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
+function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('search');
   const [showForm, setShowForm] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiText, setAiText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiParsed, setAiParsed] = useState(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [formData, setFormData] = useState({});
@@ -821,53 +826,79 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
     if (editingCustomer) {
       const updated = customers.map(c => c.id === editingCustomer.id ? { ...c, ...fullData } : c);
       setCustomers(updated);
-      try { /* Firebase sync placeholder */ } catch (err) { console.error(err); }
+      // ⚡ Pasaport/vize'yi direkt Firestore'a yaz (debouncedSave bunları atlar)
+      try {
+        const docId = editingCustomer._docId || String(editingCustomer.id);
+        await setDoc(doc(db, 'customers', docId), {
+          ...fullData,
+          passports: JSON.stringify(passports),
+          schengenVisas: JSON.stringify(schengenVisas),
+          usaVisa: JSON.stringify(usaVisa)
+        }, { merge: true });
+      } catch (err) { console.error('Firestore kayıt hatası:', err); }
     } else {
       const newCustomer = { ...fullData, id: generateUniqueId(), createdAt: now.split('T')[0] };
       setCustomers([...customers, newCustomer]);
-      try { /* Firebase sync placeholder */ } catch (err) { console.error(err); }
+      try {
+        await setDoc(doc(db, 'customers', String(newCustomer.id)), {
+          ...newCustomer,
+          passports: JSON.stringify(passports),
+          schengenVisas: JSON.stringify(schengenVisas),
+          usaVisa: JSON.stringify(usaVisa)
+        });
+      } catch (err) { console.error('Firestore kayıt hatası:', err); }
     }
-    setShowForm(false);
-    resetForm();
+    showToast?.('✅ Kaydedildi', 'success');
   };
 
   const handlePassportSubmit = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
-    const dataToSave = { passports: JSON.stringify(passports) };
     const updatedCustomer = { ...selectedCustomer, passports };
     const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
     setCustomers(updated);
     setSelectedCustomer(updatedCustomer);
     setShowPassportModal(false);
+    try {
+      const docId = selectedCustomer._docId || String(selectedCustomer.id);
+      await setDoc(doc(db, 'customers', docId), { passports: JSON.stringify(passports) }, { merge: true });
+    } catch(e) { console.error('Pasaport kayıt hatası:', e); }
   };
 
   const handleSchengenSubmit = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
-    const dataToSave = { schengen_visas: JSON.stringify(schengenVisas) };
     const updatedCustomer = { ...selectedCustomer, schengenVisas };
     const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
     setCustomers(updated);
     setSelectedCustomer(updatedCustomer);
     setShowSchengenModal(false);
+    try {
+      const docId = selectedCustomer._docId || String(selectedCustomer.id);
+      await setDoc(doc(db, 'customers', docId), { schengenVisas: JSON.stringify(schengenVisas) }, { merge: true });
+    } catch(e) { console.error('Schengen kayıt hatası:', e); }
   };
 
   const handleUsaSubmit = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
-    const dataToSave = { usa_visa: JSON.stringify(usaVisa) };
     const updatedCustomer = { ...selectedCustomer, usaVisa };
     const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
     setCustomers(updated);
     setSelectedCustomer(updatedCustomer);
     setShowUsaModal(false);
+    try {
+      const docId = selectedCustomer._docId || String(selectedCustomer.id);
+      await setDoc(doc(db, 'customers', docId), { usaVisa: JSON.stringify(usaVisa) }, { merge: true });
+    } catch(e) { console.error('ABD vize kayıt hatası:', e); }
   };
 
   const deleteCustomer = async (id) => {
     if (!confirm('Silmek istediğinize emin misiniz?')) return;
+    const cust = customers.find(c => c.id === id);
     setCustomers(customers.filter(c => c.id !== id));
     if (selectedCustomer?.id === id) setSelectedCustomer(null);
+    try { const docId = cust?._docId || String(id); await deleteDoc(doc(db, 'customers', docId)); } catch(e) { console.warn('Firestore silme hatası:', e.message); }
   };
 
   const mainTabStyle = (active) => ({
@@ -1562,6 +1593,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
         <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
+          <button onClick={() => { setAiText(''); setAiParsed(null); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI Ekle</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
         </div>
       </div>
@@ -1896,6 +1928,144 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings }) {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* ===== AI HIZLI MÜŞTERİ EKLEME MODAL ===== */}
+      {showAiModal && (
+        <div onClick={() => !aiLoading && setShowAiModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(180deg, #0f2744 0%, #0c1929 100%)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(139,92,246,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🤖 AI ile Hızlı Müşteri Ekle</h3>
+              <button onClick={() => setShowAiModal(false)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '28px', height: '28px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>✕</button>
+            </div>
+
+            {!aiParsed ? (
+              <>
+                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>
+                  Müşteri bilgilerini serbest metin olarak girin. AI otomatik dolduracak.
+                </p>
+                <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#475569', background: 'rgba(139,92,246,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.15)' }}>
+                  Örnek: "Ahmet Yılmaz, TC 12345678901, 05321234567, ahmet@mail.com, 15.03.1985 Ankara doğumlu, Denizli'de yaşıyor, Tekstil sektörü, ABC Tekstil A.Ş."
+                </p>
+                <textarea
+                  value={aiText}
+                  onChange={e => setAiText(e.target.value)}
+                  placeholder="Müşteri bilgilerini buraya yazın veya yapıştırın..."
+                  style={{ width: '100%', minHeight: '120px', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', outline: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                  <button onClick={() => setShowAiModal(false)} style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>İptal</button>
+                  <button
+                    onClick={async () => {
+                      if (!aiText.trim()) { showToast('Lütfen metin girin', 'error'); return; }
+                      setAiLoading(true);
+                      try {
+                        const res = await fetch('/.netlify/functions/claude-proxy', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            model: 'claude-sonnet-4-20250514',
+                            max_tokens: 800,
+                            system: 'Sen bir müşteri veri çıkarma asistanısın. Verilen metinden müşteri bilgilerini çıkar ve SADECE JSON döndür, başka hiçbir şey yazma. Tarihler YYYY-MM-DD formatında olmalı. TC Kimlik 11 haneli olmalı. Telefon sadece rakamlar (5XXXXXXXXX formatında, +90 veya 0 olmadan). Eğer bilgi yoksa null döndür. JSON şeması: {"firstName":"","lastName":"","tcKimlik":"","phone":"","email":"","birthDate":"YYYY-MM-DD veya null","birthPlace":"","city":"","sector":"","companyName":"","notes":""}',
+                            messages: [{ role: 'user', content: `Şu metinden müşteri bilgilerini çıkar:\n\n${aiText}` }]
+                          })
+                        });
+                        const data = await res.json();
+                        const text = (data.content || []).map(b => b.text || '').join('');
+                        const clean = text.replace(/```json|```/g, '').trim();
+                        const parsed = JSON.parse(clean);
+
+                        // Tarih validasyonu
+                        const validateDate = (d) => {
+                          if (!d) return null;
+                          const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                          if (!m) return null;
+                          const [,y,mo,day] = m.map(Number);
+                          if (y < 1920 || y > new Date().getFullYear()) return null;
+                          if (mo < 1 || mo > 12) return null;
+                          if (day < 1 || day > 31) return null;
+                          return d;
+                        };
+                        parsed.birthDate = validateDate(parsed.birthDate);
+                        setAiParsed(parsed);
+                      } catch(e) {
+                        console.error('AI parse hatası:', e);
+                        showToast('AI ayrıştırma hatası. Tekrar deneyin.', 'error');
+                      }
+                      setAiLoading(false);
+                    }}
+                    disabled={aiLoading}
+                    style={{ flex: 2, padding: '11px', background: aiLoading ? 'rgba(139,92,246,0.3)' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: 'white', cursor: aiLoading ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600' }}
+                  >
+                    {aiLoading ? '⏳ Analiz ediliyor...' : '🤖 Analiz Et'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#10b981' }}>✅ AI bilgileri çıkardı. Kontrol edip kaydedin:</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {[
+                    { label: 'Ad', key: 'firstName' },
+                    { label: 'Soyad', key: 'lastName' },
+                    { label: 'TC Kimlik', key: 'tcKimlik' },
+                    { label: 'Telefon', key: 'phone' },
+                    { label: 'E-posta', key: 'email' },
+                    { label: 'Doğum Tarihi (YYYY-MM-DD)', key: 'birthDate' },
+                    { label: 'Doğum Yeri', key: 'birthPlace' },
+                    { label: 'İl', key: 'city' },
+                    { label: 'Sektör', key: 'sector' },
+                    { label: 'Firma', key: 'companyName' },
+                    { label: 'Notlar', key: 'notes' },
+                  ].map(({ label, key }) => (
+                    <div key={key}>
+                      <label style={labelStyle}>{label}</label>
+                      <input
+                        value={aiParsed[key] || ''}
+                        onChange={e => setAiParsed({ ...aiParsed, [key]: e.target.value })}
+                        style={inputStyle}
+                        placeholder={aiParsed[key] === null ? '— bulunamadı —' : ''}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                  <button onClick={() => setAiParsed(null)} style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
+                  <button
+                    onClick={() => {
+                      const tc = aiParsed.tcKimlik?.replace(/\D/g, '');
+                      if (tc && tc.length !== 11) { showToast('TC Kimlik 11 haneli olmalı', 'error'); return; }
+                      if (tc && customers.some(c => c.tcKimlik === tc)) { showToast('Bu TC Kimlik zaten kayıtlı', 'warning'); return; }
+                      const bd = aiParsed.birthDate;
+                      if (bd && !/^\d{4}-\d{2}-\d{2}$/.test(bd)) { showToast('Doğum tarihi YYYY-MM-DD formatında olmalı', 'error'); return; }
+                      const newCustomer = {
+                        ...aiParsed,
+                        id: generateUniqueId(),
+                        tcKimlik: tc || '',
+                        phone: aiParsed.phone?.replace(/\D/g, '') || '',
+                        name: `${aiParsed.firstName || ''} ${aiParsed.lastName || ''}`.trim(),
+                        passports: '[]',
+                        schengenVisas: '[]',
+                        usaVisa: '{}',
+                        tags: [],
+                        activities: [],
+                        createdAt: new Date().toISOString().split('T')[0]
+                      };
+                      setCustomers(prev => [newCustomer, ...prev]);
+                      showToast(`${newCustomer.name} eklendi`, 'success');
+                      setShowAiModal(false);
+                      setAiParsed(null);
+                      setAiText('');
+                    }}
+                    style={{ flex: 2, padding: '11px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+                  >
+                    💾 Kaydet
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -3094,13 +3264,20 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       showToast('Lütfen zorunlu alanları doldurun', 'error');
       return;
     }
+    if (formData._pdfUploading) {
+      showToast('PDF yükleme devam ediyor, lütfen bekleyin', 'warning');
+      return;
+    }
+
+    const cleanData = { ...formData };
+    delete cleanData._pdfUploading;
 
     if (editingTour) {
-      const updated = tours.map(t => t.id === editingTour.id ? {...formData, id: editingTour.id} : t);
+      const updated = tours.map(t => t.id === editingTour.id ? {...cleanData, id: editingTour.id} : t);
       setTours(updated);
       showToast('Tur güncellendi', 'success');
     } else {
-      const newTour = {...formData, id: Date.now(), reservations: []};
+      const newTour = {...cleanData, id: Date.now(), reservations: []};
       setTours([...tours, newTour]);
       showToast('Tur eklendi', 'success');
     }
@@ -3212,18 +3389,71 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
   const deleteReservation = (tourId, reservationId) => {
     if (window.confirm('Bu rezervasyonu silmek istediğinizden emin misiniz?')) {
+      const oldTours = JSON.parse(JSON.stringify(tours));
       const updatedTours = tours.map(t => {
         if (t.id === tourId) {
-          return {
-            ...t,
-            reservations: t.reservations.filter(r => r.id !== reservationId)
-          };
+          return { ...t, reservations: t.reservations.filter(r => r.id !== reservationId) };
         }
         return t;
       });
       setTours(updatedTours);
       showToast('Rezervasyon silindi', 'success');
+      addToUndo(() => setTours(oldTours), 'Rezervasyon silme');
     }
+  };
+
+  const cancelReservation = (tourId, reservationId) => {
+    const oldTours = JSON.parse(JSON.stringify(tours));
+    const updatedTours = tours.map(t => {
+      if (t.id === tourId) {
+        return {
+          ...t,
+          reservations: t.reservations.map(r =>
+            r.id === reservationId
+              ? { ...r, isCancelled: true, cancelledAt: new Date().toISOString().split('T')[0] }
+              : r
+          )
+        };
+      }
+      return t;
+    });
+    setTours(updatedTours);
+    showToast('Rezervasyon iptal edildi', 'warning', () => setTours(oldTours));
+  };
+
+  const restoreReservation = (tourId, reservationId) => {
+    const updatedTours = tours.map(t => {
+      if (t.id === tourId) {
+        return {
+          ...t,
+          reservations: t.reservations.map(r =>
+            r.id === reservationId
+              ? { ...r, isCancelled: false, cancelledAt: null }
+              : r
+          )
+        };
+      }
+      return t;
+    });
+    setTours(updatedTours);
+    showToast('Rezervasyon geri alındı', 'success');
+  };
+
+  const toggleKontrol = (tourId, reservationId) => {
+    const updatedTours = tours.map(t => {
+      if (t.id === tourId) {
+        return {
+          ...t,
+          reservations: t.reservations.map(r =>
+            r.id === reservationId
+              ? { ...r, kontrolEdildi: !r.kontrolEdildi }
+              : r
+          )
+        };
+      }
+      return t;
+    });
+    setTours(updatedTours);
   };
 
   const exportToExcel = (tour) => {
@@ -3335,6 +3565,13 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               <div style={{ fontSize: '13px', color: '#94a3b8' }}>
                 👥 {tour.reservations?.length || 0} Rezervasyon
               </div>
+              {tour.pdfUrl && (
+                <div style={{ fontSize: '12px' }}>
+                  <a href={tour.pdfUrl} target="_blank" rel="noreferrer" style={{ color: '#f59e0b', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    📄 {tour.pdfName || 'PDF Broşür'}
+                  </a>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -3356,7 +3593,13 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
             {selectedTour?.id === tour.id && tour.reservations?.length > 0 && (
               <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0, fontSize: '14px' }}>📋 Rezervasyonlar</h4>
+                  <h4 style={{ margin: 0, fontSize: '14px' }}>
+                    📋 Rezervasyonlar
+                    <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
+                      ({tour.reservations.filter(r => !r.isCancelled).length} aktif
+                      {tour.reservations.some(r => r.isCancelled) ? `, ${tour.reservations.filter(r => r.isCancelled).length} iptal` : ''})
+                    </span>
+                  </h4>
                   <button onClick={() => exportToExcel(tour)} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>
                     📥 Excel
                   </button>
@@ -3367,20 +3610,59 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                         <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>S.No</th>
                         <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Ad Soyad</th>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Oda Tipi</th>
+                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Oda</th>
                         <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Ücret</th>
+                        <th style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>✅</th>
                         <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {tour.reservations.map(res => (
-                        <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '8px' }}>{res.sNo}</td>
-                          <td style={{ padding: '8px' }}>{res.customerName}</td>
+                        <tr key={res.id} style={{
+                          borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          opacity: res.isCancelled ? 0.5 : 1,
+                          background: res.isCancelled ? 'rgba(239,68,68,0.05)' : res.kontrolEdildi ? 'rgba(16,185,129,0.05)' : 'transparent'
+                        }}>
+                          <td style={{ padding: '8px' }}>
+                            {res.sNo}
+                            {res.isCancelled && <span style={{ marginLeft: '4px', fontSize: '9px', color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '1px 4px', borderRadius: '3px' }}>İPTAL</span>}
+                          </td>
+                          <td style={{ padding: '8px', textDecoration: res.isCancelled ? 'line-through' : 'none', color: res.isCancelled ? '#64748b' : '#e8f1f8' }}>
+                            {res.customerName}
+                          </td>
                           <td style={{ padding: '8px' }}>{roomTypeLabels[res.roomType]}</td>
                           <td style={{ padding: '8px' }}>{res.tourPrice} {res.currency}</td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => !res.isCancelled && toggleKontrol(tour.id, res.id)}
+                              disabled={res.isCancelled}
+                              title={res.kontrolEdildi ? 'Kontrol edildi — kaldırmak için tıkla' : 'Kontrol edildi işaretle'}
+                              style={{ background: 'none', border: 'none', cursor: res.isCancelled ? 'default' : 'pointer', fontSize: '16px', opacity: res.isCancelled ? 0.3 : 1 }}
+                            >
+                              {res.kontrolEdildi ? '✅' : '⬜'}
+                            </button>
+                          </td>
                           <td style={{ padding: '8px' }}>
-                            <button onClick={() => deleteReservation(tour.id, res.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}>×</button>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {res.isCancelled ? (
+                                <button
+                                  onClick={() => restoreReservation(tour.id, res.id)}
+                                  title="Geri al"
+                                  style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', color: '#22c55e', cursor: 'pointer', fontSize: '11px', padding: '3px 7px' }}
+                                >↩</button>
+                              ) : (
+                                <button
+                                  onClick={() => cancelReservation(tour.id, res.id)}
+                                  title="İptal et"
+                                  style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px', padding: '3px 7px' }}
+                                >⏸</button>
+                              )}
+                              <button
+                                onClick={() => deleteReservation(tour.id, res.id)}
+                                title="Kalıcı sil"
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '2px 4px' }}
+                              >×</button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -3527,6 +3809,60 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   <option value="Tamamlandı">Tamamlandı</option>
                   <option value="İptal">İptal</option>
                 </select>
+              </div>
+
+              {/* PDF Upload */}
+              <div>
+                <label style={labelStyle}>📎 Tur PDF Broşürü (Firebase Storage)</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {formData.pdfUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '20px' }}>📄</span>
+                      <a href={formData.pdfUrl} target="_blank" rel="noreferrer" style={{ color: '#f59e0b', fontSize: '12px', flex: 1, textDecoration: 'none' }}>
+                        {formData.pdfName || 'PDF Broşür'}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, pdfUrl: '', pdfName: '' })}
+                        style={{ background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', padding: '4px 8px' }}
+                      >
+                        Kaldır
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', cursor: formData._pdfUploading ? 'not-allowed' : 'pointer' }}>
+                      <span style={{ fontSize: '20px' }}>📤</span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        {formData._pdfUploading ? '⏳ Yükleniyor...' : 'PDF seç (maks. 10MB)'}
+                      </span>
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        style={{ display: 'none' }}
+                        disabled={formData._pdfUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 10 * 1024 * 1024) { showToast('PDF maksimum 10MB olabilir', 'error'); return; }
+                          setFormData(f => ({ ...f, _pdfUploading: true }));
+                          try {
+                            const storage = getStorage();
+                            const fileName = `tours/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                            const sRef = storageRef(storage, fileName);
+                            await uploadBytes(sRef, file);
+                            const url = await getDownloadURL(sRef);
+                            setFormData(f => ({ ...f, pdfUrl: url, pdfName: file.name, _pdfUploading: false }));
+                            showToast('PDF yüklendi ✅', 'success');
+                          } catch(err) {
+                            console.error('PDF yükleme hatası:', err);
+                            showToast('PDF yüklenemedi: ' + err.message, 'error');
+                            setFormData(f => ({ ...f, _pdfUploading: false }));
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -5095,6 +5431,303 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
   );
 }
 
+// ===== DS-160 AMERİKA VİZE MODÜLÜ =====
+function Ds160Module({ customers, ds160Applications, setDs160Applications, isMobile, showToast, appSettings }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('Tümü');
+  const [selectedApp, setSelectedApp] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const ds160Url = appSettings?.ds160Url || 'https://ds160-paydos.netlify.app';
+
+  // İstatistikler
+  const total = ds160Applications.length;
+  const taslak = ds160Applications.filter(a => a.status === 'Taslak').length;
+  const gonderildi = ds160Applications.filter(a => a.status === 'Gönderildi').length;
+  const tamamlandi = ds160Applications.filter(a => a.status === 'Tamamlandı').length;
+
+  // Filtre + arama
+  const filtered = ds160Applications.filter(app => {
+    const matchStatus = filterStatus === 'Tümü' || app.status === filterStatus;
+    const q = searchQuery.toLowerCase();
+    const matchSearch = !searchQuery ||
+      app.firstName?.toLowerCase().includes(q) ||
+      app.lastName?.toLowerCase().includes(q) ||
+      app.phone?.includes(searchQuery);
+    return matchStatus && matchSearch;
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  // Firestore'dan yenile (manuel refresh)
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const { getDocs, collection } = await import('firebase/firestore');
+      const snapshot = await getDocs(collection(db, 'ds160_applications'));
+      const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+      setDs160Applications(items);
+      showToast(`${items.length} başvuru yüklendi`, 'success');
+    } catch(e) {
+      showToast('Yenileme hatası: ' + e.message, 'error');
+    }
+    setIsRefreshing(false);
+  };
+
+  // Durum güncelle
+  const updateStatus = async (app, newStatus) => {
+    const updated = ds160Applications.map(a =>
+      a._docId === app._docId ? { ...a, status: newStatus } : a
+    );
+    setDs160Applications(updated);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'ds160_applications', app._docId), { status: newStatus }, { merge: true });
+      showToast(`Durum → ${newStatus}`, 'success');
+    } catch(e) {
+      showToast('Durum güncellenemedi', 'error');
+    }
+  };
+
+  // Müşteri eşleştir
+  const matchCustomer = (app) =>
+    customers.find(c =>
+      c.phone?.replace(/\D/g, '').slice(-10) === app.phone?.replace(/\D/g, '').slice(-10) ||
+      (app.firstName && app.lastName &&
+        `${c.firstName} ${c.lastName}`.toLowerCase() === `${app.firstName} ${app.lastName}`.toLowerCase())
+    );
+
+  // Progress hesapla (dolu alan sayısı)
+  const calcProgress = (app) => {
+    const fields = ['firstName', 'lastName', 'phone', 'birthDate', 'passportNo', 'travelPurpose', 'address'];
+    const filled = fields.filter(f => app[f] && app[f] !== '').length;
+    return Math.round((filled / fields.length) * 100);
+  };
+
+  const statusColors = {
+    'Taslak':      { bg: 'rgba(100,116,139,0.2)', border: 'rgba(100,116,139,0.4)', text: '#94a3b8' },
+    'Gönderildi':  { bg: 'rgba(59,130,246,0.2)',  border: 'rgba(59,130,246,0.4)',  text: '#3b82f6' },
+    'Tamamlandı':  { bg: 'rgba(16,185,129,0.2)',  border: 'rgba(16,185,129,0.4)',  text: '#10b981' },
+  };
+
+  const StatCard = ({ value, label, color }) => (
+    <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+      <div style={{ fontSize: '28px', fontWeight: '700', color }}>{value}</div>
+      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{label}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {/* Başlık */}
+      <h2 style={{ fontSize: '22px', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        🇺🇸 DS-160 ABD Vize Başvuruları
+      </h2>
+
+      {/* İstatistik kartları */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <StatCard value={total}      label="Toplam"    color="#e8f1f8" />
+        <StatCard value={taslak}     label="Taslak"    color="#94a3b8" />
+        <StatCard value={gonderildi} label="Gönderildi" color="#3b82f6" />
+        <StatCard value={tamamlandi} label="Tamamlandı" color="#10b981" />
+      </div>
+
+      {/* Başvuru Linki */}
+      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '14px', padding: '20px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+          <span style={{ fontSize: '16px' }}>🔗</span>
+          <span style={{ fontSize: '15px', fontWeight: '600', color: '#8b5cf6' }}>Başvuru Linki</span>
+        </div>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+          Bu linki müşterilerinizle paylaşın — herkes kendi başvurusunu oluşturup doldurur.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, padding: '12px 16px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '10px', fontSize: '13px', color: '#a78bfa', fontFamily: 'monospace', minWidth: '200px' }}>
+            {ds160Url}
+          </div>
+          <button
+            onClick={() => { navigator.clipboard.writeText(ds160Url); showToast('Link kopyalandı', 'success'); }}
+            style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
+          >
+            📋 Kopyala
+          </button>
+          <button
+            onClick={() => {
+              const msg = `Merhaba,\n\nABD vize başvurunuz için DS-160 formunu aşağıdaki linkten doldurabilirsiniz:\n\n${ds160Url}\n\nPaydos Turizm`;
+              window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+            }}
+            style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
+          >
+            💬 WhatsApp
+          </button>
+        </div>
+      </div>
+
+      {/* Arama + Filtreler */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="🔍 İsim veya telefon ara..."
+          style={{ flex: 1, minWidth: '200px', padding: '11px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '13px', outline: 'none' }}
+        />
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          style={{ padding: '11px 16px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '10px', color: '#3b82f6', cursor: isRefreshing ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
+        >
+          {isRefreshing ? '⏳' : '🔄'} Yenile
+        </button>
+        {['Tümü', 'Taslak', 'Gönderildi', 'Tamamlandı'].map(s => (
+          <button
+            key={s}
+            onClick={() => setFilterStatus(s)}
+            style={{
+              padding: '10px 16px',
+              background: filterStatus === s
+                ? (s === 'Tümü' ? 'rgba(139,92,246,0.3)' : s === 'Taslak' ? 'rgba(100,116,139,0.3)' : s === 'Gönderildi' ? 'rgba(59,130,246,0.3)' : 'rgba(16,185,129,0.3)')
+                : 'rgba(255,255,255,0.05)',
+              border: filterStatus === s
+                ? (s === 'Tümü' ? '1px solid rgba(139,92,246,0.5)' : s === 'Taslak' ? '1px solid rgba(100,116,139,0.5)' : s === 'Gönderildi' ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(16,185,129,0.5)')
+                : '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '8px',
+              color: filterStatus === s
+                ? (s === 'Tümü' ? '#a78bfa' : s === 'Taslak' ? '#94a3b8' : s === 'Gönderildi' ? '#3b82f6' : '#10b981')
+                : '#64748b',
+              cursor: 'pointer', fontSize: '12px', fontWeight: filterStatus === s ? '600' : '400', whiteSpace: 'nowrap'
+            }}
+          >
+            {s === 'Tümü' ? `Tümü (${total})` : s === 'Taslak' ? `📝 Taslak (${taslak})` : s === 'Gönderildi' ? `📨 Gönderildi (${gonderildi})` : `✅ Tamamlandı (${tamamlandi})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Başvuru Listesi */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🇺🇸</div>
+            <div style={{ fontSize: '15px' }}>
+              {ds160Applications.length === 0
+                ? 'Henüz başvuru yok. Müşteriler linki kullandıkça burada görünür.'
+                : 'Arama kriterlerine uygun başvuru bulunamadı.'}
+            </div>
+          </div>
+        ) : filtered.map(app => {
+          const cust = matchCustomer(app);
+          const progress = calcProgress(app);
+          const sc = statusColors[app.status] || statusColors['Taslak'];
+          const isExpanded = selectedApp?._docId === app._docId;
+          const fullName = `${app.firstName || ''} ${app.lastName || ''}`.trim() || '—';
+          const dateStr = app.createdAt
+            ? new Date(app.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '—';
+
+          return (
+            <div key={app._docId || app.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
+              {/* Satır */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: '12px', flexWrap: 'wrap' }}>
+                {/* İsim + telefon */}
+                <div style={{ flex: 1, minWidth: '140px' }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px', color: '#e8f1f8' }}>{fullName}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {app.phone || '—'}
+                    {cust && (
+                      <span style={{ fontSize: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '4px', padding: '1px 6px', color: '#3b82f6', fontWeight: '600' }}>
+                        👤 CRM
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Durum badge */}
+                <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', background: sc.bg, border: `1px solid ${sc.border}`, color: sc.text, fontWeight: '600', whiteSpace: 'nowrap' }}>
+                  {app.status || 'Taslak'}
+                </span>
+
+                {/* Progress */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '80px' }}>
+                  <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden', width: '60px' }}>
+                    <div style={{ height: '100%', width: `${progress}%`, background: progress === 100 ? '#10b981' : '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>%{progress}</span>
+                </div>
+
+                {/* Tarih */}
+                <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</span>
+
+                {/* Butonlar */}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <a
+                    href={`${ds160Url}?id=${app._docId || app.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Formu aç"
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', textDecoration: 'none', fontSize: '14px' }}
+                  >🔗</a>
+                  {app.phone && (
+                    <button
+                      title="WhatsApp"
+                      onClick={() => window.open(`https://wa.me/90${app.phone.replace(/\D/g,'').replace(/^0/,'')}`, '_blank')}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '14px', border: 'none' }}
+                    >💬</button>
+                  )}
+                  {/* Durum değiştir dropdown */}
+                  <select
+                    value={app.status || 'Taslak'}
+                    onChange={e => updateStatus(app, e.target.value)}
+                    style={{ padding: '6px 8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
+                  >
+                    <option value="Taslak">Taslak</option>
+                    <option value="Gönderildi">Gönderildi</option>
+                    <option value="Tamamlandı">Tamamlandı</option>
+                  </select>
+                  <button
+                    onClick={() => setSelectedApp(isExpanded ? null : app)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+                  >▼</button>
+                </div>
+              </div>
+
+              {/* Detay paneli */}
+              {isExpanded && (
+                <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', fontSize: '12px' }}>
+                    {[
+                      { label: 'Ad', value: app.firstName },
+                      { label: 'Soyad', value: app.lastName },
+                      { label: 'Telefon', value: app.phone },
+                      { label: 'E-posta', value: app.email },
+                      { label: 'Doğum Tarihi', value: app.birthDate ? formatDate(app.birthDate) : null },
+                      { label: 'Pasaport No', value: app.passportNo },
+                      { label: 'Seyahat Amacı', value: app.travelPurpose },
+                      { label: 'Adres', value: app.address },
+                    ].map(({ label, value }) => value ? (
+                      <div key={label}>
+                        <div style={{ color: '#64748b', marginBottom: '3px' }}>{label}</div>
+                        <div style={{ color: '#e8f1f8', fontWeight: '500' }}>{value}</div>
+                      </div>
+                    ) : null)}
+                  </div>
+                  {cust && (
+                    <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', fontSize: '12px', color: '#3b82f6' }}>
+                      👤 CRM'de eşleşti: <strong>{cust.firstName} {cust.lastName}</strong>{cust.companyName ? ` — ${cust.companyName}` : ''}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Alt not */}
+      <div style={{ marginTop: '24px', padding: '12px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', fontSize: '12px', color: '#94a3b8' }}>
+        💡 Müşteriler linki açıp ad soyad + telefon girdikten sonra başvuru otomatik oluşturulur ve buraya düşer. Ayarlar → DS-160 Site URL'den adresi değiştirebilirsiniz.
+      </div>
+    </div>
+  );
+}
+
 // AYARLAR MODÜLÜ
 function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings }) {
   const [activeTab, setActiveTab] = useState('profile');
@@ -5220,6 +5853,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             </button>
             <button onClick={() => setActiveTab('visaSettings')} style={{ padding: '12px 16px', background: activeTab === 'visaSettings' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'visaSettings' ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'visaSettings' ? '#8b5cf6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'visaSettings' ? '600' : '400' }}>
               🌍 Vize Ayarları
+            </button>
+            <button onClick={() => setActiveTab('ds160Settings')} style={{ padding: '12px 16px', background: activeTab === 'ds160Settings' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'ds160Settings' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'ds160Settings' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'ds160Settings' ? '600' : '400' }}>
+              🇺🇸 DS-160 Ayarları
             </button>
             <button onClick={() => setActiveTab('statusManagement')} style={{ padding: '12px 16px', background: activeTab === 'statusManagement' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'statusManagement' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'statusManagement' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'statusManagement' ? '600' : '400' }}>
               📊 Durum Yönetimi
@@ -5594,6 +6230,38 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         </div>
       )}
 
+      {/* 🇺🇸 DS-160 AYARLARI */}
+      {activeTab === 'ds160Settings' && isAdmin && (
+        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <h3 style={{ margin: '0 0 20px', fontSize: '15px', color: '#3b82f6' }}>🇺🇸 DS-160 Site Ayarları</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={labelStyle}>DS-160 Site URL</label>
+              <input
+                type="url"
+                value={appSettings?.ds160Url || 'https://ds160-paydos.netlify.app'}
+                onChange={e => setAppSettings({ ...appSettings, ds160Url: e.target.value })}
+                placeholder="https://ds160-paydos.netlify.app"
+                style={inputStyle}
+              />
+              <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
+                Müşterilere paylaşılan DS-160 form sitesinin adresi. Amerika Vize modülündeki link buradan alınır.
+              </p>
+            </div>
+            <div style={{ padding: '12px 16px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', fontSize: '12px', color: '#64748b' }}>
+              <div style={{ marginBottom: '6px', color: '#3b82f6', fontWeight: '600' }}>💡 Nasıl çalışır?</div>
+              Müşteri bu linki açar, ad soyad + telefon girer. Başvuru otomatik Firestore'a (<code style={{ color: '#94a3b8' }}>ds160_applications</code>) kaydedilir ve Amerika Vize modülünde görünür.
+            </div>
+            <button
+              onClick={() => showToast('DS-160 ayarları kaydedildi', 'success')}
+              style={{ alignSelf: 'flex-start', padding: '11px 24px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
+            >
+              💾 Kaydet
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 📊 DURUM YÖNETİMİ */}
       {activeTab === 'statusManagement' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -5865,6 +6533,7 @@ export default function App() {
   const [creditCards, setCreditCards] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [users, setUsers] = useState(defaultUsers);
+  const [ds160Applications, setDs160Applications] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [undoStack, setUndoStack] = useState([]);
@@ -5961,12 +6630,13 @@ export default function App() {
         e.preventDefault();
         performUndo();
       }
-      // Ctrl/Cmd + 1-7 = Modül değiştir
-      if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
+      // Ctrl/Cmd + 1-9 = Modül değiştir
+      if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(e.key)) {
         e.preventDefault();
-        const modules = ['dashboard', 'customers', 'visa', 'quotes', 'agencies', 'cards', 'settings'];
-        setActiveModule(modules[parseInt(e.key) - 1]);
-        showToast(`${['Dashboard', 'Müşteriler', 'Vize', 'Teklif & Proforma', 'Acentelikler', 'Kredi Kartları', 'Ayarlar'][parseInt(e.key) - 1]} açıldı`, 'info');
+        const modules = ['dashboard', 'customers', 'visa', 'ds160', 'tours', 'quotes', 'agencies', 'cards', 'settings'];
+        const labels = ['Dashboard', 'Müşteriler', 'Vize', 'Amerika Vize', 'Turlar', 'Teklif & Proforma', 'Acentelikler', 'Kredi Kartları', 'Ayarlar'];
+        const idx = parseInt(e.key) - 1;
+        if (modules[idx]) { setActiveModule(modules[idx]); showToast(`${labels[idx]} açıldı`, 'info'); }
       }
       // Escape = Sidebar kapat
       if (e.key === 'Escape' && sidebarOpen) {
@@ -5980,7 +6650,7 @@ export default function App() {
   useEffect(() => { const handleResize = () => setIsMobile(window.innerWidth < 768); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
   useEffect(() => { const loggedIn = localStorage.getItem('paydos_logged_in'); const savedUser = localStorage.getItem('paydos_current_user'); if (loggedIn === 'true' && savedUser) { try { setCurrentUser(JSON.parse(savedUser)); setIsLoggedIn(true); } catch (e) { console.error(e); } } }, []);
   
-  // localStorage'dan yükle - EN ÖNCE
+  // localStorage'dan yükle - EN ÖNCE (hızlı cache)
   useEffect(() => { const saved = localStorage.getItem('paydos_customers'); if (saved) { try { setCustomers(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_visa_applications'); if (saved) { try { setVisaApplications(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
   useEffect(() => { 
@@ -5988,42 +6658,154 @@ export default function App() {
     if (saved) { 
       try { 
         const settings = JSON.parse(saved);
-        
-        // MIGRATION: String array → Object array
         if (settings.visaDurations) {
           Object.keys(settings.visaDurations).forEach(country => {
             const durations = settings.visaDurations[country];
             if (durations && durations.length > 0 && typeof durations[0] === 'string') {
-              // Eski format: string array
               settings.visaDurations[country] = durations.map(name => ({
-                name: name,
-                price: 0,
-                currency: country === 'usa' ? '$' : country === 'uk' ? '£' : '€'
+                name: name, price: 0, currency: country === 'usa' ? '$' : country === 'uk' ? '£' : '€'
               }));
-              console.log(`✅ Migrated ${country}: ${durations.length} items`);
             }
           });
         }
-        
         setAppSettings(settings);
-      } catch (e) { 
-        console.error(e); 
-      } 
+      } catch (e) { console.error(e); } 
     } 
   }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_tours'); if (saved) { try { setTours(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_agencies'); if (saved) { try { setAgencies(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_credit_cards'); if (saved) { try { setCreditCards(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_quotes'); if (saved) { try { setQuotes(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_users'); if (saved) { try { setUsers(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
+
+  // 🔥 FIRESTORE'DAN YÜKLE — localStorage'ı override eder
+  const firestoreLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreLoaded.current) return;
+    firestoreLoaded.current = true;
+    const loadFromFirestore = async () => {
+      try {
+        const collections = [
+          { name: 'customers', setter: setCustomers },
+          { name: 'visa_applications', setter: setVisaApplications },
+          { name: 'tours', setter: setTours },
+          { name: 'agencies', setter: setAgencies },
+          { name: 'credit_cards', setter: setCreditCards },
+          { name: 'quotes', setter: setQuotes },
+          { name: 'users', setter: setUsers },
+          { name: 'ds160_applications', setter: setDs160Applications }
+        ];
+        for (const col of collections) {
+          try {
+            const snapshot = await getDocs(collection(db, col.name));
+            if (!snapshot.empty) {
+              let items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+              if (col.name === 'customers') {
+                items = items.filter(c => c.firstName || c.lastName);
+              }
+              col.setter(items);
+              // localStorage'a yazarken müşteri görsellerini çıkar (5MB limit)
+              try {
+                if (col.name === 'customers') {
+                  const lite = items.map(c => {
+                    const obj = { ...c };
+                    try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: '' }))); } catch(e) {}
+                    try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: '' }))); } catch(e) {}
+                    try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: '' }); } catch(e) {}
+                    return obj;
+                  });
+                  localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
+                } else {
+                  localStorage.setItem(`paydos_${col.name}`, JSON.stringify(items));
+                }
+              } catch(e) { console.warn('localStorage yazma hatası:', e.message); }
+              console.log(`✅ Firestore ${col.name}: ${items.length} kayıt`);
+            } else {
+              col.setter([]);
+              try { localStorage.removeItem(`paydos_${col.name}`); } catch(e) {}
+            }
+          } catch (e) { console.warn(`⚠️ ${col.name} yüklenemedi:`, e.message); }
+        }
+        // App Settings
+        try {
+          const settingsSnapshot = await getDocs(collection(db, 'app_settings'));
+          if (!settingsSnapshot.empty) {
+            const settingsDoc = settingsSnapshot.docs[0].data();
+            if (settingsDoc) {
+              setAppSettings(prev => ({ ...prev, ...settingsDoc }));
+              try { localStorage.setItem('paydos_app_settings', JSON.stringify({ ...appSettings, ...settingsDoc })); } catch(e) {}
+            }
+          }
+        } catch(e) { console.warn('app_settings yüklenemedi:', e.message); }
+      } catch (e) { console.error('Firestore yükleme hatası:', e); }
+    };
+    loadFromFirestore();
+  }, []);
+
+  // 🔥 FIRESTORE'A KAYDET — debounced, GÖRSELLERİ KORUR
+  const saveTimers = useRef({});
+  const initialLoadDone = useRef(false);
+  useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
   
-  // Firebase/localStorage veri yükleme tamamlandı
-  
-  // localStorage'a kaydet - değiştiğinde
-  useEffect(() => { localStorage.setItem('paydos_customers', JSON.stringify(customers)); }, [customers]);
-  useEffect(() => { localStorage.setItem('paydos_visa_applications', JSON.stringify(visaApplications)); }, [visaApplications]);
-  useEffect(() => { localStorage.setItem('paydos_app_settings', JSON.stringify(appSettings)); }, [appSettings]);
-  useEffect(() => { localStorage.setItem('paydos_agencies', JSON.stringify(agencies)); }, [agencies]);
-  useEffect(() => { localStorage.setItem('paydos_credit_cards', JSON.stringify(creditCards)); }, [creditCards]);
-  useEffect(() => { localStorage.setItem('paydos_quotes', JSON.stringify(quotes)); }, [quotes]);
+  const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
+    if (!initialLoadDone.current) return; // İlk yüklemede kaydetme
+    if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
+    saveTimers.current[key] = setTimeout(async () => {
+      try {
+        if (isSettings) {
+          const snapshot = await getDocs(collection(db, collectionName));
+          const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
+          await setDoc(doc(db, collectionName, docId), data, { merge: true });
+        } else {
+          const batch = writeBatch(db);
+          let count = 0;
+          for (const item of data) {
+            const docId = item._docId || item.id?.toString() || Date.now().toString();
+            const saveData = { ...item };
+            delete saveData._docId;
+            
+            // ⚡ MÜŞTERİ KAYDEDERKEN GÖRSELLERİ ATLAMA — Firestore'daki görselleri korur
+            if (collectionName === 'customers') {
+              delete saveData.passports;
+              delete saveData.schengenVisas;
+              delete saveData.usaVisa;
+            }
+            
+            batch.set(doc(db, collectionName, docId), saveData, { merge: true });
+            count++;
+            if (count >= 400) { await batch.commit(); count = 0; }
+          }
+          if (count > 0) await batch.commit();
+        }
+        // localStorage güncelle
+        try {
+          if (collectionName === 'customers') {
+            const lite = data.map(c => {
+              const obj = { ...c };
+              try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: '' }))); } catch(e) {}
+              try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: '' }))); } catch(e) {}
+              try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: '' }); } catch(e) {}
+              return obj;
+            });
+            localStorage.setItem(`paydos_${key}`, JSON.stringify(lite));
+          } else {
+            localStorage.setItem(`paydos_${key}`, JSON.stringify(data));
+          }
+        } catch(e) {}
+        console.log(`💾 ${collectionName}: ${data.length || 1} kayıt sync`);
+      } catch(e) { console.error(`Firestore ${collectionName} kayıt hatası:`, e.message); }
+    }, 3000);
+  }, []);
+
+  useEffect(() => { debouncedSave('customers', 'customers', customers); }, [customers]);
+  useEffect(() => { debouncedSave('visa_applications', 'visa_applications', visaApplications); }, [visaApplications]);
+  useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
+  useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
+  useEffect(() => { debouncedSave('credit_cards', 'credit_cards', creditCards); }, [creditCards]);
+  useEffect(() => { debouncedSave('quotes', 'quotes', quotes); }, [quotes]);
+  useEffect(() => { debouncedSave('users', 'users', users); }, [users]);
+  useEffect(() => { debouncedSave('ds160_applications', 'ds160_applications', ds160Applications); }, [ds160Applications]);
+  useEffect(() => { debouncedSave('app_settings', 'app_settings', appSettings, true); }, [appSettings]);
 
 
 
@@ -6038,6 +6820,7 @@ export default function App() {
     { id: 'dashboard', icon: '📊', label: 'Dashboard' }, 
     { id: 'customers', icon: '👥', label: 'Müşteriler' },
     { id: 'visa', icon: '🌍', label: 'Vize' },
+    { id: 'ds160', icon: '🇺🇸', label: 'Amerika Vize' },
     { id: 'tours', icon: '🎫', label: 'Turlar' },
     { id: 'quotes', icon: '📄', label: 'Teklif & Proforma' },
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
@@ -6050,6 +6833,7 @@ export default function App() {
       case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} />;
+      case 'ds160': return <Ds160Module customers={customers} ds160Applications={ds160Applications} setDs160Applications={setDs160Applications} isMobile={isMobile} showToast={showToast} appSettings={appSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
@@ -6067,7 +6851,7 @@ export default function App() {
       {/* Klavye Kısayolları Bilgisi */}
       {!isMobile && (
         <div style={{ position: 'fixed', bottom: '20px', left: '280px', fontSize: '10px', color: '#64748b', zIndex: 50 }}>
-          ⌨️ Ctrl+1-7: Modül | Ctrl+Z: Geri Al
+          ⌨️ Ctrl+1-9: Modül | Ctrl+Z: Geri Al
         </div>
       )}
       
