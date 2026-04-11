@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import { db } from './lib/firebase';
 import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
 const defaultCustomers = [];
@@ -58,28 +58,23 @@ const formatPhoneNumber = (value) => {
 
 // Pasaport No formatla: İlk harf büyük, 9 karakter
 const formatPassportNo = (value) => {
-  // Boşluk ve özel karakterleri temizle
-  let cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  
-  if (cleaned.length === 0) return '';
-  
-  // İlk karakter HARF olmalı
-  let firstChar = cleaned[0];
-  if (!/[A-Z]/.test(firstChar)) {
-    // İlk karakter harf değilse, ilk harfi bul veya boş dön
-    const firstLetterMatch = cleaned.match(/[A-Z]/);
-    if (!firstLetterMatch) return '';
-    firstChar = firstLetterMatch[0];
-    cleaned = cleaned.replace(firstChar, ''); // Harfi çıkar
-  } else {
-    cleaned = cleaned.slice(1); // İlk harfi ayır
-  }
-  
-  // Geriye kalan sadece RAKAM olmalı (8 hane)
-  const numbers = cleaned.replace(/[^0-9]/g, '').slice(0, 8);
-  
-  return firstChar + numbers;
+  const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return cleaned.slice(0, 9);
 };
+
+// Pasaport No'dan türü otomatik tespit
+const detectPassportType = (passportNo) => {
+  if (!passportNo) return null;
+  const first = passportNo.toUpperCase()[0];
+  if (first === 'U') return 'Bordo Pasaport (Umuma Mahsus)';
+  if (first === 'S') return 'Yeşil Pasaport (Hususi)';
+  if (first === 'Z') return 'Gri Pasaport (Hizmet)';
+  if (first === 'D') return 'Siyah Pasaport (Diplomatik)';
+  return null;
+};
+
+const countryCodeMap = { TUR:'Türkiye',DEU:'Almanya',FRA:'Fransa',GBR:'İngiltere',USA:'Amerika Birleşik Devletleri',NLD:'Hollanda',BEL:'Belçika',AUT:'Avusturya',CHE:'İsviçre',ITA:'İtalya',ESP:'İspanya',PRT:'Portekiz',GRC:'Yunanistan',SWE:'İsveç',NOR:'Norveç',DNK:'Danimarka',FIN:'Finlandiya',POL:'Polonya',CZE:'Çekya',HUN:'Macaristan',ROU:'Romanya',BGR:'Bulgaristan',HRV:'Hırvatistan',RUS:'Rusya',UKR:'Ukrayna',AZE:'Azerbaycan',KAZ:'Kazakistan',SAU:'Suudi Arabistan',ARE:'Birleşik Arap Emirlikleri',IRN:'İran',IRQ:'Irak',SYR:'Suriye',JOR:'Ürdün',LBN:'Lübnan',EGY:'Mısır',MAR:'Fas',TUN:'Tunus',ALB:'Arnavutluk',MKD:'Kuzey Makedonya',SRB:'Sırbistan',BIH:'Bosna Hersek',MNE:'Karadağ',GEO:'Gürcistan',ARM:'Ermenistan',CHN:'Çin',JPN:'Japonya',KOR:'Güney Kore',IND:'Hindistan',PAK:'Pakistan',BGD:'Bangladeş',IDN:'Endonezya',MYS:'Malezya',THA:'Tayland',VNM:'Vietnam',PHL:'Filipinler',BRA:'Brezilya',ARG:'Arjantin',MEX:'Meksika',CAN:'Kanada',AUS:'Avustralya',NZL:'Yeni Zelanda',ZAF:'Güney Afrika',NGA:'Nijerya',ETH:'Etiyopya',KEN:'Kenya' };
+const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || code) : '';
 
 // Toast Component
 function Toast({ toasts, removeToast }) {
@@ -355,7 +350,7 @@ function DateInput({ label, value, onChange }) {
 }
 
 function FormInput({ label, ...p }) { return (<div><label style={labelStyle}>{label}</label><input {...p} style={inputStyle} /></div>); }
-function StatCard({ value, label, color }) { return (<div style={{ background: `${color}15`, border: `1px solid ${color}30`, borderRadius: '10px', padding: '14px' }}><div style={{ fontSize: '22px', fontWeight: '700', color }}>{value}</div><div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{label}</div></div>); }
+function StatCard({ value, label, color, onClick, sublabel }) { return (<div onClick={onClick} style={{ background: `${color}15`, border: `1px solid ${color}30`, borderRadius: '12px', padding: '16px', cursor: onClick ? 'pointer' : 'default', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><div style={{ fontSize: '28px', fontWeight: '700', color }}>{value}</div><div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{label}</div>{sublabel && <div style={{ fontSize: '10px', color, marginTop: '4px' }}>{sublabel}</div>}</div>); }
 function Modal({ children, onClose, title }) { return (<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}><div style={{ background: 'linear-gradient(180deg, #0f2744 0%, #0c1929 100%)', borderRadius: '12px', width: '100%', maxWidth: '400px', maxHeight: '85vh', overflow: 'auto', border: '1px solid rgba(255,255,255,0.1)' }}><div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0, fontSize: '15px', flex: 1 }}>{title}</h3><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '28px', height: '28px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button></div><div style={{ padding: '14px 16px' }}>{children}</div></div></div>); }
 function InfoBox({ label, value, highlight }) { return (<div style={{ background: highlight ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '8px', border: highlight ? '1px solid rgba(245,158,11,0.2)' : 'none' }}><p style={{ fontSize: '10px', color: highlight ? '#f59e0b' : '#64748b', marginBottom: '2px', textTransform: 'uppercase' }}>{label}</p><p style={{ fontSize: '12px', margin: 0, color: value ? (highlight ? '#f59e0b' : '#e8f1f8') : '#64748b' }}>{value || '-'}</p></div>); }
 
@@ -395,8 +390,10 @@ function LoginScreen({ onLogin, users }) {
   );
 }
 
-function DashboardModule({ customers, isMobile }) {
+function DashboardModule({ customers, isMobile, onNavigate }) {
   const [showBirthdays, setShowBirthdays] = useState(false);
+  const [modal, setModal] = useState(null); // {title, color, list, renderItem}
+  // Schengen vizesi olanlar
   // Schengen vizesi olanlar
   const withSchengen = customers.filter(c => {
     const visas = safeParseJSON(c.schengenVisas);
@@ -454,17 +451,59 @@ function DashboardModule({ customers, isMobile }) {
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
       <h2 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Dashboard</h2>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
-        <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6" />
-        <StatCard value={withSchengen.length} label="Schengen Vizeli" color="#10b981" />
-        <StatCard value={withUsa.length} label="ABD Vizeli" color="#8b5cf6" />
-        <StatCard value={expiringPassports.length} label="Pasaport Uyarı" color="#ef4444" />
-        <StatCard value={withGreenPassport.length} label="Yeşil Pasaport" color="#059669" />
-        <div onClick={() => setShowBirthdays(true)} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s' }}>
+        <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6"
+          sublabel="→ Tüm müşteriler"
+          onClick={() => setModal({ title: '👥 Tüm Müşteriler', color: '#3b82f6', list: customers,
+            renderItem: c => `${c.firstName} ${c.lastName}` })} />
+        <StatCard value={withSchengen.length} label="Schengen Vizeli" color="#10b981"
+          sublabel="→ Listele"
+          onClick={() => setModal({ title: '🇪🇺 Schengen Vizeli', color: '#10b981', list: withSchengen,
+            renderItem: c => `${c.firstName} ${c.lastName}` })} />
+        <StatCard value={withUsa.length} label="ABD Vizeli" color="#8b5cf6"
+          sublabel="→ Listele"
+          onClick={() => setModal({ title: '🇺🇸 ABD Vizeli', color: '#8b5cf6', list: withUsa,
+            renderItem: c => `${c.firstName} ${c.lastName}` })} />
+        <StatCard value={expiringPassports.length} label="Pasaport Uyarı" color="#ef4444"
+          sublabel="→ 6 ay içinde bitenler"
+          onClick={() => setModal({ title: '⚠️ Pasaport Uyarısı (6 ay)', color: '#ef4444', list: expiringPassports,
+            renderItem: c => { const p = safeParseJSON(c.passports).find(x=>{const d=getDaysLeft(x.expiryDate);return d!==null&&d>0&&d<=180;}); return `${c.firstName} ${c.lastName} (${getDaysLeft(p?.expiryDate)} gün)`; } })} />
+        <StatCard value={withGreenPassport.length} label="Yeşil Pasaport" color="#059669"
+          sublabel="→ Listele"
+          onClick={() => setModal({ title: '🟢 Yeşil Pasaport', color: '#059669', list: withGreenPassport,
+            renderItem: c => `${c.firstName} ${c.lastName}` })} />
+        <div onClick={() => setShowBirthdays(true)} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '12px', padding: '16px', cursor: 'pointer', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ fontSize: '28px', fontWeight: '700', color: '#f59e0b' }}>🎂 {todayBirthdays.length}</div>
           <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Bugün Doğanlar</div>
-          {todayBirthdays.length > 0 && <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '4px' }}>🎉 Tıkla ve gör!</div>}
+          <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '4px' }}>🎉 Tıkla ve gör!</div>
         </div>
       </div>
+
+      {/* Generic Liste Modal */}
+      {modal && (
+        <div onClick={() => setModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0f2744, #1a3a5c)', borderRadius: '16px', border: `1px solid ${modal.color}30`, padding: '24px', width: '100%', maxWidth: '520px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', color: modal.color }}>{modal.title} ({modal.list.length})</h3>
+              <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: '14px' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {modal.list.length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Kayıt yok</p>
+              ) : modal.list.map((c, i) => (
+                <div key={c.id || i}
+                  onClick={() => { setModal(null); onNavigate?.(c); }}
+                  style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', marginBottom: '6px', fontSize: '13px', color: '#e8f1f8', borderLeft: `3px solid ${modal.color}40`, cursor: 'pointer', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                >
+                  <span style={{ marginRight: '8px', fontSize: '11px', color: '#64748b' }}>→</span>
+                  {modal.renderItem(c)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Doğum Günü Modal */}
       {showBirthdays && (
@@ -482,13 +521,13 @@ function DashboardModule({ customers, isMobile }) {
                 <p style={{ color: '#64748b', fontSize: '13px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>Bugün doğum günü olan müşteri yok</p>
               ) : (
                 todayBirthdays.map(c => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', marginBottom: '6px' }}>
+                  <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                     <div>
                       <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {c.firstName} {c.lastName}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>{c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                     </div>
                     {c.phone && (
-                      <a href={`https://wa.me/90${c.phone?.replace(/\D/g,'').replace(/^0/,'')}`} target="_blank" rel="noreferrer" style={{ background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: '#25d366', padding: '6px 10px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer' }}>💬 Kutla</a>
+                      <a href={`https://wa.me/90${c.phone?.replace(/\D/g,'').replace(/^(90|0)/,'')}`} target="_blank" rel="noreferrer" style={{ background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: '#25d366', padding: '6px 10px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer' }}>💬 Kutla</a>
                     )}
                   </div>
                 ))
@@ -505,7 +544,7 @@ function DashboardModule({ customers, isMobile }) {
                   const birth = safeParseDate(c.birthDate);
                   const bday = birth ? `${birth.getDate()}/${birth.getMonth()+1}` : '';
                   return (
-                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '10px', marginBottom: '6px' }}>
+                    <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                       <div>
                         <div style={{ fontWeight: '600', fontSize: '14px' }}>{c.firstName} {c.lastName}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{bday} · {c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
@@ -525,14 +564,20 @@ function DashboardModule({ customers, isMobile }) {
   );
 }
 
-function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast }) {
+function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack }) {
   const [activeTab, setActiveTab] = useState('search');
   const [showForm, setShowForm] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiText, setAiText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiParsed, setAiParsed] = useState(null);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiImages, setAiImages] = useState([]); // [{type, base64, preview, mediaType}]
+  const [cropModal, setCropModal] = useState(null); // {type, src, rotation}
+  const cropCanvasRef = useRef(null);
+  const [cropPos, setCropPos] = useState({ x: 0, y: 0 });
+  const [cropZoom, setCropZoom] = useState(1);
+  const cropDragRef = useRef(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [formData, setFormData] = useState({});
@@ -540,6 +585,18 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Dashboard'dan müşteri profili aç
+  useEffect(() => {
+    if (openCustomerId) {
+      const customer = customers.find(c => c.id === openCustomerId);
+      if (customer) {
+        setSelectedCustomer(customer);
+        setDetailTab('info');
+      }
+      onOpenCustomerHandled?.();
+    }
+  }, [openCustomerId]);
 
   // Arama filtreleri
   const [filters, setFilters] = useState({
@@ -798,22 +855,150 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     setPassports(passports.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  const handleImageUpload = (callback) => (e) => {
+  // Görseli 300KB altına sıkıştır
+  const compressImage = (dataUrl, maxKB = 300) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let quality = 0.92;
+        let scale = 1;
+        const attempt = (q, s) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * s);
+          canvas.height = Math.round(img.height * s);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const result = canvas.toDataURL('image/jpeg', q);
+          const kb = Math.round((result.length * 3) / 4 / 1024);
+          if (kb <= maxKB || q <= 0.3) { resolve(result); return; }
+          // Önce quality düşür, sonra boyutu küçült
+          if (q > 0.4) attempt(q - 0.15, s);
+          else attempt(0.4, s - 0.15);
+        };
+        attempt(quality, scale);
+      };
+      img.src = dataUrl;
+    });
+  };
+
+  const handleImageUpload = (callback) => async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) { alert('Dosya boyutu 2MB\'dan küçük olmalı'); return; }
-      const reader = new FileReader();
-      reader.onloadend = () => callback(reader.result);
-      reader.readAsDataURL(file);
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert('Dosya boyutu 10MB\'dan büyük olamaz'); return; }
+    try {
+      // Önce base64'e çevir
+      const dataUrl = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onloadend = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      // 300KB'ı geçiyorsa sıkıştır
+      const kb = Math.round(file.size / 1024);
+      const compressed = kb > 300 ? await compressImage(dataUrl, 300) : dataUrl;
+      const finalKb = Math.round((compressed.length * 3) / 4 / 1024);
+      if (finalKb > 300) {
+        const ok = window.confirm(`Görsel ${finalKb}KB — 300KB limitini geçiyor. Daha da küçültülsün mü?`);
+        if (!ok) return;
+        const smaller = await compressImage(dataUrl, 250);
+        callback(smaller);
+        return;
+      }
+      callback(compressed);
+    } catch (err) {
+      console.warn('Görsel işleme hatası:', err.message);
     }
   };
 
   const handleSubmit = async () => {
-    if (!formData.firstName || !formData.lastName || !formData.phone) {
-      alert('Ad, Soyad ve Telefon alanları zorunludur!');
+    if (!formData.firstName || !formData.lastName) {
+      alert('Ad ve Soyad alanları zorunludur!');
       setFormTab('info');
       return;
     }
+
+    // TC Kimlik eşsizlik kontrolü
+    if (formData.tcKimlik && formData.tcKimlik.length === 11) {
+      const dup = customers.find(c =>
+        c.tcKimlik === formData.tcKimlik &&
+        c.id !== editingCustomer?.id
+      );
+      if (dup) {
+        alert(`Bu TC Kimlik No zaten kayıtlı:\n${dup.firstName} ${dup.lastName}`);
+        setFormTab('info');
+        return;
+      }
+    }
+
+    // === TARİH VALİDASYONU ===
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    // Pasaport kontrolleri
+    for (const p of passports) {
+      if (!p.passportNo && !p.expiryDate) continue; // boş slot
+      if (p.issueDate && p.expiryDate) {
+        const issue = safeParseDate(p.issueDate);
+        const expiry = safeParseDate(p.expiryDate);
+        if (issue && expiry && expiry <= issue) {
+          alert(`Pasaport #${p.passportNo || '?'}: Geçerlilik tarihi veriliş tarihinden sonra olmalıdır!`);
+          setFormTab('passport'); return;
+        }
+      }
+      if (p.expiryDate) {
+        const expiry = safeParseDate(p.expiryDate);
+        if (expiry && expiry < today) {
+          alert(`Pasaport #${p.passportNo || '?'}: Süresi dolmuş pasaport kaydedilemez! Geçerlilik: ${formatDate(p.expiryDate)}`);
+          setFormTab('passport'); return;
+        }
+      }
+    }
+
+    // Schengen vize kontrolleri
+    for (const v of schengenVisas) {
+      if (!v.country && !v.startDate && !v.endDate) continue; // boş slot
+      if (v.startDate && v.endDate) {
+        const start = safeParseDate(v.startDate);
+        const end = safeParseDate(v.endDate);
+        if (start && end && end <= start) {
+          alert(`Schengen (${v.country || '?'}): Bitiş tarihi başlangıç tarihinden sonra olmalıdır!`);
+          setFormTab('schengen'); return;
+        }
+      }
+      if (v.endDate) {
+        const end = safeParseDate(v.endDate);
+        if (end && end < today) {
+          alert(`Schengen (${v.country || '?'}): Süresi dolmuş vize kaydedilemez! Bitiş: ${formatDate(v.endDate)}`);
+          setFormTab('schengen'); return;
+        }
+      }
+    }
+
+    // ABD vize kontrolü
+    if (usaVisa.startDate && usaVisa.endDate) {
+      const start = safeParseDate(usaVisa.startDate);
+      const end = safeParseDate(usaVisa.endDate);
+      if (start && end && end <= start) {
+        alert('ABD Vizesi: Bitiş tarihi başlangıç tarihinden sonra olmalıdır!');
+        setFormTab('usa'); return;
+      }
+    }
+    if (usaVisa.endDate) {
+      const end = safeParseDate(usaVisa.endDate);
+      if (end && end < today) {
+        alert(`ABD Vizesi: Süresi dolmuş vize kaydedilemez! Bitiş: ${formatDate(usaVisa.endDate)}`);
+        setFormTab('usa'); return;
+      }
+    }
+
+    // Doğum tarihi — gelecekte olamaz
+    if (formData.birthDate) {
+      const birth = safeParseDate(formData.birthDate);
+      if (birth && birth > today) {
+        alert('Doğum tarihi gelecekte olamaz!');
+        setFormTab('info'); return;
+      }
+    }
+    // === VALİDASYON SONU ===
     
     const now = new Date().toISOString();
     const fullData = {
@@ -824,20 +1009,22 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     };
     
     if (editingCustomer) {
-      const updated = customers.map(c => c.id === editingCustomer.id ? { ...c, ...fullData } : c);
+      const auditData = { lastEditedAt: now };
+      const updated = customers.map(c => c.id === editingCustomer.id ? { ...c, ...fullData, ...auditData } : c);
       setCustomers(updated);
       // ⚡ Pasaport/vize'yi direkt Firestore'a yaz (debouncedSave bunları atlar)
       try {
         const docId = editingCustomer._docId || String(editingCustomer.id);
         await setDoc(doc(db, 'customers', docId), {
           ...fullData,
+          ...auditData,
           passports: JSON.stringify(passports),
           schengenVisas: JSON.stringify(schengenVisas),
           usaVisa: JSON.stringify(usaVisa)
         }, { merge: true });
       } catch (err) { console.error('Firestore kayıt hatası:', err); }
     } else {
-      const newCustomer = { ...fullData, id: generateUniqueId(), createdAt: now.split('T')[0] };
+      const newCustomer = { ...fullData, id: generateUniqueId(), createdAt: now.split('T')[0], lastEditedAt: now, verified: true };
       setCustomers([...customers, newCustomer]);
       try {
         await setDoc(doc(db, 'customers', String(newCustomer.id)), {
@@ -1102,61 +1289,79 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <button type="button" onClick={() => removePassport(passport.id)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', padding: '6px 10px', color: '#ef4444', fontSize: '11px', cursor: 'pointer' }}>🗑️</button>
                   )}
                 </div>
-                {/* Yatay düzen: Sol form, sağ görsel */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: '16px', alignItems: 'start' }}>
-                  {/* Sol: Form alanları */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <FormInput label="Uyruk" value={passport.nationality || 'Türkiye'} onChange={e => updatePassport(passport.id, 'nationality', e.target.value)} />
-                      <div>
-                        <label style={labelStyle}>Pasaport Türü</label>
-                        <select value={passport.passportType || ''} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '8px 10px', fontSize: '13px' }}>
-                          {passportTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
+                {/* 2'li grid: bilgiler üstte, fotoğraf altta */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={labelStyle}>Uyruk</label>
+                      <input type="text" value={passport.nationality || 'Türkiye'} onChange={e => updatePassport(passport.id, 'nationality', e.target.value)} style={inputStyle} />
                     </div>
                     <div>
-                      <label style={labelStyle}>Pasaport No (9 hane, ilk karakter harf)</label>
-                      <input 
-                        type="text" 
-                        value={passport.passportNo || ''} 
-                        onChange={e => updatePassport(passport.id, 'passportNo', formatPassportNo(e.target.value))}
-                        placeholder="U12345678"
-                        maxLength="9"
-                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}
-                      />
+                      <label style={labelStyle}>Pasaport No</label>
+                      <input type="text" value={passport.passportNo || ''}
+                        onChange={e => { const pNo = formatPassportNo(e.target.value); const dt = detectPassportType(pNo); updatePassport(passport.id, 'passportNo', pNo); if (dt) updatePassport(passport.id, 'passportType', dt); }}
+                        placeholder="U12345678" maxLength="9"
+                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <DateInput label="Veriliş" value={passport.issueDate || ''} onChange={v => updatePassport(passport.id, 'issueDate', v)} />
-                      <DateInput label="Geçerlilik" value={passport.expiryDate || ''} onChange={v => updatePassport(passport.id, 'expiryDate', v)} />
+                    <DateInput label="Veriliş" value={passport.issueDate || ''} onChange={v => updatePassport(passport.id, 'issueDate', v)} />
+                    <DateInput label="Geçerlilik" value={passport.expiryDate || ''} onChange={v => updatePassport(passport.id, 'expiryDate', v)} />
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={labelStyle}>Pasaport Türü</label>
+                      <select value={passport.passportType || ''} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '10px', fontSize: '13px', width: '100%' }}>
+                        {passportTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
                     </div>
                   </div>
-                  {/* Sağ: Görsel - Tıkla Büyüt */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '11px', color: '#94a3b8' }}>Pasaport Görseli</label>
-                    {passport.image ? (
-                      <div style={{ position: 'relative' }}>
-                        <img 
-                          src={passport.image} 
-                          alt="Pasaport" 
-                          onClick={() => setImagePreview({ show: true, src: passport.image, title: `Pasaport #${idx + 1} - ${passport.passportNo || 'Görsel'}` })}
-                          style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(59,130,246,0.3)', cursor: 'zoom-in' }} 
-                        />
-                        <div style={{ position: 'absolute', bottom: '6px', left: '6px', background: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', color: 'white' }}>🔍 Büyütmek için tıkla</div>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); updatePassport(passport.id, 'image', ''); }} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: 'white', cursor: 'pointer', fontSize: '12px' }}>×</button>
+
+                  {/* Fotoğraf altta - tam genişlik */}
+                  {passport.image ? (
+                    <div>
+                      <img src={passport.image} alt="Pasaport"
+                        onClick={() => setImagePreview({ show: true, src: passport.image, title: `Pasaport - ${passport.passportNo || ''}` })}
+                        style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(59,130,246,0.4)', cursor: 'zoom-in', display: 'block' }} />
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                        <button type="button" onClick={async () => {
+                          if (!passport.image) { showToast?.('Önce görsel ekleyin', 'error'); return; }
+                          showToast?.('AI pasaport okuyor...', 'info');
+                          try {
+                            const b64 = passport.image.startsWith('data:') ? passport.image.split(',')[1] : passport.image;
+                            const apiKey = appSettings?.claudeApiKey;
+                            const resp = await fetch(apiKey ? 'https://api.anthropic.com/v1/messages' : '/.netlify/functions/claude-proxy', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {}) },
+                              body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu pasaport. SADECE JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthPlace":"","nationality":"TUR"}. nationality 3 harfli ISO kodu.' }] }] })
+                            });
+                            const data = await resp.json();
+                            const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
+                            if (parsed.passportNo) updatePassport(passport.id, 'passportNo', parsed.passportNo);
+                            if (parsed.issueDate) updatePassport(passport.id, 'issueDate', parsed.issueDate);
+                            if (parsed.expiryDate) updatePassport(passport.id, 'expiryDate', parsed.expiryDate);
+                            if (parsed.passportNo) { const t = detectPassportType(parsed.passportNo); if (t) updatePassport(passport.id, 'passportType', t); }
+                            if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
+                            if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: parsed.birthPlace }));
+                            showToast?.('Pasaport okundu', 'success');
+                          } catch(err) { showToast?.('AI okuma başarısız', 'error'); }
+                        }} style={{ flex: 1, padding: '8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                          🤖 AI ile Oku
+                        </button>
+                        <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>
+                          🔄 Değiştir
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => updatePassport(passport.id, 'image', img) }); reader.readAsDataURL(file); } }} />
+                        </label>
+                        <button type="button" onClick={() => updatePassport(passport.id, 'image', '')}
+                          style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
                       </div>
-                    ) : (
-                      <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '140px', background: 'rgba(59,130,246,0.1)', border: '2px dashed rgba(59,130,246,0.3)', borderRadius: '10px', cursor: 'pointer' }}>
-                        <span style={{ fontSize: '32px', marginBottom: '6px' }}>📷</span>
-                        <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: '500' }}>Pasaport Yükle</span>
-                        <input type="file" accept="image/*" onChange={handleImageUpload((img) => updatePassport(passport.id, 'image', img))} style={{ display: 'none' }} />
-                      </label>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(59,130,246,0.06)', border: '2px dashed rgba(59,130,246,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
+                      <span style={{ fontSize: '28px' }}>📷</span>
+                      <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>Pasaport Görseli Ekle</span>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => updatePassport(passport.id, 'image', img) }); reader.readAsDataURL(file); } }} />
+                    </label>
+                  )}
                 </div>
               </div>
             ))}
-            
             <button type="button" onClick={addPassport} style={{ width: '100%', padding: '14px', background: 'transparent', border: '2px dashed rgba(59,130,246,0.4)', borderRadius: '12px', color: '#3b82f6', fontSize: '13px', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px' }}>+</span> Pasaport Ekle
             </button>
@@ -1182,54 +1387,70 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <button type="button" onClick={() => setSchengenVisas(schengenVisas.filter(v => v.id !== visa.id))} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', padding: '6px 10px', color: '#ef4444', fontSize: '11px', cursor: 'pointer' }}>🗑️</button>
                   )}
                 </div>
-                {/* Yatay düzen: Sol form, sağ görsel - BÜYÜK */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: '16px', alignItems: 'start' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Dikey: bilgiler üstte, görsel altta */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Verildiği Ülke</label>
+                    <select value={visa.country || ''} onChange={e => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, country: e.target.value} : v))} style={selectStyle}>
+                      <option value="">Ülke seçin</option>
+                      {schengenCountries.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <DateInput label="Başlangıç" value={visa.startDate || ''} onChange={v => setSchengenVisas(schengenVisas.map(vs => vs.id === visa.id ? {...vs, startDate: v} : vs))} />
+                    <DateInput label="Bitiş" value={visa.endDate || ''} onChange={v => setSchengenVisas(schengenVisas.map(vs => vs.id === visa.id ? {...vs, endDate: v} : vs))} />
+                  </div>
+                  {/* Görsel altta - tam genişlik */}
+                  {visa.image ? (
                     <div>
-                      <label style={labelStyle}>Verildiği Ülke</label>
-                      <select value={visa.country || ''} onChange={e => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, country: e.target.value} : v))} style={selectStyle}>
-                        <option value="">Ülke seçin</option>
-                        {schengenCountries.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <DateInput label="Başlangıç" value={visa.startDate || ''} onChange={v => setSchengenVisas(schengenVisas.map(vs => vs.id === visa.id ? {...vs, startDate: v} : vs))} />
-                      <DateInput label="Bitiş" value={visa.endDate || ''} onChange={v => setSchengenVisas(schengenVisas.map(vs => vs.id === visa.id ? {...vs, endDate: v} : vs))} />
-                    </div>
-                  </div>
-                  {/* Sağ: Görsel - Tıkla Büyüt */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '11px', color: '#94a3b8' }}>Vize Görseli</label>
-                    {visa.image ? (
-                      <div style={{ position: 'relative' }}>
-                        <img 
-                          src={visa.image} 
-                          alt="Vize" 
-                          onClick={() => setImagePreview({ show: true, src: visa.image, title: `Schengen Vizesi #${idx + 1} - ${visa.country || 'Görsel'}` })}
-                          style={{ width: '100%', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(16,185,129,0.3)', cursor: 'zoom-in' }} 
-                        />
-                        <div style={{ position: 'absolute', bottom: '6px', left: '6px', background: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', color: 'white' }}>🔍 Büyüt</div>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: ''} : v)); }} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: 'white', cursor: 'pointer', fontSize: '12px' }}>×</button>
+                      <img src={visa.image} alt="Vize"
+                        onClick={() => setImagePreview({ show: true, src: visa.image, title: `Schengen - ${visa.country || ''}` })}
+                        style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(16,185,129,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                        <button type="button" onClick={async () => {
+                          if (!visa.image) return;
+                          showToast?.('AI vize okuyor...', 'info');
+                          try {
+                            const b64 = visa.image.startsWith('data:') ? visa.image.split(',')[1] : visa.image;
+                            const apiKey = appSettings?.claudeApiKey;
+                            const resp = await fetch(apiKey ? 'https://api.anthropic.com/v1/messages' : '/.netlify/functions/claude-proxy', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {}) },
+                              body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu Schengen vizesi. SADECE JSON: {"country":"Almanya","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}' }] }] })
+                            });
+                            const data = await resp.json();
+                            const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
+                            setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? { ...v, ...(parsed.country && { country: parsed.country }), ...(parsed.startDate && { startDate: parsed.startDate }), ...(parsed.endDate && { endDate: parsed.endDate }) } : v));
+                            showToast?.('Vize okundu', 'success');
+                          } catch(err) { showToast?.('AI okuma başarısız', 'error'); }
+                        }} style={{ flex: 1, padding: '8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                          🤖 AI ile Oku
+                        </button>
+                        <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>
+                          🔄 Değiştir
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: img} : v)) }); reader.readAsDataURL(file); } }} />
+                        </label>
+                        <button type="button" onClick={() => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: ''} : v))}
+                          style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
                       </div>
-                    ) : (
-                      <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '120px', background: 'rgba(16,185,129,0.1)', border: '2px dashed rgba(16,185,129,0.3)', borderRadius: '10px', cursor: 'pointer' }}>
-                        <span style={{ fontSize: '28px', marginBottom: '6px' }}>📷</span>
-                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '500' }}>Vize Yükle</span>
-                        <input type="file" accept="image/*" onChange={handleImageUpload((img) => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: img} : v)))} style={{ display: 'none' }} />
-                      </label>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(16,185,129,0.06)', border: '2px dashed rgba(16,185,129,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
+                      <span style={{ fontSize: '28px' }}>📷</span>
+                      <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>Vize Görseli Ekle</span>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: img} : v)) }); reader.readAsDataURL(file); } }} />
+                    </label>
+                  )}
                 </div>
               </div>
             ))}
 
-            {/* Vize Ekle Butonu - Sınırsız */}
+            {/* Vize Ekle Butonu */}
             <button type="button" onClick={() => setSchengenVisas([...schengenVisas, { id: Date.now(), country: '', startDate: '', endDate: '', image: '' }])} style={{ width: '100%', padding: '14px', background: 'transparent', border: '2px dashed rgba(16,185,129,0.4)', borderRadius: '12px', color: '#10b981', fontSize: '13px', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px' }}>+</span> Schengen Vizesi Ekle
             </button>
           </div>
         )}
-
         {/* ABD VİZESİ */}
         {formTab === 'usa' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1241,36 +1462,33 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>ABD vize bilgilerini girin</p>
                 </div>
               </div>
-              {/* Yatay düzen: Sol form, sağ görsel */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: '16px', alignItems: 'start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <DateInput label="Vize Başlangıç" value={usaVisa.startDate || ''} onChange={v => setUsaVisa({...usaVisa, startDate: v})} />
-                    <DateInput label="Vize Bitiş" value={usaVisa.endDate || ''} onChange={v => setUsaVisa({...usaVisa, endDate: v})} />
-                  </div>
+              {/* Dikey: bilgiler üstte, görsel altta */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <DateInput label="Başlangıç" value={usaVisa.startDate || ''} onChange={v => setUsaVisa({...usaVisa, startDate: v})} />
+                  <DateInput label="Bitiş" value={usaVisa.endDate || ''} onChange={v => setUsaVisa({...usaVisa, endDate: v})} />
                 </div>
-                {/* Sağ: Görsel - Tıkla Büyüt */}
-                <div>
-                  <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Vize Görseli</label>
-                  {usaVisa.image ? (
-                    <div style={{ position: 'relative' }}>
-                      <img 
-                        src={usaVisa.image} 
-                        alt="ABD Vizesi" 
-                        onClick={() => setImagePreview({ show: true, src: usaVisa.image, title: 'ABD Vizesi' })}
-                        style={{ width: '100%', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(139,92,246,0.3)', cursor: 'zoom-in' }} 
-                      />
-                      <div style={{ position: 'absolute', bottom: '6px', left: '6px', background: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', color: 'white' }}>🔍 Büyüt</div>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setUsaVisa({...usaVisa, image: ''}); }} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', color: 'white', cursor: 'pointer', fontSize: '12px' }}>×</button>
+                {usaVisa.image ? (
+                  <div>
+                    <img src={usaVisa.image} alt="ABD Vizesi"
+                      onClick={() => setImagePreview({ show: true, src: usaVisa.image, title: 'ABD Vizesi' })}
+                      style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(139,92,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                      <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}>
+                        🔄 Değiştir
+                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setUsaVisa({...usaVisa, image: img}) }); reader.readAsDataURL(file); } }} />
+                      </label>
+                      <button type="button" onClick={() => setUsaVisa({...usaVisa, image: ''})}
+                        style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
                     </div>
-                  ) : (
-                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '120px', background: 'rgba(139,92,246,0.1)', border: '2px dashed rgba(139,92,246,0.3)', borderRadius: '10px', cursor: 'pointer' }}>
-                      <span style={{ fontSize: '28px', marginBottom: '6px' }}>📷</span>
-                      <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: '500' }}>Vize Yükle</span>
-                      <input type="file" accept="image/*" onChange={handleImageUpload((img) => setUsaVisa({...usaVisa, image: img}))} style={{ display: 'none' }} />
-                    </label>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(139,92,246,0.06)', border: '2px dashed rgba(139,92,246,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
+                    <span style={{ fontSize: '28px' }}>📷</span>
+                    <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}>Vize Görseli Ekle</span>
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setUsaVisa({...usaVisa, image: img}) }); reader.readAsDataURL(file); } }} />
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -1300,13 +1518,27 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
         {/* Header */}
         <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
+            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
             <div>
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.firstName} {c.lastName}</h2>
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{c.firstName} {c.lastName}</h2>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone}</p>
             </div>
           </div>
-          <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={async () => {
+              const newVerified = c.verified !== true;
+              const updated = customers.map(x => x.id === c.id ? {...x, verified: newVerified} : x);
+              setCustomers(updated);
+              setSelectedCustomer({...c, verified: newVerified});
+              try {
+                const docId = c._docId || String(c.id);
+                await setDoc(doc(db, 'customers', docId), { verified: newVerified }, { merge: true });
+              } catch(e) { console.warn('verified kayıt hatası', e); }
+            }} style={{ background: c.verified === true ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)', border: `1px solid ${c.verified === true ? 'rgba(16,185,129,0.4)' : 'rgba(234,179,8,0.4)'}`, borderRadius: '10px', padding: '10px 16px', color: c.verified === true ? '#10b981' : '#eab308', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
+              {c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
+            </button>
+            <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -1416,6 +1648,37 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   </div>
                 )}
               </div>
+
+              {/* Kayıt Bilgileri */}
+              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+                {c.createdAt && <div><span style={{ fontSize: '10px', color: '#475569' }}>Oluşturulma: </span><span style={{ fontSize: '11px', color: '#64748b' }}>{formatDate(c.createdAt)}</span></div>}
+                {c.lastEditedAt && <div><span style={{ fontSize: '10px', color: '#475569' }}>Son Güncelleme: </span><span style={{ fontSize: '11px', color: '#64748b' }}>{new Date(c.lastEditedAt).toLocaleDateString('tr-TR')}</span></div>}
+                <div><span style={{ fontSize: '10px', color: '#475569' }}>Durum: </span><span style={{ fontSize: '11px', color: c.verified !== true ? '#eab308' : '#10b981', fontWeight: '600' }}>{c.verified === true ? '✓ Doğrulandı' : '⚠️ Kontrol Bekliyor'}</span></div>
+              </div>
+
+              {/* Dinamik Alanlar */}
+              {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli'].includes(f)).length > 0 && (() => {
+                const extraFields = appSettings.personalDetailsFields.filter(f => !['Doğum Tarihi', 'İkametgah İli'].includes(f));
+                const hasValues = extraFields.some(f => {
+                  const k = f.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
+                  return c[k];
+                });
+                if (!hasValues) return null;
+                return (
+                  <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.02) 100%)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(245,158,11,0.15)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>📋</div>
+                      <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>Ek Bilgiler</h3>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      {extraFields.map((field, idx) => {
+                        const k = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
+                        return c[k] ? <InfoBox key={idx} label={field} value={c[k]} /> : null;
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1429,32 +1692,46 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <button onClick={() => openEditForm(c)} style={{ marginTop: '12px', padding: '10px 20px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '10px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px' }}>➕ Pasaport Ekle</button>
                 </div>
               ) : (
-                cPassports.map((p, idx) => (
-                  <div key={p.id || idx} style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(59,130,246,0.2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: p.passportType?.includes('Yeşil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '14px', color: p.passportType?.includes('Yeşil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
-                          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{p.nationality || 'Türkiye'}</p>
+                <>
+                  {cPassports.map((p, idx) => (
+                    <div key={p.id || idx} style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(59,130,246,0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: p.passportType?.includes('Yeşil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '14px', color: p.passportType?.includes('Yeşil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
+                            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{p.nationality || 'Türkiye'}</p>
+                          </div>
                         </div>
+                        {p.expiryDate && getDaysLeft(p.expiryDate) <= 180 && getDaysLeft(p.expiryDate) > 0 && (
+                          <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(p.expiryDate)} gün</span>
+                        )}
                       </div>
-                      {p.expiryDate && getDaysLeft(p.expiryDate) <= 180 && getDaysLeft(p.expiryDate) > 0 && (
-                        <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(p.expiryDate)} gün</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <InfoBox label="Pasaport No" value={p.passportNo} />
-                      <InfoBox label="Veriliş Tarihi" value={formatDate(p.issueDate)} />
-                      <InfoBox label="Geçerlilik Tarihi" value={formatDate(p.expiryDate)} highlight={p.expiryDate && getDaysLeft(p.expiryDate) <= 180} />
-                    </div>
-                    {p.image && (
-                      <div style={{ marginTop: '12px' }}>
-                        <img src={p.image} alt="Pasaport" onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}` })} style={{ width: '100%', height: '120px', objectFit: 'cover', borderRadius: '10px', cursor: 'pointer' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <InfoBox label="Pasaport No" value={p.passportNo} />
+                          <InfoBox label="Veriliş Tarihi" value={formatDate(p.issueDate)} />
+                          <InfoBox label="Geçerlilik Tarihi" value={formatDate(p.expiryDate)} highlight={p.expiryDate && getDaysLeft(p.expiryDate) <= 180} />
+                        </div>
+                        {p.image && (
+                          <img src={p.image} alt="Pasaport"
+                            onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}` })}
+                            style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))
+                    </div>
+                  ))}
+                  <button onClick={async () => {
+                    if (!window.confirm('Tüm pasaport bilgilerini silmek istediğinizden emin misiniz?')) return;
+                    const updated = customers.map(x => x.id === c.id ? {...x, passports: []} : x);
+                    setCustomers(updated);
+                    setSelectedCustomer({...c, passports: []});
+                    try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { passports: '[]' }, { merge: true }); } catch(e) {}
+                    showToast('Pasaport bilgileri temizlendi', 'warning');
+                  }} style={{ padding: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    🗑️ Tüm Pasaport Bilgilerini Temizle
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1478,31 +1755,46 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <button onClick={() => openEditForm(c)} style={{ marginTop: '12px', padding: '10px 20px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', color: '#10b981', cursor: 'pointer', fontSize: '13px' }}>➕ Vize Ekle</button>
                 </div>
               ) : (
-                cSchengen.map((v, idx) => (
-                  <div key={v.id || idx} style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '24px' }}>🇪🇺</span>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '14px', color: '#10b981', fontWeight: '600' }}>{v.country}</h4>
-                          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Schengen Vizesi</p>
+                <>
+                  {cSchengen.map((v, idx) => (
+                    <div key={v.id || idx} style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '24px' }}>🇪🇺</span>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '14px', color: '#10b981', fontWeight: '600' }}>{v.country}</h4>
+                            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Schengen Vizesi</p>
+                          </div>
                         </div>
+                        {v.endDate && getDaysLeft(v.endDate) > 0 && getDaysLeft(v.endDate) <= 90 && (
+                          <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(234,179,8,0.2)', color: '#eab308', fontWeight: '600' }}>⏰ {getDaysLeft(v.endDate)} gün</span>
+                        )}
                       </div>
-                      {v.endDate && getDaysLeft(v.endDate) > 0 && getDaysLeft(v.endDate) <= 90 && (
-                        <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(234,179,8,0.2)', color: '#eab308', fontWeight: '600' }}>⏰ {getDaysLeft(v.endDate)} gün</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <InfoBox label="Başlangıç" value={formatDate(v.startDate)} />
-                      <InfoBox label="Bitiş" value={formatDate(v.endDate)} highlight={v.endDate && getDaysLeft(v.endDate) <= 90} />
-                    </div>
-                    {v.image && (
-                      <div style={{ marginTop: '12px' }}>
-                        <img src={v.image} alt="Vize" onClick={() => setImagePreview({ show: true, src: v.image, title: `Schengen - ${v.country}` })} style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: '10px', cursor: 'pointer' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <InfoBox label="Başlangıç" value={formatDate(v.startDate)} />
+                          <InfoBox label="Bitiş" value={formatDate(v.endDate)} highlight={v.endDate && getDaysLeft(v.endDate) <= 90} />
+                        </div>
+                        {v.image && (
+                          <img src={v.image} alt="Vize"
+                            onClick={() => setImagePreview({ show: true, src: v.image, title: `Schengen - ${v.country}` })}
+                            style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))
+                    </div>
+                  ))}
+                  <button onClick={async () => {
+                    if (!window.confirm('Tüm Schengen vize bilgilerini silmek istediğinizden emin misiniz?')) return;
+                    const empty = [{ id: 1, country: '', startDate: '', endDate: '', image: '' }];
+                    const updated = customers.map(x => x.id === c.id ? {...x, schengenVisas: empty} : x);
+                    setCustomers(updated);
+                    setSelectedCustomer({...c, schengenVisas: empty});
+                    try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { schengenVisas: JSON.stringify(empty) }, { merge: true }); } catch(e) {}
+                    showToast('Schengen vize bilgileri temizlendi', 'warning');
+                  }} style={{ padding: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    🗑️ Tüm Schengen Bilgilerini Temizle
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1517,29 +1809,42 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <button onClick={() => openEditForm(c)} style={{ marginTop: '12px', padding: '10px 20px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '10px', color: '#8b5cf6', cursor: 'pointer', fontSize: '13px' }}>➕ Vize Ekle</button>
                 </div>
               ) : (
-                <div style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)', padding: '24px', borderRadius: '16px', border: '1px solid rgba(139,92,246,0.25)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🇺🇸</div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '16px', color: '#ffffff', fontWeight: '600' }}>Amerika Vizesi</h3>
-                        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>ABD B1/B2 Turist Vizesi</p>
+                <>
+                  <div style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(139,92,246,0.04) 100%)', padding: '24px', borderRadius: '16px', border: '1px solid rgba(139,92,246,0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🇺🇸</div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: '16px', color: '#ffffff', fontWeight: '600' }}>Amerika Vizesi</h3>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>ABD B1/B2 Turist Vizesi</p>
+                        </div>
                       </div>
+                      {cUsa.endDate && getDaysLeft(cUsa.endDate) > 0 && getDaysLeft(cUsa.endDate) <= 30 && (
+                        <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(cUsa.endDate)} gün</span>
+                      )}
                     </div>
-                    {cUsa.endDate && getDaysLeft(cUsa.endDate) > 0 && getDaysLeft(cUsa.endDate) <= 30 && (
-                      <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(cUsa.endDate)} gün</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <InfoBox label="Vize Başlangıç" value={formatDate(cUsa.startDate)} />
-                    <InfoBox label="Vize Bitiş" value={formatDate(cUsa.endDate)} highlight={cUsa.endDate && getDaysLeft(cUsa.endDate) <= 30} />
-                  </div>
-                  {cUsa.image && (
-                    <div style={{ marginTop: '16px' }}>
-                      <img src={cUsa.image} alt="ABD Vizesi" onClick={() => setImagePreview({ show: true, src: cUsa.image, title: 'ABD Vizesi' })} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '12px', cursor: 'pointer' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <InfoBox label="Vize Başlangıç" value={formatDate(cUsa.startDate)} />
+                        <InfoBox label="Vize Bitiş" value={formatDate(cUsa.endDate)} highlight={cUsa.endDate && getDaysLeft(cUsa.endDate) <= 30} />
+                      </div>
+                      {cUsa.image && (
+                        <img src={cUsa.image} alt="ABD Vizesi" onClick={() => setImagePreview({ show: true, src: cUsa.image, title: 'ABD Vizesi' })} style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                      )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                  <button onClick={async () => {
+                    if (!window.confirm('ABD vize bilgilerini silmek istediğinizden emin misiniz?')) return;
+                    const empty = {};
+                    const updated = customers.map(x => x.id === c.id ? {...x, usaVisa: empty} : x);
+                    setCustomers(updated);
+                    setSelectedCustomer({...c, usaVisa: empty});
+                    try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { usaVisa: '{}' }, { merge: true }); } catch(e) {}
+                    showToast('ABD vize bilgileri temizlendi', 'warning');
+                  }} style={{ padding: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    🗑️ ABD Vize Bilgilerini Temizle
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1568,14 +1873,15 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     const expiringP = cPassports.find(p => { const d = getDaysLeft(p.expiryDate); return d !== null && d > 0 && d <= 180; });
     
     return (
-      <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+      <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{c.firstName} {c.lastName}</h3>
             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} {c.city && `• ${c.city}`}</p>
             {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {c.verified !== false && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
             {cPassports.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}>🛂 {cPassports.length}</span>}
             {cSchengen.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.2)', color: '#10b981' }}>🇪🇺 {cSchengen.length}</span>}
             {cUsa.endDate && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}>🇺🇸</span>}
@@ -1593,7 +1899,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
         <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
-          <button onClick={() => { setAiText(''); setAiParsed(null); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI Ekle</button>
+          <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
         </div>
       </div>
@@ -1931,145 +2237,149 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
         </div>
       )}
 
-      {/* ===== AI HIZLI MÜŞTERİ EKLEME MODAL ===== */}
-      {showAiModal && (
-        <div onClick={() => !aiLoading && setShowAiModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(180deg, #0f2744 0%, #0c1929 100%)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(139,92,246,0.3)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🤖 AI ile Hızlı Müşteri Ekle</h3>
-              <button onClick={() => setShowAiModal(false)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '28px', height: '28px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>✕</button>
-            </div>
-
-            {!aiParsed ? (
-              <>
-                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>
-                  Müşteri bilgilerini serbest metin olarak girin. AI otomatik dolduracak.
-                </p>
-                <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#475569', background: 'rgba(139,92,246,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(139,92,246,0.15)' }}>
-                  Örnek: "Ahmet Yılmaz, TC 12345678901, 05321234567, ahmet@mail.com, 15.03.1985 Ankara doğumlu, Denizli'de yaşıyor, Tekstil sektörü, ABC Tekstil A.Ş."
-                </p>
-                <textarea
-                  value={aiText}
-                  onChange={e => setAiText(e.target.value)}
-                  placeholder="Müşteri bilgilerini buraya yazın veya yapıştırın..."
-                  style={{ width: '100%', minHeight: '120px', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', outline: 'none' }}
-                />
-                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                  <button onClick={() => setShowAiModal(false)} style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>İptal</button>
-                  <button
-                    onClick={async () => {
-                      if (!aiText.trim()) { showToast('Lütfen metin girin', 'error'); return; }
-                      setAiLoading(true);
-                      try {
-                        const res = await fetch('/.netlify/functions/claude-proxy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            model: 'claude-sonnet-4-20250514',
-                            max_tokens: 800,
-                            system: 'Sen bir müşteri veri çıkarma asistanısın. Verilen metinden müşteri bilgilerini çıkar ve SADECE JSON döndür, başka hiçbir şey yazma. Tarihler YYYY-MM-DD formatında olmalı. TC Kimlik 11 haneli olmalı. Telefon sadece rakamlar (5XXXXXXXXX formatında, +90 veya 0 olmadan). Eğer bilgi yoksa null döndür. JSON şeması: {"firstName":"","lastName":"","tcKimlik":"","phone":"","email":"","birthDate":"YYYY-MM-DD veya null","birthPlace":"","city":"","sector":"","companyName":"","notes":""}',
-                            messages: [{ role: 'user', content: `Şu metinden müşteri bilgilerini çıkar:\n\n${aiText}` }]
-                          })
-                        });
-                        const data = await res.json();
-                        const text = (data.content || []).map(b => b.text || '').join('');
-                        const clean = text.replace(/```json|```/g, '').trim();
-                        const parsed = JSON.parse(clean);
-
-                        // Tarih validasyonu
-                        const validateDate = (d) => {
-                          if (!d) return null;
-                          const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                          if (!m) return null;
-                          const [,y,mo,day] = m.map(Number);
-                          if (y < 1920 || y > new Date().getFullYear()) return null;
-                          if (mo < 1 || mo > 12) return null;
-                          if (day < 1 || day > 31) return null;
-                          return d;
-                        };
-                        parsed.birthDate = validateDate(parsed.birthDate);
-                        setAiParsed(parsed);
-                      } catch(e) {
-                        console.error('AI parse hatası:', e);
-                        showToast('AI ayrıştırma hatası. Tekrar deneyin.', 'error');
-                      }
-                      setAiLoading(false);
-                    }}
-                    disabled={aiLoading}
-                    style={{ flex: 2, padding: '11px', background: aiLoading ? 'rgba(139,92,246,0.3)' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: 'white', cursor: aiLoading ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600' }}
-                  >
-                    {aiLoading ? '⏳ Analiz ediliyor...' : '🤖 Analiz Et'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#10b981' }}>✅ AI bilgileri çıkardı. Kontrol edip kaydedin:</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {[
-                    { label: 'Ad', key: 'firstName' },
-                    { label: 'Soyad', key: 'lastName' },
-                    { label: 'TC Kimlik', key: 'tcKimlik' },
-                    { label: 'Telefon', key: 'phone' },
-                    { label: 'E-posta', key: 'email' },
-                    { label: 'Doğum Tarihi (YYYY-MM-DD)', key: 'birthDate' },
-                    { label: 'Doğum Yeri', key: 'birthPlace' },
-                    { label: 'İl', key: 'city' },
-                    { label: 'Sektör', key: 'sector' },
-                    { label: 'Firma', key: 'companyName' },
-                    { label: 'Notlar', key: 'notes' },
-                  ].map(({ label, key }) => (
-                    <div key={key}>
-                      <label style={labelStyle}>{label}</label>
-                      <input
-                        value={aiParsed[key] || ''}
-                        onChange={e => setAiParsed({ ...aiParsed, [key]: e.target.value })}
-                        style={inputStyle}
-                        placeholder={aiParsed[key] === null ? '— bulunamadı —' : ''}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                  <button onClick={() => setAiParsed(null)} style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
-                  <button
-                    onClick={() => {
-                      const tc = aiParsed.tcKimlik?.replace(/\D/g, '');
-                      if (tc && tc.length !== 11) { showToast('TC Kimlik 11 haneli olmalı', 'error'); return; }
-                      if (tc && customers.some(c => c.tcKimlik === tc)) { showToast('Bu TC Kimlik zaten kayıtlı', 'warning'); return; }
-                      const bd = aiParsed.birthDate;
-                      if (bd && !/^\d{4}-\d{2}-\d{2}$/.test(bd)) { showToast('Doğum tarihi YYYY-MM-DD formatında olmalı', 'error'); return; }
-                      const newCustomer = {
-                        ...aiParsed,
-                        id: generateUniqueId(),
-                        tcKimlik: tc || '',
-                        phone: aiParsed.phone?.replace(/\D/g, '') || '',
-                        name: `${aiParsed.firstName || ''} ${aiParsed.lastName || ''}`.trim(),
-                        passports: '[]',
-                        schengenVisas: '[]',
-                        usaVisa: '{}',
-                        tags: [],
-                        activities: [],
-                        createdAt: new Date().toISOString().split('T')[0]
-                      };
-                      setCustomers(prev => [newCustomer, ...prev]);
-                      showToast(`${newCustomer.name} eklendi`, 'success');
-                      setShowAiModal(false);
-                      setAiParsed(null);
-                      setAiText('');
-                    }}
-                    style={{ flex: 2, padding: '11px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-                  >
-                    💾 Kaydet
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Excel Modal */}
+      {/* Kırpma / Döndürme Modalı */}
+      {cropModal && (() => {
+        const OUT_W = 500, OUT_H = 360;
+        const FRAME_W = 500, FRAME_H = 360;
+        const rot = cropModal.rotation;
+
+        const applyCrop = () => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = OUT_W; canvas.height = OUT_H;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, OUT_W, OUT_H);
+            ctx.save();
+            ctx.translate(OUT_W / 2 + cropPos.x * (OUT_W / FRAME_W), OUT_H / 2 + cropPos.y * (OUT_H / FRAME_H));
+            ctx.rotate((rot * Math.PI) / 180);
+            ctx.scale(cropZoom, cropZoom);
+            ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+            ctx.restore();
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+            if (cropModal.onSave) {
+              // Pasaport/vize düzenleme formundan açıldı → Storage'a yükle
+              cropModal.onSave(dataUrl);
+            } else {
+              // AI Quick Add'den açıldı → aiImages state'e ekle
+              setAiImages(prev => [...prev.filter(i => i.type !== cropModal.type), { type: cropModal.type, base64: dataUrl.split(',')[1], preview: dataUrl, mediaType: 'image/jpeg' }]);
+            }
+            setCropModal(null); setCropPos({ x: 0, y: 0 }); setCropZoom(1);
+          };
+          img.src = cropModal.src;
+        };
+
+        const handleMouseDown = (e) => {
+          e.preventDefault();
+          const startX = e.clientX - cropPos.x, startY = e.clientY - cropPos.y;
+          cropDragRef.current = { startX, startY };
+          const onMove = (e) => { if (!cropDragRef.current) return; setCropPos({ x: e.clientX - cropDragRef.current.startX, y: e.clientY - cropDragRef.current.startY }); };
+          const onUp = () => { cropDragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        };
+
+        const handleTouchStart = (e) => {
+          e.preventDefault();
+          if (e.touches.length === 2) {
+            // Pinch başlıyor
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const startDist = Math.hypot(dx, dy);
+            const startZoom = cropZoom;
+            const onMove = (e) => {
+              if (e.touches.length !== 2) return;
+              const dx2 = e.touches[0].clientX - e.touches[1].clientX;
+              const dy2 = e.touches[0].clientY - e.touches[1].clientY;
+              const newDist = Math.hypot(dx2, dy2);
+              const ratio = newDist / startDist;
+              setCropZoom(Math.min(5, Math.max(0.2, startZoom * ratio)));
+            };
+            const onEnd = () => { window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onEnd); };
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+            return;
+          }
+          if (e.touches.length !== 1) return;
+          const t = e.touches[0];
+          const startX = t.clientX - cropPos.x, startY = t.clientY - cropPos.y;
+          cropDragRef.current = { startX, startY };
+          const onMove = (e) => { if (!cropDragRef.current || e.touches.length !== 1) return; const t = e.touches[0]; setCropPos({ x: t.clientX - cropDragRef.current.startX, y: t.clientY - cropDragRef.current.startY }); };
+          const onEnd = () => { cropDragRef.current = null; window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onEnd); };
+          window.addEventListener('touchmove', onMove, { passive: false });
+          window.addEventListener('touchend', onEnd);
+        };
+
+        const handleWheel = (e) => { e.preventDefault(); setCropZoom(z => Math.min(5, Math.max(0.2, z - e.deltaY * 0.003))); };
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.97)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: '16px' }}>
+            <div style={{ background: '#0c1929', borderRadius: '16px', padding: '16px', width: '100%', maxWidth: '560px', border: '1px solid rgba(59,130,246,0.4)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '15px', color: '#e8f1f8' }}>✂️ Kırp & Hizala</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    <span style={{ color: '#3b82f6' }}>Sürükle</span>: taşı &nbsp;|&nbsp; <span style={{ color: '#3b82f6' }}>2 Parmak</span>: yakınlaştır &nbsp;|&nbsp; 125×90
+                  </div>
+                </div>
+                <button onClick={() => { setCropModal(null); setCropPos({ x: 0, y: 0 }); setCropZoom(1); }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', width: '32px', height: '32px', color: '#94a3b8', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+              </div>
+
+              {/* Kırpma alanı — overflow:hidden = çerçeve */}
+              <div
+                style={{ position: 'relative', width: '100%', aspectRatio: '125/90', background: '#000', borderRadius: '8px', overflow: 'hidden', marginBottom: '10px', cursor: 'grab', touchAction: 'none', border: '2px solid rgba(59,130,246,0.7)' }}
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                onWheel={handleWheel}
+              >
+                <img
+                  src={cropModal.src}
+                  alt="crop"
+                  draggable={false}
+                  style={{
+                    position: 'absolute', top: '50%', left: '50%',
+                    transform: `translate(-50%, -50%) translate(${cropPos.x}px, ${cropPos.y}px) rotate(${rot}deg) scale(${cropZoom})`,
+                    maxWidth: 'none', maxHeight: 'none',
+                    userSelect: 'none', pointerEvents: 'none',
+                    transformOrigin: 'center',
+                  }}
+                />
+                {/* üçte-üç grid çizgileri */}
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: '33.33% 33.33%' }} />
+              </div>
+
+              {/* Zoom slider */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <button onClick={() => setCropZoom(z => Math.max(0.2, z - 0.1))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', width: '28px', height: '28px', fontSize: '16px' }}>−</button>
+                <input type="range" min="0.2" max="5" step="0.05" value={cropZoom}
+                  onChange={e => setCropZoom(Number(e.target.value))}
+                  style={{ flex: 1, accentColor: '#3b82f6' }} />
+                <button onClick={() => setCropZoom(z => Math.min(5, z + 0.1))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', width: '28px', height: '28px', fontSize: '16px' }}>+</button>
+                <span style={{ fontSize: '11px', color: '#64748b', minWidth: '38px' }}>{Math.round(cropZoom * 100)}%</span>
+                <button onClick={() => { setCropPos({ x: 0, y: 0 }); setCropZoom(1); }} style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>Sıfırla</button>
+              </div>
+
+              {/* Döndür */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                <button onClick={() => { setCropModal(p => ({ ...p, rotation: (p.rotation - 90 + 360) % 360 })); setCropPos({ x: 0, y: 0 }); setCropZoom(1); }}
+                  style={{ flex: 1, padding: '9px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>↺ Sol</button>
+                <button onClick={() => { setCropModal(p => ({ ...p, rotation: (p.rotation + 90) % 360 })); setCropPos({ x: 0, y: 0 }); setCropZoom(1); }}
+                  style={{ flex: 1, padding: '9px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>↻ Sağ</button>
+                <button onClick={() => { setCropModal(p => ({ ...p, rotation: (p.rotation + 180) % 360 })); setCropPos({ x: 0, y: 0 }); setCropZoom(1); }}
+                  style={{ flex: 1, padding: '9px', background: 'rgba(100,116,139,0.15)', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>🔄 180°</button>
+              </div>
+
+              <button onClick={applyCrop}
+                style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+                ✅ Onayla ve Kullan
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {showExcelModal && (
         <Modal title="📊 Excel İşlemleri" onClose={() => setShowExcelModal(false)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -2086,6 +2396,268 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* 🤖 AI HIZLI MÜŞTERI EKLEME MODALI */}
+      {showAiModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
+          <div style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(139,92,246,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🤖 AI Hızlı Müşteri Ekle</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Metin girin veya belge fotoğrafı yükleyin, AI otomatik ayrıştırsın</p>
+              </div>
+              <button onClick={() => setShowAiModal(false)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', width: '32px', height: '32px', color: '#94a3b8', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+
+            {/* Görsel Yükleme Bölümü */}
+            <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>📷 Belge Fotoğrafı Yükle (isteğe bağlı)</div>
+              {[
+                { type: 'passport', label: 'Pasaport', icon: '🛂', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.35)' },
+                { type: 'schengen', label: 'Schengen Vize', icon: '📋', color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.35)' },
+                { type: 'usa', label: 'ABD Vize', icon: '📋', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.35)' },
+              ].map(({ type, label, icon, color, bg, border }) => {
+                const img = aiImages.find(i => i.type === type);
+                return (
+                  <div key={type} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px', background: bg, border: `2px ${img ? 'solid' : 'dashed'} ${img ? color : border}`, borderRadius: '12px' }}>
+                    {img ? (
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <img src={img.preview} alt={label} style={{ width: '100%', maxHeight: '120px', objectFit: 'contain', borderRadius: '8px', background: '#0a1628' }} />
+                        <button type="button" onClick={() => setAiImages(prev => prev.filter(i => i.type !== type))}
+                          style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%', width: '22px', height: '22px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>×</button>
+                        <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '11px', color: color }}>✅ {label} yüklendi</div>
+                      </div>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '28px' }}>{icon}</span>
+                        <span style={{ fontSize: '13px', color: color, fontWeight: '600' }}>{label} Yükle</span>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <label style={{ padding: '8px 14px', background: `${color}30`, borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: color, fontWeight: '600' }}>
+                            📸 Kamera
+                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                              onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => { setCropModal({ type, src: ev.target.result, rotation: 0, label }); }; r.readAsDataURL(f); e.target.value = ''; }} />
+                          </label>
+                          <label style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>
+                            📁 Dosya
+                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                              onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = ev => { setCropModal({ type, src: ev.target.result, rotation: 0, label }); }; r.readAsDataURL(f); e.target.value = ''; }} />
+                          </label>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {aiResult && (
+              <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '13px', color: '#10b981' }}>✅ AI Sonucu — Kontrol edin:</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                  {[
+                    ['Ad', aiResult.firstName], ['Soyad', aiResult.lastName],
+                    ['TC Kimlik', aiResult.tcKimlik], ['Telefon', aiResult.phone],
+                    ['E-posta', aiResult.email], ['Doğum Tarihi', aiResult.birthDate ? formatDate(aiResult.birthDate) : ''],
+                    ['Doğum Yeri', aiResult.birthPlace], ['İl', aiResult.city],
+                    ['Firma', aiResult.companyName], ['Sektör', aiResult.sector],
+                  ].filter(([,v]) => v).map(([k,v]) => (
+                    <div key={k} style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: '6px' }}>
+                      <div style={{ fontSize: '10px', color: '#64748b' }}>{k}</div>
+                      <div style={{ color: '#e8f1f8', fontWeight: '500' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                {aiResult._passports?.length > 0 && (
+                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(59,130,246,0.1)', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#3b82f6', marginBottom: '4px' }}>🛂 Pasaport</div>
+                    {aiResult._passports.map((p, i) => <div key={i} style={{ fontSize: '11px', color: '#94a3b8' }}>{p.passportNo} — {formatDate(p.expiryDate)}</div>)}
+                  </div>
+                )}
+                {aiResult._schengen?.some(v => v.country) && (
+                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(16,185,129,0.1)', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#10b981', marginBottom: '4px' }}>🇪🇺 Schengen</div>
+                    {aiResult._schengen.filter(v => v.country).map((v, i) => <div key={i} style={{ fontSize: '11px', color: '#94a3b8' }}>{v.country}: {formatDate(v.startDate)} – {formatDate(v.endDate)}</div>)}
+                  </div>
+                )}
+                {aiResult._usaVisa?.endDate && (
+                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(139,92,246,0.1)', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#8b5cf6', marginBottom: '4px' }}>🇺🇸 ABD Vizesi</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(aiResult._usaVisa.startDate)} – {formatDate(aiResult._usaVisa.endDate)}</div>
+                  </div>
+                )}
+                {aiResult._duplicate ? (
+                  /* AYNI PASAPORT / TC → zaten var */
+                  <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(245,158,11,0.1)', border: '2px solid rgba(245,158,11,0.4)', borderRadius: '12px' }}>
+                    <div style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700', marginBottom: '6px' }}>⚠️ Bu kayıt zaten mevcut!</div>
+                    <div style={{ fontSize: '12px', color: '#e8f1f8', marginBottom: '12px' }}>{aiResult._duplicate}</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => {
+                        const c = aiResult._duplicateCustomer || customers.find(c => c.tcKimlik === aiResult.tcKimlik || safeParseJSON(c.passports).some(p => aiResult._passports?.some(ap => ap.passportNo === p.passportNo)));
+                        if (c) { setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]); setTimeout(() => setSelectedCustomer(c), 100); }
+                      }} style={{ flex: 1, padding: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
+                        👤 Müşteriyi Aç
+                      </button>
+                      <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↩ Tekrar</button>
+                    </div>
+                  </div>
+                ) : aiResult._addPassportTo ? (
+                  /* AYNI TC AMA FARKLI PASAPORT → 2. pasaport ekle */
+                  <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(59,130,246,0.1)', border: '2px solid rgba(59,130,246,0.35)', borderRadius: '12px' }}>
+                    <div style={{ fontSize: '14px', color: '#3b82f6', fontWeight: '700', marginBottom: '6px' }}>📎 Mevcut müşteriye yeni pasaport eklenecek</div>
+                    <div style={{ fontSize: '12px', color: '#e8f1f8', marginBottom: '4px' }}>{aiResult._dupTcMsg}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Yeni pasaport: {aiResult._passports?.map(p => p.passportNo).join(', ')}</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => {
+                        const existing = aiResult._addPassportTo;
+                        const existingPassports = safeParseJSON(existing.passports);
+                        const newPassports = [...existingPassports, ...(aiResult._passports || [])];
+                        const updated = { ...existing, passports: newPassports, verified: false, lastEditedAt: new Date().toISOString() };
+                        setCustomers(prev => prev.map(c => c.id === existing.id ? updated : c));
+                        showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi`, 'success');
+                        setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
+                        setTimeout(() => setSelectedCustomer(updated), 100);
+                      }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>
+                        📎 Pasaportu Ekle
+                      </button>
+                      <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↩ Tekrar</button>
+                    </div>
+                  </div>
+                ) : (
+                  /* YENİ MÜŞTERİ — kaydet */
+                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px' }}>
+                    <div style={{ fontSize: '13px', color: '#10b981', fontWeight: '600', marginBottom: '8px' }}>✅ Yeni müşteri — sisteme kayıt edilecek</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => {
+                        const now = new Date().toISOString();
+                        const newCust = {
+                          ...aiResult,
+                          id: generateUniqueId(),
+                          createdAt: now.split('T')[0],
+                          lastEditedAt: now,
+                          verified: false,
+                          passports: aiResult._passports || [],
+                          schengenVisas: aiResult._schengen || [{ id: 1, country: '', startDate: '', endDate: '', image: '' }],
+                          usaVisa: aiResult._usaVisa || {},
+                        };
+                        delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
+                        setCustomers(prev => [newCust, ...prev]);
+                        showToast?.('✅ Müşteri eklendi — kontrol edilmesi gerekiyor', 'success');
+                        setShowAiModal(false);
+                        setAiText(''); setAiResult(null); setAiImages([]);
+                      }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
+                        ✅ Yeni Müşteri Ekle
+                      </button>
+                      <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+                        ↩ Tekrar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!aiResult && (
+              <button
+                onClick={async () => {
+                  if (!aiText.trim() && aiImages.length === 0) { showToast?.('Metin girin veya belge fotoğrafı yükleyin', 'error'); return; }
+                  setAiLoading(true);
+                  try {
+                    const systemPrompt = `Sen bir Türk seyahat acentesi CRM sistemi için belge okuma asistanısın.
+Pasaport ve vize görsellerinden / metinden bilgileri çıkar. SADECE JSON döndür, başka hiçbir şey yazma.
+
+JSON formatı:
+{
+  "firstName": "", "lastName": "", "tcKimlik": "11 hane",
+  "phone": "+90 5XX formatında", "email": "",
+  "birthDate": "YYYY-MM-DD", "birthPlace": "", "city": "",
+  "companyName": "", "sector": "", "notes": "",
+  "_passports": [{"passportNo": "U1234567", "issueDate": "YYYY-MM-DD", "expiryDate": "YYYY-MM-DD", "passportType": "Bordo Pasaport (Umuma Mahsus)", "nationality": "Türkiye"}],
+  "_schengen": [{"country": "", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "visaNo": ""}],
+  "_usaVisa": {"startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "visaNo": ""}
+}
+
+Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
+Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
+
+                    const apiKey = appSettings?.claudeApiKey;
+                    const model = appSettings?.claudeModel || 'claude-sonnet-4-20250514';
+
+                    const userContent = [];
+                    for (const img of aiImages) {
+                      userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.base64 } });
+                      userContent.push({ type: 'text', text: `Bu görsel ${img.type === 'passport' ? 'pasaport' : img.type === 'schengen' ? 'Schengen vize' : 'ABD vizesi'} belgesidir.` });
+                    }
+                    if (aiText.trim()) userContent.push({ type: 'text', text: aiText });
+                    const msgContent = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
+
+                    let resp;
+                    if (apiKey) {
+                      resp = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+                        body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
+                      });
+                    } else {
+                      resp = await fetch('/.netlify/functions/claude-proxy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
+                      });
+                    }
+                    if (!resp.ok) {
+                      const errText = await resp.text();
+                      throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
+                    }
+                    const data = await resp.json();
+                    if (!data.content?.[0]?.text) {
+                      throw new Error(apiKey ? 'API yanıt boş geldi' : 'Netlify proxy çalışmıyor. Ayarlar → Claude API Key girin veya Netlify\'da CLAUDE_API_KEY env var ekleyin.');
+                    }
+                    const parsed = JSON.parse((data.content[0].text).replace(/```json|```/g, '').trim());
+
+                    // ── Akıllı mükerrer kontrol ──
+                    // 1. Pasaport No eşleşmesi — aynı pasaport = kesinlikle aynı kişi, ekleme
+                    let dupByPassport = null;
+                    if (parsed._passports?.length) {
+                      for (const p of parsed._passports) {
+                        if (!p.passportNo) continue;
+                        const dup = customers.find(c => safeParseJSON(c.passports).some(cp => cp.passportNo === p.passportNo));
+                        if (dup) { dupByPassport = { customer: dup, passportNo: p.passportNo }; break; }
+                      }
+                    }
+                    // 2. TC Kimlik eşleşmesi
+                    const dupByTc = parsed.tcKimlik ? customers.find(c => c.tcKimlik === parsed.tcKimlik) : null;
+
+                    if (dupByPassport) {
+                      // Aynı pasaport No → zaten var
+                      parsed._duplicate = `${dupByPassport.customer.firstName} ${dupByPassport.customer.lastName} — Pasaport No (${dupByPassport.passportNo}) zaten kayıtlı`;
+                      parsed._duplicateCustomer = dupByPassport.customer;
+                    } else if (dupByTc && parsed._passports?.length) {
+                      // Aynı TC ama farklı pasaport No → 2. pasaport ekle
+                      parsed._addPassportTo = dupByTc;
+                      parsed._dupTcMsg = `${dupByTc.firstName} ${dupByTc.lastName} (TC: ${parsed.tcKimlik}) — Yeni pasaport bu kişiye eklenecek`;
+                    } else if (dupByTc) {
+                      parsed._duplicate = `${dupByTc.firstName} ${dupByTc.lastName} — TC Kimlik (${parsed.tcKimlik}) zaten kayıtlı`;
+                      parsed._duplicateCustomer = dupByTc;
+                    }
+
+                    if (parsed._schengen) parsed._schengen = parsed._schengen.map((v, i) => ({ ...v, id: i + 1 }));
+                    setAiResult(parsed);
+                  } catch(err) {
+                    console.error('AI hata:', err);
+                    showToast?.('AI ayrıştırma başarısız: ' + err.message, 'error');
+                  } finally {
+                    setAiLoading(false);
+                  }
+                }}
+                disabled={aiLoading}
+                style={{ width: '100%', marginTop: '12px', padding: '14px', background: aiLoading ? 'rgba(139,92,246,0.3)' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '14px', cursor: aiLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                {aiLoading ? '⏳ AI okuyor...' : '🤖 AI ile Oku'}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {showForm && renderFullPageForm()}
@@ -2106,12 +2678,53 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
 }
 
 // VİZE MODÜLÜ
-function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, appSettings, showToast, addToUndo }) {
+async function sendVisaEmail({ visa, customer, appSettings }) {
+  try {
+    const catId = visa.categoryId || 'schengen';
+    const template = appSettings?.emailTemplates?.[catId] || appSettings?.emailTemplates?.schengen;
+    if (!template) return { ok: false, error: 'Şablon bulunamadı' };
+
+    const email = customer?.email || visa?.customerEmail;
+    if (!email) return { ok: false, error: 'Müşteri e-postası yok' };
+
+    const isim = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || visa.customerName;
+    const tarih = new Date().toLocaleDateString('tr-TR');
+    const ref_no = visa.id?.slice(-8)?.toUpperCase() || '-';
+    const vize_turu = visa.visaDuration || visa.visaType || '';
+    const ulke = visa.country || catId;
+
+    const replace = (str) => str
+      .replace(/{isim}/g, isim)
+      .replace(/{ulke}/g, ulke)
+      .replace(/{tarih}/g, tarih)
+      .replace(/{ref_no}/g, ref_no)
+      .replace(/{vize_turu}/g, vize_turu);
+
+    const subject = replace(template.subject);
+    const bodyText = replace(template.body);
+    const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+
+    const resp = await fetch('/.netlify/functions/send-mail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: email, subject, html, text: bodyText })
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) return { ok: false, error: data.error || 'Gönderim hatası' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, appSettings, showToast, addToUndo, creditCards }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
+  const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [dayDetailModal, setDayDetailModal] = useState(null);
@@ -2134,7 +2747,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   ];
 
   const visaTypes = ['Ticari', 'Turistik', 'Aile/Arkadaş Ziyareti', 'Fuar Katılımcı', 'Tedavi', 'Eğitim', 'Transit', 'Diğer'];
-  const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi'];
+  const visaStatuses = appSettings?.visaStatuses?.length > 0
+    ? appSettings.visaStatuses
+    : ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi'];
 
   // Hex to RGBA helper
   const hexToRgb = (hex) => {
@@ -2151,14 +2766,18 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   };
 
   // Vize başvuruları arama/filtreleme
-  const filteredVisaApplications = visaSearchQuery.length >= 2
-    ? visaApplications.filter(v =>
-        v.customerName?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
-        v.customerPhone?.includes(visaSearchQuery) ||
-        v.country?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
-        v.pnr?.toLowerCase().includes(visaSearchQuery.toLowerCase())
-      )
-    : visaApplications;
+  const filteredVisaApplications = visaApplications.filter(v => {
+    const matchSearch = visaSearchQuery.length < 2 || (
+      v.customerName?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
+      v.customerPhone?.includes(visaSearchQuery) ||
+      v.country?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
+      v.pnr?.toLowerCase().includes(visaSearchQuery.toLowerCase())
+    );
+    const matchStatus = visaStatusFilter === 'all' ? true
+      : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
+      : v.status === visaStatusFilter;
+    return matchSearch && matchStatus;
+  });
 
   // Excel export fonksiyonu
   const exportToExcel = () => {
@@ -2279,6 +2898,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       appointmentDate: '',
       appointmentTime: '',
       pnr: '',
+      label: '',
       processor: appSettings?.processors?.[0] || 'Paydos',
       paymentStatus: 'Ödenmedi',
       status: 'Evrak Topluyor',
@@ -2303,7 +2923,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       .replace('{pnr}', visa.pnr || '-');
     
     const phone = visa.customerPhone.replace(/\D/g, '');
-    const fullPhone = phone.startsWith('90') ? phone : `90${phone}`;
+    const fullPhone = '90' + phone.replace(/^(90|0)/, '');
     window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -2320,7 +2940,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const sendWhatsApp = (visa) => {
     const phone = visa.customerPhone?.replace(/\D/g, '');
     if (!phone) return;
-    const fullPhone = phone.startsWith('90') ? phone : `90${phone}`;
+    const fullPhone = '90' + phone.replace(/^(90|0)/, '');
     window.open(`https://wa.me/${fullPhone}`, '_blank');
   };
 
@@ -2468,8 +3088,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
-    if (!formData.country || !formData.visaType) {
-      showToast?.('Ülke ve vize türü seçiniz', 'error');
+    if (!formData.visaType && !formData.visaDuration) {
+      showToast?.('Vize türü seçiniz', 'error');
       return;
     }
     setSaving(true);
@@ -2485,6 +3105,21 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         setVisaApplications([...visaApplications, newVisa]);
         addToUndo?.({ type: 'create', undo: () => setVisaApplications(prev => prev.filter(v => v.id !== newVisa.id)) });
         showToast?.(`${formData.customerName} için vize başvurusu oluşturuldu`, 'success');
+
+        // Otomatik mail gönder
+        if (appSettings?.autoEmailOnVisa !== false) {
+          const customer = customers?.find(c =>
+            c.id === formData.customerId ||
+            `${c.firstName} ${c.lastName}`.trim() === formData.customerName
+          );
+          sendVisaEmail({ visa: newVisa, customer, appSettings }).then(result => {
+            if (result.ok) {
+              showToast?.('📧 Müşteriye bilgilendirme maili gönderildi', 'success');
+            } else if (result.error !== 'Müşteri e-postası yok') {
+              showToast?.(`⚠️ Mail gönderilemedi: ${result.error}`, 'warning');
+            }
+          });
+        }
       }
       setShowForm(false);
       resetForm();
@@ -2712,60 +3347,49 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Ülke Seçimi - Butonlar */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Ülke * {formData.country && <span style={{ color: '#10b981' }}>✓ {formData.country}</span>}</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', maxHeight: '180px', overflowY: 'auto', padding: '4px' }}>
-                  {selectedCategory.countries.map(c => (
-                    <button key={c} type="button" onClick={() => setFormData({...formData, country: c})} style={{ padding: '10px 8px', background: formData.country === c ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.05)', border: formData.country === c ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: formData.country === c ? '#10b981' : '#e8f1f8', cursor: 'pointer', fontSize: '12px', fontWeight: formData.country === c ? '600' : '400' }}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Vize Türü (ayarlardan gelen) */}
-              {selectedCategory?.durations && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Vize Türü * {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                    {selectedCategory.durations.map((d, idx) => {
-                      const duration = typeof d === 'string' ? d : d.name;
-                      const price = typeof d === 'object' ? d.price : 0;
-                      const currency = typeof d === 'object' ? d.currency : '€';
-                      return (
-                        <button 
-                          key={idx} 
-                          type="button" 
-                          onClick={() => setFormData({
-                            ...formData, 
-                            visaDuration: duration,
-                            visaPrice: price,
-                            visaCurrency: currency
-                          })} 
-                          style={{ 
-                            padding: '12px 8px', 
-                            background: formData.visaDuration === duration ? `${selectedCategory.color}30` : 'rgba(255,255,255,0.05)', 
-                            border: formData.visaDuration === duration ? `2px solid ${selectedCategory.color}` : '1px solid rgba(255,255,255,0.1)', 
-                            borderRadius: '8px', 
-                            color: formData.visaDuration === duration ? selectedCategory.color : '#e8f1f8', 
-                            cursor: 'pointer', 
-                            fontSize: '11px', 
-                            fontWeight: formData.visaDuration === duration ? '600' : '400',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            textAlign: 'left'
-                          }}
-                        >
-                          <span>{selectedCategory.icon} {duration}</span>
-                          {price > 0 && <span style={{ fontSize: '10px', opacity: 0.7 }}>{price} {currency}</span>}
-                        </button>
-                      );
-                    })}
+              {/* Vize Türü — Ayarlardan Otomatik */}
+              {(() => {
+                const cat = selectedCategory.id; // 'schengen', 'usa' vs
+                const types = appSettings?.visaDurations?.[cat] || [];
+                if (types.length === 0) return (
+                  <div style={{ padding: '16px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '10px' }}>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#f59e0b' }}>⚠️ Henüz vize türü eklenmemiş. Ayarlar → Vize Türleri ve Fiyatları bölümünden ekleyin.</p>
                   </div>
-                </div>
-              )}
+                );
+                return (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+                      Vize Türü * {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                      {types.map((d, idx) => {
+                        const name = typeof d === 'string' ? d : d.name;
+                        const price = typeof d === 'object' ? d.price : 0;
+                        const currency = typeof d === 'object' ? (d.currency || '€') : '€';
+                        const selected = formData.visaDuration === name;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency })}
+                            style={{
+                              padding: '12px 10px', textAlign: 'left',
+                              background: selected ? `${selectedCategory.color}25` : 'rgba(255,255,255,0.05)',
+                              border: selected ? `2px solid ${selectedCategory.color}` : '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '10px', color: selected ? selectedCategory.color : '#e8f1f8',
+                              cursor: 'pointer', fontSize: '12px', fontWeight: selected ? '700' : '400',
+                              display: 'flex', flexDirection: 'column', gap: '3px'
+                            }}
+                          >
+                            <span>{selectedCategory.icon} {name}</span>
+                            {price > 0 && <span style={{ fontSize: '11px', opacity: 0.7 }}>{price} {currency}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Başvuru Tarihi ve İşlem */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -2793,29 +3417,46 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 </div>
               </div>
 
-              {/* PNR */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>PNR / Referans No</label>
-                <input type="text" value={formData.pnr || ''} onChange={e => setFormData({...formData, pnr: e.target.value})} placeholder="Randevu PNR numarası" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+              {/* PNR + Etiket */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>PNR / Referans No</label>
+                  <input type="text" value={formData.pnr || ''} onChange={e => setFormData({...formData, pnr: e.target.value})} placeholder="Randevu PNR numarası" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Etiket</label>
+                  <input type="text" value={formData.label || ''} onChange={e => setFormData({...formData, label: e.target.value})} placeholder="Örn: VIP, Acil..." style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
               </div>
 
-              {/* Ödeme Durumu */}
+              {/* Ödeme Durumu + Kredi Kartı */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Vize Ücreti</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   {paymentStatuses.map(ps => (
                     <button key={ps} type="button" onClick={() => setFormData({...formData, paymentStatus: ps})} style={{ flex: 1, padding: '10px', background: formData.paymentStatus === ps ? (ps === 'Ödendi' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)') : 'rgba(255,255,255,0.05)', border: formData.paymentStatus === ps ? `2px solid ${ps === 'Ödendi' ? '#10b981' : '#ef4444'}` : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: formData.paymentStatus === ps ? (ps === 'Ödendi' ? '#10b981' : '#ef4444') : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: formData.paymentStatus === ps ? '600' : '400' }}>
                       {ps === 'Ödendi' ? '✓' : '✗'} {ps}
                     </button>
                   ))}
                 </div>
+                {creditCards && creditCards.length > 0 && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>💳 Ödeme Kartı</label>
+                    <select value={formData.paymentCardId || ''} onChange={e => setFormData({...formData, paymentCardId: e.target.value})} style={{ width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}>
+                      <option value="">— Kart seçiniz —</option>
+                      {creditCards.map(card => (
+                        <option key={card.id} value={card.id}>💳 {card.cardName} {card.bank ? `(${card.bank})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Durum - Butonlar - Dinamik */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Başvuru Durumu</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {(appSettings?.visaStatuses || ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi']).map(s => (
+                  {(appSettings?.visaStatuses || ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi']).map(s => (
                     <button key={s} type="button" onClick={() => setFormData({...formData, status: s})} style={{ padding: '8px 12px', background: formData.status === s ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.05)', border: formData.status === s ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: formData.status === s ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: formData.status === s ? '600' : '400' }}>
                       {s}
                     </button>
@@ -2831,7 +3472,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
               {/* İletişim Butonları */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/90${phone}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/90${phone.replace(/^(90|0)/,'')}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                   💬 WhatsApp
                 </button>
                 <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
@@ -2846,7 +3487,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
                   message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
                   const phone = formData.customerPhone.replace(/\D/g, '');
-                  const fullPhone = phone.startsWith('90') ? phone : `90${phone}`;
+                  const fullPhone = '90' + phone.replace(/^(90|0)/, '');
                   window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
                 }} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
                   📱 Randevu Bilgisi Gönder (WhatsApp)
@@ -2945,22 +3586,39 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         )}
       </div>
 
-      {/* Sekmeler */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
-        <button onClick={() => setActiveTab('calendar')} style={{ padding: '12px', background: activeTab === 'calendar' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'calendar' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'calendar' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'calendar' ? '600' : '400' }}>
-          📅 Takvim
+      {/* Durum Filtresi + Takvim/Hatırlatmalar */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Takvim ve Hatırlatmalar küçük butonlar */}
+        <button onClick={() => { setActiveTab('calendar'); setVisaStatusFilter('all'); }}
+          style={{ padding: '8px 12px', background: activeTab === 'calendar' ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.06)', border: activeTab === 'calendar' ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: activeTab === 'calendar' ? '#f59e0b' : '#64748b', cursor: 'pointer', fontSize: '14px' }} title="Takvim">
+          📅
         </button>
-        <button onClick={() => setActiveTab('reminders')} style={{ padding: '12px', background: activeTab === 'reminders' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'reminders' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'reminders' ? '#ef4444' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'reminders' ? '600' : '400' }}>
-          ⏰ Hatırlatmalar ({upcomingReminders.length})
+        <button onClick={() => { setActiveTab('reminders'); setVisaStatusFilter('all'); }}
+          style={{ padding: '8px 12px', background: activeTab === 'reminders' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)', border: activeTab === 'reminders' ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: activeTab === 'reminders' ? '#ef4444' : '#64748b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+          ⏰ {upcomingReminders.length > 0 && <span style={{ background: '#ef4444', borderRadius: '50%', padding: '1px 5px', fontSize: '10px', marginLeft: '4px' }}>{upcomingReminders.length}</span>}
         </button>
-        <button onClick={() => setActiveTab('all')} style={{ padding: '12px', background: activeTab === 'all' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'all' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'all' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'all' ? '600' : '400' }}>
-          📋 Tüm Başvurular
+        {/* Ayırıcı */}
+        <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
+        {/* Durum filtre butonları */}
+        <button onClick={() => { setActiveTab('all'); setVisaStatusFilter('all'); }}
+          style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: activeTab === 'all' && visaStatusFilter === 'all' ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)', color: activeTab === 'all' && visaStatusFilter === 'all' ? '#3b82f6' : '#64748b' }}>
+          Tümü ({visaApplications.length})
+        </button>
+        {visaStatuses.map(s => (
+          <button key={s} onClick={() => { setActiveTab('all'); setVisaStatusFilter(s); }}
+            style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: activeTab === 'all' && visaStatusFilter === s ? `${getStatusColor(s)}30` : 'rgba(255,255,255,0.05)', color: activeTab === 'all' && visaStatusFilter === s ? getStatusColor(s) : '#64748b' }}>
+            {s} ({visaApplications.filter(v => v.status === s).length})
+          </button>
+        ))}
+        <button onClick={() => { setActiveTab('all'); setVisaStatusFilter('__odenmedi__'); }}
+          style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: visaStatusFilter === '__odenmedi__' ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)', color: visaStatusFilter === '__odenmedi__' ? '#ef4444' : '#64748b' }}>
+          💸 Ödenmedi ({visaApplications.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length})
         </button>
       </div>
 
       {/* TAKVİM */}
       {activeTab === 'calendar' && (
-        <div>
+        <div style={{ maxWidth: '900px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <button onClick={() => { if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(calendarYear - 1); } else { setCalendarMonth(calendarMonth - 1); } }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px 12px', color: '#e8f1f8', cursor: 'pointer' }}>←</button>
             <span style={{ fontSize: '14px', color: '#94a3b8' }}>{calendarYear}</span>
@@ -3163,12 +3821,14 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 }
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUndo }) {
+function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer }) {
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   const [selectedTour, setSelectedTour] = useState(null);
   const [editingTour, setEditingTour] = useState(null);
+  const [editingReservation, setEditingReservation] = useState(null);
+  const [roomingTour, setRoomingTour] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -3264,32 +3924,29 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       showToast('Lütfen zorunlu alanları doldurun', 'error');
       return;
     }
-    if (formData._pdfUploading) {
-      showToast('PDF yükleme devam ediyor, lütfen bekleyin', 'warning');
-      return;
-    }
-
-    const cleanData = { ...formData };
-    delete cleanData._pdfUploading;
 
     if (editingTour) {
-      const updated = tours.map(t => t.id === editingTour.id ? {...cleanData, id: editingTour.id} : t);
+      const updated = tours.map(t => t.id === editingTour.id ? {...formData, id: editingTour.id} : t);
       setTours(updated);
       showToast('Tur güncellendi', 'success');
     } else {
-      const newTour = {...cleanData, id: Date.now(), reservations: []};
+      const newTour = {...formData, id: Date.now(), reservations: []};
       setTours([...tours, newTour]);
       showToast('Tur eklendi', 'success');
     }
     setShowForm(false);
   };
 
-  const deleteTour = (tour) => {
+  const deleteTour = async (tour) => {
     if (window.confirm(`"${tour.name}" turunu silmek istediğinizden emin misiniz?`)) {
       const old = [...tours];
       setTours(tours.filter(t => t.id !== tour.id));
       showToast('Tur silindi', 'success');
       addToUndo(() => setTours(old), 'Tur silme');
+      try {
+        const docId = tour._docId || String(tour.id);
+        await deleteDoc(doc(db, 'tours', docId));
+      } catch(e) { console.warn('Tur Firestore silme hatası:', e.message); }
     }
   };
 
@@ -3308,8 +3965,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       passport: '',
       hasVisa: false,
       visaEndDate: '',
-      tourPrice: tour.prices.doubleRoom.amount,
-      currency: tour.prices.doubleRoom.currency,
+      tourPrice: tour.prices?.doubleRoom?.amount || 0,
+      currency: tour.prices?.doubleRoom?.currency || '€',
       payment1: 0,
       payment2: 0,
       payment3: 0,
@@ -3338,26 +3995,47 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     setShowNewCustomerForm(false);
     const customer = customers.find(c => c.id == custId);
     if (customer) {
+      // Pasaport — en son geçerli pasaport
+      const passports = safeParseJSON(customer.passports);
+      const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
+
+      // Vize durumu — tur ülkesi Schengen mi?
+      const isSchengen = schengenCountries.includes(selectedTour?.country);
+      let hasVisa = false;
+      let visaEndDate = '';
+      if (isSchengen) {
+        const visas = safeParseJSON(customer.schengenVisas);
+        const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
+        if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; }
+      } else if (selectedTour?.country === 'Amerika Birleşik Devletleri' || selectedTour?.country === 'ABD') {
+        const usaVisa = typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa || '{}') : (customer.usaVisa || {});
+        if (usaVisa.endDate && getDaysLeft(usaVisa.endDate) > 0) { hasVisa = true; visaEndDate = usaVisa.endDate; }
+      }
+
       setReservationData({
         ...reservationData,
         customerId: custId,
-        customerName: customer.name || '',
+        customerName: customer.name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
         customerPhone: customer.phone || '',
         customerEmail: customer.email || '',
-        company: customer.company || ''
+        company: customer.companyName || customer.company || '',
+        passport: validPassport?.passportNo || '',
+        hasVisa,
+        visaEndDate,
       });
     }
   };
 
   const handleRoomTypeChange = (e) => {
     const roomType = e.target.value;
-    const price = selectedTour.prices[roomType];
-    setReservationData({
-      ...reservationData,
-      roomType,
-      tourPrice: price.amount,
-      currency: price.currency
-    });
+    setReservationData({ ...reservationData, roomType });
+  };
+
+  const openEditReservation = (tour, res) => {
+    setSelectedTour(tour);
+    setEditingReservation(res);
+    setReservationData({ ...res });
+    setShowReservationForm(true);
   };
 
   const saveReservation = () => {
@@ -3366,94 +4044,48 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       return;
     }
 
-    const newReservation = {
-      ...reservationData,
-      id: Date.now(),
-      sNo: (selectedTour.reservations?.length || 0) + 1
-    };
-
-    const updatedTours = tours.map(t => {
-      if (t.id === selectedTour.id) {
-        return {
-          ...t,
-          reservations: [...(t.reservations || []), newReservation]
-        };
-      }
-      return t;
-    });
+    let updatedTours;
+    if (editingReservation) {
+      // Düzenleme modu
+      updatedTours = tours.map(t => {
+        if (t.id === selectedTour.id) {
+          return { ...t, reservations: t.reservations.map(r => r.id === editingReservation.id ? { ...reservationData, id: r.id, sNo: r.sNo } : r) };
+        }
+        return t;
+      });
+      showToast('Rezervasyon güncellendi', 'success');
+    } else {
+      // Yeni ekleme
+      const newReservation = { ...reservationData, id: Date.now(), sNo: (selectedTour.reservations?.length || 0) + 1 };
+      updatedTours = tours.map(t => {
+        if (t.id === selectedTour.id) {
+          return { ...t, reservations: [...(t.reservations || []), newReservation] };
+        }
+        return t;
+      });
+      showToast('Rezervasyon eklendi', 'success');
+    }
 
     setTours(updatedTours);
-    showToast('Rezervasyon eklendi', 'success');
+    setSelectedTour(updatedTours.find(t => t.id === selectedTour.id));
     setShowReservationForm(false);
+    setEditingReservation(null);
   };
 
   const deleteReservation = (tourId, reservationId) => {
     if (window.confirm('Bu rezervasyonu silmek istediğinizden emin misiniz?')) {
-      const oldTours = JSON.parse(JSON.stringify(tours));
       const updatedTours = tours.map(t => {
         if (t.id === tourId) {
-          return { ...t, reservations: t.reservations.filter(r => r.id !== reservationId) };
+          return {
+            ...t,
+            reservations: t.reservations.filter(r => r.id !== reservationId)
+          };
         }
         return t;
       });
       setTours(updatedTours);
       showToast('Rezervasyon silindi', 'success');
-      addToUndo(() => setTours(oldTours), 'Rezervasyon silme');
     }
-  };
-
-  const cancelReservation = (tourId, reservationId) => {
-    const oldTours = JSON.parse(JSON.stringify(tours));
-    const updatedTours = tours.map(t => {
-      if (t.id === tourId) {
-        return {
-          ...t,
-          reservations: t.reservations.map(r =>
-            r.id === reservationId
-              ? { ...r, isCancelled: true, cancelledAt: new Date().toISOString().split('T')[0] }
-              : r
-          )
-        };
-      }
-      return t;
-    });
-    setTours(updatedTours);
-    showToast('Rezervasyon iptal edildi', 'warning', () => setTours(oldTours));
-  };
-
-  const restoreReservation = (tourId, reservationId) => {
-    const updatedTours = tours.map(t => {
-      if (t.id === tourId) {
-        return {
-          ...t,
-          reservations: t.reservations.map(r =>
-            r.id === reservationId
-              ? { ...r, isCancelled: false, cancelledAt: null }
-              : r
-          )
-        };
-      }
-      return t;
-    });
-    setTours(updatedTours);
-    showToast('Rezervasyon geri alındı', 'success');
-  };
-
-  const toggleKontrol = (tourId, reservationId) => {
-    const updatedTours = tours.map(t => {
-      if (t.id === tourId) {
-        return {
-          ...t,
-          reservations: t.reservations.map(r =>
-            r.id === reservationId
-              ? { ...r, kontrolEdildi: !r.kontrolEdildi }
-              : r
-          )
-        };
-      }
-      return t;
-    });
-    setTours(updatedTours);
   };
 
   const exportToExcel = (tour) => {
@@ -3477,7 +4109,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
         r.customerName,
         r.customerPhone,
         r.customerEmail,
-        roomTypeLabels[r.roomType],
+        r.roomType || "-",
         r.roommate || '',
         r.roommate3 || '',
         r.hasChild ? 'Evet' : 'Hayır',
@@ -3512,7 +4144,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       </div>
 
       {/* Search */}
-      <div style={{ marginBottom: '16px' }}>
+      {!selectedTour && <div style={{ marginBottom: '16px' }}>
         <input
           type="text"
           value={searchQuery}
@@ -3520,10 +4152,10 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
           placeholder="🔍 Tur ara (isim, ülke, şehir)..."
           style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
         />
-      </div>
+      </div>}
 
       {/* Tabs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+      {!selectedTour && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
         {['all', 'Aktif', 'Tamamlandı', 'İptal'].map(status => (
           <button
             key={status}
@@ -3542,140 +4174,302 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
             {status === 'all' ? '📅 Tümü' : status}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {/* Tours Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px' }}>
-        {filteredTours.map(tour => (
-          <div key={tour.id} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>{tour.name}</h3>
-              <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', background: tour.status === 'Aktif' ? 'rgba(34,197,94,0.2)' : tour.status === 'Tamamlandı' ? 'rgba(59,130,246,0.2)' : 'rgba(239,68,68,0.2)', color: tour.status === 'Aktif' ? '#22c55e' : tour.status === 'Tamamlandı' ? '#3b82f6' : '#ef4444' }}>
-                {tour.status}
-              </span>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                🌍 {tour.country} - {tour.city}
-              </div>
-              <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                📅 {formatDate(tour.startDate)} - {formatDate(tour.endDate)}
-              </div>
-              <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                👥 {tour.reservations?.length || 0} Rezervasyon
-              </div>
-              {tour.pdfUrl && (
-                <div style={{ fontSize: '12px' }}>
-                  <a href={tour.pdfUrl} target="_blank" rel="noreferrer" style={{ color: '#f59e0b', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    📄 {tour.pdfName || 'PDF Broşür'}
-                  </a>
+      {/* Tours Grid — sadece liste, selectedTour yokken */}
+      {!selectedTour && (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+          {filteredTours.map(tour => {
+            const activeRes = tour.reservations?.filter(r => !r.cancelled).length || 0;
+            const totalRes = tour.reservations?.length || 0;
+            return (
+              <div key={tour.id} onClick={() => setSelectedTour(tour)}
+                style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '20px', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', transition: 'border-color 0.2s, background 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.4)'; e.currentTarget.style.background = 'rgba(245,158,11,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#ffffff', lineHeight: '1.3', flex: 1, paddingRight: '8px' }}>{tour.name}</h3>
+                  <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', flexShrink: 0, fontWeight: '600',
+                    background: tour.status === 'Aktif' ? 'rgba(34,197,94,0.2)' : tour.status === 'Tamamlandı' ? 'rgba(59,130,246,0.2)' : 'rgba(239,68,68,0.2)',
+                    color: tour.status === 'Aktif' ? '#22c55e' : tour.status === 'Tamamlandı' ? '#3b82f6' : '#ef4444'
+                  }}>{tour.status}</span>
                 </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button onClick={() => openReservationForm(tour)} style={{ flex: 1, padding: '8px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px' }}>
-                ➕ Rezervasyon
-              </button>
-              <button onClick={() => setSelectedTour(selectedTour?.id === tour.id ? null : tour)} style={{ flex: 1, padding: '8px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>
-                📋 Detay
-              </button>
-              <button onClick={() => openEditForm(tour)} style={{ padding: '8px 12px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>
-                ✏️
-              </button>
-              <button onClick={() => deleteTour(tour)} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>
-                🗑️
-              </button>
-            </div>
-
-            {/* Rezervasyon Detayları */}
-            {selectedTour?.id === tour.id && tour.reservations?.length > 0 && (
-              <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0, fontSize: '14px' }}>
-                    📋 Rezervasyonlar
-                    <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
-                      ({tour.reservations.filter(r => !r.isCancelled).length} aktif
-                      {tour.reservations.some(r => r.isCancelled) ? `, ${tour.reservations.filter(r => r.isCancelled).length} iptal` : ''})
-                    </span>
-                  </h4>
-                  <button onClick={() => exportToExcel(tour)} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>
-                    📥 Excel
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''}</div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)}</div>
+                  <div style={{ fontSize: '13px', color: activeRes > 0 ? '#f59e0b' : '#64748b', fontWeight: activeRes > 0 ? '600' : '400' }}>
+                    👥 {activeRes} aktif rezervasyon{totalRes !== activeRes ? ` (${totalRes - activeRes} iptal)` : ''}
+                  </div>
+                  {tour.pdfUrl && <div style={{ fontSize: '11px', color: '#3b82f6' }}>📄 Program PDF mevcut</div>}
                 </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>S.No</th>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Ad Soyad</th>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Oda</th>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}>Ücret</th>
-                        <th style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>✅</th>
-                        <th style={{ padding: '8px', textAlign: 'left', color: '#64748b' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tour.reservations.map(res => (
-                        <tr key={res.id} style={{
-                          borderBottom: '1px solid rgba(255,255,255,0.05)',
-                          opacity: res.isCancelled ? 0.5 : 1,
-                          background: res.isCancelled ? 'rgba(239,68,68,0.05)' : res.kontrolEdildi ? 'rgba(16,185,129,0.05)' : 'transparent'
-                        }}>
-                          <td style={{ padding: '8px' }}>
-                            {res.sNo}
-                            {res.isCancelled && <span style={{ marginLeft: '4px', fontSize: '9px', color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '1px 4px', borderRadius: '3px' }}>İPTAL</span>}
-                          </td>
-                          <td style={{ padding: '8px', textDecoration: res.isCancelled ? 'line-through' : 'none', color: res.isCancelled ? '#64748b' : '#e8f1f8' }}>
-                            {res.customerName}
-                          </td>
-                          <td style={{ padding: '8px' }}>{roomTypeLabels[res.roomType]}</td>
-                          <td style={{ padding: '8px' }}>{res.tourPrice} {res.currency}</td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <button
-                              onClick={() => !res.isCancelled && toggleKontrol(tour.id, res.id)}
-                              disabled={res.isCancelled}
-                              title={res.kontrolEdildi ? 'Kontrol edildi — kaldırmak için tıkla' : 'Kontrol edildi işaretle'}
-                              style={{ background: 'none', border: 'none', cursor: res.isCancelled ? 'default' : 'pointer', fontSize: '16px', opacity: res.isCancelled ? 0.3 : 1 }}
-                            >
-                              {res.kontrolEdildi ? '✅' : '⬜'}
-                            </button>
-                          </td>
-                          <td style={{ padding: '8px' }}>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              {res.isCancelled ? (
-                                <button
-                                  onClick={() => restoreReservation(tour.id, res.id)}
-                                  title="Geri al"
-                                  style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', color: '#22c55e', cursor: 'pointer', fontSize: '11px', padding: '3px 7px' }}
-                                >↩</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TUR DETAY — tam sayfa, selectedTour varken */}
+      {selectedTour && (() => {
+        const tour = tours.find(t => t.id === selectedTour.id) || selectedTour;
+        const activeRes = tour.reservations?.filter(r => !r.cancelled) || [];
+        const cancelledRes = tour.reservations?.filter(r => r.cancelled) || [];
+        return (
+          <div>
+            {/* Detay Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <button onClick={() => setSelectedTour(null)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{tour.name}</h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} &nbsp;|&nbsp; 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {tour.pdfUrl && <button onClick={() => window.open(tour.pdfUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 PDF</button>}
+                <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Excel</button>
+                <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
+                <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
+                <button onClick={() => { openEditForm(tour); setSelectedTour(null); }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+                <button onClick={() => { deleteTour(tour); setSelectedTour(null); }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+              </div>
+            </div>
+
+            {/* Rezervasyon İstatistikleri */}
+
+            {/* Özet */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+              {(() => {
+                const totalBedel = activeRes.reduce((s, r) => s + (r.tourPrice || 0), 0);
+                const totalOdenen = activeRes.reduce((s, r) => s + (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0), 0);
+                const totalOdenmemis = totalBedel - totalOdenen;
+                const cur = activeRes[0]?.currency || '€';
+                return [
+                  { label: 'Aktif Rezervasyon', value: activeRes.length, color: '#10b981', suffix: '' },
+                  { label: 'İptal', value: cancelledRes.length, color: '#ef4444', suffix: '' },
+                  { label: 'Toplam Ödenen', value: totalOdenen.toLocaleString('tr'), color: '#10b981', suffix: ` ${cur}` },
+                  { label: 'Ödenmemiş', value: totalOdenmemis > 0 ? totalOdenmemis.toLocaleString('tr') : '0', color: totalOdenmemis > 0 ? '#ef4444' : '#64748b', suffix: ` ${cur}` },
+                ];
+              })().map(s => (
+                <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', textAlign: 'center', border: `1px solid ${s.color}20` }}>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: s.color }}>{s.value}{s.suffix}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Rezervasyon Tablosu */}
+            {(tour.reservations?.length || 0) === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                <p style={{ fontSize: '32px', margin: '0 0 10px' }}>📋</p>
+                <p>Henüz rezervasyon yok</p>
+                <button onClick={() => openReservationForm(tour)} style={{ marginTop: '12px', padding: '10px 20px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '13px' }}>➕ İlk Rezervasyonu Ekle</button>
+              </div>
+            ) : (() => {
+              const aktifRes = tour.reservations.filter(r => !r.cancelled);
+              const iptalRes = tour.reservations.filter(r => r.cancelled);
+
+              const renderRow = (res) => {
+                const totalPaid = (res.payment1 || 0) + (res.payment2 || 0) + (res.payment3 || 0);
+                const fullyPaid = totalPaid >= (res.tourPrice || 0);
+
+                        // Vize Durumu Hesaplama
+                        const getVisaStatus = () => {
+                          // Tur ülkesi Schengen mi?
+                          const isSchengen = schengenCountries.includes(tour.country);
+                          if (!isSchengen) return null; // Schengen değilse gösterme
+
+                          // Müşteriyi customers listesinden bul
+                          const customer = customers.find(c =>
+                            `${c.firstName} ${c.lastName}`.toLowerCase() === res.customerName?.toLowerCase()
+                          );
+                          if (!customer) return { label: 'Müşteri Bulunamadı', color: '#64748b', bg: 'rgba(100,116,139,0.2)' };
+
+                          const visas = safeParseJSON(customer.schengenVisas);
+                          const validVisa = visas.find(v => {
+                            if (!v.endDate || !v.country) return false;
+                            const days = getDaysLeft(v.endDate);
+                            return days !== null && days > 0;
+                          });
+
+                          if (!validVisa) {
+                            // Süresi bitmiş vize var mı?
+                            const expiredVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) !== null && getDaysLeft(v.endDate) <= 0);
+                            if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            return { label: 'Vize Yok', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                          }
+
+                          // Tur tarihine kadar vize geçerli mi?
+                          const tourEndDate = tour.endDate;
+                          if (tourEndDate) {
+                            const visaExpiry = getDaysLeft(validVisa.endDate);
+                            const tourDays = getDaysLeft(tourEndDate);
+                            if (visaExpiry !== null && tourDays !== null && visaExpiry < tourDays) {
+                              return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                            }
+                          }
+
+                          const daysLeft = getDaysLeft(validVisa.endDate);
+                          if (daysLeft !== null && daysLeft <= 90) {
+                            return { label: `Var — ${daysLeft} gün`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                          }
+                          return { label: `Var (${validVisa.country})`, color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+                        };
+
+                        const visaStatus = getVisaStatus();
+
+                        return (
+                          <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: res.cancelled ? 0.45 : 1, background: res.cancelled ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: '600', textDecoration: res.cancelled ? 'line-through' : 'none' }}>
+                              <span
+                                onClick={() => {
+                                  const found = customers.find(c =>
+                                    `${c.firstName} ${c.lastName}`.toLowerCase() === res.customerName?.toLowerCase()
+                                  );
+                                  if (found && onNavigateToCustomer) onNavigateToCustomer(found);
+                                }}
+                                style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}
+                                title="Profili aç"
+                              >
+                                {res.customerName}
+                              </span>
+                              {res.cancelled && <span style={{ fontSize: '9px', color: '#ef4444', marginLeft: '4px', display: 'block', textDecoration: 'none' }}>İPTAL</span>}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
+                              {res.roomType || '-'}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              {visaStatus ? (
+                                <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: visaStatus.bg, color: visaStatus.color, fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                  {visaStatus.label}
+                                </span>
                               ) : (
-                                <button
-                                  onClick={() => cancelReservation(tour.id, res.id)}
-                                  title="İptal et"
-                                  style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px', padding: '3px 7px' }}
-                                >⏸</button>
+                                <span style={{ color: '#475569', fontSize: '10px' }}>—</span>
                               )}
-                              <button
-                                onClick={() => deleteReservation(tour.id, res.id)}
-                                title="Kalıcı sil"
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '2px 4px' }}
-                              >×</button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#f59e0b', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                              {res.tourPrice > 0 ? `${res.tourPrice} ${res.currency || '€'}` : '-'}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              {res.tourPrice > 0 ? (
+                                <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: '600', background: fullyPaid ? 'rgba(16,185,129,0.15)' : totalPaid > 0 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.1)', color: fullyPaid ? '#10b981' : totalPaid > 0 ? '#f59e0b' : '#ef4444' }}>
+                                  {fullyPaid ? '✓ Ödendi' : totalPaid > 0 ? `${totalPaid} ${res.currency || '€'}` : 'Ödenmedi'}
+                                </span>
+                              ) : <span style={{ color: '#475569', fontSize: '11px' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                                {res.cancelled ? (
+                                  <button onClick={() => { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
+                                ) : (
+                                  <button onClick={() => { if (window.confirm(`${res.customerName} rezervasyonunu iptal etmek istiyor musunuz?`)) { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.map(r => r.id === res.id ? {...r, cancelled: true, cancelledAt: new Date().toISOString()} : r)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon iptal edildi', 'warning'); } }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="İptal Et">⊘</button>
+                                )}
+                                <button onClick={() => { if (window.confirm('Bu rezervasyonu kalıcı sil?')) { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.filter(r => r.id !== res.id)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon silindi', 'info'); } }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }} title="Sil">×</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      };
 
-      {filteredTours.length === 0 && (
+              return (
+                <>
+                  {/* AKTİF REZERVASYONLAR */}
+                  {aktifRes.length > 0 && (
+                    <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '12px' }}>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              {['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', ''].map(h => (
+                                <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {aktifRes.map(res => renderRow(res))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* İPTAL EDİLEN REZERVASYONLAR */}
+                  {iptalRes.length > 0 && (
+                    <div style={{ background: 'rgba(239,68,68,0.03)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(239,68,68,0.15)' }}>
+                      <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '700' }}>⊘ İptal Edilenler ({iptalRes.length})</span>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>— Kararınız değişirse geri alabilirsiniz</span>
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(239,68,68,0.1)' }}>
+                              {['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', ''].map(h => (
+                                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {iptalRes.map(res => renderRow(res))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* Odalama Bölümü */}
+            {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
+              const reservations = (tour.reservations || []).filter(r => !r.cancelled);
+              const roomTypes = {}; const assigned = new Set();
+              reservations.forEach(r => {
+                if (assigned.has(r.id)) return;
+                const type = r.roomType || "-" || r.roomType || '-';
+                if (!roomTypes[type]) roomTypes[type] = [];
+                const room = [r]; assigned.add(r.id);
+                if (r.roommate) { const m = reservations.find(x => !assigned.has(x.id) && x.customerName === r.roommate); if (m) { room.push(m); assigned.add(m.id); } }
+                if (r.roommate3) { const m = reservations.find(x => !assigned.has(x.id) && x.customerName === r.roommate3); if (m) { room.push(m); assigned.add(m.id); } }
+                roomTypes[type].push(room);
+              });
+              const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);
+              return (
+                <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(139,92,246,0.05)', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', color: '#8b5cf6' }}>🏨 Odalama ({totalRooms} oda)</h4>
+                    <button onClick={() => {
+                      const rows = [['Oda No','Oda Tipi','Kişi 1','Kişi 2','Kişi 3']];
+                      let n = 1;
+                      Object.entries(roomTypes).forEach(([t, rooms]) => rooms.forEach(room => rows.push([n++, t, room[0]?.customerName||'', room[1]?.customerName||'', room[2]?.customerName||''])));
+                      const ws = XLSX.utils.aoa_to_sheet(rows);
+                      ws['!cols'] = [{wch:8},{wch:18},{wch:25},{wch:25},{wch:25}];
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Odalama');
+                      XLSX.writeFile(wb, `${tour.name}_Odalama.xlsx`);
+                    }} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+                  </div>
+                  {Object.entries(roomTypes).map(([type, rooms]) => (
+                    <div key={type} style={{ marginBottom: '12px' }}>
+                      <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '6px', padding: '4px 8px', background: 'rgba(245,158,11,0.1)', borderRadius: '6px', display: 'inline-block' }}>{type} ({rooms.length} oda)</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+                        {rooms.map((room, i) => (
+                          <div key={i} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>Oda {i+1}</div>
+                            {room.map((p, j) => <div key={j} style={{ fontSize: '12px', color: '#e8f1f8', padding: '2px 0' }}>👤 {p.customerName}</div>)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+
+      {filteredTours.length === 0 && !selectedTour && (
         <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
           <p style={{ fontSize: '48px', margin: '0 0 16px' }}>🎫</p>
           <p style={{ margin: 0 }}>Henüz tur eklenmemiş</p>
@@ -3749,27 +4543,22 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '10px' }}>
                 <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#f59e0b' }}>💰 Fiyatlandırma</h4>
                 
-                {Object.entries({
-                  doubleRoom: 'İki Kişilik Oda Kişi Başı',
-                  singleRoom: 'Tek Kişilik Oda',
-                  extraBed: 'İlave Yatak',
-                  baby: 'Bebek (0-1,99 Yaş)',
-                  child1: '1.Çocuk (7-11,99 Yaş)',
-                  child2: '2.Çocuk (2-6,99 Yaş)'
-                }).map(([key, label]) => (
+                {(appSettings?.roomTypes?.length ? appSettings.roomTypes : ['Çift Kişilik', 'Tek Kişilik', 'İlave Yatak']).map((roomType) => {
+                  const key = roomType.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+                  return (
                   <div key={key} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px', gap: '8px', marginBottom: '10px', alignItems: 'end' }}>
                     <div>
-                      <label style={{...labelStyle, fontSize: '11px'}}>{label}</label>
+                      <label style={{...labelStyle, fontSize: '11px'}}>{roomType}</label>
                     </div>
                     <div>
                       <input
                         type="number"
-                        value={formData.prices[key].amount}
+                        value={formData.prices?.[key]?.amount ?? 0}
                         onChange={e => setFormData({
                           ...formData,
                           prices: {
                             ...formData.prices,
-                            [key]: {...formData.prices[key], amount: Number(e.target.value)}
+                            [key]: {...(formData.prices?.[key] || { amount: 0, currency: '€' }), amount: Number(e.target.value)}
                           }
                         })}
                         placeholder="0"
@@ -3778,12 +4567,12 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                     </div>
                     <div>
                       <select
-                        value={formData.prices[key].currency}
+                        value={formData.prices?.[key]?.currency ?? '€'}
                         onChange={e => setFormData({
                           ...formData,
                           prices: {
                             ...formData.prices,
-                            [key]: {...formData.prices[key], currency: e.target.value}
+                            [key]: {...(formData.prices?.[key] || { amount: 0, currency: '€' }), currency: e.target.value}
                           }
                         })}
                         style={{...selectStyle, padding: '8px'}}
@@ -3795,7 +4584,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       </select>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div>
@@ -3811,58 +4601,43 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                 </select>
               </div>
 
-              {/* PDF Upload */}
+              {/* Tur Programı PDF */}
               <div>
-                <label style={labelStyle}>📎 Tur PDF Broşürü (Firebase Storage)</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {formData.pdfUrl ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px' }}>
-                      <span style={{ fontSize: '20px' }}>📄</span>
-                      <a href={formData.pdfUrl} target="_blank" rel="noreferrer" style={{ color: '#f59e0b', fontSize: '12px', flex: 1, textDecoration: 'none' }}>
-                        {formData.pdfName || 'PDF Broşür'}
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, pdfUrl: '', pdfName: '' })}
-                        style={{ background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '4px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', padding: '4px 8px' }}
-                      >
-                        Kaldır
-                      </button>
+                <label style={labelStyle}>📄 Tur Programı PDF</label>
+                {formData.pdfUrl ? (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>📄</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>PDF Yüklendi</div>
+                      <div style={{ fontSize: '10px', color: '#64748b', wordBreak: 'break-all' }}>{formData.pdfUrl.split('/').pop()?.split('?')[0] || 'dosya.pdf'}</div>
                     </div>
-                  ) : (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', cursor: formData._pdfUploading ? 'not-allowed' : 'pointer' }}>
-                      <span style={{ fontSize: '20px' }}>📤</span>
-                      <span style={{ fontSize: '12px', color: '#64748b' }}>
-                        {formData._pdfUploading ? '⏳ Yükleniyor...' : 'PDF seç (maks. 10MB)'}
-                      </span>
-                      <input
-                        type="file"
-                        accept=".pdf"
-                        style={{ display: 'none' }}
-                        disabled={formData._pdfUploading}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 10 * 1024 * 1024) { showToast('PDF maksimum 10MB olabilir', 'error'); return; }
-                          setFormData(f => ({ ...f, _pdfUploading: true }));
-                          try {
-                            const storage = getStorage();
-                            const fileName = `tours/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-                            const sRef = storageRef(storage, fileName);
-                            await uploadBytes(sRef, file);
-                            const url = await getDownloadURL(sRef);
-                            setFormData(f => ({ ...f, pdfUrl: url, pdfName: file.name, _pdfUploading: false }));
-                            showToast('PDF yüklendi ✅', 'success');
-                          } catch(err) {
-                            console.error('PDF yükleme hatası:', err);
-                            showToast('PDF yüklenemedi: ' + err.message, 'error');
-                            setFormData(f => ({ ...f, _pdfUploading: false }));
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
-                </div>
+                    <button type="button" onClick={() => window.open(formData.pdfUrl, '_blank')} style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>👁️</button>
+                    <button type="button" onClick={() => setFormData({...formData, pdfUrl: ''})} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                  </div>
+                ) : (
+                  <div>
+                    <input type="file" accept=".pdf" id="tourPdfInput" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 10 * 1024 * 1024) { showToast('PDF max 10MB olabilir', 'error'); return; }
+                      showToast('PDF yükleniyor...', 'info');
+                      try {
+                        const storage = getStorage();
+                        const storageRef = ref(storage, `tour-pdfs/${Date.now()}_${file.name}`);
+                        await uploadBytes(storageRef, file);
+                        const url = await getDownloadURL(storageRef);
+                        setFormData(prev => ({...prev, pdfUrl: url}));
+                        showToast('PDF yüklendi!', 'success');
+                      } catch(err) {
+                        console.error('PDF yükleme hatası:', err);
+                        showToast('PDF yüklenemedi: ' + err.message, 'error');
+                      }
+                    }} />
+                    <button type="button" onClick={() => document.getElementById('tourPdfInput').click()} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>
+                      📤 PDF Seç & Yükle (max 10MB)
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -3880,10 +4655,10 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
       {/* Rezervasyon Formu Modal */}
       {showReservationForm && selectedTour && (
-        <div onClick={() => setShowReservationForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
+        <div onClick={() => { setShowReservationForm(false); setEditingReservation(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>
-              ➕ Rezervasyon Ekle - {selectedTour.name}
+              {editingReservation ? '✏️ Rezervasyon Düzenle' : '➕ Rezervasyon Ekle'} — {selectedTour.name}
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -3993,8 +4768,11 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       onChange={handleRoomTypeChange}
                       style={selectStyle}
                     >
-                      {Object.entries(roomTypeLabels).map(([key, label]) => (
-                        <option key={key} value={key}>{label}</option>
+                      {(appSettings?.roomTypes?.length > 0
+                        ? appSettings.roomTypes
+                        : ['Single', 'Double', 'Twin', 'Triple']
+                      ).map(rt => (
+                        <option key={rt} value={rt}>{rt}</option>
                       ))}
                     </select>
                   </div>
@@ -4044,15 +4822,22 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       />
                     </div>
                     <div>
-                      <label style={labelStyle}>Vize</label>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', height: '40px' }}>
-                        <input
-                          type="checkbox"
-                          checked={reservationData.hasVisa}
+                      <label style={labelStyle}>Vize Durumu</label>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', paddingTop: '4px' }}>
+                        {schengenCountries.includes(selectedTour?.country) || selectedTour?.country?.includes('Amerika') ? (
+                          <span style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
+                            background: reservationData.hasVisa ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
+                            color: reservationData.hasVisa ? '#10b981' : '#ef4444',
+                            border: `1px solid ${reservationData.hasVisa ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.25)'}` }}>
+                            {reservationData.hasVisa ? `✅ Var${reservationData.visaEndDate ? ` (${formatDate(reservationData.visaEndDate)})` : ''}` : '❌ Yok'}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#475569' }}>— Gerekli değil</span>
+                        )}
+                        <input type="checkbox" checked={reservationData.hasVisa}
                           onChange={e => setReservationData({...reservationData, hasVisa: e.target.checked})}
-                          id="hasVisa"
-                        />
-                        <label htmlFor="hasVisa" style={{ fontSize: '13px', color: '#94a3b8', cursor: 'pointer' }}>Vize var</label>
+                          id="hasVisa" style={{ marginLeft: '4px' }} />
+                        <label htmlFor="hasVisa" style={{ fontSize: '11px', color: '#64748b', cursor: 'pointer' }}>Elle düzenle</label>
                       </div>
                     </div>
                   </div>
@@ -4072,14 +4857,41 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '10px' }}>
                     <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#f59e0b' }}>💰 Ödeme Bilgileri</h4>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                       <div>
-                        <label style={labelStyle}>Tur Ücreti</label>
+                        <label style={labelStyle}>
+                          Tur Ücreti
+                          {reservationData.discount > 0 && reservationData.basePrice > 0 && (
+                            <span style={{ marginLeft: '6px', fontSize: '10px', color: '#64748b', textDecoration: 'line-through' }}>
+                              {reservationData.basePrice} {reservationData.currency}
+                            </span>
+                          )}
+                        </label>
                         <input
                           type="number"
                           value={reservationData.tourPrice}
-                          onChange={e => setReservationData({...reservationData, tourPrice: Number(e.target.value)})}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            // Tur ücreti değişince basePrice sıfırla, indirim 0 yap
+                            setReservationData({...reservationData, tourPrice: val, basePrice: val, discount: 0});
+                          }}
                           style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>İndirim</label>
+                        <input
+                          type="number"
+                          value={reservationData.discount || ''}
+                          onChange={e => {
+                            const discount = Number(e.target.value) || 0;
+                            // basePrice her zaman sabit kalır — ilk kez ayarlanıyorsa tourPrice'tan al
+                            const base = reservationData.basePrice > 0 ? reservationData.basePrice : (reservationData.tourPrice || 0);
+                            const netPrice = Math.max(0, base - discount);
+                            setReservationData({...reservationData, discount, basePrice: base, tourPrice: netPrice});
+                          }}
+                          placeholder="0"
+                          style={{ ...inputStyle, borderColor: reservationData.discount > 0 ? 'rgba(16,185,129,0.5)' : undefined }}
                         />
                       </div>
                       <div>
@@ -4130,8 +4942,15 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       </div>
                     </div>
 
-                    <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(34,197,94,0.1)', borderRadius: '6px', fontSize: '13px', color: '#22c55e' }}>
-                      Toplam Ödeme: {(reservationData.payment1 + reservationData.payment2 + reservationData.payment3).toFixed(2)} {reservationData.currency}
+                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {reservationData.discount > 0 && (
+                        <div style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.08)', borderRadius: '6px', fontSize: '12px', color: '#10b981' }}>
+                          🏷️ İndirim: -{reservationData.discount} {reservationData.currency} &nbsp;|&nbsp; Net Fiyat: <strong>{reservationData.tourPrice} {reservationData.currency}</strong>
+                        </div>
+                      )}
+                      <div style={{ padding: '8px 12px', background: 'rgba(34,197,94,0.1)', borderRadius: '6px', fontSize: '13px', color: '#22c55e' }}>
+                        Toplam Ödeme: {(reservationData.payment1 + reservationData.payment2 + reservationData.payment3).toFixed(2)} {reservationData.currency}
+                      </div>
                     </div>
                   </div>
 
@@ -4148,11 +4967,11 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button onClick={() => setShowReservationForm(false)} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>
+                <button onClick={() => { setShowReservationForm(false); setEditingReservation(null); }} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>
                   İptal
                 </button>
                 <button onClick={saveReservation} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-                  💾 Kaydet
+                  {editingReservation ? '✏️ Güncelle' : '💾 Kaydet'}
                 </button>
               </div>
             </div>
@@ -4430,7 +5249,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
         return;
       }
       
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+      window.open(`https://wa.me/90${phone.replace(/^(90|0)/,'')}?text=${encodeURIComponent(message)}`, '_blank');
       showToast?.('WhatsApp açıldı', 'success');
     } catch (error) {
       console.error('WhatsApp hatası:', error);
@@ -4886,6 +5705,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
                 <button onClick={() => downloadPDF(quote)} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄</button>
                 <button onClick={() => sendWhatsApp(quote)} style={{ padding: '8px 12px', background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '6px', color: '#25d366', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📱</button>
                 <button onClick={() => sendEmail(quote)} style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✉️</button>
+                <button onClick={() => { if (window.confirm(`"${quote.subject}" belgesini silmek istediğinizden emin misiniz?`)) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Belge silindi', 'warning'); } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
               </div>
             </div>
           ))}
@@ -5348,12 +6168,12 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
           {/* Table Header */}
           {!isMobile && (
-            <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 150px 200px 150px 80px', gap: '16px', padding: '16px 20px', background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', fontWeight: '600', color: '#f59e0b' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '220px 120px 160px 220px 180px 100px', gap: '12px', padding: '14px 20px', background: 'rgba(245,158,11,0.1)', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '11px', fontWeight: '700', color: '#f59e0b', letterSpacing: '0.5px' }}>
               <div>ACENTE ADI</div>
-              <div>LİNK</div>
               <div>KURUM KODU</div>
               <div>KULLANICI</div>
               <div>ŞİFRE</div>
+              <div>LİNK</div>
               <div style={{ textAlign: 'center' }}>İŞLEM</div>
             </div>
           )}
@@ -5361,64 +6181,64 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
           {/* Table Rows */}
           <div style={{ maxHeight: isMobile ? 'none' : '600px', overflowY: 'auto' }}>
             {filteredAgencies.map((agency, idx) => (
-              <div key={agency.id} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: isMobile ? '1fr' : '200px 1fr 150px 200px 150px 80px', gap: '16px', padding: '16px 20px', borderBottom: idx < filteredAgencies.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', alignItems: 'center' }}>
+              <div key={agency.id} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 120px 160px 220px 180px 100px', gap: '12px', padding: '14px 20px', borderBottom: idx < filteredAgencies.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', alignItems: 'center' }}>
                 
-                {/* Acente Adı */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {/* Acente Adı — tıklayınca linke gider */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Acente Adı</span>}
-                  <span style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '600' }}>{agency.name}</span>
-                </div>
-
-                {/* Link */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: isMobile ? '12px' : '0' }}>
-                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Link</span>}
                   {agency.link ? (
-                    <a href={agency.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#3b82f6', textDecoration: 'none', wordBreak: 'break-all', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      🔗 {agency.link}
+                    <a href={agency.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {agency.name} <span style={{ fontSize: '11px', opacity: 0.6 }}>↗</span>
                     </a>
                   ) : (
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>-</span>
+                    <span style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700' }}>{agency.name}</span>
                   )}
                 </div>
 
                 {/* Kurum Kodu */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: isMobile ? '12px' : '0' }}>
+                <div style={{ marginTop: isMobile ? '10px' : '0' }}>
                   {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Kurum Kodu</span>}
-                  <span style={{ fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace', letterSpacing: '1px' }}>
-                    {agency.institutionCode || '-'}
-                  </span>
+                  <span style={{ fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace' }}>{agency.institutionCode || <span style={{color:'#475569'}}>—</span>}</span>
                 </div>
 
                 {/* Kullanıcı */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: isMobile ? '12px' : '0' }}>
-                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Kullanıcı Kodu / E-mail</span>}
-                  <span style={{ fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                    {agency.userCode || '-'}
-                  </span>
-                </div>
-
-                {/* Şifre */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: isMobile ? '12px' : '0' }}>
-                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Şifre</span>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace', letterSpacing: '2px' }}>
-                      {agency.password || '-'}
-                    </span>
-                    {agency.password && (
-                      <button onClick={() => navigator.clipboard.writeText(agency.password)} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', padding: '4px 8px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>📋</button>
-                    )}
+                <div style={{ marginTop: isMobile ? '8px' : '0' }}>
+                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Kullanıcı</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12px', color: '#e8f1f8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{agency.userCode || <span style={{color:'#475569'}}>—</span>}</span>
+                    {agency.userCode && <button onClick={() => { navigator.clipboard.writeText(agency.userCode); showToast('Kullanıcı kopyalandı', 'success'); }} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '4px', padding: '2px 6px', color: '#64748b', cursor: 'pointer', fontSize: '10px', flexShrink: 0 }}>📋</button>}
                   </div>
                 </div>
 
-                {/* İşlemler */}
-                <div style={{ display: 'flex', gap: '8px', justifyContent: isMobile ? 'flex-start' : 'center', marginTop: isMobile ? '12px' : '0' }}>
-                  <button onClick={() => openEditForm(agency)} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>✏️</button>
-                  <button onClick={() => deleteAgency(agency.id)} style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>🗑️</button>
+                {/* Şifre */}
+                <div style={{ marginTop: isMobile ? '8px' : '0' }}>
+                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Şifre</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace', letterSpacing: '1px', wordBreak: 'break-all' }}>{agency.password || <span style={{color:'#475569'}}>—</span>}</span>
+                    {agency.password && <button onClick={() => { navigator.clipboard.writeText(agency.password); showToast('Şifre kopyalandı', 'success'); }} style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '4px', padding: '2px 8px', color: '#3b82f6', cursor: 'pointer', fontSize: '10px', flexShrink: 0 }}>📋</button>}
+                  </div>
                 </div>
 
-                {/* Notlar (varsa) */}
+                {/* Link kopyala */}
+                <div style={{ marginTop: isMobile ? '8px' : '0' }}>
+                  {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Link</span>}
+                  {agency.link ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: '#3b82f6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }} title={agency.link}>{agency.link.replace(/^https?:\/\//, '')}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(agency.link); showToast('Link kopyalandı', 'success'); }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '4px', padding: '2px 8px', color: '#10b981', cursor: 'pointer', fontSize: '10px', flexShrink: 0 }}>📋</button>
+                    </div>
+                  ) : <span style={{color:'#475569', fontSize:'13px'}}>—</span>}
+                </div>
+
+                {/* İşlemler */}
+                <div style={{ display: 'flex', gap: '6px', justifyContent: isMobile ? 'flex-start' : 'center', marginTop: isMobile ? '12px' : '0' }}>
+                  <button onClick={() => openEditForm(agency)} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '7px 10px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                  <button onClick={() => deleteAgency(agency.id)} style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '7px 10px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+                </div>
+
+                {/* Notlar */}
                 {agency.notes && (
-                  <div style={{ gridColumn: isMobile ? '1' : '1 / -1', marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', borderLeft: '3px solid rgba(245,158,11,0.5)' }}>
+                  <div style={{ gridColumn: isMobile ? '1' : '1 / -1', marginTop: '10px', padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', borderLeft: '3px solid rgba(245,158,11,0.4)' }}>
                     <strong style={{ color: '#f59e0b' }}>Not:</strong> {agency.notes}
                   </div>
                 )}
@@ -5431,299 +6251,347 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
   );
 }
 
-// ===== DS-160 AMERİKA VİZE MODÜLÜ =====
-function Ds160Module({ customers, ds160Applications, setDs160Applications, isMobile, showToast, appSettings }) {
+// DS-160 AMERİKA VİZE MODÜLÜ
+function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('Tümü');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedApp, setSelectedApp] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showUrlModal, setShowUrlModal] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
 
-  const ds160Url = appSettings?.ds160Url || 'https://ds160-paydos.netlify.app';
+  const ds160Url = appSettings?.ds160SiteUrl || 'https://ds160-paydos.netlify.app';
 
-  // İstatistikler
-  const total = ds160Applications.length;
-  const taslak = ds160Applications.filter(a => a.status === 'Taslak').length;
-  const gonderildi = ds160Applications.filter(a => a.status === 'Gönderildi').length;
-  const tamamlandi = ds160Applications.filter(a => a.status === 'Tamamlandı').length;
-
-  // Filtre + arama
-  const filtered = ds160Applications.filter(app => {
-    const matchStatus = filterStatus === 'Tümü' || app.status === filterStatus;
-    const q = searchQuery.toLowerCase();
-    const matchSearch = !searchQuery ||
-      app.firstName?.toLowerCase().includes(q) ||
-      app.lastName?.toLowerCase().includes(q) ||
-      app.phone?.includes(searchQuery);
-    return matchStatus && matchSearch;
-  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-  // Firestore'dan yenile (manuel refresh)
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      const { getDocs, collection } = await import('firebase/firestore');
-      const snapshot = await getDocs(collection(db, 'ds160_applications'));
-      const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
-      setDs160Applications(items);
-      showToast(`${items.length} başvuru yüklendi`, 'success');
-    } catch(e) {
-      showToast('Yenileme hatası: ' + e.message, 'error');
-    }
-    setIsRefreshing(false);
-  };
-
-  // Durum güncelle
-  const updateStatus = async (app, newStatus) => {
-    const updated = ds160Applications.map(a =>
-      a._docId === app._docId ? { ...a, status: newStatus } : a
-    );
-    setDs160Applications(updated);
-    try {
-      const { doc, setDoc } = await import('firebase/firestore');
-      await setDoc(doc(db, 'ds160_applications', app._docId), { status: newStatus }, { merge: true });
-      showToast(`Durum → ${newStatus}`, 'success');
-    } catch(e) {
-      showToast('Durum güncellenemedi', 'error');
-    }
-  };
-
-  // Müşteri eşleştir
-  const matchCustomer = (app) =>
-    customers.find(c =>
-      c.phone?.replace(/\D/g, '').slice(-10) === app.phone?.replace(/\D/g, '').slice(-10) ||
-      (app.firstName && app.lastName &&
-        `${c.firstName} ${c.lastName}`.toLowerCase() === `${app.firstName} ${app.lastName}`.toLowerCase())
-    );
-
-  // Progress hesapla (dolu alan sayısı)
-  const calcProgress = (app) => {
-    const fields = ['firstName', 'lastName', 'phone', 'birthDate', 'passportNo', 'travelPurpose', 'address'];
-    const filled = fields.filter(f => app[f] && app[f] !== '').length;
-    return Math.round((filled / fields.length) * 100);
-  };
+  useEffect(() => {
+    const loadApplications = async () => {
+      setLoading(true);
+      try {
+        // Veriler paydos named DB'sinde
+        const snap = await getDocs(collection(db, 'ds160_applications'));
+        let items = snap.docs.map(d => {
+          const data = d.data();
+          // Alanları normalize et - DS-160 sitesi farklı field isimleri kullanıyor
+          return {
+            _docId: d.id,
+            ...data,
+            // Ekran için normalize edilmiş alanlar
+            _name: data.customerName || `${data.formData?.name || ''} ${data.formData?.surname || ''}`.trim() || 'İsimsiz',
+            _phone: data.customerPhone || data.formData?.phone || '',
+            _email: data.customerEmail || data.formData?.email || '',
+            _status: data.status === 'draft' ? 'Beklemede' : (data.status || 'Beklemede'),
+            _tcKimlik: data.tcKimlik || data.formData?.tcKimlik || '',
+            _passportNo: data.passportNo || data.formData?.passportNo || '',
+          };
+        });
+        items.sort((a, b) => {
+          const ta = a.createdAt?.seconds || a.createdAt || '';
+          const tb = b.createdAt?.seconds || b.createdAt || '';
+          return tb > ta ? 1 : -1;
+        });
+        setApplications(items);
+      } catch (e) {
+        console.error('DS-160 yükleme hatası:', e);
+        showToast?.(`DS-160 yüklenemedi: ${e.message}`, 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadApplications();
+  }, []);
 
   const statusColors = {
-    'Taslak':      { bg: 'rgba(100,116,139,0.2)', border: 'rgba(100,116,139,0.4)', text: '#94a3b8' },
-    'Gönderildi':  { bg: 'rgba(59,130,246,0.2)',  border: 'rgba(59,130,246,0.4)',  text: '#3b82f6' },
-    'Tamamlandı':  { bg: 'rgba(16,185,129,0.2)',  border: 'rgba(16,185,129,0.4)',  text: '#10b981' },
+    'Beklemede': '#f59e0b',
+    'draft': '#f59e0b',
+    'İnceleniyor': '#3b82f6',
+    'Tamamlandı': '#10b981',
+    'Reddedildi': '#ef4444',
+    'İptal': '#64748b'
   };
 
-  const StatCard = ({ value, label, color }) => (
-    <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
-      <div style={{ fontSize: '28px', fontWeight: '700', color }}>{value}</div>
-      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{label}</div>
-    </div>
-  );
+  const filtered = applications.filter(a => {
+    const q = searchQuery.toLowerCase();
+    const matchQ = !q ||
+      (a._name || '').toLowerCase().includes(q) ||
+      (a._email || '').toLowerCase().includes(q) ||
+      (a._phone || '').includes(q) ||
+      (a._tcKimlik || '').includes(q);
+    const matchS = statusFilter === 'all' || a._status === statusFilter || a.status === statusFilter;
+    return matchQ && matchS;
+  });
+
+  const statuses = ['all', 'Beklemede', 'İnceleniyor', 'Tamamlandı', 'Reddedildi', 'İptal'];
 
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px' }}>
-      {/* Başlık */}
-      <h2 style={{ fontSize: '22px', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        🇺🇸 DS-160 ABD Vize Başvuruları
-      </h2>
-
-      {/* İstatistik kartları */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <StatCard value={total}      label="Toplam"    color="#e8f1f8" />
-        <StatCard value={taslak}     label="Taslak"    color="#94a3b8" />
-        <StatCard value={gonderildi} label="Gönderildi" color="#3b82f6" />
-        <StatCard value={tamamlandi} label="Tamamlandı" color="#10b981" />
+    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            🇺🇸 Amerika Vize Başvuruları
+          </h2>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>DS-160 formu gönderen müşteriler</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => setShowUrlModal(true)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+            ⚙️ Site URL
+          </button>
+          <button onClick={() => window.open(ds160Url, '_blank')} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', padding: '8px 14px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+            🔗 DS-160 Sitesi
+          </button>
+          <button onClick={() => {
+            navigator.clipboard.writeText(ds160Url);
+            showToast?.('Link kopyalandı!', 'success');
+          }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 14px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>
+            📋 Link Kopyala
+          </button>
+        </div>
       </div>
 
-      {/* Başvuru Linki */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '14px', padding: '20px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-          <span style={{ fontSize: '16px' }}>🔗</span>
-          <span style={{ fontSize: '15px', fontWeight: '600', color: '#8b5cf6' }}>Başvuru Linki</span>
-        </div>
-        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
-          Bu linki müşterilerinizle paylaşın — herkes kendi başvurusunu oluşturup doldurur.
-        </p>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, padding: '12px 16px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '10px', fontSize: '13px', color: '#a78bfa', fontFamily: 'monospace', minWidth: '200px' }}>
-            {ds160Url}
+      {/* Site Link Banner */}
+      <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '20px' }}>🌐</span>
+          <div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>DS-160 Başvuru Sayfası</p>
+            <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>{ds160Url}</p>
           </div>
-          <button
-            onClick={() => { navigator.clipboard.writeText(ds160Url); showToast('Link kopyalandı', 'success'); }}
-            style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
-          >
-            📋 Kopyala
-          </button>
-          <button
-            onClick={() => {
-              const msg = `Merhaba,\n\nABD vize başvurunuz için DS-160 formunu aşağıdaki linkten doldurabilirsiniz:\n\n${ds160Url}\n\nPaydos Turizm`;
-              window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-            }}
-            style={{ padding: '12px 20px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
-          >
-            💬 WhatsApp
-          </button>
         </div>
+        <button onClick={() => {
+          navigator.clipboard.writeText(ds160Url);
+          showToast?.('Link kopyalandı!', 'success');
+        }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 16px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+          📋 Kopyala
+        </button>
       </div>
 
-      {/* Arama + Filtreler */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Arama + Filtre */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <input
-          type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="🔍 İsim veya telefon ara..."
-          style={{ flex: 1, minWidth: '200px', padding: '11px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '13px', outline: 'none' }}
+          placeholder="🔍 Ad, e-posta, telefon ile ara..."
+          style={{ flex: 1, minWidth: '200px', padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '13px', outline: 'none' }}
         />
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          style={{ padding: '11px 16px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '10px', color: '#3b82f6', cursor: isRefreshing ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}
-        >
-          {isRefreshing ? '⏳' : '🔄'} Yenile
-        </button>
-        {['Tümü', 'Taslak', 'Gönderildi', 'Tamamlandı'].map(s => (
-          <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            style={{
-              padding: '10px 16px',
-              background: filterStatus === s
-                ? (s === 'Tümü' ? 'rgba(139,92,246,0.3)' : s === 'Taslak' ? 'rgba(100,116,139,0.3)' : s === 'Gönderildi' ? 'rgba(59,130,246,0.3)' : 'rgba(16,185,129,0.3)')
-                : 'rgba(255,255,255,0.05)',
-              border: filterStatus === s
-                ? (s === 'Tümü' ? '1px solid rgba(139,92,246,0.5)' : s === 'Taslak' ? '1px solid rgba(100,116,139,0.5)' : s === 'Gönderildi' ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(16,185,129,0.5)')
-                : '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '8px',
-              color: filterStatus === s
-                ? (s === 'Tümü' ? '#a78bfa' : s === 'Taslak' ? '#94a3b8' : s === 'Gönderildi' ? '#3b82f6' : '#10b981')
-                : '#64748b',
-              cursor: 'pointer', fontSize: '12px', fontWeight: filterStatus === s ? '600' : '400', whiteSpace: 'nowrap'
-            }}
-          >
-            {s === 'Tümü' ? `Tümü (${total})` : s === 'Taslak' ? `📝 Taslak (${taslak})` : s === 'Gönderildi' ? `📨 Gönderildi (${gonderildi})` : `✅ Tamamlandı (${tamamlandi})`}
-          </button>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {statuses.map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)} style={{
+              padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none',
+              background: statusFilter === s ? (s === 'all' ? '#f59e0b' : statusColors[s] || '#f59e0b') : 'rgba(255,255,255,0.05)',
+              color: statusFilter === s ? 'white' : '#94a3b8'
+            }}>
+              {s === 'all' ? `Tümü (${applications.length})` : s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* İstatistik Kartları */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+        {[
+          { label: 'Toplam', value: applications.length, color: '#3b82f6' },
+          { label: 'Beklemede', value: applications.filter(a => a.status === 'Beklemede' || !a.status).length, color: '#f59e0b' },
+          { label: 'İnceleniyor', value: applications.filter(a => a.status === 'İnceleniyor').length, color: '#3b82f6' },
+          { label: 'Tamamlandı', value: applications.filter(a => a.status === 'Tamamlandı').length, color: '#10b981' },
+        ].map(stat => (
+          <div key={stat.label} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${stat.color}30`, borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{stat.label}</div>
+          </div>
         ))}
       </div>
 
-      {/* Başvuru Listesi */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🇺🇸</div>
-            <div style={{ fontSize: '15px' }}>
-              {ds160Applications.length === 0
-                ? 'Henüz başvuru yok. Müşteriler linki kullandıkça burada görünür.'
-                : 'Arama kriterlerine uygun başvuru bulunamadı.'}
+      {/* Liste */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
+          <p>Yükleniyor...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🇺🇸</div>
+          <p style={{ fontSize: '16px', fontWeight: '600', color: '#94a3b8' }}>
+            {applications.length === 0 ? 'Henüz başvuru yok' : 'Arama sonucu bulunamadı'}
+          </p>
+          <p style={{ fontSize: '13px', marginTop: '8px' }}>
+            {applications.length === 0 ? `DS-160 linkini paylaşın: ${ds160Url}` : 'Farklı bir arama deneyin'}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {filtered.map(app => {
+            const status = app._status || 'Beklemede';
+            const statusColor = statusColors[status] || '#f59e0b';
+            const createdAt = app.createdAt?.toDate ? app.createdAt.toDate() : app.createdAt ? new Date(app.createdAt.seconds ? app.createdAt.seconds * 1000 : app.createdAt) : null;
+
+            // Tamamlanma yüzdesi — dolu alan sayısına göre
+            const formData = app.formData || {};
+            const allFields = Object.values(formData).filter(v => v !== null && v !== undefined && v !== '');
+            const totalExpected = 40; // DS-160 formunda yaklaşık toplam alan
+            const filledCount = allFields.length;
+            const completionPct = Math.min(100, Math.round((filledCount / totalExpected) * 100));
+            const pctColor = completionPct >= 80 ? '#10b981' : completionPct >= 40 ? '#f59e0b' : '#ef4444';
+
+            return (
+              <div key={app._docId} onClick={() => setSelectedApp(selectedApp?._docId === app._docId ? null : app)}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.2s' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>🇺🇸</div>
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '14px', color: '#ffffff' }}>
+                        {app._name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        {app._email && <span>{app._email}</span>}
+                        {app._phone && <span style={{ marginLeft: '8px' }}>📞 {app._phone}</span>}
+                      </div>
+                      {createdAt && (
+                        <div style={{ fontSize: '10px', color: '#475569', marginTop: '2px' }}>
+                          📅 {createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* Tamamlanma yüzdesi */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '60px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${completionPct}%`, height: '100%', background: pctColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                        </div>
+                        <span style={{ fontSize: '11px', color: pctColor, fontWeight: '600', minWidth: '32px' }}>{completionPct}%</span>
+                      </div>
+                      <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+                        {status}
+                      </span>
+                      {/* Sil butonu */}
+                      <button onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`${app._name} başvurusunu silmek istiyor musunuz?`)) return;
+                        try {
+                          await deleteDoc(doc(db, 'ds160_applications', app._docId));
+                          setApplications(prev => prev.filter(a => a._docId !== app._docId));
+                          if (selectedApp?._docId === app._docId) setSelectedApp(null);
+                          showToast?.('Başvuru silindi', 'info');
+                        } catch(err) { showToast?.('Silme başarısız', 'error'); }
+                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', fontSize: '13px' }} title="Sil">
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Detail */}
+                {selectedApp?._docId === app._docId && (() => {
+                  // PDF için field order (form doldurma sırasına göre)
+                  const fieldOrder = ['firstName','lastName','surname','givenName','fullNameTr','tcKimlik','birthDate','birthCity','birthPlace','birthCountry','gender','nationality','otherNationality','maritalStatus','spouseName','spouseBirthDate','fatherName','motherName','fatherBirth','motherBirth','fatherInUS','motherInUS','homeAddress','homeDistrict','homeCity','homeZip','permanentResident','phone','otherPhone','email','otherEmail','instagram','securityQuestion','passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','lostPassport','occupation','employerName','employerAddress','employerDistrict','employerCity','employerZip','jobDescription','schoolName','educationLevel','visaType','arrivalDate','stayDuration','usAddress','tripPayer','hasCompanion','companionName','companionRelation','travelHistory','relativeInUS','relativeInUSName','hadUSVisa','beenToUS','visaRefused','immigrationPetition','sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'];
+                  const fieldNames = { firstName:'Ad',lastName:'Soyad',surname:'Soyad',givenName:'Ad (Pasaporttaki)',fullNameTr:'Tam Ad',tcKimlik:'TC Kimlik',birthDate:'Doğum Tarihi',birthCity:'Doğum Şehri',birthPlace:'Doğum Yeri',birthCountry:'Doğum Ülkesi',gender:'Cinsiyet',nationality:'Uyruk',otherNationality:'Diğer Uyruk',maritalStatus:'Medeni Durum',spouseName:'Eş Adı',spouseBirthDate:'Eş Doğum Tarihi',fatherName:'Baba Adı',motherName:'Anne Adı',fatherBirth:'Baba Doğum Tarihi',motherBirth:'Anne Doğum Tarihi',fatherInUS:'Babası ABD de mi',motherInUS:'Annesi ABD de mi',homeAddress:'Ev Adresi',homeDistrict:'İkamet İlçesi',homeCity:'İkamet Şehri',homeZip:'Posta Kodu',permanentResident:'Daimi Oturum İzni',phone:'Telefon',otherPhone:'Diğer Telefon',email:'E-posta',otherEmail:'Diğer E-posta',instagram:'Instagram',securityQuestion:'Güvenlik Sorusu',passportType:'Pasaport Türü',passportNo:'Pasaport No',passportNumber:'Pasaport No',passportCity:'Pasaport Verilen Şehir',passportIssueDate:'Pasaport Veriliş',passportExpiry:'Pasaport Geçerlilik',passportExpDate:'Pasaport Geçerlilik',lostPassport:'Kayıp Pasaport',occupation:'Meslek',employerName:'İşyeri Adı',employerAddress:'İşyeri Adresi',employerDistrict:'İşyeri İlçesi',employerCity:'İşyeri Şehri',employerZip:'İşyeri Posta Kodu',jobDescription:'İş Tanımı',schoolName:'Okul Adı',educationLevel:'Eğitim Düzeyi',visaType:'Vize Türü',arrivalDate:'Varış Tarihi',stayDuration:'Kalış Süresi',usAddress:'ABD Adresi',tripPayer:'Seyahati Ödeyen',hasCompanion:'Eşlik Eden Var mı',companionName:'Eşlik Eden',companionRelation:'Eşlik Eden Yakınlığı',travelHistory:'Seyahat Geçmişi',relativeInUS:'ABD de Akraba',relativeInUSName:'ABD Akraba Adı',hadUSVisa:'Önceki ABD Vizesi',beenToUS:'Önceki ABD Ziyareti',visaRefused:'Vize Reddi',immigrationPetition:'Göçmenlik Başvurusu',sec_drugs:'Uyuşturucu',sec_laundering:'Kara Para',sec_trafficking:'İnsan Ticareti',sec_prostitution:'Fuhuş',sec_terrorism:'Terör',sec_genocide:'Soykırım',sec_torture:'İşkence',sec_violence:'Şiddet',sec_assassin:'Suikast',sec_military:'Askeri Sorun',sec_spy:'Casusluk',sec_disorder:'Akıl Hastalığı',sec_arrested:'Tutuklanma',sec_disease:'Bulaşıcı Hastalık',sec_deported:'Sınır Dışı' };
+                  const tr = k => fieldNames[k] || k;
+                  return (
+                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* Durum Güncelle + PDF */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>Durum Güncelle:</div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {['Beklemede', 'İnceleniyor', 'Tamamlandı', 'Reddedildi', 'İptal'].map(s => (
+                            <button key={s} onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await setDoc(doc(db, 'ds160_applications', app._docId), { status: s }, { merge: true });
+                                setApplications(prev => prev.map(a => a._docId === app._docId ? {...a, status: s, _status: s} : a));
+                                setSelectedApp({...app, status: s, _status: s});
+                                showToast?.(`Durum "${s}" olarak güncellendi`, 'success');
+                              } catch(err) { showToast?.('Güncelleme başarısız', 'error'); }
+                            }} style={{
+                              padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none',
+                              background: app._status === s ? `${statusColors[s]}40` : 'rgba(255,255,255,0.05)',
+                              color: app._status === s ? statusColors[s] : '#94a3b8',
+                              outline: app._status === s ? `1px solid ${statusColors[s]}60` : 'none'
+                            }}>
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* PDF İndir */}
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        const fieldNames = { firstName:'Ad',lastName:'Soyad',surname:'Soyad',givenName:'Ad (Pasaporttaki)',fullNameTr:'Tam Ad',phone:'Telefon',email:'E-posta',otherEmail:'Diğer E-posta',birthDate:'Doğum Tarihi',birthPlace:'Doğum Yeri',birthCountry:'Doğum Ülkesi',birthCity:'Doğum Şehri',gender:'Cinsiyet',nationality:'Uyruk',maritalStatus:'Medeni Durum',passportNo:'Pasaport No',passportNumber:'Pasaport No',passportType:'Pasaport Türü',passportCity:'Pasaport Verilen Şehir',passportIssueDate:'Pasaport Veriliş',passportExpiry:'Pasaport Geçerlilik',passportExpDate:'Pasaport Geçerlilik',lostPassport:'Kayıp Pasaport',tcKimlik:'TC Kimlik',homeCity:'İkamet Şehri',homeDistrict:'İkamet İlçesi',homeAddress:'Ev Adresi',homeZip:'Posta Kodu',permanentResident:'Daimi Oturum İzni',spouseName:'Eş Adı',fatherName:'Baba Adı',motherName:'Anne Adı',fatherBirth:'Baba Doğum Tarihi',motherBirth:'Anne Doğum Tarihi',fatherInUS:'Babasi ABD de mi',motherInUS:'Annesi ABD de mi',occupation:'Meslek',employerName:'İşyeri Adı',employerAddress:'İşyeri Adresi',employerCity:'İşyeri Şehri',employerDistrict:'İşyeri İlçesi',employerZip:'İşyeri Posta Kodu',jobDescription:'İş Tanımı',schoolName:'Okul Adı',emergencyName:'Acil Kişi',emergencyPhone:'Acil Telefon',usAddress:'ABD Adresi',relativeInUS:'ABD de Akraba',hadUSVisa:'Önceki ABD Vizesi',beenToUS:'Önceki ABD Ziyareti',visaRefused:'Vize Reddi',visaType:'Vize Türü',travelHistory:'Seyahat Geçmişi',arrivalDate:'Varış Tarihi',stayDuration:'Kalış Süresi',tripPayer:'Seyahati Ödeyen',companionName:'Eşlik Eden',hasCompanion:'Eşlik Eden Var mi',instagram:'Instagram',otherNationality:'Diğer Uyruk',immigrationPetition:'Göçmenlik Başvurusu',securityQuestion:'Güvenlik Sorusu',sec_drugs:'Uyuşturucu',sec_laundering:'Kara Para',sec_terrorism:'Terör',sec_violence:'Şiddet',sec_trafficking:'İnsan Ticareti',sec_genocide:'Soykırım',sec_torture:'İşkence',sec_disorder:'Akıl Hastalığı',sec_arrested:'Tutuklanma',sec_disease:'Bulaşıcı Hastalık' };
+                        const tr = k => fieldNames[k] || k;
+                        const rows = [
+                          ['Ad', app._name], ['Telefon', app._phone], ['E-posta', app._email],
+                          ['TC Kimlik', app._tcKimlik], ['Pasaport No', app._passportNo],
+                          app.currentStep ? ['Adım', `${app.currentStep}. adım`] : null,
+                          // Form doldurma sırasına göre
+                          ...fieldOrder.filter(k => app.formData?.[k] && typeof app.formData[k] === 'string' && app.formData[k]).map(k => [tr(k), app.formData[k]]),
+                          // fieldOrder'da olmayan alanlar
+                          ...Object.entries(app.formData || {}).filter(([k,v]) => !fieldOrder.includes(k) && typeof v === 'string' && v).map(([k,v]) => [tr(k), v])
+                        ].filter(Boolean);
+                        const doc2 = new jsPDF();
+                        // Başlık
+                        doc2.setFillColor(26, 58, 92);
+                        doc2.rect(0, 0, 210, 30, 'F');
+                        doc2.setFontSize(16); doc2.setTextColor(255);
+                        doc2.text('DS-160 Basvuru Formu', 15, 14);
+                        doc2.setFontSize(9); doc2.setTextColor(200);
+                        doc2.text(`Basvuran: ${(app._name||'').replace(/[İı]/g, i => i==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C')}   |   ${new Date().toLocaleDateString('tr-TR')}`, 15, 24);
+                        // Tablo
+                        let y = 38;
+                        const colW = [55, 130];
+                        doc2.setFontSize(8);
+                        rows.forEach(([k, v], i) => {
+                          if (y > 275) { doc2.addPage(); y = 15; }
+                          const bg = i % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
+                          doc2.setFillColor(...bg); doc2.rect(15, y - 4, 180, 8, 'F');
+                          doc2.setTextColor(80, 80, 80); doc2.setFont(undefined, 'bold');
+                          const kClean = String(k).replace(/[İı]/g, x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
+                          doc2.text(kClean, 17, y + 1);
+                          doc2.setTextColor(30, 30, 30); doc2.setFont(undefined, 'normal');
+                          const vClean = String(v).replace(/[İı]/g, x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
+                          const lines = doc2.splitTextToSize(vClean, 125);
+                          doc2.text(lines, 72, y + 1);
+                          y += Math.max(8, lines.length * 5);
+                        });
+                        doc2.save(`DS160_${(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
+                      }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                        📄 PDF İndir
+                      </button>
+                    </div>
+                  </div>
+                  );
+                })()}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* URL Ayar Modal */}
+      {showUrlModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '480px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>⚙️ DS-160 Site URL Ayarı</h3>
+            <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Site URL</label>
+            <input
+              value={urlInput || ds160Url}
+              onChange={e => setUrlInput(e.target.value)}
+              placeholder="https://ds160-paydos.netlify.app"
+              style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setShowUrlModal(false)} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>İptal</button>
+              <button onClick={() => {
+                const newUrl = urlInput.trim() || ds160Url;
+                setAppSettings(prev => ({...prev, ds160SiteUrl: newUrl}));
+                showToast?.('URL kaydedildi', 'success');
+                setShowUrlModal(false);
+              }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '700', cursor: 'pointer' }}>💾 Kaydet</button>
             </div>
           </div>
-        ) : filtered.map(app => {
-          const cust = matchCustomer(app);
-          const progress = calcProgress(app);
-          const sc = statusColors[app.status] || statusColors['Taslak'];
-          const isExpanded = selectedApp?._docId === app._docId;
-          const fullName = `${app.firstName || ''} ${app.lastName || ''}`.trim() || '—';
-          const dateStr = app.createdAt
-            ? new Date(app.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—';
-
-          return (
-            <div key={app._docId || app.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
-              {/* Satır */}
-              <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: '12px', flexWrap: 'wrap' }}>
-                {/* İsim + telefon */}
-                <div style={{ flex: 1, minWidth: '140px' }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px', color: '#e8f1f8' }}>{fullName}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {app.phone || '—'}
-                    {cust && (
-                      <span style={{ fontSize: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '4px', padding: '1px 6px', color: '#3b82f6', fontWeight: '600' }}>
-                        👤 CRM
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Durum badge */}
-                <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', background: sc.bg, border: `1px solid ${sc.border}`, color: sc.text, fontWeight: '600', whiteSpace: 'nowrap' }}>
-                  {app.status || 'Taslak'}
-                </span>
-
-                {/* Progress */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '80px' }}>
-                  <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden', width: '60px' }}>
-                    <div style={{ height: '100%', width: `${progress}%`, background: progress === 100 ? '#10b981' : '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
-                  </div>
-                  <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>%{progress}</span>
-                </div>
-
-                {/* Tarih */}
-                <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>{dateStr}</span>
-
-                {/* Butonlar */}
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <a
-                    href={`${ds160Url}?id=${app._docId || app.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Formu aç"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', textDecoration: 'none', fontSize: '14px' }}
-                  >🔗</a>
-                  {app.phone && (
-                    <button
-                      title="WhatsApp"
-                      onClick={() => window.open(`https://wa.me/90${app.phone.replace(/\D/g,'').replace(/^0/,'')}`, '_blank')}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '14px', border: 'none' }}
-                    >💬</button>
-                  )}
-                  {/* Durum değiştir dropdown */}
-                  <select
-                    value={app.status || 'Taslak'}
-                    onChange={e => updateStatus(app, e.target.value)}
-                    style={{ padding: '6px 8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '11px', cursor: 'pointer', outline: 'none' }}
-                  >
-                    <option value="Taslak">Taslak</option>
-                    <option value="Gönderildi">Gönderildi</option>
-                    <option value="Tamamlandı">Tamamlandı</option>
-                  </select>
-                  <button
-                    onClick={() => setSelectedApp(isExpanded ? null : app)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-                  >▼</button>
-                </div>
-              </div>
-
-              {/* Detay paneli */}
-              {isExpanded && (
-                <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', fontSize: '12px' }}>
-                    {[
-                      { label: 'Ad', value: app.firstName },
-                      { label: 'Soyad', value: app.lastName },
-                      { label: 'Telefon', value: app.phone },
-                      { label: 'E-posta', value: app.email },
-                      { label: 'Doğum Tarihi', value: app.birthDate ? formatDate(app.birthDate) : null },
-                      { label: 'Pasaport No', value: app.passportNo },
-                      { label: 'Seyahat Amacı', value: app.travelPurpose },
-                      { label: 'Adres', value: app.address },
-                    ].map(({ label, value }) => value ? (
-                      <div key={label}>
-                        <div style={{ color: '#64748b', marginBottom: '3px' }}>{label}</div>
-                        <div style={{ color: '#e8f1f8', fontWeight: '500' }}>{value}</div>
-                      </div>
-                    ) : null)}
-                  </div>
-                  {cust && (
-                    <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', fontSize: '12px', color: '#3b82f6' }}>
-                      👤 CRM'de eşleşti: <strong>{cust.firstName} {cust.lastName}</strong>{cust.companyName ? ` — ${cust.companyName}` : ''}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Alt not */}
-      <div style={{ marginTop: '24px', padding: '12px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', fontSize: '12px', color: '#94a3b8' }}>
-        💡 Müşteriler linki açıp ad soyad + telefon girdikten sonra başvuru otomatik oluşturulur ve buraya düşer. Ayarlar → DS-160 Site URL'den adresi değiştirebilirsiniz.
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5741,6 +6609,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [newPersonalField, setNewPersonalField] = useState('');
   const [newVisaStatus, setNewVisaStatus] = useState('');
   const [newDuration, setNewDuration] = useState({ category: 'usa', value: '', price: 0, currency: '€' });
+  const [newRoomType, setNewRoomType] = useState('');
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -5854,11 +6723,17 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             <button onClick={() => setActiveTab('visaSettings')} style={{ padding: '12px 16px', background: activeTab === 'visaSettings' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'visaSettings' ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'visaSettings' ? '#8b5cf6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'visaSettings' ? '600' : '400' }}>
               🌍 Vize Ayarları
             </button>
-            <button onClick={() => setActiveTab('ds160Settings')} style={{ padding: '12px 16px', background: activeTab === 'ds160Settings' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'ds160Settings' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'ds160Settings' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'ds160Settings' ? '600' : '400' }}>
-              🇺🇸 DS-160 Ayarları
-            </button>
             <button onClick={() => setActiveTab('statusManagement')} style={{ padding: '12px 16px', background: activeTab === 'statusManagement' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'statusManagement' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'statusManagement' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'statusManagement' ? '600' : '400' }}>
               📊 Durum Yönetimi
+            </button>
+            <button onClick={() => setActiveTab('musteri')} style={{ padding: '12px 16px', background: activeTab === 'musteri' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'musteri' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'musteri' ? '#ef4444' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'musteri' ? '600' : '400' }}>
+              🤖 Müşteri
+            </button>
+            <button onClick={() => setActiveTab('tourSettings')} style={{ padding: '12px 16px', background: activeTab === 'tourSettings' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'tourSettings' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'tourSettings' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'tourSettings' ? '600' : '400' }}>
+              🎫 Turlar
+            </button>
+            <button onClick={() => setActiveTab('mailSettings')} style={{ padding: '12px 16px', background: activeTab === 'mailSettings' ? 'rgba(20,184,166,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'mailSettings' ? '1px solid rgba(20,184,166,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'mailSettings' ? '#14b8a6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'mailSettings' ? '600' : '400' }}>
+              📧 Mail Ayarları
             </button>
           </>
         )}
@@ -5883,31 +6758,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               <input type="text" value={newProcessor} onChange={e => setNewProcessor(e.target.value)} placeholder="Yeni işlemci" style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} onKeyPress={e => { if (e.key === 'Enter' && newProcessor.trim()) { setAppSettings({ ...appSettings, processors: [...(appSettings.processors || []), newProcessor.trim()] }); setNewProcessor(''); } }} />
               <button onClick={() => { if (newProcessor.trim()) { setAppSettings({ ...appSettings, processors: [...(appSettings.processors || []), newProcessor.trim()] }); setNewProcessor(''); } }} style={{ padding: '8px 12px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }}>➕</button>
             </div>
-          </div>
-
-          {/* WhatsApp Mesaj Şablonu */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#10b981' }}>💬 WhatsApp Mesaj Şablonu</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>
-              Kullanılabilir değişkenler: {'{isim}'}, {'{ulke}'}, {'{tarih}'}, {'{saat}'}, {'{pnr}'}
-            </p>
-            <textarea
-              value={appSettings?.whatsappTemplate || ''}
-              onChange={e => setAppSettings({ ...appSettings, whatsappTemplate: e.target.value })}
-              placeholder="WhatsApp mesaj şablonunuzu yazın..."
-              style={{ 
-                width: '100%', 
-                minHeight: '150px', 
-                padding: '12px', 
-                background: 'rgba(255,255,255,0.05)', 
-                border: '1px solid rgba(255,255,255,0.1)', 
-                borderRadius: '8px', 
-                color: '#e8f1f8', 
-                fontSize: '12px',
-                fontFamily: 'inherit',
-                resize: 'vertical'
-              }}
-            />
           </div>
 
         </div>
@@ -5944,6 +6794,29 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                 boxSizing: 'border-box'
               }}
             />
+          </div>
+
+          {/* Vize Başvuru Durumları */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>📋 Vize Başvuru Durumları</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Vize başvuru sürecinde kullanılan durum etiketleri</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+              {(appSettings?.visaStatuses || []).map((status, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.15)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                  <span style={{ fontSize: '12px', color: '#10b981' }}>{status}</span>
+                  <button onClick={() => setAppSettings({ ...appSettings, visaStatuses: appSettings.visaStatuses.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input type="text" value={newVisaStatus} onChange={e => setNewVisaStatus(e.target.value)}
+                placeholder="Yeni durum (örn: Belgeler Eksik)"
+                style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }}
+                onKeyDown={e => { if (e.key === 'Enter' && newVisaStatus.trim()) { setAppSettings({ ...appSettings, visaStatuses: [...(appSettings.visaStatuses || []), newVisaStatus.trim()] }); setNewVisaStatus(''); } }}
+              />
+              <button onClick={() => { if (newVisaStatus.trim()) { setAppSettings({ ...appSettings, visaStatuses: [...(appSettings.visaStatuses || []), newVisaStatus.trim()] }); setNewVisaStatus(''); } }}
+                style={{ padding: '8px 12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }}>➕</button>
+            </div>
           </div>
 
           {/* Vize Türleri */}
@@ -6230,38 +7103,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         </div>
       )}
 
-      {/* 🇺🇸 DS-160 AYARLARI */}
-      {activeTab === 'ds160Settings' && isAdmin && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <h3 style={{ margin: '0 0 20px', fontSize: '15px', color: '#3b82f6' }}>🇺🇸 DS-160 Site Ayarları</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={labelStyle}>DS-160 Site URL</label>
-              <input
-                type="url"
-                value={appSettings?.ds160Url || 'https://ds160-paydos.netlify.app'}
-                onChange={e => setAppSettings({ ...appSettings, ds160Url: e.target.value })}
-                placeholder="https://ds160-paydos.netlify.app"
-                style={inputStyle}
-              />
-              <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
-                Müşterilere paylaşılan DS-160 form sitesinin adresi. Amerika Vize modülündeki link buradan alınır.
-              </p>
-            </div>
-            <div style={{ padding: '12px 16px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', fontSize: '12px', color: '#64748b' }}>
-              <div style={{ marginBottom: '6px', color: '#3b82f6', fontWeight: '600' }}>💡 Nasıl çalışır?</div>
-              Müşteri bu linki açar, ad soyad + telefon girer. Başvuru otomatik Firestore'a (<code style={{ color: '#94a3b8' }}>ds160_applications</code>) kaydedilir ve Amerika Vize modülünde görünür.
-            </div>
-            <button
-              onClick={() => showToast('DS-160 ayarları kaydedildi', 'success')}
-              style={{ alignSelf: 'flex-start', padding: '11px 24px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-            >
-              💾 Kaydet
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 📊 DURUM YÖNETİMİ */}
       {activeTab === 'statusManagement' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -6308,47 +7149,125 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             </div>
           </div>
 
-          {/* Vize Başvuru Durumları */}
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#10b981' }}>📋 Vize Başvuru Durumları</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>
-              Vize başvuru sürecinde kullanılan durum etiketleri
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-              {(appSettings?.visaStatuses || []).map((status, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.15)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>
-                  <span style={{ fontSize: '12px', color: '#10b981' }}>{status}</span>
-                  <button onClick={() => setAppSettings({ ...appSettings, visaStatuses: appSettings.visaStatuses.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
-                </div>
-              ))}
+          {/* Vize Başvuru Durumları artık Vize Ayarları sekmesinde */}
+
+        </div>
+      )}
+
+      {/* MÜŞTERİ — Telegram Bot + AI API Key */}
+      {activeTab === 'musteri' && isAdmin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+          {/* Telegram Bot */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #0088cc, #006ba6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>✈️</div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>Telegram Bot</h3>
+                <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>@paydoscrm_bot — Müşteri bildirimleri ve sorgular</p>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input 
-                type="text" 
-                value={newVisaStatus} 
-                onChange={e => setNewVisaStatus(e.target.value)} 
-                placeholder="Yeni durum (örn: Belgeler Eksik)" 
-                style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} 
-                onKeyPress={e => { 
-                  if (e.key === 'Enter' && newVisaStatus.trim()) { 
-                    setAppSettings({ ...appSettings, visaStatuses: [...(appSettings.visaStatuses || []), newVisaStatus.trim()] }); 
-                    setNewVisaStatus(''); 
-                  } 
-                }} 
-              />
-              <button 
-                onClick={() => { 
-                  if (newVisaStatus.trim()) { 
-                    setAppSettings({ ...appSettings, visaStatuses: [...(appSettings.visaStatuses || []), newVisaStatus.trim()] }); 
-                    setNewVisaStatus(''); 
-                  } 
-                }} 
-                style={{ padding: '8px 12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }}
-              >
-                ➕
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={labelStyle}>Bot Token</label>
+                <input
+                  type="password"
+                  value={appSettings?.telegramBotToken || ''}
+                  onChange={e => setAppSettings({ ...appSettings, telegramBotToken: e.target.value })}
+                  placeholder="1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ"
+                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px' }}
+                />
+                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>BotFather'dan alınan token. Firebase Functions bu değeri okur.</p>
+              </div>
+              <div>
+                <label style={labelStyle}>Telegram Chat ID (Bildirim Grubu)</label>
+                <input
+                  type="text"
+                  value={appSettings?.telegramChatId || ''}
+                  onChange={e => setAppSettings({ ...appSettings, telegramChatId: e.target.value })}
+                  placeholder="-1001234567890"
+                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px' }}
+                />
+                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>Bildirimlerin gönderileceği grup veya kanal ID'si.</p>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(0,136,204,0.1)', borderRadius: '10px', border: '1px solid rgba(0,136,204,0.2)' }}>
+                <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
+                  ℹ️ Bu değerler <strong style={{ color: '#94a3b8' }}>Firestore → app_settings</strong> koleksiyonuna kaydedilir. Firebase Cloud Functions bu alanları okuyarak çalışır.
+                </p>
+              </div>
             </div>
           </div>
+
+          {/* AI API Key */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🤖</div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>AI (Claude API)</h3>
+                <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>AI Quick Add ve Telegram bot AI özellikleri için</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={labelStyle}>Anthropic API Key</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="password"
+                    value={appSettings?.claudeApiKey || ''}
+                    onChange={e => setAppSettings({ ...appSettings, claudeApiKey: e.target.value })}
+                    placeholder="sk-ant-api03-..."
+                    style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px', flex: 1 }}
+                  />
+                  {appSettings?.claudeApiKey && (
+                    <button onClick={() => setAppSettings({ ...appSettings, claudeApiKey: '' })}
+                      style={{ padding: '0 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>
+                      🗑️
+                    </button>
+                  )}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>
+                  console.anthropic.com'dan alınan API anahtarı. Buraya girilince 🤖 AI Quick Add doğrudan kullanır.
+                </p>
+              </div>
+              <div style={{ padding: '12px', background: appSettings?.claudeApiKey ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)', borderRadius: '10px', border: `1px solid ${appSettings?.claudeApiKey ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}` }}>
+                <p style={{ margin: 0, fontSize: '11px', color: appSettings?.claudeApiKey ? '#10b981' : '#f59e0b' }}>
+                  {appSettings?.claudeApiKey
+                    ? '✅ API Key kayıtlı — AI Quick Add aktif'
+                    : '⚠️ API Key girilmedi — AI Quick Add çalışmaz. Netlify env var olarak da ekleyebilirsiniz: CLAUDE_API_KEY'}
+                </p>
+              </div>
+              <div>
+                <label style={labelStyle}>AI Modeli</label>
+                <select
+                  value={appSettings?.claudeModel || 'claude-sonnet-4-20250514'}
+                  onChange={e => setAppSettings({ ...appSettings, claudeModel: e.target.value })}
+                  style={selectStyle}
+                >
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Önerilen)</option>
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Hızlı/Ucuz)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* DS-160 Site URL */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🇺🇸</div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>DS-160 Site URL</h3>
+                <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>Amerika vize başvuru formu sitesi</p>
+              </div>
+            </div>
+            <input
+              type="text"
+              value={appSettings?.ds160SiteUrl || 'https://ds160-paydos.netlify.app'}
+              onChange={e => setAppSettings({ ...appSettings, ds160SiteUrl: e.target.value })}
+              placeholder="https://ds160-paydos.netlify.app"
+              style={{ ...inputStyle }}
+            />
+          </div>
+
         </div>
       )}
 
@@ -6516,6 +7435,192 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
           </div>
         </div>
       )}
+      {/* 🎫 TUR AYARLARI — Oda Tipleri */}
+      {activeTab === 'tourSettings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#f59e0b' }}>🛏️ Oda Tipleri</h3>
+            <p style={{ margin: '0 0 16px', fontSize: '11px', color: '#64748b' }}>Rezervasyon formunda görünecek oda tiplerini yönetin. Örn: Single, Double, Twin, Triple, Suite</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+              {(appSettings?.roomTypes || ['Single', 'Double', 'Twin', 'Triple']).map((rt, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(245,158,11,0.15)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>{rt}</span>
+                  <button onClick={() => setAppSettings({ ...appSettings, roomTypes: (appSettings.roomTypes || ['Single', 'Double', 'Twin', 'Triple']).filter((_, i) => i !== idx) })}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input type="text" value={newRoomType} onChange={e => setNewRoomType(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newRoomType.trim()) { setAppSettings({ ...appSettings, roomTypes: [...(appSettings.roomTypes || []), newRoomType.trim()] }); setNewRoomType(''); } }}
+                placeholder="Oda tipi ekle (örn: Suite, Aile Odası...)"
+                style={{ flex: 1, padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
+              <button onClick={() => { if (newRoomType.trim()) { setAppSettings({ ...appSettings, roomTypes: [...(appSettings.roomTypes || []), newRoomType.trim()] }); setNewRoomType(''); } }}
+                style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+                ➕ Ekle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MAIL AYARLARI */}
+      {activeTab === 'mailSettings' && isAdmin && (() => {
+        const countries = [
+          { id: 'schengen', label: '🇪🇺 Schengen', color: '#10b981' },
+          { id: 'usa', label: '🇺🇸 Amerika', color: '#3b82f6' },
+          { id: 'russia', label: '🇷🇺 Rusya', color: '#ef4444' },
+          { id: 'uk', label: '🇬🇧 İngiltere', color: '#8b5cf6' },
+          { id: 'uae', label: '🇦🇪 BAE', color: '#f59e0b' },
+          { id: 'china', label: '🇨🇳 Çin', color: '#dc2626' },
+        ];
+        const [activeCountry, setActiveCountry] = React.useState('schengen');
+        const [testEmail, setTestEmail] = React.useState('');
+        const [testSending, setTestSending] = React.useState(false);
+
+        const currentTemplate = appSettings?.emailTemplates?.[activeCountry] || { subject: '', body: '' };
+
+        const updateTemplate = (field, value) => {
+          setAppSettings({
+            ...appSettings,
+            emailTemplates: {
+              ...(appSettings.emailTemplates || {}),
+              [activeCountry]: { ...currentTemplate, [field]: value }
+            }
+          });
+        };
+
+        const sendTest = async () => {
+          if (!testEmail.trim()) return;
+          setTestSending(true);
+          const result = await sendVisaEmail({
+            visa: { id: 'TEST001', categoryId: activeCountry, country: activeCountry, visaDuration: 'Test', customerEmail: testEmail },
+            customer: { firstName: 'Test', lastName: 'Müşteri', email: testEmail },
+            appSettings
+          });
+          setTestSending(false);
+          if (result.ok) showToast?.('✅ Test maili gönderildi', 'success');
+          else showToast?.(`❌ Hata: ${result.error}`, 'error');
+        };
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {/* SMTP Bilgi Kartı */}
+            <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+                SMTP bilgileri güvenlik nedeniyle Netlify Environment Variables olarak saklanır. Buradan değil, Netlify panosundan girilir.
+              </p>
+              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '14px', fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', lineHeight: 1.8 }}>
+                <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = mail.paydostur.com</div>
+                <div><span style={{ color: '#14b8a6' }}>SMTP_PORT</span> = 587</div>
+                <div><span style={{ color: '#14b8a6' }}>SMTP_USER</span> = vize@paydostur.com</div>
+                <div><span style={{ color: '#14b8a6' }}>SMTP_PASS</span> = ••••••••••••</div>
+                <div><span style={{ color: '#14b8a6' }}>SMTP_FROM</span> = vize@paydostur.com</div>
+              </div>
+              <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#475569' }}>
+                📍 Netlify → Site → Environment variables → Add variable
+              </p>
+            </div>
+
+            {/* Otomatik Mail Açma/Kapama */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Mail Gönderimi</h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu oluşturulunca müşteriye otomatik bilgilendirme maili gönder</p>
+                </div>
+                <div
+                  onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: !appSettings?.autoEmailOnVisa })}
+                  style={{
+                    width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer',
+                    background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)',
+                    position: 'relative', transition: 'background 0.2s', flexShrink: 0
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: '3px',
+                    left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px',
+                    width: '20px', height: '20px', borderRadius: '50%',
+                    background: 'white', transition: 'left 0.2s'
+                  }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Ülke Bazlı Şablonlar */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Ülke Bazlı Mail Şablonları</h3>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+                Değişkenler: <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{isim}'}</code>{' '}
+                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ulke}'}</code>{' '}
+                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{tarih}'}</code>{' '}
+                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ref_no}'}</code>{' '}
+                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{vize_turu}'}</code>
+              </p>
+
+              {/* Ülke Sekmeleri */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {countries.map(c => (
+                  <button key={c.id} onClick={() => setActiveCountry(c.id)}
+                    style={{ padding: '8px 12px', background: activeCountry === c.id ? `rgba(${c.id === 'schengen' ? '16,185,129' : c.id === 'usa' ? '59,130,246' : c.id === 'russia' ? '239,68,68' : c.id === 'uk' ? '139,92,246' : c.id === 'uae' ? '245,158,11' : '220,38,38'},0.2)` : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${activeCountry === c.id ? c.color + '66' : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: '8px', color: activeCountry === c.id ? c.color : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeCountry === c.id ? '600' : '400' }}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Konu */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
+                <input
+                  value={currentTemplate.subject}
+                  onChange={e => updateTemplate('subject', e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }}
+                  placeholder="Mail konusu..."
+                />
+              </div>
+
+              {/* Gövde */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
+                <textarea
+                  value={currentTemplate.body}
+                  onChange={e => updateTemplate('body', e.target.value)}
+                  rows={12}
+                  style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }}
+                  placeholder="Mail içeriği..."
+                />
+              </div>
+            </div>
+
+            {/* Test Mail Gönderimi */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>🧪 Test Maili Gönder</h3>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Seçili şablonu test etmek için bir adrese gönder</p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={e => setTestEmail(e.target.value)}
+                  placeholder="test@ornek.com"
+                  style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }}
+                />
+                <button
+                  onClick={sendTest}
+                  disabled={testSending || !testEmail.trim()}
+                  style={{ padding: '10px 18px', background: testSending ? 'rgba(20,184,166,0.3)' : 'linear-gradient(135deg, #14b8a6, #0d9488)', border: 'none', borderRadius: '8px', color: 'white', cursor: testSending ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                  {testSending ? '⏳ Gönderiliyor...' : '📤 Test Gönder'}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
@@ -6524,6 +7629,10 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeModule, setActiveModule] = useState('dashboard');
+  const [prevModule, setPrevModule] = useState(null);
+  const navigateTo = (mod) => { setPrevModule(activeModule); setActiveModule(mod); };
+  const navigateBack = () => { if (prevModule) { setActiveModule(prevModule); setPrevModule(null); } else setActiveModule('dashboard'); };
+  const [openCustomerId, setOpenCustomerId] = useState(null); // dashboard'dan müşteriye git
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [customers, setCustomers] = useState(defaultCustomers);
@@ -6533,7 +7642,6 @@ export default function App() {
   const [creditCards, setCreditCards] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [users, setUsers] = useState(defaultUsers);
-  const [ds160Applications, setDs160Applications] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [undoStack, setUndoStack] = useState([]);
@@ -6587,13 +7695,132 @@ export default function App() {
       ]
     },
     personalDetailsFields: ['Doğum Tarihi', 'Doğum Yeri', 'İkametgah İli', 'TK Üyelik No'],
-    visaStatuses: ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi'],
+    visaStatuses: ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi'],
+    roomTypes: ['Single', 'Double', 'Twin', 'Triple', 'Suite'],
     bankInfo: {
       bankName: 'Ziraat Bankası',
       accountName: 'PAYDOS TURİZM',
       iban: 'TR00 0000 0000 0000 0000 0000 00',
       swift: 'TCZBTR2AXXX'
-    }
+    },
+    emailTemplates: {
+      schengen: {
+        subject: 'Schengen Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+{ulke} Schengen vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+Evrak listesi ve süreç hakkında bilgi almak için bizimle iletişime geçebilirsiniz.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+🌐 www.paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      },
+      usa: {
+        subject: 'Amerika Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+Amerika Birleşik Devletleri vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+DS-160 formu ve randevu süreci hakkında bilgi almak için lütfen bizimle iletişime geçin.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      },
+      russia: {
+        subject: 'Rusya Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+Rusya vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+Sorularınız için iletişime geçebilirsiniz.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      },
+      uk: {
+        subject: 'İngiltere Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+İngiltere vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+Sorularınız için iletişime geçebilirsiniz.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      },
+      uae: {
+        subject: 'BAE Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+Birleşik Arap Emirlikleri vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+Sorularınız için iletişime geçebilirsiniz.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      },
+      china: {
+        subject: 'Çin Vize Başvurunuz - Paydos Turizm',
+        body: `Sayın {isim},
+
+Çin vize başvurunuz Paydos Turizm tarafından alınmıştır.
+
+📋 Başvuru Detayları:
+• Vize Türü: {vize_turu}
+• Başvuru Tarihi: {tarih}
+• Referans No: {ref_no}
+
+Sorularınız için iletişime geçebilirsiniz.
+
+📞 +90 258 XXX XX XX
+📧 vize@paydostur.com
+
+Saygılarımızla,
+Paydos Turizm`
+      }
+    },
+    autoEmailOnVisa: true
   });
 
   // Toast fonksiyonları
@@ -6630,13 +7857,12 @@ export default function App() {
         e.preventDefault();
         performUndo();
       }
-      // Ctrl/Cmd + 1-9 = Modül değiştir
-      if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(e.key)) {
+      // Ctrl/Cmd + 1-7 = Modül değiştir
+      if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
         e.preventDefault();
-        const modules = ['dashboard', 'customers', 'visa', 'ds160', 'tours', 'quotes', 'agencies', 'cards', 'settings'];
-        const labels = ['Dashboard', 'Müşteriler', 'Vize', 'Amerika Vize', 'Turlar', 'Teklif & Proforma', 'Acentelikler', 'Kredi Kartları', 'Ayarlar'];
-        const idx = parseInt(e.key) - 1;
-        if (modules[idx]) { setActiveModule(modules[idx]); showToast(`${labels[idx]} açıldı`, 'info'); }
+        const modules = ['dashboard', 'customers', 'visa', 'quotes', 'agencies', 'cards', 'settings'];
+        setActiveModule(modules[parseInt(e.key) - 1]);
+        showToast(`${['Dashboard', 'Müşteriler', 'Vize', 'Teklif & Proforma', 'Acentelikler', 'Kredi Kartları', 'Ayarlar'][parseInt(e.key) - 1]} açıldı`, 'info');
       }
       // Escape = Sidebar kapat
       if (e.key === 'Escape' && sidebarOpen) {
@@ -6648,37 +7874,42 @@ export default function App() {
   }, [performUndo, sidebarOpen, showToast]);
 
   useEffect(() => { const handleResize = () => setIsMobile(window.innerWidth < 768); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
-  useEffect(() => { const loggedIn = localStorage.getItem('paydos_logged_in'); const savedUser = localStorage.getItem('paydos_current_user'); if (loggedIn === 'true' && savedUser) { try { setCurrentUser(JSON.parse(savedUser)); setIsLoggedIn(true); } catch (e) { console.error(e); } } }, []);
-  
+  // Login persistence
+  useEffect(() => {
+    const loggedIn = localStorage.getItem('paydos_logged_in');
+    const savedUser = localStorage.getItem('paydos_current_user');
+    if (loggedIn === 'true' && savedUser) {
+      try { setCurrentUser(JSON.parse(savedUser)); setIsLoggedIn(true); } catch(e) {}
+    }
+  }, []);
+
   // localStorage'dan yükle - EN ÖNCE (hızlı cache)
-  useEffect(() => { const saved = localStorage.getItem('paydos_customers'); if (saved) { try { setCustomers(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_visa_applications'); if (saved) { try { setVisaApplications(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { 
-    const saved = localStorage.getItem('paydos_app_settings'); 
-    if (saved) { 
-      try { 
+  useEffect(() => { const saved = localStorage.getItem('paydos_customers'); if (saved) { try { setCustomers(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_visa_applications'); if (saved) { try { setVisaApplications(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => {
+    const saved = localStorage.getItem('paydos_app_settings');
+    if (saved) {
+      try {
         const settings = JSON.parse(saved);
         if (settings.visaDurations) {
           Object.keys(settings.visaDurations).forEach(country => {
             const durations = settings.visaDurations[country];
             if (durations && durations.length > 0 && typeof durations[0] === 'string') {
-              settings.visaDurations[country] = durations.map(name => ({
-                name: name, price: 0, currency: country === 'usa' ? '$' : country === 'uk' ? '£' : '€'
-              }));
+              settings.visaDurations[country] = durations.map(name => ({ name, price: 0, currency: country === 'usa' ? '$' : country === 'uk' ? '£' : '€' }));
             }
           });
         }
         setAppSettings(settings);
-      } catch (e) { console.error(e); } 
-    } 
+      } catch(e) {}
+    }
   }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_tours'); if (saved) { try { setTours(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_agencies'); if (saved) { try { setAgencies(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_credit_cards'); if (saved) { try { setCreditCards(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_quotes'); if (saved) { try { setQuotes(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
-  useEffect(() => { const saved = localStorage.getItem('paydos_users'); if (saved) { try { setUsers(JSON.parse(saved)); } catch (e) { console.error(e); } } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_tours'); if (saved) { try { setTours(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_agencies'); if (saved) { try { setAgencies(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_credit_cards'); if (saved) { try { setCreditCards(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_quotes'); if (saved) { try { setQuotes(JSON.parse(saved)); } catch(e) {} } }, []);
+  useEffect(() => { const saved = localStorage.getItem('paydos_users'); if (saved) { try { setUsers(JSON.parse(saved)); } catch(e) {} } }, []);
 
-  // 🔥 FIRESTORE'DAN YÜKLE — localStorage'ı override eder
+  // 🔥 FIRESTORE'DAN YÜKLE — tam veri
   const firestoreLoaded = useRef(false);
   useEffect(() => {
     if (firestoreLoaded.current) return;
@@ -6692,8 +7923,7 @@ export default function App() {
           { name: 'agencies', setter: setAgencies },
           { name: 'credit_cards', setter: setCreditCards },
           { name: 'quotes', setter: setQuotes },
-          { name: 'users', setter: setUsers },
-          { name: 'ds160_applications', setter: setDs160Applications }
+          { name: 'users', setter: setUsers }
         ];
         for (const col of collections) {
           try {
@@ -6702,16 +7932,35 @@ export default function App() {
               let items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
               if (col.name === 'customers') {
                 items = items.filter(c => c.firstName || c.lastName);
+                items = items.map(c => {
+                  try {
+                    const pList = typeof c.passports === 'string' ? JSON.parse(c.passports || '[]') : (c.passports || []);
+                    if (!Array.isArray(pList)) return c;
+                    let changed = false;
+                    const fixed = pList.map(p => {
+                      if (!p.passportNo) return p;
+                      const first = p.passportNo.toUpperCase()[0];
+                      const detected = first === 'U' ? 'Bordo Pasaport (Umuma Mahsus)' : first === 'S' ? 'Yeşil Pasaport (Hususi)' : first === 'Z' ? 'Gri Pasaport (Hizmet)' : null;
+                      if (detected && p.passportType !== detected) { changed = true; return { ...p, passportType: detected }; }
+                      return p;
+                    });
+                    if (changed) {
+                      const docId = c._docId || String(c.id);
+                      setDoc(doc(db, 'customers', docId), { passports: JSON.stringify(fixed) }, { merge: true }).catch(()=>{});
+                      return { ...c, passports: fixed };
+                    }
+                  } catch(e) {}
+                  return c;
+                });
               }
               col.setter(items);
-              // localStorage'a yazarken müşteri görsellerini çıkar (5MB limit)
               try {
                 if (col.name === 'customers') {
                   const lite = items.map(c => {
                     const obj = { ...c };
-                    try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: '' }))); } catch(e) {}
-                    try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: '' }))); } catch(e) {}
-                    try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: '' }); } catch(e) {}
+                    try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+                    try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+                    try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: (u.image||'').startsWith('http') ? u.image : '' }); } catch(e) {}
                     return obj;
                   });
                   localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
@@ -6719,36 +7968,34 @@ export default function App() {
                   localStorage.setItem(`paydos_${col.name}`, JSON.stringify(items));
                 }
               } catch(e) { console.warn('localStorage yazma hatası:', e.message); }
-              console.log(`✅ Firestore ${col.name}: ${items.length} kayıt`);
             } else {
               col.setter([]);
               try { localStorage.removeItem(`paydos_${col.name}`); } catch(e) {}
             }
-          } catch (e) { console.warn(`⚠️ ${col.name} yüklenemedi:`, e.message); }
+          } catch(e) { console.warn(`${col.name} yüklenemedi:`, e.message); }
         }
-        // App Settings
         try {
-          const settingsSnapshot = await getDocs(collection(db, 'app_settings'));
-          if (!settingsSnapshot.empty) {
-            const settingsDoc = settingsSnapshot.docs[0].data();
+          const settingsSnap = await getDocs(collection(db, 'app_settings'));
+          if (!settingsSnap.empty) {
+            const settingsDoc = settingsSnap.docs[0].data();
             if (settingsDoc) {
               setAppSettings(prev => ({ ...prev, ...settingsDoc }));
               try { localStorage.setItem('paydos_app_settings', JSON.stringify({ ...appSettings, ...settingsDoc })); } catch(e) {}
             }
           }
         } catch(e) { console.warn('app_settings yüklenemedi:', e.message); }
-      } catch (e) { console.error('Firestore yükleme hatası:', e); }
+      } catch(e) { console.error('Firestore yükleme hatası:', e); }
     };
     loadFromFirestore();
   }, []);
 
-  // 🔥 FIRESTORE'A KAYDET — debounced, GÖRSELLERİ KORUR
+  // 🔥 FIRESTORE'A KAYDET — debounced
   const saveTimers = useRef({});
   const initialLoadDone = useRef(false);
   useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
-  
+
   const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
-    if (!initialLoadDone.current) return; // İlk yüklemede kaydetme
+    if (!initialLoadDone.current) return;
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
       try {
@@ -6757,34 +8004,30 @@ export default function App() {
           const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
           await setDoc(doc(db, collectionName, docId), data, { merge: true });
         } else {
-          const batch = writeBatch(db);
+          let batch = writeBatch(db);
           let count = 0;
           for (const item of data) {
             const docId = item._docId || item.id?.toString() || Date.now().toString();
             const saveData = { ...item };
             delete saveData._docId;
-            
-            // ⚡ MÜŞTERİ KAYDEDERKEN GÖRSELLERİ ATLAMA — Firestore'daki görselleri korur
             if (collectionName === 'customers') {
               delete saveData.passports;
               delete saveData.schengenVisas;
               delete saveData.usaVisa;
             }
-            
             batch.set(doc(db, collectionName, docId), saveData, { merge: true });
             count++;
-            if (count >= 400) { await batch.commit(); count = 0; }
+            if (count >= 400) { await batch.commit(); batch = writeBatch(db); count = 0; }
           }
           if (count > 0) await batch.commit();
         }
-        // localStorage güncelle
         try {
           if (collectionName === 'customers') {
             const lite = data.map(c => {
               const obj = { ...c };
-              try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: '' }))); } catch(e) {}
-              try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: '' }))); } catch(e) {}
-              try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: '' }); } catch(e) {}
+              try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+              try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+              try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: (u.image||'').startsWith('http') ? u.image : '' }); } catch(e) {}
               return obj;
             });
             localStorage.setItem(`paydos_${key}`, JSON.stringify(lite));
@@ -6792,7 +8035,6 @@ export default function App() {
             localStorage.setItem(`paydos_${key}`, JSON.stringify(data));
           }
         } catch(e) {}
-        console.log(`💾 ${collectionName}: ${data.length || 1} kayıt sync`);
       } catch(e) { console.error(`Firestore ${collectionName} kayıt hatası:`, e.message); }
     }, 3000);
   }, []);
@@ -6804,12 +8046,7 @@ export default function App() {
   useEffect(() => { debouncedSave('credit_cards', 'credit_cards', creditCards); }, [creditCards]);
   useEffect(() => { debouncedSave('quotes', 'quotes', quotes); }, [quotes]);
   useEffect(() => { debouncedSave('users', 'users', users); }, [users]);
-  useEffect(() => { debouncedSave('ds160_applications', 'ds160_applications', ds160Applications); }, [ds160Applications]);
   useEffect(() => { debouncedSave('app_settings', 'app_settings', appSettings, true); }, [appSettings]);
-
-
-
-
   const handleLogin = (user) => { setIsLoggedIn(true); setCurrentUser(user); localStorage.setItem('paydos_logged_in', 'true'); localStorage.setItem('paydos_current_user', JSON.stringify(user)); };
   const handleLogout = () => { setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem('paydos_logged_in'); localStorage.removeItem('paydos_current_user'); };
 
@@ -6830,16 +8067,16 @@ export default function App() {
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} />;
-      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} />;
-      case 'ds160': return <Ds160Module customers={customers} ds160Applications={ds160Applications} setDs160Applications={setDs160Applications} isMobile={isMobile} showToast={showToast} appSettings={appSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
+      case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} isMobile={isMobile} />;
+      default: return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 
@@ -6851,14 +8088,14 @@ export default function App() {
       {/* Klavye Kısayolları Bilgisi */}
       {!isMobile && (
         <div style={{ position: 'fixed', bottom: '20px', left: '280px', fontSize: '10px', color: '#64748b', zIndex: 50 }}>
-          ⌨️ Ctrl+1-9: Modül | Ctrl+Z: Geri Al
+          ⌨️ Ctrl+1-7: Modül | Ctrl+Z: Geri Al
         </div>
       )}
       
       {isMobile && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100 }} />}
       <aside style={{ position: 'fixed', left: isMobile ? (sidebarOpen ? 0 : '-280px') : 0, top: 0, bottom: 0, width: '260px', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 200, transition: 'left 0.3s ease', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div></div></div>
-        <nav style={{ flex: 1, padding: '16px 12px' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', marginBottom: '4px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '14px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '18px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>⌘{idx+1}</span>}</button>))}</nav>
+        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>⌘{idx+1}</span>}</button>))}</nav>
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}><div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px' }}>{currentUser?.name?.[0] || 'U'}</div><div><p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>{currentUser?.name}</p><p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p></div></div><button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🚪 Çıkış Yap</button></div>
       </aside>
       <main style={{ marginLeft: isMobile ? 0 : '260px', minHeight: '100vh' }}>
