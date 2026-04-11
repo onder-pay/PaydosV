@@ -6707,7 +6707,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 }
 
 // AYARLAR MODÜLÜ
-function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings }) {
+function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
