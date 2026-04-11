@@ -2678,6 +2678,116 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 }
 
 // VİZE MODÜLÜ
+function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
+  const countries = [
+    { id: 'schengen', label: '🇪🇺 Schengen', color: '#10b981' },
+    { id: 'usa', label: '🇺🇸 Amerika', color: '#3b82f6' },
+    { id: 'russia', label: '🇷🇺 Rusya', color: '#ef4444' },
+    { id: 'uk', label: '🇬🇧 İngiltere', color: '#8b5cf6' },
+    { id: 'uae', label: '🇦🇪 BAE', color: '#f59e0b' },
+    { id: 'china', label: '🇨🇳 Çin', color: '#dc2626' },
+  ];
+  const [activeCountry, setActiveCountry] = useState('schengen');
+  const [testEmail, setTestEmail] = useState('');
+  const [testSending, setTestSending] = useState(false);
+
+  const currentTemplate = appSettings?.emailTemplates?.[activeCountry] || { subject: '', body: '' };
+
+  const updateTemplate = (field, value) => {
+    setAppSettings({
+      ...appSettings,
+      emailTemplates: {
+        ...(appSettings.emailTemplates || {}),
+        [activeCountry]: { ...currentTemplate, [field]: value }
+      }
+    });
+  };
+
+  const sendTest = async () => {
+    if (!testEmail.trim()) return;
+    setTestSending(true);
+    const result = await sendVisaEmail({
+      visa: { id: 'TEST001', categoryId: activeCountry, country: activeCountry, visaDuration: 'Test', customerEmail: testEmail },
+      customer: { firstName: 'Test', lastName: 'Müşteri', email: testEmail },
+      appSettings
+    });
+    setTestSending(false);
+    if (result.ok) showToast?.('✅ Test maili gönderildi', 'success');
+    else showToast?.(`❌ Hata: ${result.error}`, 'error');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>SMTP bilgileri Netlify Environment Variables olarak saklanır.</p>
+        <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '14px', fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', lineHeight: 1.8 }}>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = smtp.yandex.com</div>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_PORT</span> = 465</div>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_USER</span> = vize@paydostur.com</div>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_PASS</span> = ••••••••••••</div>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_FROM</span> = vize@paydostur.com</div>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Mail Gönderimi</h3>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu oluşturulunca müşteriye otomatik bilgilendirme maili gönder</p>
+          </div>
+          <div onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: !appSettings?.autoEmailOnVisa })}
+            style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+            <div style={{ position: 'absolute', top: '3px', left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <h3 style={{ margin: '0 0 14px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Ülke Bazlı Mail Şablonları</h3>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+          Değişkenler: <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{isim}'}</code>{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ulke}'}</code>{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{tarih}'}</code>{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ref_no}'}</code>{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{vize_turu}'}</code>
+        </p>
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {countries.map(c => (
+            <button key={c.id} onClick={() => setActiveCountry(c.id)}
+              style={{ padding: '8px 12px', background: activeCountry === c.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${activeCountry === c.id ? c.color + '99' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: activeCountry === c.id ? c.color : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeCountry === c.id ? '600' : '400' }}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
+          <input value={currentTemplate.subject} onChange={e => updateTemplate('subject', e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} placeholder="Mail konusu..." />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
+          <textarea value={currentTemplate.body} onChange={e => updateTemplate('body', e.target.value)} rows={12}
+            style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }} placeholder="Mail içeriği..." />
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>🧪 Test Maili Gönder</h3>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Seçili şablonu test etmek için bir adrese gönder</p>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="test@ornek.com"
+            style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
+          <button onClick={sendTest} disabled={testSending || !testEmail.trim()}
+            style={{ padding: '10px 18px', background: testSending ? 'rgba(20,184,166,0.3)' : 'linear-gradient(135deg, #14b8a6, #0d9488)', border: 'none', borderRadius: '8px', color: 'white', cursor: testSending ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
+            {testSending ? '⏳ Gönderiliyor...' : '📤 Test Gönder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 async function sendVisaEmail({ visa, customer, appSettings }) {
   try {
     const catId = visa.categoryId || 'schengen';
@@ -7465,161 +7575,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       )}
 
       {/* MAIL AYARLARI */}
-      {activeTab === 'mailSettings' && isAdmin && (() => {
-        const countries = [
-          { id: 'schengen', label: '🇪🇺 Schengen', color: '#10b981' },
-          { id: 'usa', label: '🇺🇸 Amerika', color: '#3b82f6' },
-          { id: 'russia', label: '🇷🇺 Rusya', color: '#ef4444' },
-          { id: 'uk', label: '🇬🇧 İngiltere', color: '#8b5cf6' },
-          { id: 'uae', label: '🇦🇪 BAE', color: '#f59e0b' },
-          { id: 'china', label: '🇨🇳 Çin', color: '#dc2626' },
-        ];
-        const [activeCountry, setActiveCountry] = React.useState('schengen');
-        const [testEmail, setTestEmail] = React.useState('');
-        const [testSending, setTestSending] = React.useState(false);
-
-        const currentTemplate = appSettings?.emailTemplates?.[activeCountry] || { subject: '', body: '' };
-
-        const updateTemplate = (field, value) => {
-          setAppSettings({
-            ...appSettings,
-            emailTemplates: {
-              ...(appSettings.emailTemplates || {}),
-              [activeCountry]: { ...currentTemplate, [field]: value }
-            }
-          });
-        };
-
-        const sendTest = async () => {
-          if (!testEmail.trim()) return;
-          setTestSending(true);
-          const result = await sendVisaEmail({
-            visa: { id: 'TEST001', categoryId: activeCountry, country: activeCountry, visaDuration: 'Test', customerEmail: testEmail },
-            customer: { firstName: 'Test', lastName: 'Müşteri', email: testEmail },
-            appSettings
-          });
-          setTestSending(false);
-          if (result.ok) showToast?.('✅ Test maili gönderildi', 'success');
-          else showToast?.(`❌ Hata: ${result.error}`, 'error');
-        };
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-            {/* SMTP Bilgi Kartı */}
-            <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
-              <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
-              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
-                SMTP bilgileri güvenlik nedeniyle Netlify Environment Variables olarak saklanır. Buradan değil, Netlify panosundan girilir.
-              </p>
-              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '14px', fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', lineHeight: 1.8 }}>
-                <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = mail.paydostur.com</div>
-                <div><span style={{ color: '#14b8a6' }}>SMTP_PORT</span> = 587</div>
-                <div><span style={{ color: '#14b8a6' }}>SMTP_USER</span> = vize@paydostur.com</div>
-                <div><span style={{ color: '#14b8a6' }}>SMTP_PASS</span> = ••••••••••••</div>
-                <div><span style={{ color: '#14b8a6' }}>SMTP_FROM</span> = vize@paydostur.com</div>
-              </div>
-              <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#475569' }}>
-                📍 Netlify → Site → Environment variables → Add variable
-              </p>
-            </div>
-
-            {/* Otomatik Mail Açma/Kapama */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Mail Gönderimi</h3>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu oluşturulunca müşteriye otomatik bilgilendirme maili gönder</p>
-                </div>
-                <div
-                  onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: !appSettings?.autoEmailOnVisa })}
-                  style={{
-                    width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer',
-                    background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)',
-                    position: 'relative', transition: 'background 0.2s', flexShrink: 0
-                  }}
-                >
-                  <div style={{
-                    position: 'absolute', top: '3px',
-                    left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px',
-                    width: '20px', height: '20px', borderRadius: '50%',
-                    background: 'white', transition: 'left 0.2s'
-                  }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Ülke Bazlı Şablonlar */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <h3 style={{ margin: '0 0 14px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Ülke Bazlı Mail Şablonları</h3>
-              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
-                Değişkenler: <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{isim}'}</code>{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ulke}'}</code>{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{tarih}'}</code>{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ref_no}'}</code>{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{vize_turu}'}</code>
-              </p>
-
-              {/* Ülke Sekmeleri */}
-              <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                {countries.map(c => (
-                  <button key={c.id} onClick={() => setActiveCountry(c.id)}
-                    style={{ padding: '8px 12px', background: activeCountry === c.id ? `rgba(${c.id === 'schengen' ? '16,185,129' : c.id === 'usa' ? '59,130,246' : c.id === 'russia' ? '239,68,68' : c.id === 'uk' ? '139,92,246' : c.id === 'uae' ? '245,158,11' : '220,38,38'},0.2)` : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${activeCountry === c.id ? c.color + '66' : 'rgba(255,255,255,0.1)'}`,
-                      borderRadius: '8px', color: activeCountry === c.id ? c.color : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeCountry === c.id ? '600' : '400' }}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Konu */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
-                <input
-                  value={currentTemplate.subject}
-                  onChange={e => updateTemplate('subject', e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }}
-                  placeholder="Mail konusu..."
-                />
-              </div>
-
-              {/* Gövde */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
-                <textarea
-                  value={currentTemplate.body}
-                  onChange={e => updateTemplate('body', e.target.value)}
-                  rows={12}
-                  style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }}
-                  placeholder="Mail içeriği..."
-                />
-              </div>
-            </div>
-
-            {/* Test Mail Gönderimi */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>🧪 Test Maili Gönder</h3>
-              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Seçili şablonu test etmek için bir adrese gönder</p>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={e => setTestEmail(e.target.value)}
-                  placeholder="test@ornek.com"
-                  style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }}
-                />
-                <button
-                  onClick={sendTest}
-                  disabled={testSending || !testEmail.trim()}
-                  style={{ padding: '10px 18px', background: testSending ? 'rgba(20,184,166,0.3)' : 'linear-gradient(135deg, #14b8a6, #0d9488)', border: 'none', borderRadius: '8px', color: 'white', cursor: testSending ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                  {testSending ? '⏳ Gönderiliyor...' : '📤 Test Gönder'}
-                </button>
-              </div>
-            </div>
-
-          </div>
-        );
-      })()}
+      {activeTab === 'mailSettings' && isAdmin && (
+        <MailSettingsPanel appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      )}
 
     </div>
   );
