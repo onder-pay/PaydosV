@@ -1,28 +1,352 @@
-<!doctype html>
-<html lang="tr">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/paydos-logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Paydos CRM - Just Travel</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body, #root {
-        width: 100%;
-        min-height: 100vh;
-        height: 100%;
-        background: #0c1929;
-        overflow-x: hidden;
-      }
-      body {
-        font-family: 'Segoe UI', sans-serif;
-        color: #e8f1f8;
-        -webkit-font-smoothing: antialiased;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+import { useState, useRef, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
+// Firebase + localStorage CRM
+import jsPDF from 'jspdf';
+import { db } from './lib/firebase';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import 'jspdf-autotable';
+
+const defaultCustomers = [];
+const defaultVisaApplications = [];
+const defaultTours = [];
+const defaultHotels = [];
+const defaultHotelReservations = [];
+const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '123456', name: 'Önder', role: 'admin' }];
+
+const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
+const sectors = ['Adalet ve Güvenlik', 'Ağaç İşleri, Kağıt ve Kağıt Ürünleri', 'Bilişim Teknolojileri', 'Cam, Çimento ve Toprak', 'Çevre', 'Devlet Memuru', 'Eğitim', 'Elektrik ve Elektronik', 'Enerji', 'Finans', 'Gıda', 'İnşaat', 'İş ve Yönetim', 'Kimya, Petrol, Lastik ve Plastik', 'Kültür, Sanat ve Tasarım', 'Maden', 'Makine', 'Medya, İletişim ve Yayıncılık', 'Metal', 'Otomotiv', 'Sağlık ve Sosyal Hizmetler', 'Spor ve Rekreasyon', 'Tarım, Avcılık ve Balıkçılık', 'Tekstil, Hazır Giyim, Deri', 'Ticaret (Satış ve Pazarlama)', 'Toplumsal ve Kişisel Hizmetler', 'Turizm, Konaklama, Yiyecek-İçecek Hizmetleri', 'Ulaştırma, Lojistik ve Haberleşme'];
+const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
+const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan'];
+const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Evraklar Gönderildi', 'E-posta Gönderildi', 'Randevu Bekliyor', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Müşteri İptal Etti'];
+const tourStatuses = ['Planlama', 'Açık', 'Dolu', 'Devam Ediyor', 'Tamamlandı', 'İptal'];
+const mealPlans = ['Sadece Oda', 'Oda + Kahvaltı', 'Yarım Pansiyon', 'Tam Pansiyon', 'Her Şey Dahil'];
+const currencies = ['€ Euro', '$ Dolar', '₺ TL', '£ Sterlin'];
+
+const labelStyle = { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' };
+const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
+const selectStyle = { width: '100%', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
+const dateSelectStyle = { padding: '10px 6px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none' };
+
+const isValidEmail = (e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = String(d); if (d.includes('-')) return d.split('-').reverse().join('.'); if (d.includes('.')) return d; return d; };
+const safeParseTags = (val) => { if (!val) return []; if (Array.isArray(val)) return val.filter(t => t && typeof t === 'string'); if (typeof val === 'string') return val.split(',').map(t => t.trim()).filter(Boolean); return []; };
+const safeParseActivities = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
+const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
+const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
+const safeParseNumber = (val) => { if (!val) return 0; const cleaned = String(val).replace(/[€$£₺\s]/g, '').replace(',', '.'); const num = parseFloat(cleaned); return isNaN(num) ? 0 : num; };
+const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
+const generateUniqueId = () => Date.now() + Math.random();
+
+// Telefon formatla: +90 5XX XXX XX XX
+const formatPhoneNumber = (value) => {
+  let cleaned = value.replace(/\D/g, '');
+  // 90 ile başlıyorsa kaldır
+  if (cleaned.startsWith('90')) cleaned = cleaned.slice(2);
+  // 0 ile başlıyorsa kaldır
+  if (cleaned.startsWith('0')) cleaned = cleaned.slice(1);
+  // Max 10 hane
+  cleaned = cleaned.slice(0, 10);
+  // Format: XXX XXX XX XX
+  let formatted = '';
+  if (cleaned.length > 0) formatted += cleaned.slice(0, 3);
+  if (cleaned.length > 3) formatted += ' ' + cleaned.slice(3, 6);
+  if (cleaned.length > 6) formatted += ' ' + cleaned.slice(6, 8);
+  if (cleaned.length > 8) formatted += ' ' + cleaned.slice(8, 10);
+  return formatted ? '+90 ' + formatted : '+90 5';
+};
+
+// Pasaport No formatla: İlk harf büyük, 9 karakter
+const formatPassportNo = (value) => {
+  const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return cleaned.slice(0, 9);
+};
+
+// Pasaport No'dan türü otomatik tespit
+const detectPassportType = (passportNo) => {
+  if (!passportNo) return null;
+  const first = passportNo.toUpperCase()[0];
+  if (first === 'U') return 'Bordo Pasaport (Umuma Mahsus)';
+  if (first === 'S') return 'Yeşil Pasaport (Hususi)';
+  if (first === 'Z') return 'Gri Pasaport (Hizmet)';
+  if (first === 'D') return 'Siyah Pasaport (Diplomatik)';
+  return null;
+};
+
+const countryCodeMap = { TUR:'Türkiye',DEU:'Almanya',FRA:'Fransa',GBR:'İngiltere',USA:'Amerika Birleşik Devletleri',NLD:'Hollanda',BEL:'Belçika',AUT:'Avusturya',CHE:'İsviçre',ITA:'İtalya',ESP:'İspanya',PRT:'Portekiz',GRC:'Yunanistan',SWE:'İsveç',NOR:'Norveç',DNK:'Danimarka',FIN:'Finlandiya',POL:'Polonya',CZE:'Çekya',HUN:'Macaristan',ROU:'Romanya',BGR:'Bulgaristan',HRV:'Hırvatistan',RUS:'Rusya',UKR:'Ukrayna',AZE:'Azerbaycan',KAZ:'Kazakistan',SAU:'Suudi Arabistan',ARE:'Birleşik Arap Emirlikleri',IRN:'İran',IRQ:'Irak',SYR:'Suriye',JOR:'Ürdün',LBN:'Lübnan',EGY:'Mısır',MAR:'Fas',TUN:'Tunus',ALB:'Arnavutluk',MKD:'Kuzey Makedonya',SRB:'Sırbistan',BIH:'Bosna Hersek',MNE:'Karadağ',GEO:'Gürcistan',ARM:'Ermenistan',CHN:'Çin',JPN:'Japonya',KOR:'Güney Kore',IND:'Hindistan',PAK:'Pakistan',BGD:'Bangladeş',IDN:'Endonezya',MYS:'Malezya',THA:'Tayland',VNM:'Vietnam',PHL:'Filipinler',BRA:'Brezilya',ARG:'Arjantin',MEX:'Meksika',CAN:'Kanada',AUS:'Avustralya',NZL:'Yeni Zelanda',ZAF:'Güney Afrika',NGA:'Nijerya',ETH:'Etiyopya',KEN:'Kenya' };
+const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || code) : '';
+
+// Toast Component
+function Toast({ toasts, removeToast }) {
+  return (
+    <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {toasts.map(toast => (
+        <div key={toast.id} onClick={() => removeToast(toast.id)} style={{
+          padding: '14px 20px',
+          borderRadius: '12px',
+          background: toast.type === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' : 
+                      toast.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
+                      toast.type === 'warning' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 
+                      'linear-gradient(135deg, #3b82f6, #2563eb)',
+          color: 'white',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          minWidth: '250px',
+          maxWidth: '400px',
+          animation: 'slideIn 0.3s ease',
+          fontSize: '14px',
+          fontWeight: '500'
+        }}>
+          <span style={{ fontSize: '18px' }}>
+            {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'}
+          </span>
+          <span style={{ flex: 1 }}>{toast.message}</span>
+          {toast.undo && (
+            <button onClick={(e) => { e.stopPropagation(); toast.undo(); removeToast(toast.id); }} style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>↩️ Geri Al</button>
+          )}
+        </div>
+      ))}
+      <style>{`@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+    </div>
+  );
+}
+
+// Loading Button Component
+function LoadingButton({ onClick, loading, disabled, children, style, ...props }) {
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={loading || disabled}
+      style={{
+        ...style,
+        opacity: (loading || disabled) ? 0.6 : 1,
+        cursor: (loading || disabled) ? 'not-allowed' : 'pointer',
+        position: 'relative'
+      }}
+      {...props}
+    >
+      {loading ? (
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <span style={{ 
+            width: '16px', 
+            height: '16px', 
+            border: '2px solid rgba(255,255,255,0.3)', 
+            borderTop: '2px solid white', 
+            borderRadius: '50%', 
+            animation: 'spin 0.8s linear infinite' 
+          }} />
+          İşleniyor...
+        </span>
+      ) : children}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </button>
+  );
+}
+
+// Form Error Component
+function FormError({ error }) {
+  if (!error) return null;
+  return (
+    <p style={{ 
+      margin: '4px 0 0', 
+      fontSize: '11px', 
+      color: '#ef4444',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px'
+    }}>
+      ⚠️ {error}
+    </p>
+  );
+}
+
+function CalendarPicker({ label, value, onChange, minYear = 1920, maxYear = 2035, maxDate = null, minDate = null }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => {
+    if (value) {
+      const parts = value.split('-');
+      return { year: parseInt(parts[0]), month: parseInt(parts[1]) - 1 };
+    }
+    return { year: new Date().getFullYear(), month: new Date().getMonth() };
+  });
+  
+  const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const days = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'];
+  
+  const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year, month) => {
+    const day = new Date(year, month, 1).getDay();
+    return day === 0 ? 6 : day - 1;
+  };
+  
+  const formatDisplay = (val) => {
+    if (!val) return '';
+    const parts = val.split('-');
+    if (parts.length !== 3) return val;
+    return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  };
+  
+  const handleSelect = (day) => {
+    const dateStr = `${viewDate.year}-${String(viewDate.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    onChange(dateStr);
+    setIsOpen(false);
+  };
+  
+  const prevMonth = () => {
+    setViewDate(prev => {
+      if (prev.month === 0) return { year: prev.year - 1, month: 11 };
+      return { ...prev, month: prev.month - 1 };
+    });
+  };
+  
+  const nextMonth = () => {
+    setViewDate(prev => {
+      if (prev.month === 11) return { year: prev.year + 1, month: 0 };
+      return { ...prev, month: prev.month + 1 };
+    });
+  };
+  
+  const isDateDisabled = (day) => {
+    const date = new Date(viewDate.year, viewDate.month, day);
+    if (maxDate && date > new Date(maxDate)) return true;
+    if (minDate && date < new Date(minDate)) return true;
+    return false;
+  };
+  
+  const isToday = (day) => {
+    const today = new Date();
+    return viewDate.year === today.getFullYear() && viewDate.month === today.getMonth() && day === today.getDate();
+  };
+  
+  const isSelected = (day) => {
+    if (!value) return false;
+    const parts = value.split('-');
+    return parseInt(parts[0]) === viewDate.year && parseInt(parts[1]) - 1 === viewDate.month && parseInt(parts[2]) === day;
+  };
+  
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+  const daysInMonth = getDaysInMonth(viewDate.year, viewDate.month);
+  const firstDay = getFirstDayOfMonth(viewDate.year, viewDate.month);
+  const calendarDays = Array.from({ length: 42 }, (_, i) => {
+    const day = i - firstDay + 1;
+    return day > 0 && day <= daysInMonth ? day : null;
+  });
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <label style={labelStyle}>{label}</label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ ...inputStyle, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+      >
+        <span style={{ color: value ? '#e8f1f8' : '#64748b' }}>{formatDisplay(value) || 'Tarih seçin'}</span>
+        <span style={{ fontSize: '14px' }}>📅</span>
+      </div>
+      
+      {isOpen && (
+        <>
+          <div onClick={() => setIsOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 400 }} />
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px', padding: '12px', zIndex: 401, boxShadow: '0 10px 40px rgba(0,0,0,0.5)', minWidth: '280px' }}>
+            {/* Header - Month/Year Select */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <button type="button" onClick={prevMonth} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '32px', height: '32px', color: '#e8f1f8', cursor: 'pointer', fontSize: '16px' }}>‹</button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select 
+                  value={viewDate.month} 
+                  onChange={e => setViewDate({ ...viewDate, month: parseInt(e.target.value) })}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', padding: '6px 8px', color: '#e8f1f8', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  {months.map((m, i) => <option key={i} value={i} style={{ background: '#0f2744' }}>{m}</option>)}
+                </select>
+                <select 
+                  value={viewDate.year} 
+                  onChange={e => setViewDate({ ...viewDate, year: parseInt(e.target.value) })}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', padding: '6px 8px', color: '#e8f1f8', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  {years.map(y => <option key={y} value={y} style={{ background: '#0f2744' }}>{y}</option>)}
+                </select>
+              </div>
+              <button type="button" onClick={nextMonth} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '32px', height: '32px', color: '#e8f1f8', cursor: 'pointer', fontSize: '16px' }}>›</button>
+            </div>
+            
+            {/* Day Headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
+              {days.map(d => (
+                <div key={d} style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', padding: '4px', fontWeight: '600' }}>{d}</div>
+              ))}
+            </div>
+            
+            {/* Calendar Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+              {calendarDays.map((day, i) => (
+                <div key={i}>
+                  {day && (
+                    <button
+                      type="button"
+                      onClick={() => !isDateDisabled(day) && handleSelect(day)}
+                      disabled={isDateDisabled(day)}
+                      style={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        border: 'none',
+                        borderRadius: '8px',
+                        background: isSelected(day) ? 'linear-gradient(135deg, #f59e0b, #d97706)' : isToday(day) ? 'rgba(59,130,246,0.3)' : 'transparent',
+                        color: isSelected(day) ? '#0c1929' : isDateDisabled(day) ? '#4a5568' : '#e8f1f8',
+                        cursor: isDateDisabled(day) ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        fontWeight: isSelected(day) || isToday(day) ? '600' : '400',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {day}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <button 
+                type="button"
+                onClick={() => { const t = new Date(); handleSelect(t.getDate()); setViewDate({ year: t.getFullYear(), month: t.getMonth() }); }}
+                style={{ flex: 1, padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', fontSize: '11px', cursor: 'pointer' }}
+              >
+                Bugün
+              </button>
+              <button 
+                type="button"
+                onClick={() => { onChange(''); setIsOpen(false); }}
+                style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', fontSize: '11px', cursor: 'pointer' }}
+              >
+                Temizle
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BirthDateInput({ label, value, onChange }) {
+  return <CalendarPicker label={label} value={value} onChange={onChange} minYear={1920} maxYear={new Date().getFullYear()} maxDate={new Date().toISOString().split('T')[0]} />;
+}
+
+function DateInput({ label, value, onChange }) {
+  return <CalendarPicker label={label} value={value} onChange={onChange} minYear={2020} maxYear={2040} />;
+}
+
+function F
