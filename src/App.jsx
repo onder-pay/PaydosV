@@ -6804,7 +6804,146 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                 {/* Expanded Detail */}
                 {selectedApp?._docId === app._docId && (() => {
                   // PDF için field order (form doldurma sırasına göre)
-                  const fieldOrder = ['firstName','lastName','surname','givenName','fullNameTr','tcKimlik','birthDate','birthCity','birthPlace','birthCountry','gender','nationality','otherNationality','maritalStatus','spouseName','spouseBirthDate','fatherName','motherName','fatherBirth','motherBirth','fatherInUS','motherInUS','homeAddress','homeDistrict','homeCity','homeZip','permanentResident','phone','otherPhone','email','otherEmail','instagram','securityQuestion','passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','lostPassport','occupation','employerName','employerAddress','employerDistrict','employerCity','employerZip','jobDescription','schoolName','educationLevel','visaType','arrivalDate','stayDuration','usAddress','tripPayer','hasCompanion','companionName','companionRelation','travelHistory','relativeInUS','relativeInUSName','hadUSVisa','beenToUS','visaRefused','immigrationPetition','sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'];
+                  const fieldOrder = [
+                    // KİŞİSEL BİLGİLER
+                    'firstName','lastName','maidenSurname','gender','maritalStatus',
+                    'birthDate','birthPlace','birthCountry','nationality','otherNationality',
+                    'tcKimlik','homeAddress','homeZip','homePhone','phone','email',
+                    // PASAPORT BİLGİLERİ
+                    'passportType','passportNo','passportNumber','passportCity',
+                    'passportIssueDate','passportExpiry','passportExpDate',
+                    'oldPassport','lostPassport','travelHistory',
+                    // SEYAHAT VE DİĞER BİLGİLER
+                    'visaType','arrivalDate','departureDate','stayDuration',
+                    'usAddress','usPhone','usEmail','tripPayer',
+                    'hasCompanion','companionName','companionRelation','companionPhone','companionEmail',
+                    'inviterName','inviterRelation',
+                    // DAHA ÖNCE AMERİKA
+                    'beenToUS','usArrivalDate','usDepartureDate',
+                    'hadUSVisa','usVisaDate','visaNumber','sameVisaCategory',
+                    'hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason',
+                    'greencardPetition',
+                    // AİLE BİLGİSİ
+                    'fatherName','fatherBirth','fatherBirthPlace','fatherNationality',
+                    'motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality',
+                    'parentInUS',
+                    'relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen',
+                    'relativeAddress','relativePhone','relativeEmail',
+                    'relative2Name','relative2Relation','relative2USCitizen',
+                    'relative2Address','relative2Phone','relative2Email',
+                    // EŞ BİLGİLERİ
+                    'spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate',
+                    'divorceCount','exSpouseName','exSpouseBirth',
+                    'marriageDate','divorceDate','divorceReason',
+                    'exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2',
+                    // İŞ HAYATI
+                    'occupation','jobDescription','monthlySalary',
+                    'employerName','employerAddress','employerZip','employerPhone','employerCity','employerDistrict',
+                    'jobStartDate',
+                    'prevEmployerName','prevEmployerAddress','prevEmployerPhone',
+                    'prevJobStartDate','prevJobEndDate',
+                    // EĞİTİM
+                    'schoolName','schoolAddress','educationField','educationStartEnd',
+                    // DİĞER
+                    'militaryService','militaryRank','militaryStart','militaryEnd','languages',
+                    // SOSYAL MEDYA
+                    'facebook','instagram','twitter','linkedin','youtube',
+                    'reddit','pinterest','tumblr','vk','weibo','myspace',
+                    // GÜVENLİK SORULARI
+                    'sec_drugs','sec_laundering','sec_trafficking','sec_prostitution',
+                    'sec_terrorism','sec_genocide','sec_torture','sec_violence',
+                    'sec_assassin','sec_military','sec_spy','sec_disorder',
+                    'sec_arrested','sec_disease','sec_deported'
+                  ];
+                  const fieldNames = {
+                    // Kişisel
+                    firstName:'Ad', lastName:'Soyad', maidenSurname:'Evlenmeden Önceki Soyadı',
+                    gender:'Cinsiyet', maritalStatus:'Medeni Durum',
+                    birthDate:'Doğum Tarihi', birthPlace:'Doğum Yeri', birthCity:'Doğum Şehri',
+                    birthCountry:'Doğum Ülkesi', nationality:'Uyruk', otherNationality:'Diğer Uyruk',
+                    tcKimlik:'TC Kimlik No', homeAddress:'İkamet Adresi', homeZip:'Posta Kodu',
+                    homePhone:'Ev Telefonu', homeCity:'İkamet Şehri', homeDistrict:'İkamet İlçesi',
+                    phone:'Cep Telefonu', otherPhone:'Diğer Telefon', email:'E-posta', otherEmail:'Diğer E-posta',
+                    // Pasaport
+                    passportType:'Pasaport Türü', passportNo:'Pasaport No', passportNumber:'Pasaport No',
+                    passportCity:'Pasaportu Veren Yer', passportIssueDate:'Pasaport Veriliş Tarihi',
+                    passportExpiry:'Pasaport Geçerlilik Tarihi', passportExpDate:'Pasaport Geçerlilik Tarihi',
+                    oldPassport:'Eski Pasaport Var mı', lostPassport:'Pasaport Kayıp/Çalıntı mı',
+                    travelHistory:'Son 5 Yılda Seyahat Edilen Ülkeler',
+                    // Seyahat
+                    visaType:'Seyahat Amacı', arrivalDate:'Varış Tarihi', departureDate:'Dönüş Tarihi',
+                    stayDuration:'Kalış Süresi', usAddress:'ABD\'de Kalacak Yer Adresi',
+                    usPhone:'ABD\'deki Yerin Telefonu', usEmail:'ABD\'deki Yerin E-postası',
+                    tripPayer:'Seyahati Kim Karşılıyor',
+                    hasCompanion:'Eşlik Eden Var mı', companionName:'Eşlik Edenin Adı Soyadı',
+                    companionRelation:'Eşlik Edenin Yakınlık Derecesi',
+                    companionPhone:'Eşlik Edenin Telefonu', companionEmail:'Eşlik Edenin E-postası',
+                    inviterName:'Davet Eden Kişi', inviterRelation:'Davet Eden ile Bağ',
+                    // Önceki ABD
+                    beenToUS:'Daha Önce ABD\'de Bulundu mu', usArrivalDate:'ABD\'ye Gidiş Tarihi',
+                    usDepartureDate:'ABD\'den Dönüş Tarihi', hadUSVisa:'Daha Önce ABD Vizesi Aldı mı',
+                    usVisaDate:'Önceki Vize Veriliş Tarihi', visaNumber:'Vize Numarası',
+                    sameVisaCategory:'Aynı Vize Kategorisine mi Başvuruyor',
+                    hadFingerprint:'Daha Önce Parmak İzi Alındı mı', visaLost:'Vize Kayıp/Çalıntı mı',
+                    visaCancelled:'Vize İptal Edildi mi', visaRefused:'Vize Reddi Var mı',
+                    refusalReason:'Red Sebebi', greencardPetition:'Greencard Başvurusu',
+                    // Aile
+                    fatherName:'Babanın Adı Soyadı', fatherBirth:'Babanın Doğum Tarihi',
+                    fatherBirthPlace:'Babanın Doğum Yeri', fatherNationality:'Babanın Vatandaşlığı',
+                    fatherInUS:'Babası ABD\'de mi',
+                    motherName:'Annenin Adı Soyadı', motherBirth:'Annenin Doğum Tarihi',
+                    motherBirthPlace:'Annenin Doğum Yeri', motherMaidenName:'Annenin Kızlık Soyadı',
+                    motherNationality:'Annenin Vatandaşlığı', motherInUS:'Annesi ABD\'de mi',
+                    parentInUS:'Anne veya Baba ABD\'de mi',
+                    relativeInUS:'ABD\'de Birinci Derece Akraba Var mı',
+                    relativeInUSName:'Akrabanın Adı Soyadı', relativeRelation:'Yakınlık Derecesi',
+                    relativeUSCitizen:'ABD Vatandaşı mı', relativeAddress:'Akrabanın Adresi',
+                    relativePhone:'Akrabanın Telefonu', relativeEmail:'Akrabanın E-postası',
+                    relative2Name:'2. Akrabanın Adı Soyadı', relative2Relation:'2. Akrabanın Yakınlık Derecesi',
+                    relative2USCitizen:'2. Akraba ABD Vatandaşı mı', relative2Address:'2. Akrabanın Adresi',
+                    relative2Phone:'2. Akrabanın Telefonu', relative2Email:'2. Akrabanın E-postası',
+                    // Eş
+                    spouseName:'Eşin Adı Soyadı', spouseMaidenName:'Eşin Kızlık Soyadı',
+                    spouseBirthPlace:'Eşin Doğum Yeri', spouseBirthDate:'Eşin Doğum Tarihi',
+                    divorceCount:'Boşanma Sayısı', exSpouseName:'Eski Eşin Adı Soyadı',
+                    exSpouseBirth:'Eski Eşin Doğum Tarihi/Yeri', marriageDate:'Evlenme Tarihi',
+                    divorceDate:'Boşanma Tarihi', divorceReason:'Boşanma Sebebi',
+                    exSpouse2Name:'2. Eski Eşin Adı Soyadı', exSpouse2Birth:'2. Eski Eşin Doğum Tarihi/Yeri',
+                    marriageDate2:'2. Evlenme Tarihi', divorceDate2:'2. Boşanma Tarihi',
+                    divorceReason2:'2. Boşanma Sebebi',
+                    // İş
+                    occupation:'Meslek', jobDescription:'İşyerindeki Görev', monthlySalary:'Aylık Net Kazanç',
+                    employerName:'İşyeri Adı', employerAddress:'İşyeri Adresi', employerZip:'İşyeri Posta Kodu',
+                    employerPhone:'İş Telefonu', employerCity:'İşyeri Şehri', employerDistrict:'İşyeri İlçesi',
+                    jobStartDate:'İşe Başlama Tarihi',
+                    prevEmployerName:'Önceki İşyeri Adı', prevEmployerAddress:'Önceki İşyeri Adresi',
+                    prevEmployerPhone:'Önceki İşyeri Telefonu',
+                    prevJobStartDate:'Önceki İşe Başlama Tarihi', prevJobEndDate:'Önceki İşten Ayrılma Tarihi',
+                    // Eğitim
+                    schoolName:'Okul Adı', schoolAddress:'Okul Adresi',
+                    educationField:'Bölüm', educationLevel:'Eğitim Seviyesi',
+                    educationStartEnd:'Başlangıç ve Bitiş Tarihi',
+                    // Diğer
+                    militaryService:'Askerlik Yapıldı mı', militaryRank:'Rütbe',
+                    militaryStart:'Askerlik Başlangıç Tarihi', militaryEnd:'Askerlik Bitiş Tarihi',
+                    languages:'Konuşulan Diller',
+                    // Sosyal medya
+                    facebook:'Facebook', instagram:'Instagram', twitter:'Twitter',
+                    linkedin:'LinkedIn', youtube:'YouTube', reddit:'Reddit',
+                    pinterest:'Pinterest', tumblr:'Tumblr', vk:'VKontakte',
+                    weibo:'Sina Weibo', myspace:'MySpace',
+                    // Güvenlik
+                    sec_drugs:'Uyuşturucu', sec_laundering:'Kara Para Aklaması',
+                    sec_trafficking:'İnsan Ticareti', sec_prostitution:'Fuhuş',
+                    sec_terrorism:'Terör', sec_genocide:'Soykırım', sec_torture:'İşkence',
+                    sec_violence:'Şiddet', sec_assassin:'Suikast', sec_military:'Yabancı Askeri Hizmet',
+                    sec_spy:'Casusluk', sec_disorder:'Akıl Hastalığı',
+                    sec_arrested:'Tutuklanma', sec_disease:'Bulaşıcı Hastalık', sec_deported:'Sınır Dışı',
+                    // Genel
+                    fullNameTr:'Tam Ad', givenName:'Ad (Pasaporttaki)', surname:'Soyad',
+                    permanentResident:'Daimi Oturum İzni', securityQuestion:'Güvenlik Sorusu',
+                    immigrationPetition:'Göçmenlik Başvurusu'
+                  };
                   const fieldNames = { firstName:'Ad',lastName:'Soyad',surname:'Soyad',givenName:'Ad (Pasaporttaki)',fullNameTr:'Tam Ad',tcKimlik:'TC Kimlik',birthDate:'Doğum Tarihi',birthCity:'Doğum Şehri',birthPlace:'Doğum Yeri',birthCountry:'Doğum Ülkesi',gender:'Cinsiyet',nationality:'Uyruk',otherNationality:'Diğer Uyruk',maritalStatus:'Medeni Durum',spouseName:'Eş Adı',spouseBirthDate:'Eş Doğum Tarihi',fatherName:'Baba Adı',motherName:'Anne Adı',fatherBirth:'Baba Doğum Tarihi',motherBirth:'Anne Doğum Tarihi',fatherInUS:'Babası ABD de mi',motherInUS:'Annesi ABD de mi',homeAddress:'Ev Adresi',homeDistrict:'İkamet İlçesi',homeCity:'İkamet Şehri',homeZip:'Posta Kodu',permanentResident:'Daimi Oturum İzni',phone:'Telefon',otherPhone:'Diğer Telefon',email:'E-posta',otherEmail:'Diğer E-posta',instagram:'Instagram',securityQuestion:'Güvenlik Sorusu',passportType:'Pasaport Türü',passportNo:'Pasaport No',passportNumber:'Pasaport No',passportCity:'Pasaport Verilen Şehir',passportIssueDate:'Pasaport Veriliş',passportExpiry:'Pasaport Geçerlilik',passportExpDate:'Pasaport Geçerlilik',lostPassport:'Kayıp Pasaport',occupation:'Meslek',employerName:'İşyeri Adı',employerAddress:'İşyeri Adresi',employerDistrict:'İşyeri İlçesi',employerCity:'İşyeri Şehri',employerZip:'İşyeri Posta Kodu',jobDescription:'İş Tanımı',schoolName:'Okul Adı',educationLevel:'Eğitim Düzeyi',visaType:'Vize Türü',arrivalDate:'Varış Tarihi',stayDuration:'Kalış Süresi',usAddress:'ABD Adresi',tripPayer:'Seyahati Ödeyen',hasCompanion:'Eşlik Eden Var mı',companionName:'Eşlik Eden',companionRelation:'Eşlik Eden Yakınlığı',travelHistory:'Seyahat Geçmişi',relativeInUS:'ABD de Akraba',relativeInUSName:'ABD Akraba Adı',hadUSVisa:'Önceki ABD Vizesi',beenToUS:'Önceki ABD Ziyareti',visaRefused:'Vize Reddi',immigrationPetition:'Göçmenlik Başvurusu',sec_drugs:'Uyuşturucu',sec_laundering:'Kara Para',sec_trafficking:'İnsan Ticareti',sec_prostitution:'Fuhuş',sec_terrorism:'Terör',sec_genocide:'Soykırım',sec_torture:'İşkence',sec_violence:'Şiddet',sec_assassin:'Suikast',sec_military:'Askeri Sorun',sec_spy:'Casusluk',sec_disorder:'Akıl Hastalığı',sec_arrested:'Tutuklanma',sec_disease:'Bulaşıcı Hastalık',sec_deported:'Sınır Dışı' };
                   const tr = k => fieldNames[k] || k;
                   return (
@@ -6839,43 +6978,132 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                         e.stopPropagation();
                         const fieldNames = { firstName:'Ad',lastName:'Soyad',surname:'Soyad',givenName:'Ad (Pasaporttaki)',fullNameTr:'Tam Ad',phone:'Telefon',email:'E-posta',otherEmail:'Diğer E-posta',birthDate:'Doğum Tarihi',birthPlace:'Doğum Yeri',birthCountry:'Doğum Ülkesi',birthCity:'Doğum Şehri',gender:'Cinsiyet',nationality:'Uyruk',maritalStatus:'Medeni Durum',passportNo:'Pasaport No',passportNumber:'Pasaport No',passportType:'Pasaport Türü',passportCity:'Pasaport Verilen Şehir',passportIssueDate:'Pasaport Veriliş',passportExpiry:'Pasaport Geçerlilik',passportExpDate:'Pasaport Geçerlilik',lostPassport:'Kayıp Pasaport',tcKimlik:'TC Kimlik',homeCity:'İkamet Şehri',homeDistrict:'İkamet İlçesi',homeAddress:'Ev Adresi',homeZip:'Posta Kodu',permanentResident:'Daimi Oturum İzni',spouseName:'Eş Adı',fatherName:'Baba Adı',motherName:'Anne Adı',fatherBirth:'Baba Doğum Tarihi',motherBirth:'Anne Doğum Tarihi',fatherInUS:'Babasi ABD de mi',motherInUS:'Annesi ABD de mi',occupation:'Meslek',employerName:'İşyeri Adı',employerAddress:'İşyeri Adresi',employerCity:'İşyeri Şehri',employerDistrict:'İşyeri İlçesi',employerZip:'İşyeri Posta Kodu',jobDescription:'İş Tanımı',schoolName:'Okul Adı',emergencyName:'Acil Kişi',emergencyPhone:'Acil Telefon',usAddress:'ABD Adresi',relativeInUS:'ABD de Akraba',hadUSVisa:'Önceki ABD Vizesi',beenToUS:'Önceki ABD Ziyareti',visaRefused:'Vize Reddi',visaType:'Vize Türü',travelHistory:'Seyahat Geçmişi',arrivalDate:'Varış Tarihi',stayDuration:'Kalış Süresi',tripPayer:'Seyahati Ödeyen',companionName:'Eşlik Eden',hasCompanion:'Eşlik Eden Var mi',instagram:'Instagram',otherNationality:'Diğer Uyruk',immigrationPetition:'Göçmenlik Başvurusu',securityQuestion:'Güvenlik Sorusu',sec_drugs:'Uyuşturucu',sec_laundering:'Kara Para',sec_terrorism:'Terör',sec_violence:'Şiddet',sec_trafficking:'İnsan Ticareti',sec_genocide:'Soykırım',sec_torture:'İşkence',sec_disorder:'Akıl Hastalığı',sec_arrested:'Tutuklanma',sec_disease:'Bulaşıcı Hastalık' };
                         const tr = k => fieldNames[k] || k;
-                        const rows = [
-                          ['Ad', app._name], ['Telefon', app._phone], ['E-posta', app._email],
-                          ['TC Kimlik', app._tcKimlik], ['Pasaport No', app._passportNo],
-                          app.currentStep ? ['Adım', `${app.currentStep}. adım`] : null,
-                          // Form doldurma sırasına göre
-                          ...fieldOrder.filter(k => app.formData?.[k] && typeof app.formData[k] === 'string' && app.formData[k]).map(k => [tr(k), app.formData[k]]),
-                          // fieldOrder'da olmayan alanlar
-                          ...Object.entries(app.formData || {}).filter(([k,v]) => !fieldOrder.includes(k) && typeof v === 'string' && v).map(([k,v]) => [tr(k), v])
-                        ].filter(Boolean);
+
+                        // Bölüm başlıklarını tanımla
+                        const sections = [
+                          { title: 'KİSİSEL BILGILER', keys: ['firstName','lastName','maidenSurname','gender','maritalStatus','birthDate','birthPlace','birthCountry','nationality','otherNationality','tcKimlik','homeAddress','homeZip','homePhone','phone','email'] },
+                          { title: 'PASAPORT BILGILERI', keys: ['passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','oldPassport','lostPassport','travelHistory'] },
+                          { title: 'SEYAHAT VE DIGER BILGILER', keys: ['visaType','arrivalDate','departureDate','stayDuration','usAddress','usPhone','usEmail','tripPayer','hasCompanion','companionName','companionRelation','companionPhone','companionEmail','inviterName','inviterRelation'] },
+                          { title: 'DAHA ONCE AMERIKADA BULUNDUNUZ MU?', keys: ['beenToUS','usArrivalDate','usDepartureDate','hadUSVisa','usVisaDate','visaNumber','sameVisaCategory','hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason','greencardPetition'] },
+                          { title: 'AILE BILGISI', keys: ['fatherName','fatherBirth','fatherBirthPlace','fatherNationality','motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality','parentInUS','relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen','relativeAddress','relativePhone','relativeEmail','relative2Name','relative2Relation','relative2USCitizen','relative2Address','relative2Phone','relative2Email'] },
+                          { title: 'ES HAKKINDA BILGILER', keys: ['spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate','divorceCount','exSpouseName','exSpouseBirth','marriageDate','divorceDate','divorceReason','exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2'] },
+                          { title: 'IS HAYATINIZ', keys: ['occupation','jobDescription','monthlySalary','employerName','employerAddress','employerZip','employerPhone','jobStartDate','prevEmployerName','prevEmployerAddress','prevEmployerPhone','prevJobStartDate','prevJobEndDate'] },
+                          { title: 'EN SON MEZUN OLUNAN OKUL', keys: ['schoolName','schoolAddress','educationField','educationStartEnd'] },
+                          { title: 'DIGER BILGILER', keys: ['militaryService','militaryRank','militaryStart','militaryEnd','languages'] },
+                          { title: 'SOSYAL MEDYA BILGILERI', keys: ['facebook','instagram','twitter','linkedin','youtube','reddit','pinterest','tumblr','vk','weibo','myspace'] },
+                          { title: 'GUVENLIK SORULARI', keys: ['sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'] },
+                        ];
+
                         const doc2 = new jsPDF();
                         // Başlık
                         doc2.setFillColor(26, 58, 92);
-                        doc2.rect(0, 0, 210, 30, 'F');
-                        doc2.setFontSize(16); doc2.setTextColor(255);
-                        doc2.text('DS-160 Basvuru Formu', 15, 14);
+                        doc2.rect(0, 0, 210, 32, 'F');
+                        doc2.setFontSize(14); doc2.setTextColor(255);
+                        doc2.text('AMERIKA BILGI FORMU - DS-160', 15, 13);
+                        doc2.setFontSize(8); doc2.setTextColor(180);
+                        doc2.text('ASAGIDA BELIRTILEN BILGILER DS-160 ONLINE FORMUNUZ ICINDIR', 15, 21);
                         doc2.setFontSize(9); doc2.setTextColor(200);
-                        doc2.text(`Basvuran: ${(app._name||'').replace(/[İı]/g, i => i==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C')}   |   ${new Date().toLocaleDateString('tr-TR')}`, 15, 24);
-                        // Tablo
-                        let y = 38;
-                        const colW = [55, 130];
+                        const nameClean = (app._name||'').replace(/[İı]/g,i=>i==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
+                        doc2.text(`Basvuran: ${nameClean}   |   ${new Date().toLocaleDateString('tr-TR')}`, 15, 28);
+
+                        const clean = (s) => String(s||'').replace(/[İı]/g,x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
+
+                        let y = 40;
+                        let rowIdx = 0;
+
+                        // Üst bilgiler
+                        const topRows = [
+                          ['Ad Soyad', app._name], ['Telefon', app._phone],
+                          ['E-posta', app._email], ['TC Kimlik', app._tcKimlik], ['Pasaport No', app._passportNo]
+                        ].filter(r => r[1]);
+
                         doc2.setFontSize(8);
-                        rows.forEach(([k, v], i) => {
+                        topRows.forEach(([k, v]) => {
                           if (y > 275) { doc2.addPage(); y = 15; }
-                          const bg = i % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
-                          doc2.setFillColor(...bg); doc2.rect(15, y - 4, 180, 8, 'F');
-                          doc2.setTextColor(80, 80, 80); doc2.setFont(undefined, 'bold');
-                          const kClean = String(k).replace(/[İı]/g, x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
-                          doc2.text(kClean, 17, y + 1);
-                          doc2.setTextColor(30, 30, 30); doc2.setFont(undefined, 'normal');
-                          const vClean = String(v).replace(/[İı]/g, x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
-                          const lines = doc2.splitTextToSize(vClean, 125);
-                          doc2.text(lines, 72, y + 1);
+                          const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
+                          doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
+                          doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
+                          doc2.text(clean(k), 17, y+1);
+                          doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
+                          const lines = doc2.splitTextToSize(clean(v), 125);
+                          doc2.text(lines, 72, y+1);
                           y += Math.max(8, lines.length * 5);
+                          rowIdx++;
                         });
+
+                        // Bölüm bölüm yaz
+                        sections.forEach(section => {
+                          const sectionRows = section.keys
+                            .filter(k => app.formData?.[k] && String(app.formData[k]).trim())
+                            .map(k => [tr(k), app.formData[k]]);
+
+                          if (sectionRows.length === 0) return;
+
+                          // Bölüm başlığı
+                          if (y > 265) { doc2.addPage(); y = 15; }
+                          doc2.setFillColor(26, 58, 92);
+                          doc2.rect(15, y-2, 180, 9, 'F');
+                          doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
+                          doc2.text(section.title, 17, y+4);
+                          y += 12; rowIdx = 0;
+
+                          sectionRows.forEach(([k, v]) => {
+                            if (y > 275) { doc2.addPage(); y = 15; }
+                            const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
+                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
+                            doc2.setFontSize(8); doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
+                            doc2.text(clean(k), 17, y+1);
+                            doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
+                            const lines = doc2.splitTextToSize(clean(v), 125);
+                            doc2.text(lines, 72, y+1);
+                            y += Math.max(8, lines.length * 5);
+                            rowIdx++;
+                          });
+                        });
+
+                        // fieldOrder'da olmayan ekstra alanlar
+                        const allOrderedKeys = sections.flatMap(s => s.keys);
+                        const extraRows = Object.entries(app.formData || {})
+                          .filter(([k,v]) => !allOrderedKeys.includes(k) && typeof v === 'string' && v.trim() && !k.startsWith('_'))
+                          .map(([k,v]) => [tr(k), v]);
+
+                        if (extraRows.length > 0) {
+                          if (y > 265) { doc2.addPage(); y = 15; }
+                          doc2.setFillColor(26, 58, 92);
+                          doc2.rect(15, y-2, 180, 9, 'F');
+                          doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
+                          doc2.text('DIGER', 17, y+4);
+                          y += 12; rowIdx = 0;
+                          extraRows.forEach(([k, v]) => {
+                            if (y > 275) { doc2.addPage(); y = 15; }
+                            const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
+                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
+                            doc2.setFontSize(8); doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
+                            doc2.text(clean(k), 17, y+1);
+                            doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
+                            const lines = doc2.splitTextToSize(clean(v), 125);
+                            doc2.text(lines, 72, y+1);
+                            y += Math.max(8, lines.length * 5);
+                            rowIdx++;
+                          });
+                        }
+
                         doc2.save(`DS160_${(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
                       }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         📄 PDF İndir
+                      </button>
+                      <button onClick={async (e) => {
+                        e.stopPropagation();
+                        const email = app._email;
+                        if (!email) { showToast?.('Müşterinin e-posta adresi yok', 'error'); return; }
+                        const visa = { id: app._id || app.id || Date.now().toString(), categoryId: 'usa', country: 'Amerika', visaDuration: 'B1/B2 Turistik ve Ticari', customerEmail: email };
+                        const customer = { firstName: (app._name||'').split(' ')[0], lastName: (app._name||'').split(' ').slice(1).join(' '), email };
+                        showToast?.('📧 Mail gönderiliyor...', 'info');
+                        const result = await sendVisaEmail({ visa, customer, appSettings });
+                        if (result.ok) showToast?.(`📧 Mail gönderildi: ${email}`, 'success');
+                        else showToast?.(`❌ Mail gönderilemedi: ${result.error}`, 'error');
+                      }} style={{ padding: '8px 14px', background: 'rgba(20,184,166,0.2)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#14b8a6', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                        📧 Mail Gönder
                       </button>
                     </div>
                   </div>
