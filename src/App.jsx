@@ -3002,7 +3002,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
 
     const isim = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || visa.customerName || '';
     const tarih = new Date().toLocaleDateString('tr-TR');
-    const ref_no = visa.id?.slice(-8)?.toUpperCase() || '-';
+    const ref_no = String(visa.id || '').slice(-8).toUpperCase() || '-';
     const ulke = visa.country || catId;
 
     const replace = (str) => str
