@@ -7262,17 +7262,11 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
 
       {/* Sekmeler */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button onClick={() => setActiveTab('profile')} style={{ padding: '12px 16px', background: activeTab === 'profile' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'profile' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'profile' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'profile' ? '600' : '400' }}>
-          👤 Profil
-        </button>
-        <button onClick={() => setActiveTab('password')} style={{ padding: '12px 16px', background: activeTab === 'password' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'password' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'password' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'password' ? '600' : '400' }}>
-          🔐 Şifre
+        <button onClick={() => setActiveTab('users')} style={{ padding: '12px 16px', background: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '#10b981' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '600' : '400' }}>
+          👥 Kullanıcılar
         </button>
         {isAdmin && (
           <>
-            <button onClick={() => setActiveTab('users')} style={{ padding: '12px 16px', background: activeTab === 'users' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'users' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'users' ? '#10b981' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'users' ? '600' : '400' }}>
-              👥 Kullanıcılar
-            </button>
             <button onClick={() => setActiveTab('visaSettings')} style={{ padding: '12px 16px', background: activeTab === 'visaSettings' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'visaSettings' ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'visaSettings' ? '#8b5cf6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'visaSettings' ? '600' : '400' }}>
               🌍 Vize Ayarları
             </button>
@@ -7828,7 +7822,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       )}
 
       {/* PROFİLİM */}
-      {activeTab === 'profile' && (
+      {activeTab === 'users' && (
         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
             <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '24px' }}>
@@ -7865,7 +7859,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       )}
 
       {/* ŞİFRE DEĞİŞTİR */}
-      {activeTab === 'password' && (
+      {activeTab === 'users' && (
         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🔐</div>
