@@ -2678,27 +2678,200 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 }
 
 // VİZE MODÜLÜ
+
+function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const attachments = appSettings?.attachments || [];
+
+  const allVisaTypes = React.useMemo(() => {
+    const durations = appSettings?.visaDurations || {};
+    const types = [];
+    Object.entries(durations).forEach(([catId, items]) => {
+      if (Array.isArray(items)) {
+        items.forEach(item => {
+          const name = typeof item === 'string' ? item : item.name;
+          if (name) types.push(name);
+        });
+      }
+    });
+    return types;
+  }, [appSettings?.visaDurations]);
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
+    setUploading(true);
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const storage = getStorage();
+      const path = `mail-attachments/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const newAtt = { id: Date.now().toString(), name: file.name, url, path, size: file.size, linkedTypes: [] };
+      setAppSettings({ ...appSettings, attachments: [...attachments, newAtt] });
+      showToast?.(`✅ ${file.name} yüklendi`, 'success');
+    } catch (err) {
+      showToast?.(`❌ Yükleme hatası: ${err.message}`, 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = async (att) => {
+    if (!confirm(`"${att.name}" dosyasını silmek istiyor musunuz?`)) return;
+    try {
+      const { getStorage, ref, deleteObject } = await import('firebase/storage');
+      const storage = getStorage();
+      await deleteObject(ref(storage, att.path));
+    } catch (e) { /* storage'dan silinemediyse devam et */ }
+    setAppSettings({ ...appSettings, attachments: attachments.filter(a => a.id !== att.id) });
+    showToast?.('Dosya silindi', 'info');
+  };
+
+  const toggleLinkedType = (attId, typeName) => {
+    const updated = attachments.map(a => {
+      if (a.id !== attId) return a;
+      const linked = a.linkedTypes || [];
+      return { ...a, linkedTypes: linked.includes(typeName) ? linked.filter(t => t !== typeName) : [...linked, typeName] };
+    });
+    setAppSettings({ ...appSettings, attachments: updated });
+  };
+
+  const formatSize = (bytes) => bytes < 1024*1024 ? `${(bytes/1024).toFixed(0)} KB` : `${(bytes/1024/1024).toFixed(1)} MB`;
+
+  const [expandedId, setExpandedId] = useState(null);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* Yükleme alanı */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) uploadFile(f); }}
+        style={{ border: `2px dashed ${dragOver ? '#a855f7' : 'rgba(168,85,247,0.3)'}`, borderRadius: '16px', padding: '32px', textAlign: 'center', background: dragOver ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.02)', transition: 'all 0.2s', cursor: 'pointer' }}
+        onClick={() => document.getElementById('attFileInput').click()}
+      >
+        <input id="attFileInput" type="file" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) uploadFile(e.target.files[0]); e.target.value=''; }} />
+        {uploading ? (
+          <div style={{ color: '#a855f7', fontSize: '14px' }}>⏳ Yükleniyor...</div>
+        ) : (
+          <>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📎</div>
+            <div style={{ fontSize: '14px', color: '#a855f7', fontWeight: '600' }}>Dosya yükle</div>
+            <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>Tıkla veya sürükle-bırak • PDF, Word, Excel • Max 10MB</div>
+          </>
+        )}
+      </div>
+
+      {/* Dosya listesi */}
+      {attachments.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#475569', fontSize: '13px', padding: '20px' }}>
+          Henüz dosya yüklenmemiş
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h3 style={{ fontSize: '14px', color: '#94a3b8' }}>📁 Yüklü Dosyalar ({attachments.length})</h3>
+          {attachments.map(att => (
+            <div key={att.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', overflow: 'hidden' }}>
+              {/* Dosya başlığı */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px' }}>
+                <span style={{ fontSize: '20px' }}>
+                  {att.name.endsWith('.pdf') ? '📄' : att.name.match(/\.(doc|docx)$/) ? '📝' : att.name.match(/\.(xls|xlsx)$/) ? '📊' : '📎'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', color: '#e8f1f8', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</div>
+                  <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>
+                    {att.size ? formatSize(att.size) : ''} •{' '}
+                    <span style={{ color: att.linkedTypes?.length > 0 ? '#10b981' : '#f59e0b' }}>
+                      {att.linkedTypes?.length > 0 ? `${att.linkedTypes.length} vize türüne bağlı` : 'Bağlantı yok'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <button onClick={() => window.open(att.url, '_blank')}
+                    style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#60a5fa', cursor: 'pointer', fontSize: '11px' }}>
+                    👁 Görüntüle
+                  </button>
+                  <button onClick={() => setExpandedId(expandedId === att.id ? null : att.id)}
+                    style={{ padding: '6px 10px', background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '6px', color: '#c084fc', cursor: 'pointer', fontSize: '11px' }}>
+                    🔗 Bağla
+                  </button>
+                  <button onClick={() => removeAttachment(att)}
+                    style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>
+                    🗑
+                  </button>
+                </div>
+              </div>
+
+              {/* Vize türü bağlama paneli */}
+              {expandedId === att.id && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '14px 16px', background: 'rgba(168,85,247,0.04)' }}>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>
+                    Bu dosyanın hangi vize türlerine otomatik ek olarak gönderileceğini seçin:
+                  </p>
+                  {allVisaTypes.length === 0 ? (
+                    <p style={{ fontSize: '12px', color: '#475569' }}>Vize Ayarları'nda önce vize türü ekleyin.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {allVisaTypes.map(typeName => {
+                        const linked = att.linkedTypes?.includes(typeName);
+                        return (
+                          <button key={typeName} onClick={() => toggleLinkedType(att.id, typeName)}
+                            style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${linked ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)'}`, background: linked ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.03)', color: linked ? '#c084fc' : '#64748b', cursor: 'pointer', fontSize: '11px', fontWeight: linked ? '600' : '400' }}>
+                            {linked ? '✓ ' : ''}{typeName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
-  const countries = [
-    { id: 'schengen', label: '🇪🇺 Schengen', color: '#10b981' },
-    { id: 'usa', label: '🇺🇸 Amerika', color: '#3b82f6' },
-    { id: 'russia', label: '🇷🇺 Rusya', color: '#ef4444' },
-    { id: 'uk', label: '🇬🇧 İngiltere', color: '#8b5cf6' },
-    { id: 'uae', label: '🇦🇪 BAE', color: '#f59e0b' },
-    { id: 'china', label: '🇨🇳 Çin', color: '#dc2626' },
-  ];
-  const [activeCountry, setActiveCountry] = useState('schengen');
+  const allVisaTypes = React.useMemo(() => {
+    const durations = appSettings?.visaDurations || {};
+    const types = [];
+    const catLabels = { schengen: '🇪🇺 Schengen', usa: '🇺🇸 Amerika', russia: '🇷🇺 Rusya', uk: '🇬🇧 İngiltere', uae: '🇦🇪 BAE', china: '🇨🇳 Çin' };
+    Object.entries(durations).forEach(([catId, items]) => {
+      if (Array.isArray(items)) {
+        items.forEach(item => {
+          const name = typeof item === 'string' ? item : item.name;
+          if (name) types.push({ key: name, label: name, cat: catLabels[catId] || catId });
+        });
+      }
+    });
+    return types;
+  }, [appSettings?.visaDurations]);
+
+  const [activeKey, setActiveKey] = useState(allVisaTypes[0]?.key || '');
   const [testEmail, setTestEmail] = useState('');
   const [testSending, setTestSending] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const currentTemplate = appSettings?.emailTemplates?.[activeCountry] || { subject: '', body: '' };
+  const filteredTypes = allVisaTypes.filter(t =>
+    t.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.cat.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const currentTemplate = appSettings?.emailTemplates?.[activeKey] || { subject: '', body: '' };
 
   const updateTemplate = (field, value) => {
     setAppSettings({
       ...appSettings,
       emailTemplates: {
         ...(appSettings.emailTemplates || {}),
-        [activeCountry]: { ...currentTemplate, [field]: value }
+        [activeKey]: { ...currentTemplate, [field]: value }
       }
     });
   };
@@ -2707,13 +2880,18 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
     if (!testEmail.trim()) return;
     setTestSending(true);
     const result = await sendVisaEmail({
-      visa: { id: 'TEST001', categoryId: activeCountry, country: activeCountry, visaDuration: 'Test', customerEmail: testEmail },
+      visa: { id: 'TEST001', categoryId: 'schengen', country: 'Test', visaDuration: activeKey, customerEmail: testEmail },
       customer: { firstName: 'Test', lastName: 'Müşteri', email: testEmail },
       appSettings
     });
     setTestSending(false);
     if (result.ok) showToast?.('✅ Test maili gönderildi', 'success');
     else showToast?.(`❌ Hata: ${result.error}`, 'error');
+  };
+
+  const hasTemplate = (key) => {
+    const t = appSettings?.emailTemplates?.[key];
+    return t && (t.subject || t.body);
   };
 
   return (
@@ -2744,41 +2922,64 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
       </div>
 
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ margin: '0 0 14px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Ülke Bazlı Mail Şablonları</h3>
+        <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Vize Türü Bazlı Mail Şablonları</h3>
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
-          Değişkenler: <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{isim}'}</code>{' '}
-          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ulke}'}</code>{' '}
-          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{tarih}'}</code>{' '}
-          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{ref_no}'}</code>{' '}
-          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>{'{vize_turu}'}</code>
-        </p>
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          {countries.map(c => (
-            <button key={c.id} onClick={() => setActiveCountry(c.id)}
-              style={{ padding: '8px 12px', background: activeCountry === c.id ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${activeCountry === c.id ? c.color + '99' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: activeCountry === c.id ? c.color : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeCountry === c.id ? '600' : '400' }}>
-              {c.label}
-            </button>
+          Her vize türü için ayrı şablon. Vize Ayarları'nda yeni tür eklenince burada otomatik görünür.<br/>
+          Değişkenler:{" "}
+          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}'].map(v => (
+            <code key={v} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', marginRight: '4px' }}>{v}</code>
           ))}
-        </div>
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
-          <input value={currentTemplate.subject} onChange={e => updateTemplate('subject', e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} placeholder="Mail konusu..." />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
-          <textarea value={currentTemplate.body} onChange={e => updateTemplate('body', e.target.value)} rows={12}
-            style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }} placeholder="Mail içeriği..." />
-        </div>
+        </p>
+        {allVisaTypes.length === 0 ? (
+          <p style={{ color: '#64748b', fontSize: '13px' }}>⚠️ Henüz vize türü eklenmemiş. Vize Ayarları bölümünden ekleyin.</p>
+        ) : (
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <div style={{ width: '220px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="🔍 Tür ara..."
+                style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '12px' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '380px', overflowY: 'auto' }}>
+                {filteredTypes.map(t => (
+                  <button key={t.key} onClick={() => setActiveKey(t.key)}
+                    style={{ padding: '10px 12px', border: `1px solid ${activeKey === t.key ? 'rgba(20,184,166,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '8px', background: activeKey === t.key ? 'rgba(20,184,166,0.15)' : 'rgba(255,255,255,0.03)', color: activeKey === t.key ? '#14b8a6' : '#94a3b8', cursor: 'pointer', textAlign: 'left', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontWeight: activeKey === t.key ? '600' : '400' }}>{t.label}</span>
+                    <span style={{ fontSize: '10px', color: '#475569' }}>{t.cat}</span>
+                    <span style={{ fontSize: '10px', color: hasTemplate(t.key) ? '#10b981' : '#f59e0b' }}>{hasTemplate(t.key) ? '✓ Şablon var' : '⚠ Şablon yok'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {activeKey ? (
+                <>
+                  <div style={{ padding: '10px 14px', background: 'rgba(20,184,166,0.08)', borderRadius: '8px', border: '1px solid rgba(20,184,166,0.2)' }}>
+                    <span style={{ fontSize: '13px', color: '#14b8a6', fontWeight: '600' }}>✏️ {activeKey}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
+                    <input value={currentTemplate.subject} onChange={e => updateTemplate('subject', e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} placeholder="Mail konusu..." />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
+                    <textarea value={currentTemplate.body} onChange={e => updateTemplate('body', e.target.value)} rows={14}
+                      style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }} placeholder="Mail içeriği..." />
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#475569', fontSize: '13px' }}>← Soldan bir vize türü seçin</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>🧪 Test Maili Gönder</h3>
-        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Seçili şablonu test etmek için bir adrese gönder</p>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Seçili şablonu ({activeKey || 'seçilmedi'}) test etmek için bir adrese gönder</p>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="test@ornek.com"
             style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
-          <button onClick={sendTest} disabled={testSending || !testEmail.trim()}
+          <button onClick={sendTest} disabled={testSending || !testEmail.trim() || !activeKey}
             style={{ padding: '10px 18px', background: testSending ? 'rgba(20,184,166,0.3)' : 'linear-gradient(135deg, #14b8a6, #0d9488)', border: 'none', borderRadius: '8px', color: 'white', cursor: testSending ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
             {testSending ? '⏳ Gönderiliyor...' : '📤 Test Gönder'}
           </button>
@@ -2790,39 +2991,50 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
 
 async function sendVisaEmail({ visa, customer, appSettings }) {
   try {
+    const vize_turu = visa.visaDuration || visa.visaType || '';
     const catId = visa.categoryId || 'schengen';
-    const template = appSettings?.emailTemplates?.[catId] || appSettings?.emailTemplates?.schengen;
-    if (!template) return { ok: false, error: 'Şablon bulunamadı' };
+    const templates = appSettings?.emailTemplates || {};
+    const template = templates[vize_turu] || templates[catId];
+    if (!template || (!template.subject && !template.body)) return { ok: false, error: 'Şablon bulunamadı veya boş' };
 
     const email = customer?.email || visa?.customerEmail;
     if (!email) return { ok: false, error: 'Müşteri e-postası yok' };
 
-    const isim = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || visa.customerName;
+    const isim = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || visa.customerName || '';
     const tarih = new Date().toLocaleDateString('tr-TR');
     const ref_no = visa.id?.slice(-8)?.toUpperCase() || '-';
-    const vize_turu = visa.visaDuration || visa.visaType || '';
     const ulke = visa.country || catId;
 
     const replace = (str) => str
       .replace(/{isim}/g, isim)
       .replace(/{ulke}/g, ulke)
       .replace(/{tarih}/g, tarih)
+      .replace(/{saat}/g, '')
       .replace(/{ref_no}/g, ref_no)
       .replace(/{vize_turu}/g, vize_turu);
 
-    const subject = replace(template.subject);
-    const bodyText = replace(template.body);
+    const subject = replace(template.subject || '');
+    const bodyText = replace(template.body || '');
     const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+
+    // Vize türüne bağlı ekleri bul
+    const allAttachments = appSettings?.attachments || [];
+    const linkedAttachments = allAttachments.filter(a => a.linkedTypes?.includes(vize_turu));
 
     const resp = await fetch('/.netlify/functions/send-mail', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: email, subject, html, text: bodyText })
+      body: JSON.stringify({
+        to: email,
+        subject,
+        html,
+        text: bodyText,
+        attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url }))
+      })
     });
-
     const data = await resp.json();
     if (!resp.ok) return { ok: false, error: data.error || 'Gönderim hatası' };
-    return { ok: true };
+    return { ok: true, attachmentCount: linkedAttachments.length };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -3223,11 +3435,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             `${c.firstName} ${c.lastName}`.trim() === formData.customerName
           );
           sendVisaEmail({ visa: newVisa, customer, appSettings }).then(result => {
-            if (result.ok) {
-              showToast?.('📧 Müşteriye bilgilendirme maili gönderildi', 'success');
-            } else if (result.error !== 'Müşteri e-postası yok') {
-              showToast?.(`⚠️ Mail gönderilemedi: ${result.error}`, 'warning');
-            }
+            if (result.ok) showToast?.('📧 Müşteriye bilgilendirme maili gönderildi', 'success');
+            else if (result.error !== 'Müşteri e-postası yok') showToast?.(`⚠️ Mail: ${result.error}`, 'warning');
           });
         }
       }
@@ -6845,6 +7054,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             <button onClick={() => setActiveTab('mailSettings')} style={{ padding: '12px 16px', background: activeTab === 'mailSettings' ? 'rgba(20,184,166,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'mailSettings' ? '1px solid rgba(20,184,166,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'mailSettings' ? '#14b8a6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'mailSettings' ? '600' : '400' }}>
               📧 Mail Ayarları
             </button>
+            <button onClick={() => setActiveTab('attachmentSettings')} style={{ padding: '12px 16px', background: activeTab === 'attachmentSettings' ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'attachmentSettings' ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'attachmentSettings' ? '#a855f7' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'attachmentSettings' ? '600' : '400' }}>
+              📎 Dosya Ekleri
+            </button>
           </>
         )}
       </div>
@@ -7579,6 +7791,11 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         <MailSettingsPanel appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
       )}
 
+      {/* DOSYA EKLERİ */}
+      {activeTab === 'attachmentSettings' && isAdmin && (
+        <AttachmentSettingsPanel appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      )}
+
     </div>
   );
 }
@@ -7661,124 +7878,9 @@ export default function App() {
       iban: 'TR00 0000 0000 0000 0000 0000 00',
       swift: 'TCZBTR2AXXX'
     },
-    emailTemplates: {
-      schengen: {
-        subject: 'Schengen Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-{ulke} Schengen vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-Evrak listesi ve süreç hakkında bilgi almak için bizimle iletişime geçebilirsiniz.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-🌐 www.paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      },
-      usa: {
-        subject: 'Amerika Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-Amerika Birleşik Devletleri vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-DS-160 formu ve randevu süreci hakkında bilgi almak için lütfen bizimle iletişime geçin.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      },
-      russia: {
-        subject: 'Rusya Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-Rusya vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-Sorularınız için iletişime geçebilirsiniz.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      },
-      uk: {
-        subject: 'İngiltere Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-İngiltere vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-Sorularınız için iletişime geçebilirsiniz.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      },
-      uae: {
-        subject: 'BAE Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-Birleşik Arap Emirlikleri vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-Sorularınız için iletişime geçebilirsiniz.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      },
-      china: {
-        subject: 'Çin Vize Başvurunuz - Paydos Turizm',
-        body: `Sayın {isim},
-
-Çin vize başvurunuz Paydos Turizm tarafından alınmıştır.
-
-📋 Başvuru Detayları:
-• Vize Türü: {vize_turu}
-• Başvuru Tarihi: {tarih}
-• Referans No: {ref_no}
-
-Sorularınız için iletişime geçebilirsiniz.
-
-📞 +90 258 XXX XX XX
-📧 vize@paydostur.com
-
-Saygılarımızla,
-Paydos Turizm`
-      }
-    },
-    autoEmailOnVisa: true
+    emailTemplates: {},
+    autoEmailOnVisa: true,
+    attachments: []
   });
 
   // Toast fonksiyonları
