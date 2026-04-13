@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
@@ -2684,7 +2684,7 @@ function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   const [dragOver, setDragOver] = useState(false);
   const attachments = appSettings?.attachments || [];
 
-  const allVisaTypes = React.useMemo(() => {
+  const allVisaTypes = useMemo(() => {
     const durations = appSettings?.visaDurations || {};
     const types = [];
     Object.entries(durations).forEach(([catId, items]) => {
@@ -2839,7 +2839,7 @@ function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
 }
 
 function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
-  const allVisaTypes = React.useMemo(() => {
+  const allVisaTypes = useMemo(() => {
     const durations = appSettings?.visaDurations || {};
     const types = [];
     const catLabels = { schengen: '🇪🇺 Schengen', usa: '🇺🇸 Amerika', russia: '🇷🇺 Rusya', uk: '🇬🇧 İngiltere', uae: '🇦🇪 BAE', china: '🇨🇳 Çin' };
