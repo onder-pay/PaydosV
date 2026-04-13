@@ -3453,6 +3453,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     
     setVisaApplications(visaApplications.filter(v => v.id !== id));
     setSelectedVisa(null);
+
+    // Firestore'dan sil
+    try {
+      const docId = visaToDelete._docId || visaToDelete.id?.toString();
+      if (docId) await deleteDoc(doc(db, 'visa_applications', docId));
+    } catch(e) { console.warn('Firestore visa silme hatası:', e.message); }
     
     // Undo ile geri alınabilir toast
     showToast?.(`${visaToDelete.customerName} başvurusu silindi`, 'warning', () => {
@@ -6024,7 +6030,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
                 <button onClick={() => downloadPDF(quote)} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄</button>
                 <button onClick={() => sendWhatsApp(quote)} style={{ padding: '8px 12px', background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '6px', color: '#25d366', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📱</button>
                 <button onClick={() => sendEmail(quote)} style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✉️</button>
-                <button onClick={() => { if (window.confirm(`"${quote.subject}" belgesini silmek istediğinizden emin misiniz?`)) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Belge silindi', 'warning'); } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
+                <button onClick={async () => { if (window.confirm(`"${quote.subject}" belgesini silmek istediğinizden emin misiniz?`)) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Belge silindi', 'warning'); try { const docId = quote._docId || quote.id?.toString(); if (docId) await deleteDoc(doc(db, 'quotes', docId)); } catch(e) { console.warn('Firestore quote silme hatası:', e.message); } } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
               </div>
             </div>
           ))}
@@ -8292,8 +8298,21 @@ export default function App() {
           const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
           await setDoc(doc(db, collectionName, docId), data, { merge: true });
         } else {
+          // Mevcut Firestore dokümanlarını al, silinenleri temizle
+          const snapshot = await getDocs(collection(db, collectionName));
+          const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
           let batch = writeBatch(db);
           let count = 0;
+          // Firestore'da olup state'te olmayan kayıtları sil
+          for (const fsDoc of snapshot.docs) {
+            if (!currentIds.has(fsDoc.id)) {
+              batch.delete(fsDoc.ref);
+              count++;
+              if (count >= 400) { await batch.commit(); batch = writeBatch(db); count = 0; }
+            }
+          }
+          if (count > 0) { await batch.commit(); batch = writeBatch(db); count = 0; }
+          // State'teki kayıtları kaydet
           for (const item of data) {
             const docId = item._docId || item.id?.toString() || Date.now().toString();
             const saveData = { ...item };
