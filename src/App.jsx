@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, query, orderBy, limit, where, Timestamp } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
@@ -3803,6 +3803,27 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                   📧 E-posta
                 </button>
+                <button type="button" onClick={async () => {
+                  if (!formData.customerEmail) { showToast?.('Müşterinin e-posta adresi yok', 'error'); return; }
+                  const visa = {
+                    id: editingVisa?.id || Date.now().toString(),
+                    categoryId: selectedCategory?.id || 'schengen',
+                    country: formData.country || '',
+                    visaDuration: formData.visaDuration || formData.visaType || '',
+                    customerEmail: formData.customerEmail
+                  };
+                  const customer = customers?.find(c => c.id === formData.customerId) || {
+                    firstName: (formData.customerName || '').split(' ')[0],
+                    lastName: (formData.customerName || '').split(' ').slice(1).join(' '),
+                    email: formData.customerEmail
+                  };
+                  showToast?.('📧 Bilgi maili gönderiliyor...', 'info');
+                  const result = await sendVisaEmail({ visa, customer, appSettings });
+                  if (result.ok) showToast?.('📧 Bilgi maili gönderildi', 'success');
+                  else showToast?.(`❌ Mail gönderilemedi: ${result.error}`, 'error');
+                }} style={{ padding: '12px', background: 'rgba(20,184,166,0.2)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#14b8a6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                  📨 Bilgi Maili
+                </button>
               </div>
 
               {/* Randevu Bilgisi Gönder */}
@@ -7149,7 +7170,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 
 // AYARLAR MODÜLÜ
 function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userFormData, setUserFormData] = useState({});
@@ -8200,79 +8221,110 @@ export default function App() {
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
-    const loadFromFirestore = async () => {
+
+    const unsubs = [];
+
+    // Küçük koleksiyonlar: tam gerçek zamanlı dinleme
+    const smallCollections = [
+      { name: 'visa_applications', setter: setVisaApplications },
+      { name: 'tours', setter: setTours },
+      { name: 'agencies', setter: setAgencies },
+      { name: 'credit_cards', setter: setCreditCards },
+      { name: 'quotes', setter: setQuotes },
+      { name: 'users', setter: setUsers }
+    ];
+
+    for (const col of smallCollections) {
+      const unsub = onSnapshot(collection(db, col.name), (snapshot) => {
+        if (snapshot.empty) { col.setter([]); return; }
+        const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+        col.setter(items);
+        try { localStorage.setItem(`paydos_${col.name}`, JSON.stringify(items)); } catch(e) {}
+      }, (e) => console.warn(`${col.name} dinleme hatası:`, e.message));
+      unsubs.push(unsub);
+    }
+
+    // Customers: ilk yükleme getDocs, sonra değişen kayıtları onSnapshot ile yakala
+    const loadCustomers = async () => {
       try {
-        const collections = [
-          { name: 'customers', setter: setCustomers },
-          { name: 'visa_applications', setter: setVisaApplications },
-          { name: 'tours', setter: setTours },
-          { name: 'agencies', setter: setAgencies },
-          { name: 'credit_cards', setter: setCreditCards },
-          { name: 'quotes', setter: setQuotes },
-          { name: 'users', setter: setUsers }
-        ];
-        for (const col of collections) {
-          try {
-            const snapshot = await getDocs(collection(db, col.name));
-            if (!snapshot.empty) {
-              let items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
-              if (col.name === 'customers') {
-                items = items.filter(c => c.firstName || c.lastName);
-                items = items.map(c => {
-                  try {
-                    const pList = typeof c.passports === 'string' ? JSON.parse(c.passports || '[]') : (c.passports || []);
-                    if (!Array.isArray(pList)) return c;
-                    let changed = false;
-                    const fixed = pList.map(p => {
-                      if (!p.passportNo) return p;
-                      const first = p.passportNo.toUpperCase()[0];
-                      const detected = first === 'U' ? 'Bordo Pasaport (Umuma Mahsus)' : first === 'S' ? 'Yeşil Pasaport (Hususi)' : first === 'Z' ? 'Gri Pasaport (Hizmet)' : null;
-                      if (detected && p.passportType !== detected) { changed = true; return { ...p, passportType: detected }; }
-                      return p;
-                    });
-                    if (changed) {
-                      const docId = c._docId || String(c.id);
-                      setDoc(doc(db, 'customers', docId), { passports: JSON.stringify(fixed) }, { merge: true }).catch(()=>{});
-                      return { ...c, passports: fixed };
-                    }
-                  } catch(e) {}
-                  return c;
-                });
+        const snapshot = await getDocs(collection(db, 'customers'));
+        if (!snapshot.empty) {
+          let items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+          items = items.filter(c => c.firstName || c.lastName);
+          // Pasaport tipi düzeltme
+          items = items.map(c => {
+            try {
+              const pList = typeof c.passports === 'string' ? JSON.parse(c.passports || '[]') : (c.passports || []);
+              if (!Array.isArray(pList)) return c;
+              let changed = false;
+              const fixed = pList.map(p => {
+                if (!p.passportNo) return p;
+                const first = p.passportNo.toUpperCase()[0];
+                const detected = first === 'U' ? 'Bordo Pasaport (Umuma Mahsus)' : first === 'S' ? 'Yeşil Pasaport (Hususi)' : first === 'Z' ? 'Gri Pasaport (Hizmet)' : null;
+                if (detected && p.passportType !== detected) { changed = true; return { ...p, passportType: detected }; }
+                return p;
+              });
+              if (changed) {
+                const docId = c._docId || String(c.id);
+                setDoc(doc(db, 'customers', docId), { passports: JSON.stringify(fixed) }, { merge: true }).catch(()=>{});
+                return { ...c, passports: fixed };
               }
-              col.setter(items);
-              try {
-                if (col.name === 'customers') {
-                  const lite = items.map(c => {
-                    const obj = { ...c };
-                    try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
-                    try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
-                    try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: (u.image||'').startsWith('http') ? u.image : '' }); } catch(e) {}
-                    return obj;
-                  });
-                  localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
-                } else {
-                  localStorage.setItem(`paydos_${col.name}`, JSON.stringify(items));
-                }
-              } catch(e) { console.warn('localStorage yazma hatası:', e.message); }
-            } else {
-              col.setter([]);
-              try { localStorage.removeItem(`paydos_${col.name}`); } catch(e) {}
-            }
-          } catch(e) { console.warn(`${col.name} yüklenemedi:`, e.message); }
+            } catch(e) {}
+            return c;
+          });
+          setCustomers(items);
+          try {
+            const lite = items.map(c => {
+              const obj = { ...c };
+              try { const p = typeof obj.passports === 'string' ? JSON.parse(obj.passports) : obj.passports; if (Array.isArray(p)) obj.passports = JSON.stringify(p.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+              try { const v = typeof obj.schengenVisas === 'string' ? JSON.parse(obj.schengenVisas) : obj.schengenVisas; if (Array.isArray(v)) obj.schengenVisas = JSON.stringify(v.map(x => ({ ...x, image: (x.image||'').startsWith('http') ? x.image : '' }))); } catch(e) {}
+              try { const u = typeof obj.usaVisa === 'string' ? JSON.parse(obj.usaVisa) : obj.usaVisa; if (u) obj.usaVisa = JSON.stringify({ ...u, image: (u.image||'').startsWith('http') ? u.image : '' }); } catch(e) {}
+              return obj;
+            });
+            localStorage.setItem('paydos_customers', JSON.stringify(lite));
+          } catch(e) {}
         }
-        try {
-          const settingsSnap = await getDocs(collection(db, 'app_settings'));
-          if (!settingsSnap.empty) {
-            const settingsDoc = settingsSnap.docs[0].data();
-            if (settingsDoc) {
-              setAppSettings(prev => ({ ...prev, ...settingsDoc }));
-              try { localStorage.setItem('paydos_app_settings', JSON.stringify({ ...appSettings, ...settingsDoc })); } catch(e) {}
-            }
-          }
-        } catch(e) { console.warn('app_settings yüklenemedi:', e.message); }
-      } catch(e) { console.error('Firestore yükleme hatası:', e); }
+      } catch(e) { console.warn('customers yüklenemedi:', e.message); }
     };
-    loadFromFirestore();
+    loadCustomers();
+
+    // Customers için gerçek zamanlı: sadece son 2 dakikada değişen kayıtları dinle
+    const twoMinutesAgo = Timestamp.fromDate(new Date(Date.now() - 2 * 60 * 1000));
+    const recentCustomersQuery = query(
+      collection(db, 'customers'),
+      where('updatedAt', '>=', twoMinutesAgo.toDate().toISOString())
+    );
+    const custUnsub = onSnapshot(recentCustomersQuery, (snapshot) => {
+      if (snapshot.empty) return;
+      snapshot.docChanges().forEach(change => {
+        const data = { ...change.doc.data(), _docId: change.doc.id };
+        if (change.type === 'added' || change.type === 'modified') {
+          setCustomers(prev => {
+            const exists = prev.find(c => c._docId === data._docId || String(c.id) === String(data.id));
+            if (exists) return prev.map(c => (c._docId === data._docId || String(c.id) === String(data.id)) ? data : c);
+            return [...prev, data];
+          });
+        } else if (change.type === 'removed') {
+          setCustomers(prev => prev.filter(c => c._docId !== data._docId));
+        }
+      });
+    }, (e) => console.warn('customers realtime hatası:', e.message));
+    unsubs.push(custUnsub);
+
+    // App settings
+    const settingsUnsub = onSnapshot(collection(db, 'app_settings'), (snapshot) => {
+      if (!snapshot.empty) {
+        const settingsDoc = snapshot.docs[0].data();
+        if (settingsDoc) {
+          setAppSettings(prev => ({ ...prev, ...settingsDoc }));
+          try { localStorage.setItem('paydos_app_settings', JSON.stringify(settingsDoc)); } catch(e) {}
+        }
+      }
+    }, (e) => console.warn('app_settings dinleme hatası:', e.message));
+    unsubs.push(settingsUnsub);
+
+    // Cleanup: bileşen unmount olunca dinleyicileri kapat
+    return () => unsubs.forEach(u => u());
   }, []);
 
   // 🔥 FIRESTORE'A KAYDET — debounced
@@ -8290,21 +8342,24 @@ export default function App() {
           const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
           await setDoc(doc(db, collectionName, docId), data, { merge: true });
         } else {
-          // Mevcut Firestore dokümanlarını al, silinenleri temizle
-          const snapshot = await getDocs(collection(db, collectionName));
-          const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
+          // Müşteriler için silme sync YAPMA (4000+ kayıt çok pahalı - silme deleteDoc ile yapılıyor)
+          if (collectionName !== 'customers') {
+            const snapshot = await getDocs(collection(db, collectionName));
+            const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
+            let delBatch = writeBatch(db);
+            let delCount = 0;
+            for (const fsDoc of snapshot.docs) {
+              if (!currentIds.has(fsDoc.id)) {
+                delBatch.delete(fsDoc.ref);
+                delCount++;
+                if (delCount >= 400) { await delBatch.commit(); delBatch = writeBatch(db); delCount = 0; }
+              }
+            }
+            if (delCount > 0) await delBatch.commit();
+          }
+          // State'teki kayıtları kaydet
           let batch = writeBatch(db);
           let count = 0;
-          // Firestore'da olup state'te olmayan kayıtları sil
-          for (const fsDoc of snapshot.docs) {
-            if (!currentIds.has(fsDoc.id)) {
-              batch.delete(fsDoc.ref);
-              count++;
-              if (count >= 400) { await batch.commit(); batch = writeBatch(db); count = 0; }
-            }
-          }
-          if (count > 0) { await batch.commit(); batch = writeBatch(db); count = 0; }
-          // State'teki kayıtları kaydet
           for (const item of data) {
             const docId = item._docId || item.id?.toString() || Date.now().toString();
             const saveData = { ...item };
