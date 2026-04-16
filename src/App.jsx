@@ -4171,6 +4171,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [custSearch, setCustSearch] = useState('');
+  const [showCustList, setShowCustList] = useState(false);
   const [selectedTour, setSelectedTour] = useState(null);
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
@@ -5008,21 +5010,60 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
+              <div style={{ position: 'relative' }}>
                 <label style={labelStyle}>Müşteri Seç *</label>
-                <select
-                  value={reservationData.customerId}
-                  onChange={handleCustomerSelect}
-                  style={selectStyle}
-                >
-                  <option value="">Müşteri seçin...</option>
-                  <option value="new" style={{ color: '#22c55e', fontWeight: '600' }}>➕ Yeni Müşteri Ekle</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                {reservationData.customerId && reservationData.customerId !== 'new' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
+                    <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {reservationData.customerName}</span>
+                    <button type="button" onClick={() => { setReservationData({ ...reservationData, customerId: '', customerName: '', customerPhone: '', customerEmail: '', company: '', passport: '', hasVisa: false, visaEndDate: '' }); setShowNewCustomerForm(false); setCustSearch(''); }}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px', padding: '0' }}>×</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={custSearch}
+                      onChange={e => { setCustSearch(e.target.value); setShowCustList(true); }}
+                      onFocus={() => setShowCustList(true)}
+                      onBlur={() => setTimeout(() => setShowCustList(false), 200)}
+                      placeholder="Ad, soyad veya telefon ile ara..."
+                      style={{ ...selectStyle, width: '100%' }}
+                    />
+                    {showCustList && custSearch.length >= 2 && (() => {
+                      const filteredCusts = customers.filter(c => {
+                        const name = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+                        return name.includes(custSearch.toLowerCase()) || (c.phone || '').includes(custSearch);
+                      }).slice(0, 8);
+                      return (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '240px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                          <div
+                            onMouseDown={() => { handleCustomerSelect({ target: { value: 'new' } }); setShowCustList(false); setCustSearch(''); }}
+                            style={{ padding: '10px 14px', cursor: 'pointer', color: '#22c55e', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '13px' }}
+                          >
+                            ➕ Yeni Müşteri Ekle
+                          </div>
+                          {filteredCusts.length === 0 ? (
+                            <div style={{ padding: '12px 14px', color: '#64748b', fontSize: '13px' }}>
+                              Müşteri bulunamadı —{' '}
+                              <span style={{ color: '#22c55e', cursor: 'pointer', textDecoration: 'underline' }}
+                                onMouseDown={() => { handleCustomerSelect({ target: { value: 'new' } }); setShowCustList(false); setCustSearch(''); }}>
+                                Yeni müşteri ekle
+                              </span>
+                            </div>
+                          ) : filteredCusts.map(c => (
+                            <div key={c.id}
+                              onMouseDown={() => { handleCustomerSelect({ target: { value: c.id } }); setShowCustList(false); setCustSearch(''); }}
+                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '13px' }}
+                            >
+                              <div style={{ color: '#e8f1f8', fontWeight: '500' }}>{`${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
+                              {c.phone && <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>{c.phone}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               {reservationData.customerId === 'new' && (
