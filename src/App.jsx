@@ -5033,9 +5033,9 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       const filteredCusts = customers.filter(c => {
                         const name = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
                         return name.includes(custSearch.toLowerCase()) || (c.phone || '').includes(custSearch);
-                      }).slice(0, 8);
+                      }).slice(0, 5);
                       return (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '240px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '280px', overflowY: 'hidden', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                           <div
                             onMouseDown={() => { handleCustomerSelect({ target: { value: 'new' } }); setShowCustList(false); setCustSearch(''); }}
                             style={{ padding: '10px 14px', cursor: 'pointer', color: '#22c55e', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '13px' }}
