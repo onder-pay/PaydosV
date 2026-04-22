@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
@@ -8351,16 +8351,11 @@ export default function App() {
     };
     loadCustomers();
 
-    // Customers için gerçek zamanlı: son 5 dakikada değişen kayıtları dinle
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const recentCustomersQuery = query(
-      collection(db, 'customers'),
-      where('updatedAt', '>=', fiveMinutesAgo)
-    );
-    const custUnsub = onSnapshot(recentCustomersQuery, (snapshot) => {
-      if (snapshot.empty) return;
+    // Customers için gerçek zamanlı: tüm değişiklikleri dinle (filtre olmadan)
+    const custUnsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
       snapshot.docChanges().forEach(change => {
         const data = { ...change.doc.data(), _docId: change.doc.id };
+        if (!(data.firstName || data.lastName)) return; // boş kayıtları atla
         if (change.type === 'added' || change.type === 'modified') {
           setCustomers(prev => {
             const exists = prev.find(c => c._docId === data._docId || String(c.id) === String(data.id));
