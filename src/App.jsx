@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, query, orderBy, limit, where, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
@@ -59,7 +59,18 @@ const formatPhoneNumber = (value) => {
 // Pasaport No formatla: İlk harf büyük, 9 karakter
 const formatPassportNo = (value) => {
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  return cleaned.slice(0, 9);
+  if (!cleaned) return '';
+  const letter = cleaned[0].match(/[A-Z]/) ? cleaned[0] : '';
+  if (!letter) return cleaned.slice(0, 1); // harf girilene kadar bekle
+  const digits = cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 7);
+  return letter + digits;
+};
+
+const validatePassportNo = (passportNo) => {
+  if (!passportNo) return null;
+  const regex = /^[USZD][0-9]{7}$/;
+  if (!regex.test(passportNo)) return '❌ Pasaport no 1 harf + 7 rakam olmalı (örn: U1234567)';
+  return null; // geçerli
 };
 
 // Pasaport No'dan türü otomatik tespit
@@ -393,6 +404,9 @@ function LoginScreen({ onLogin, users }) {
 function DashboardModule({ customers, isMobile, onNavigate }) {
   const [showBirthdays, setShowBirthdays] = useState(false);
   const [modal, setModal] = useState(null); // {title, color, list, renderItem}
+  // Bugün eklenen müşteriler
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayAdded = customers.filter(c => c.createdAt && String(c.createdAt).startsWith(todayStr));
   // Schengen vizesi olanlar
   // Schengen vizesi olanlar
   const withSchengen = customers.filter(c => {
@@ -452,9 +466,7 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
       <h2 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Dashboard</h2>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
         <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6"
-          sublabel="→ Tüm müşteriler"
-          onClick={() => setModal({ title: '👥 Tüm Müşteriler', color: '#3b82f6', list: customers,
-            renderItem: c => `${c.firstName} ${c.lastName}` })} />
+          sublabel={todayAdded.length > 0 ? `+${todayAdded.length} bugün eklendi` : null} />
         <StatCard value={withSchengen.length} label="Schengen Vizeli" color="#10b981"
           sublabel="→ Listele"
           onClick={() => setModal({ title: '🇪🇺 Schengen Vizeli', color: '#10b981', list: withSchengen,
@@ -1300,8 +1312,11 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                       <label style={labelStyle}>Pasaport No</label>
                       <input type="text" value={passport.passportNo || ''}
                         onChange={e => { const pNo = formatPassportNo(e.target.value); const dt = detectPassportType(pNo); updatePassport(passport.id, 'passportNo', pNo); if (dt) updatePassport(passport.id, 'passportType', dt); }}
-                        placeholder="U12345678" maxLength="9"
-                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }} />
+                        placeholder="U1234567" maxLength="8"
+                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace', borderColor: passport.passportNo && validatePassportNo(passport.passportNo) ? '#ef4444' : undefined }} />
+                      {passport.passportNo && validatePassportNo(passport.passportNo) && (
+                        <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px' }}>{validatePassportNo(passport.passportNo)}</div>
+                      )}
                     </div>
                     <DateInput label="Veriliş" value={passport.issueDate || ''} onChange={v => updatePassport(passport.id, 'issueDate', v)} />
                     <DateInput label="Geçerlilik" value={passport.expiryDate || ''} onChange={v => updatePassport(passport.id, 'expiryDate', v)} />
@@ -1333,10 +1348,17 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
-                            if (parsed.passportNo) updatePassport(passport.id, 'passportNo', parsed.passportNo);
-                            if (parsed.issueDate) updatePassport(passport.id, 'issueDate', parsed.issueDate);
-                            if (parsed.expiryDate) updatePassport(passport.id, 'expiryDate', parsed.expiryDate);
-                            if (parsed.passportNo) { const t = detectPassportType(parsed.passportNo); if (t) updatePassport(passport.id, 'passportType', t); }
+                            if (parsed.passportNo) {
+                              const formattedNo = formatPassportNo(parsed.passportNo);
+                              const validationErr = validatePassportNo(formattedNo);
+                              if (validationErr) {
+                                showToast?.(`⚠️ AI geçersiz pasaport no okudu: ${parsed.passportNo} — kaydedilmedi`, 'warning');
+                              } else {
+                                updatePassport(passport.id, 'passportNo', formattedNo);
+                                const t = detectPassportType(formattedNo);
+                                if (t) updatePassport(passport.id, 'passportType', t);
+                              }
+                            }
                             if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
                             if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: parsed.birthPlace }));
                             showToast?.('Pasaport okundu', 'success');
@@ -8329,11 +8351,11 @@ export default function App() {
     };
     loadCustomers();
 
-    // Customers için gerçek zamanlı: sadece son 2 dakikada değişen kayıtları dinle
-    const twoMinutesAgo = Timestamp.fromDate(new Date(Date.now() - 2 * 60 * 1000));
+    // Customers için gerçek zamanlı: son 5 dakikada değişen kayıtları dinle
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const recentCustomersQuery = query(
       collection(db, 'customers'),
-      where('updatedAt', '>=', twoMinutesAgo.toDate().toISOString())
+      where('updatedAt', '>=', fiveMinutesAgo)
     );
     const custUnsub = onSnapshot(recentCustomersQuery, (snapshot) => {
       if (snapshot.empty) return;
@@ -8401,9 +8423,10 @@ export default function App() {
           // State'teki kayıtları kaydet
           let batch = writeBatch(db);
           let count = 0;
+          const now = new Date().toISOString();
           for (const item of data) {
             const docId = item._docId || item.id?.toString() || Date.now().toString();
-            const saveData = { ...item };
+            const saveData = { ...item, updatedAt: now };
             delete saveData._docId;
             if (collectionName === 'customers') {
               delete saveData.passports;
