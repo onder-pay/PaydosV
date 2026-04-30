@@ -1050,7 +1050,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     };
     
     if (editingCustomer) {
-      const auditData = { lastEditedAt: now };
+      const auditData = { lastEditedAt: now, updatedAt: now };
       const updated = customers.map(c => (c._docId && editingCustomer._docId ? c._docId === editingCustomer._docId : String(c.id) === String(editingCustomer.id)) ? { ...c, ...fullData, ...auditData } : c);
       setCustomers(updated);
       // ⚡ Pasaport/vize'yi direkt Firestore'a yaz (debouncedSave bunları atlar)
@@ -1065,14 +1065,15 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
         }, { merge: true });
       } catch (err) { console.error('Firestore kayıt hatası:', err); }
     } else {
-      const newCustomer = { ...fullData, id: generateUniqueId(), createdAt: now.split('T')[0], lastEditedAt: now, verified: true };
+      const newId = generateUniqueId();
+      const newCustomer = { ...fullData, id: newId, _docId: newId, createdAt: now.split('T')[0], lastEditedAt: now, updatedAt: now, verified: true };
       setCustomers([...customers, newCustomer]);
       try {
-        await setDoc(doc(db, 'customers', String(newCustomer.id)), {
+        await setDoc(doc(db, 'customers', newId), {
           ...newCustomer,
-          passports: JSON.stringify(passports),
-          schengenVisas: JSON.stringify(schengenVisas),
-          usaVisa: JSON.stringify(usaVisa)
+          passports: JSON.stringify(Array.isArray(passports) ? passports : []),
+          schengenVisas: JSON.stringify(Array.isArray(schengenVisas) ? schengenVisas : []),
+          usaVisa: JSON.stringify(usaVisa || {})
         });
       } catch (err) { console.error('Firestore kayıt hatası:', err); }
     }
@@ -8418,20 +8419,31 @@ export default function App() {
     };
     loadCustomers();
 
-    // Customers için gerçek zamanlı: tüm değişiklikleri dinle (filtre olmadan)
+    // Customers gerçek zamanlı: ilk yüklemeden sonra sadece modified/removed dinle
+    let customersInitialized = false;
     const custUnsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      snapshot.docChanges().forEach(change => {
-        const data = { ...change.doc.data(), _docId: change.doc.id };
-        if (!(data.firstName || data.lastName)) return; // boş kayıtları atla
-        if (change.type === 'added' || change.type === 'modified') {
-          setCustomers(prev => {
-            const exists = prev.find(c => c._docId === data._docId || String(c.id) === String(data.id));
-            if (exists) return prev.map(c => (c._docId === data._docId || String(c.id) === String(data.id)) ? data : c);
-            return [...prev, data];
-          });
-        } else if (change.type === 'removed') {
-          setCustomers(prev => prev.filter(c => c._docId !== data._docId));
-        }
+      // İlk snapshot (added eventleri) loadCustomers ile zaten yüklendi — atla
+      if (!customersInitialized) {
+        customersInitialized = true;
+        return;
+      }
+      // Batch güncelleme — tek seferlik setCustomers
+      const changes = snapshot.docChanges();
+      if (changes.length === 0) return;
+      setCustomers(prev => {
+        let updated = [...prev];
+        changes.forEach(change => {
+          const data = { ...change.doc.data(), _docId: change.doc.id };
+          if (!(data.firstName || data.lastName)) return;
+          if (change.type === 'added' || change.type === 'modified') {
+            const idx = updated.findIndex(c => c._docId === data._docId || String(c.id) === String(data.id));
+            if (idx >= 0) updated[idx] = data;
+            else updated = [...updated, data];
+          } else if (change.type === 'removed') {
+            updated = updated.filter(c => c._docId !== data._docId);
+          }
+        });
+        return updated;
       });
     }, (e) => console.warn('customers realtime hatası:', e.message));
     unsubs.push(custUnsub);
@@ -8519,7 +8531,7 @@ export default function App() {
     }, 3000);
   }, []);
 
-  useEffect(() => { debouncedSave('customers', 'customers', customers); }, [customers]);
+  // customers artık her işlemde anında Firestore'a yazılıyor - debounce gereksiz
   useEffect(() => { debouncedSave('visa_applications', 'visa_applications', visaApplications); }, [visaApplications]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
   useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
