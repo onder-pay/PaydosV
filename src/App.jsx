@@ -940,17 +940,22 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
       return;
     }
 
+    // TC Kimlik zorunlu
+    if (!formData.tcKimlik || !formData.tcKimlik.trim()) {
+      showToast?.('❌ TC Kimlik No zorunludur', 'error');
+      setFormTab('info');
+      return;
+    }
+
     // TC Kimlik eşsizlik kontrolü
-    if (formData.tcKimlik && formData.tcKimlik.length === 11) {
-      const dup = customers.find(c =>
-        c.tcKimlik === formData.tcKimlik &&
-        c.id !== editingCustomer?.id
-      );
-      if (dup) {
-        alert(`Bu TC Kimlik No zaten kayıtlı:\n${dup.firstName} ${dup.lastName}`);
-        setFormTab('info');
-        return;
-      }
+    const tcDup = customers.find(c =>
+      c.tcKimlik === formData.tcKimlik.trim() &&
+      (c._docId ? c._docId !== editingCustomer?._docId : String(c.id) !== String(editingCustomer?.id))
+    );
+    if (tcDup) {
+      showToast?.(`❌ Bu TC Kimlik No zaten kayıtlı: ${tcDup.firstName} ${tcDup.lastName}`, 'error');
+      setFormTab('info');
+      return;
     }
 
     // === TARİH VALİDASYONU ===
@@ -1225,7 +1230,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <FormInput label="Ad *" value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} placeholder="Adı girin" />
                   <FormInput label="Soyad *" value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Soyadı girin" />
                 </div>
-                <FormInput label="TC Kimlik No" value={formData.tcKimlik || ''} onChange={e => setFormData({...formData, tcKimlik: e.target.value})} maxLength="11" placeholder="11 haneli TC kimlik numarası" />
+                <FormInput label="TC Kimlik No *" value={formData.tcKimlik || ''} onChange={e => setFormData({...formData, tcKimlik: e.target.value})} maxLength="11" placeholder="11 haneli TC kimlik numarası" />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Telefon *</label>
