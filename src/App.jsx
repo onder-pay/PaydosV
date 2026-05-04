@@ -4463,54 +4463,61 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     setShowReservationForm(true);
   };
 
-  const saveReservation = () => {
+  const saveReservation = async () => {
     if (!reservationData.customerId || !reservationData.customerName) {
       showToast('Lütfen müşteri seçin', 'error');
       return;
     }
 
-    let updatedTours;
+    let updatedTour;
     if (editingReservation) {
-      // Düzenleme modu
-      updatedTours = tours.map(t => {
-        if (t.id === selectedTour.id) {
-          return { ...t, reservations: t.reservations.map(r => r.id === editingReservation.id ? { ...reservationData, id: r.id, sNo: r.sNo } : r) };
-        }
-        return t;
-      });
-      showToast('Rezervasyon güncellendi', 'success');
+      updatedTour = { ...selectedTour, reservations: selectedTour.reservations.map(r => r.id === editingReservation.id ? { ...reservationData, id: r.id, sNo: r.sNo } : r) };
     } else {
-      // Yeni ekleme
       const newReservation = { ...reservationData, id: Date.now(), sNo: (selectedTour.reservations?.length || 0) + 1 };
-      updatedTours = tours.map(t => {
-        if (t.id === selectedTour.id) {
-          return { ...t, reservations: [...(t.reservations || []), newReservation] };
-        }
-        return t;
-      });
-      showToast('Rezervasyon eklendi', 'success');
+      updatedTour = { ...selectedTour, reservations: [...(selectedTour.reservations || []), newReservation] };
     }
 
+    const updatedTours = tours.map(t => t.id === selectedTour.id ? updatedTour : t);
     setTours(updatedTours);
-    setSelectedTour(updatedTours.find(t => t.id === selectedTour.id));
+    setSelectedTour(updatedTour);
+
+    // Firestore'a anında yaz
+    try {
+      const docId = selectedTour._docId || String(selectedTour.id);
+      const saveData = { ...updatedTour };
+      delete saveData._docId;
+      await setDoc(doc(db, 'tours', docId), saveData, { merge: true });
+    } catch (err) {
+      console.error('Tur kayıt hatası:', err);
+      showToast('❌ Kaydedilemedi: ' + err.message, 'error');
+      return;
+    }
+
+    showToast(editingReservation ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
     setShowReservationForm(false);
     setEditingReservation(null);
   };
 
-  const deleteReservation = (tourId, reservationId) => {
-    if (window.confirm('Bu rezervasyonu silmek istediğinizden emin misiniz?')) {
-      const updatedTours = tours.map(t => {
-        if (t.id === tourId) {
-          return {
-            ...t,
-            reservations: t.reservations.filter(r => r.id !== reservationId)
-          };
-        }
-        return t;
-      });
-      setTours(updatedTours);
-      showToast('Rezervasyon silindi', 'success');
+  const deleteReservation = async (tourId, reservationId) => {
+    if (!window.confirm('Bu rezervasyonu silmek istediğinizden emin misiniz?')) return;
+    const targetTour = tours.find(t => t.id === tourId);
+    if (!targetTour) return;
+    const updatedTour = { ...targetTour, reservations: (targetTour.reservations || []).filter(r => r.id !== reservationId) };
+    const updatedTours = tours.map(t => t.id === tourId ? updatedTour : t);
+    setTours(updatedTours);
+    if (selectedTour?.id === tourId) setSelectedTour(updatedTour);
+    // Firestore'a anında yaz
+    try {
+      const docId = targetTour._docId || String(targetTour.id);
+      const saveData = { ...updatedTour };
+      delete saveData._docId;
+      await setDoc(doc(db, 'tours', docId), saveData, { merge: true });
+    } catch (err) {
+      console.error('Tur Firestore güncelleme hatası:', err);
+      showToast?.('❌ Silme kaydedilemedi: ' + err.message, 'error');
+      return;
     }
+    showToast('Rezervasyon silindi', 'success');
   };
 
   const exportToExcel = (tour) => {
@@ -4784,11 +4791,11 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                                 {res.cancelled ? (
-                                  <button onClick={() => { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
+                                  <button onClick={async () => { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
                                 ) : (
-                                  <button onClick={() => { if (window.confirm(`${res.customerName} rezervasyonunu iptal etmek istiyor musunuz?`)) { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.map(r => r.id === res.id ? {...r, cancelled: true, cancelledAt: new Date().toISOString()} : r)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon iptal edildi', 'warning'); } }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="İptal Et">⊘</button>
+                                  <button onClick={async () => { if (window.confirm(`${res.customerName} rezervasyonunu iptal etmek istiyor musunuz?`)) { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: true, cancelledAt: new Date().toISOString()} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon iptal edildi', 'warning'); } }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="İptal Et">⊘</button>
                                 )}
-                                <button onClick={() => { if (window.confirm('Bu rezervasyonu kalıcı sil?')) { const u = tours.map(t => t.id === tour.id ? {...t, reservations: t.reservations.filter(r => r.id !== res.id)} : t); setTours(u); setSelectedTour(u.find(t => t.id === tour.id)); showToast('Rezervasyon silindi', 'info'); } }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }} title="Sil">×</button>
+                                <button onClick={async () => { if (window.confirm('Bu rezervasyonu kalıcı sil?')) { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.filter(r => r.id !== res.id)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon silindi', 'info'); } }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }} title="Sil">×</button>
                               </div>
                             </td>
                           </tr>
