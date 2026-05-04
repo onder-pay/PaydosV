@@ -17,6 +17,24 @@ const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name:
 const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
 const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
 const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan'];
+
+const tourCountries = [
+  'Türkiye',
+  // Schengen
+  'Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan',
+  // Diğer Avrupa
+  'Birleşik Krallık', 'İrlanda', 'Romanya', 'Bulgaristan', 'Sırbistan', 'Karadağ', 'Kuzey Makedonya', 'Bosna Hersek', 'Arnavutluk', 'Kosova', 'Ukrayna', 'Rusya', 'Belarus', 'Moldova', 'Vatikan', 'Andorra', 'Monako', 'San Marino',
+  // Orta Doğu
+  'BAE', 'Suudi Arabistan', 'Katar', 'Bahreyn', 'Kuveyt', 'Umman', 'Ürdün', 'Lübnan', 'İsrail', 'Filistin', 'Mısır', 'İran', 'Irak',
+  // Asya
+  'Çin Halk Cumhuriyeti', 'Hong Kong', 'Tayvan', 'Japonya', 'Güney Kore', 'Hindistan', 'Tayland', 'Vietnam', 'Singapur', 'Malezya', 'Endonezya', 'Filipinler', 'Sri Lanka', 'Nepal', 'Pakistan', 'Bangladeş', 'Maldivler', 'Kazakistan', 'Özbekistan', 'Kırgızistan', 'Tacikistan', 'Türkmenistan', 'Azerbaycan', 'Gürcistan', 'Ermenistan',
+  // Amerika
+  'Amerika Birleşik Devletleri', 'Kanada', 'Meksika', 'Brezilya', 'Arjantin', 'Şili', 'Peru', 'Kolombiya', 'Küba', 'Panama',
+  // Afrika
+  'Fas', 'Tunus', 'Cezayir', 'Güney Afrika', 'Kenya', 'Tanzanya', 'Etiyopya', 'Nijerya', 'Senegal',
+  // Okyanusya
+  'Avustralya', 'Yeni Zelanda', 'Fiji'
+];
 const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Evraklar Gönderildi', 'E-posta Gönderildi', 'Randevu Bekliyor', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Müşteri İptal Etti'];
 const tourStatuses = ['Planlama', 'Açık', 'Dolu', 'Devam Ediyor', 'Tamamlandı', 'İptal'];
 const mealPlans = ['Sadece Oda', 'Oda + Kahvaltı', 'Yarım Pansiyon', 'Tam Pansiyon', 'Her Şey Dahil'];
@@ -4450,7 +4468,15 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
   const handleRoomTypeChange = (e) => {
     const roomType = e.target.value;
-    const priceData = selectedTour?.prices?.[roomType];
+    // Oda tipi adını fiyat key'ine map et
+    const priceKeyMap = {
+      'Single': 'singleRoom', 'Tek': 'singleRoom', 'Tek Kişilik': 'singleRoom',
+      'Double': 'doubleRoom', 'Çift': 'doubleRoom', 'Çift Kişilik': 'doubleRoom',
+      'Twin': 'doubleRoom', 'Triple': 'tripleRoom', 'Üçlü': 'tripleRoom',
+      'Suite': 'suiteRoom', 'Süit': 'suiteRoom'
+    };
+    const priceKey = priceKeyMap[roomType] || roomType;
+    const priceData = selectedTour?.prices?.[priceKey] || selectedTour?.prices?.[roomType] || selectedTour?.prices?.doubleRoom;
     const tourPrice = priceData?.amount || 0;
     const currency = priceData?.currency || reservationData.currency || '€';
     setReservationData({ ...reservationData, roomType, tourPrice, currency, basePrice: tourPrice, discount: 0 });
@@ -4931,13 +4957,14 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Ülke *</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.country}
                     onChange={e => setFormData({...formData, country: e.target.value})}
-                    placeholder="örn: BAE"
-                    style={inputStyle}
-                  />
+                    style={selectStyle}
+                  >
+                    <option value="">Ülke seçin...</option>
+                    {tourCountries.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label style={labelStyle}>Şehir *</label>
