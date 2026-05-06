@@ -4441,9 +4441,14 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
       // Vize durumu — tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(selectedTour?.country);
+      const hasGreenPassport = passports.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
       let hasVisa = false;
       let visaEndDate = '';
-      if (isSchengen) {
+      // Yeşil pasaport sahibi Schengen'den muaf
+      if (isSchengen && hasGreenPassport) {
+        hasVisa = true;
+        visaEndDate = 'GREEN_PASSPORT'; // özel işaret
+      } else if (isSchengen) {
         const visas = safeParseJSON(customer.schengenVisas);
         const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
         if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; }
@@ -4473,10 +4478,22 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       'Single': 'singleRoom', 'Tek': 'singleRoom', 'Tek Kişilik': 'singleRoom',
       'Double': 'doubleRoom', 'Çift': 'doubleRoom', 'Çift Kişilik': 'doubleRoom',
       'Twin': 'doubleRoom', 'Triple': 'tripleRoom', 'Üçlü': 'tripleRoom',
-      'Suite': 'suiteRoom', 'Süit': 'suiteRoom'
+      'Suite': 'suiteRoom', 'Süit': 'suiteRoom',
+      'Ekstra Yatak': 'extraBed', 'Bebek': 'baby', 'Çocuk 1': 'child1', 'Çocuk 2': 'child2'
     };
     const priceKey = priceKeyMap[roomType] || roomType;
-    const priceData = selectedTour?.prices?.[priceKey] || selectedTour?.prices?.[roomType] || selectedTour?.prices?.doubleRoom;
+    // Tüm olası key'leri sırayla dene
+    const possibleKeys = [priceKey, roomType, roomType.toLowerCase(), `${roomType.toLowerCase()}Room`];
+    let priceData = null;
+    for (const k of possibleKeys) {
+      if (selectedTour?.prices?.[k]?.amount > 0) { priceData = selectedTour.prices[k]; break; }
+    }
+    // Hâlâ bulamazsa herhangi bir geçerli fiyatı kullan
+    if (!priceData && selectedTour?.prices) {
+      const firstNonZero = Object.values(selectedTour.prices).find(p => p?.amount > 0);
+      if (firstNonZero) priceData = firstNonZero;
+    }
+    console.log('[Oda Tipi]', roomType, '→ priceKey:', priceKey, '→ priceData:', priceData, '| Tüm fiyatlar:', selectedTour?.prices);
     const tourPrice = priceData?.amount || 0;
     const currency = priceData?.currency || reservationData.currency || '€';
     setReservationData({ ...reservationData, roomType, tourPrice, currency, basePrice: tourPrice, discount: 0 });
@@ -4494,10 +4511,15 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       const passports = safeParseJSON(customer.passports);
       const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
       passport = validPassport?.passportNo || passport;
+      const hasGreenPassport = passports.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
       // Vize durumu - tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
-      if (isSchengen) {
+      // Yeşil pasaport sahibi Schengen'den muaf
+      if (isSchengen && hasGreenPassport) {
+        hasVisa = true;
+        visaEndDate = 'GREEN_PASSPORT';
+      } else if (isSchengen) {
         const visas = safeParseJSON(customer.schengenVisas);
         const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
         if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
@@ -5351,10 +5373,17 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       <div style={{ paddingTop: '4px' }}>
                         {schengenCountries.includes(selectedTour?.country) || selectedTour?.country?.includes('Amerika') ? (
                           reservationData.hasVisa ? (
-                            <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
-                              background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
-                              ✅ Var{reservationData.visaEndDate ? ` (${formatDate(reservationData.visaEndDate)})` : ''}
-                            </span>
+                            reservationData.visaEndDate === 'GREEN_PASSPORT' ? (
+                              <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
+                                background: 'rgba(5,150,105,0.2)', color: '#059669', border: '1px solid rgba(5,150,105,0.3)' }}>
+                                🟢 Yeşil Pasaport — Schengen'den muaf
+                              </span>
+                            ) : (
+                              <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
+                                background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                                ✅ Var{reservationData.visaEndDate ? ` (${formatDate(reservationData.visaEndDate)})` : ''}
+                              </span>
+                            )
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
