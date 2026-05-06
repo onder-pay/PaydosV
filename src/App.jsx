@@ -455,10 +455,14 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
       return days !== null && days > 0 && days <= 180;
     });
   });
-  // Yeşil Pasaportlu Olanlar
+  // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
-    return pList.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+    return pList.some(p =>
+      p.passportType === 'Yeşil Pasaport (Hususi)' ||
+      p.passportType?.includes('Yeşil') ||
+      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+    );
   });
   // Bugün doğum günü olanlar
   const todayBirthdays = customers.filter(c => {
@@ -715,10 +719,14 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     return days !== null && days > 0 && days <= 30;
   });
 
-  // Yeşil Pasaportlu Olanlar
+  // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
-    return pList.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+    return pList.some(p =>
+      p.passportType === 'Yeşil Pasaport (Hususi)' ||
+      p.passportType?.includes('Yeşil') ||
+      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+    );
   });
 
   // Filtreleme fonksiyonu
@@ -4441,7 +4449,12 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
       // Vize durumu — tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(selectedTour?.country);
-      const hasGreenPassport = passports.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+      // Yeşil pasaport: passportType "Yeşil" içeriyor VEYA pasaport no S ile başlıyor
+      const hasGreenPassport = passports.some(p =>
+        p.passportType === 'Yeşil Pasaport (Hususi)' ||
+        p.passportType?.includes('Yeşil') ||
+        (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+      );
       let hasVisa = false;
       let visaEndDate = '';
       // Yeşil pasaport sahibi Schengen'den muaf
@@ -4511,7 +4524,11 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       const passports = safeParseJSON(customer.passports);
       const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
       passport = validPassport?.passportNo || passport;
-      const hasGreenPassport = passports.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+      const hasGreenPassport = passports.some(p =>
+        p.passportType === 'Yeşil Pasaport (Hususi)' ||
+        p.passportType?.includes('Yeşil') ||
+        (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+      );
       // Vize durumu - tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
