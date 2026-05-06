@@ -4485,7 +4485,28 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
   const openEditReservation = (tour, res) => {
     setSelectedTour(tour);
     setEditingReservation(res);
-    setReservationData({ ...res });
+    // Müşterinin güncel pasaport ve vize bilgilerini yeniden çek
+    const customer = customers.find(c => String(c.id) === String(res.customerId));
+    let passport = res.passport || '';
+    let hasVisa = res.hasVisa || false;
+    let visaEndDate = res.visaEndDate || '';
+    if (customer) {
+      const passports = safeParseJSON(customer.passports);
+      const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
+      passport = validPassport?.passportNo || passport;
+      // Vize durumu - tur ülkesi Schengen mi?
+      const isSchengen = schengenCountries.includes(tour?.country);
+      const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
+      if (isSchengen) {
+        const visas = safeParseJSON(customer.schengenVisas);
+        const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
+        if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
+      } else if (isUSA) {
+        const usaVisa = typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa || '{}') : (customer.usaVisa || {});
+        if (usaVisa.endDate && getDaysLeft(usaVisa.endDate) > 0) { hasVisa = true; visaEndDate = usaVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
+      }
+    }
+    setReservationData({ ...res, passport, hasVisa, visaEndDate });
     setShowReservationForm(true);
   };
 
@@ -5278,23 +5299,29 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={labelStyle}>Oda Arkadaşı</label>
-                      <input
-                        type="text"
+                      <select
                         value={reservationData.roommate}
                         onChange={e => setReservationData({...reservationData, roommate: e.target.value})}
-                        placeholder="Oda arkadaşı adı"
-                        style={inputStyle}
-                      />
+                        style={selectStyle}
+                      >
+                        <option value="">Oda arkadaşı seçin...</option>
+                        {(selectedTour?.reservations || [])
+                          .filter(r => !r.cancelled && r.customerName && r.customerName !== reservationData.customerName)
+                          .map(r => <option key={r.id} value={r.customerName}>{r.customerName}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label style={labelStyle}>3. Oda Arkadaşı</label>
-                      <input
-                        type="text"
+                      <select
                         value={reservationData.roommate3}
                         onChange={e => setReservationData({...reservationData, roommate3: e.target.value})}
-                        placeholder="3. kişi adı"
-                        style={inputStyle}
-                      />
+                        style={selectStyle}
+                      >
+                        <option value="">3. kişi seçin...</option>
+                        {(selectedTour?.reservations || [])
+                          .filter(r => !r.cancelled && r.customerName && r.customerName !== reservationData.customerName && r.customerName !== reservationData.roommate)
+                          .map(r => <option key={r.id} value={r.customerName}>{r.customerName}</option>)}
+                      </select>
                     </div>
                   </div>
 
@@ -5321,36 +5348,28 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                     </div>
                     <div>
                       <label style={labelStyle}>Vize Durumu</label>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', paddingTop: '4px' }}>
+                      <div style={{ paddingTop: '4px' }}>
                         {schengenCountries.includes(selectedTour?.country) || selectedTour?.country?.includes('Amerika') ? (
-                          <span style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
-                            background: reservationData.hasVisa ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
-                            color: reservationData.hasVisa ? '#10b981' : '#ef4444',
-                            border: `1px solid ${reservationData.hasVisa ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.25)'}` }}>
-                            {reservationData.hasVisa ? `✅ Var${reservationData.visaEndDate ? ` (${formatDate(reservationData.visaEndDate)})` : ''}` : '❌ Yok'}
-                          </span>
+                          reservationData.hasVisa ? (
+                            <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
+                              background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                              ✅ Var{reservationData.visaEndDate ? ` (${formatDate(reservationData.visaEndDate)})` : ''}
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ display: 'inline-block', fontSize: '12px', padding: '5px 10px', borderRadius: '6px', fontWeight: '600',
+                                background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', alignSelf: 'flex-start' }}>
+                                ❌ Vize bilgisi yok
+                              </span>
+                              <span style={{ fontSize: '10px', color: '#64748b' }}>Müşteri kartından vize görselini yükleyin</span>
+                            </div>
+                          )
                         ) : (
                           <span style={{ fontSize: '11px', color: '#475569' }}>— Gerekli değil</span>
                         )}
-                        <input type="checkbox" checked={reservationData.hasVisa}
-                          onChange={e => setReservationData({...reservationData, hasVisa: e.target.checked})}
-                          id="hasVisa" style={{ marginLeft: '4px' }} />
-                        <label htmlFor="hasVisa" style={{ fontSize: '11px', color: '#64748b', cursor: 'pointer' }}>Elle düzenle</label>
                       </div>
                     </div>
                   </div>
-
-                  {reservationData.hasVisa && (
-                    <div>
-                      <label style={labelStyle}>Vize Bitiş Tarihi</label>
-                      <input
-                        type="date"
-                        value={reservationData.visaEndDate}
-                        onChange={e => setReservationData({...reservationData, visaEndDate: e.target.value})}
-                        style={inputStyle}
-                      />
-                    </div>
-                  )}
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '10px' }}>
                     <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#f59e0b' }}>💰 Ödeme Bilgileri</h4>
