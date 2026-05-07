@@ -1589,7 +1589,11 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
-    const hasGreenPassport = cPassports.some(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+    const hasGreenPassport = cPassports.some(p =>
+      p.passportType === 'Yeşil Pasaport (Hususi)' ||
+      p.passportType?.includes('Yeşil') ||
+      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+    );
 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, #0a1628 0%, #132742 50%, #0a1628 100%)', zIndex: 300, overflow: 'auto' }}>
