@@ -4799,11 +4799,35 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                           const isSchengen = schengenCountries.includes(tour.country);
                           if (!isSchengen) return null; // Schengen değilse gösterme
 
-                          // Müşteriyi customers listesinden bul
-                          const customer = customers.find(c =>
-                            `${c.firstName} ${c.lastName}`.toLowerCase() === res.customerName?.toLowerCase()
-                          );
+                          // Türkçe karakter normalize edici
+                          const normalize = (s) => (s || '').toLowerCase()
+                            .replace(/ı/g, 'i').replace(/i̇/g, 'i').replace(/İ/g, 'i')
+                            .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
+                            .replace(/ü/g, 'u').replace(/Ü/g, 'u')
+                            .replace(/ş/g, 's').replace(/Ş/g, 's')
+                            .replace(/ö/g, 'o').replace(/Ö/g, 'o')
+                            .replace(/ç/g, 'c').replace(/Ç/g, 'c')
+                            .trim();
+
+                          // Önce customerId ile, sonra _docId ile, sonra normalize edilmiş isimle bul
+                          let customer = customers.find(c => String(c.id) === String(res.customerId));
+                          if (!customer) customer = customers.find(c => c._docId && c._docId === res.customerDocId);
+                          if (!customer) {
+                            const targetName = normalize(res.customerName);
+                            customer = customers.find(c => normalize(`${c.firstName} ${c.lastName}`) === targetName);
+                          }
                           if (!customer) return { label: 'Müşteri Bulunamadı', color: '#64748b', bg: 'rgba(100,116,139,0.2)' };
+
+                          // Yeşil pasaport kontrolü — Schengen'den muaf
+                          const cPassports = safeParseJSON(customer.passports);
+                          const hasGreenPassport = cPassports.some(p =>
+                            p.passportType === 'Yeşil Pasaport (Hususi)' ||
+                            p.passportType?.includes('Yeşil') ||
+                            (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
+                          );
+                          if (hasGreenPassport) {
+                            return { label: '🟢 Yeşil Pasaport Muaf', color: '#059669', bg: 'rgba(5,150,105,0.15)' };
+                          }
 
                           const visas = safeParseJSON(customer.schengenVisas);
                           const validVisa = visas.find(v => {
