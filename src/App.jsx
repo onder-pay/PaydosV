@@ -4971,13 +4971,42 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
               const reservations = (tour.reservations || []).filter(r => !r.cancelled);
               const roomTypes = {}; const assigned = new Set();
+
+              // Çift yönlü eşleşme: A → roommate=B, B → roommate=A her iki yön de geçerli
+              const findPartner = (cust) => reservations.find(x =>
+                !assigned.has(x.id) &&
+                x.customerName !== cust.customerName &&
+                (
+                  x.customerName === cust.roommate ||
+                  x.customerName === cust.roommate3 ||
+                  cust.customerName === x.roommate ||
+                  cust.customerName === x.roommate3
+                )
+              );
+
               reservations.forEach(r => {
                 if (assigned.has(r.id)) return;
-                const type = r.roomType || "-" || r.roomType || '-';
+                const type = r.roomType || '-';
                 if (!roomTypes[type]) roomTypes[type] = [];
                 const room = [r]; assigned.add(r.id);
-                if (r.roommate) { const m = reservations.find(x => !assigned.has(x.id) && x.customerName === r.roommate); if (m) { room.push(m); assigned.add(m.id); } }
-                if (r.roommate3) { const m = reservations.find(x => !assigned.has(x.id) && x.customerName === r.roommate3); if (m) { room.push(m); assigned.add(m.id); } }
+
+                // İlk oda arkadaşı
+                const m1 = findPartner(r);
+                if (m1) {
+                  room.push(m1);
+                  assigned.add(m1.id);
+                  // 3'lü oda — diğer eşleşmeyi de kontrol et
+                  if (type === 'Triple' || type === 'Üçlü' || type === 'Triple Room') {
+                    const m2 = reservations.find(x =>
+                      !assigned.has(x.id) &&
+                      (x.customerName === r.roommate3 ||
+                       x.customerName === m1.roommate3 ||
+                       r.customerName === x.roommate3 ||
+                       m1.customerName === x.roommate3)
+                    );
+                    if (m2) { room.push(m2); assigned.add(m2.id); }
+                  }
+                }
                 roomTypes[type].push(room);
               });
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);
@@ -5205,7 +5234,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       {/* Rezervasyon Formu Modal */}
       {showReservationForm && selectedTour && (
         <div onClick={() => { setShowReservationForm(false); setEditingReservation(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+          <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="hide-scrollbar">
             <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>
               {editingReservation ? '✏️ Rezervasyon Düzenle' : '➕ Rezervasyon Ekle'} — {selectedTour.name}
             </h3>
@@ -5236,7 +5266,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                         return name.includes(custSearch.toLowerCase()) || (c.phone || '').includes(custSearch);
                       }).slice(0, 10);
                       return (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '500px', overflowY: 'hidden', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '300px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                           <div
                             onMouseDown={() => { handleCustomerSelect({ target: { value: 'new' } }); setShowCustList(false); setCustSearch(''); }}
                             style={{ padding: '10px 14px', cursor: 'pointer', color: '#22c55e', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '13px' }}
