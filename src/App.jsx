@@ -4830,8 +4830,10 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                           }
 
                           const visas = safeParseJSON(customer.schengenVisas);
+                          // DEBUG: müşteri ve vize listesini console'a yaz
+                          console.log('[Tur Vize]', res.customerName, '→', { visaCount: visas.length, visas, hasGreenPassport });
                           const validVisa = visas.find(v => {
-                            if (!v.endDate || !v.country) return false;
+                            if (!v.endDate) return false; // sadece tarih zorunlu
                             const days = getDaysLeft(v.endDate);
                             return days !== null && days > 0;
                           });
