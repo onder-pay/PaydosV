@@ -4281,6 +4281,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
+  const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -4789,6 +4790,33 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               const aktifRes = tour.reservations.filter(r => !r.cancelled);
               const iptalRes = tour.reservations.filter(r => r.cancelled);
 
+              // Detaylı satır - müşterinin doğum tarihi, TC, pasaport, firma vs.
+              const renderDetailRow = (res) => {
+                const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
+                  customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                const birthDate = customer?.birthDate ? formatDate(customer.birthDate) : '—';
+                const tcKimlik = customer?.tcKimlik || '—';
+                const passports = safeParseJSON(customer?.passports);
+                const passportNo = res.passport || passports[0]?.passportNo || '—';
+                const company = customer?.company || res.company || '—';
+                const phone = customer?.phone || res.customerPhone || '—';
+                const email = customer?.email || res.customerEmail || '—';
+                return (
+                  <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: res.cancelled ? 0.5 : 1 }}>
+                    <td style={{ padding: '10px 12px', fontWeight: '600', color: '#e2e8f0' }}>{res.customerName}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{birthDate}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{tcKimlik}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{passportNo}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{company}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{phone}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{email}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                    </td>
+                  </tr>
+                );
+              };
+
               const renderRow = (res) => {
                 const totalPaid = (res.payment1 || 0) + (res.payment2 || 0) + (res.payment3 || 0);
                 const fullyPaid = totalPaid >= (res.tourPrice || 0);
@@ -4920,6 +4948,16 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
               return (
                 <>
+                  {/* GÖRÜNÜM TOGGLE */}
+                  {(aktifRes.length > 0 || iptalRes.length > 0) && (
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                      <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))}
+                        style={{ padding: '6px 12px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
+                        {detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}
+                      </button>
+                    </div>
+                  )}
+
                   {/* AKTİF REZERVASYONLAR */}
                   {aktifRes.length > 0 && (
                     <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '12px' }}>
@@ -4927,13 +4965,16 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                         <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
                           <thead>
                             <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                              {['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', ''].map(h => (
+                              {(detailedView[tour.id]
+                                ? ['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', '']
+                                : ['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', '']
+                              ).map(h => (
                                 <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {aktifRes.map(res => renderRow(res))}
+                            {aktifRes.map(res => detailedView[tour.id] ? renderDetailRow(res) : renderRow(res))}
                           </tbody>
                         </table>
                       </div>
@@ -4951,13 +4992,16 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                         <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
                           <thead>
                             <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(239,68,68,0.1)' }}>
-                              {['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', ''].map(h => (
+                              {(detailedView[tour.id]
+                                ? ['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', '']
+                                : ['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', '']
+                              ).map(h => (
                                 <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {iptalRes.map(res => renderRow(res))}
+                            {iptalRes.map(res => detailedView[tour.id] ? renderDetailRow(res) : renderRow(res))}
                           </tbody>
                         </table>
                       </div>
