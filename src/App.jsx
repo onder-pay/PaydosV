@@ -4309,6 +4309,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     customerPhone: '',
     customerEmail: '',
     company: '',
+    invoiceType: 'personal', // 'personal' veya 'company'
     roomType: 'doubleRoom',
     roommate: '',
     roommate3: '',
@@ -4321,7 +4322,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     payment1: 0,
     payment2: 0,
     payment3: 0,
-    notes: ''
+    notes: '',
+    cancelReason: ''
   });
 
   const roomTypeLabels = {
@@ -4907,7 +4909,16 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                               >
                                 {res.customerName}
                               </span>
-                              {res.cancelled && <span style={{ fontSize: '9px', color: '#ef4444', marginLeft: '4px', display: 'block', textDecoration: 'none' }}>İPTAL</span>}
+                              {res.cancelled && (
+                                <>
+                                  <span style={{ fontSize: '9px', color: '#ef4444', marginLeft: '4px', display: 'block', textDecoration: 'none' }}>İPTAL</span>
+                                  {res.cancelReason && (
+                                    <span style={{ fontSize: '10px', color: '#64748b', display: 'block', marginTop: '2px', fontStyle: 'italic', textDecoration: 'none' }} title={res.cancelReason}>
+                                      Sebep: {res.cancelReason.length > 30 ? res.cancelReason.slice(0, 30) + '…' : res.cancelReason}
+                                    </span>
+                                  )}
+                                </>
+                              )}
                             </td>
                             <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
                               {res.roomType || '-'}
@@ -4937,7 +4948,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                                 {res.cancelled ? (
                                   <button onClick={async () => { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
                                 ) : (
-                                  <button onClick={async () => { if (window.confirm(`${res.customerName} rezervasyonunu iptal etmek istiyor musunuz?`)) { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: true, cancelledAt: new Date().toISOString()} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon iptal edildi', 'warning'); } }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="İptal Et">⊘</button>
+                                  <button onClick={async () => { const reason = window.prompt(`${res.customerName} rezervasyonunu neden iptal ediyorsunuz?\n\n(Boş bırakırsanız iptal edilmez)`, ''); if (reason === null || reason.trim() === '') return; const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: true, cancelledAt: new Date().toISOString(), cancelReason: reason.trim()} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon iptal edildi', 'warning'); }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="İptal Et">⊘</button>
                                 )}
                                 <button onClick={async () => { if (window.confirm('Bu rezervasyonu kalıcı sil?')) { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.filter(r => r.id !== res.id)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon silindi', 'info'); } }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }} title="Sil">×</button>
                               </div>
@@ -4954,6 +4965,52 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))}
                         style={{ padding: '6px 12px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
                         {detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}
+                      </button>
+                      <button onClick={() => {
+                        const isDetail = detailedView[tour.id];
+                        const allRes = [...aktifRes, ...iptalRes];
+                        let rows;
+                        if (isDetail) {
+                          rows = [['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', 'Durum']];
+                          allRes.forEach(res => {
+                            const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
+                              customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                            const passports = safeParseJSON(customer?.passports);
+                            rows.push([
+                              res.customerName,
+                              customer?.birthDate ? formatDate(customer.birthDate) : '',
+                              customer?.tcKimlik || '',
+                              res.passport || passports[0]?.passportNo || '',
+                              customer?.company || res.company || '',
+                              customer?.phone || res.customerPhone || '',
+                              customer?.email || res.customerEmail || '',
+                              res.cancelled ? 'İptal' : 'Aktif'
+                            ]);
+                          });
+                        } else {
+                          rows = [['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', 'Durum']];
+                          allRes.forEach(res => {
+                            const totalPaid = (parseFloat(res.payment1) || 0) + (parseFloat(res.payment2) || 0) + (parseFloat(res.payment3) || 0);
+                            const fullyPaid = totalPaid >= (parseFloat(res.tourPrice) || 0) && totalPaid > 0;
+                            rows.push([
+                              res.customerName,
+                              res.roomType || '',
+                              res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok',
+                              `${res.tourPrice || 0} ${res.currency || '€'}`,
+                              fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`,
+                              res.cancelled ? 'İptal' : 'Aktif'
+                            ]);
+                          });
+                        }
+                        const ws = XLSX.utils.aoa_to_sheet(rows);
+                        ws['!cols'] = isDetail
+                          ? [{wch:25},{wch:14},{wch:14},{wch:14},{wch:20},{wch:18},{wch:25},{wch:10}]
+                          : [{wch:25},{wch:14},{wch:25},{wch:14},{wch:18},{wch:10}];
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, isDetail ? 'Detaylı Liste' : 'Genel Liste');
+                        XLSX.writeFile(wb, `${tour.name}_${isDetail ? 'Detayli' : 'Genel'}_Liste.xlsx`);
+                      }} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
+                        📥 {detailedView[tour.id] ? 'Detaylı' : 'Genel'} Liste Excel
                       </button>
                     </div>
                   )}
@@ -5618,6 +5675,20 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       <div style={{ padding: '8px 12px', background: 'rgba(34,197,94,0.1)', borderRadius: '6px', fontSize: '13px', color: '#22c55e' }}>
                         Toplam Ödeme: {(reservationData.payment1 + reservationData.payment2 + reservationData.payment3).toFixed(2)} {reservationData.currency}
                       </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Fatura Tipi *</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="button" onClick={() => setReservationData({...reservationData, invoiceType: 'personal'})}
+                        style={{ flex: 1, padding: '12px', background: reservationData.invoiceType === 'personal' ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.05)', border: `1px solid ${reservationData.invoiceType === 'personal' ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: reservationData.invoiceType === 'personal' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                        👤 Şahsi
+                      </button>
+                      <button type="button" onClick={() => setReservationData({...reservationData, invoiceType: 'company'})}
+                        style={{ flex: 1, padding: '12px', background: reservationData.invoiceType === 'company' ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.05)', border: `1px solid ${reservationData.invoiceType === 'company' ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: reservationData.invoiceType === 'company' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                        🏢 Firma
+                      </button>
                     </div>
                   </div>
 
