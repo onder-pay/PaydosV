@@ -1978,6 +1978,19 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={async () => {
+            showToast?.('🔄 Yenileniyor...', 'info');
+            try {
+              const snapshot = await getDocs(collection(db, 'customers'));
+              const items = snapshot.docs
+                .map(d => ({ ...d.data(), _docId: d.id }))
+                .filter(c => c.firstName || c.lastName);
+              setCustomers(items);
+              showToast?.(`✅ ${items.length} müşteri yüklendi`, 'success');
+            } catch (e) {
+              showToast?.('❌ Yenileme hatası: ' + e.message, 'error');
+            }
+          }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>🔄 Yenile</button>
           <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
           <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
