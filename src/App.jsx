@@ -1396,10 +1396,9 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                           showToast?.('AI pasaport okuyor...', 'info');
                           try {
                             const b64 = passport.image.startsWith('data:') ? passport.image.split(',')[1] : passport.image;
-                            const apiKey = appSettings?.claudeApiKey;
-                            const resp = await fetch(apiKey ? 'https://api.anthropic.com/v1/messages' : '/.netlify/functions/claude-proxy', {
+                            const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {}) },
+                              headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu pasaport. SADECE JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthPlace":"","nationality":"TUR"}. nationality 3 harfli ISO kodu.' }] }] })
                             });
                             const data = await resp.json();
@@ -1490,10 +1489,9 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                           showToast?.('AI vize okuyor...', 'info');
                           try {
                             const b64 = visa.image.startsWith('data:') ? visa.image.split(',')[1] : visa.image;
-                            const apiKey = appSettings?.claudeApiKey;
-                            const resp = await fetch(apiKey ? 'https://api.anthropic.com/v1/messages' : '/.netlify/functions/claude-proxy', {
+                            const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {}) },
+                              headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu Schengen vizesi. SADECE JSON: {"country":"Almanya","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}' }] }] })
                             });
                             const data = await resp.json();
@@ -2671,7 +2669,6 @@ JSON formatı:
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
 
-                    const apiKey = appSettings?.claudeApiKey;
                     const model = appSettings?.claudeModel || 'claude-sonnet-4-20250514';
 
                     const userContent = [];
@@ -2682,27 +2679,18 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
                     if (aiText.trim()) userContent.push({ type: 'text', text: aiText });
                     const msgContent = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
 
-                    let resp;
-                    if (apiKey) {
-                      resp = await fetch('https://api.anthropic.com/v1/messages', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-                        body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
-                      });
-                    } else {
-                      resp = await fetch('/.netlify/functions/claude-proxy', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
-                      });
-                    }
+                    const resp = await fetch('/.netlify/functions/claude-proxy', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
+                    });
                     if (!resp.ok) {
                       const errText = await resp.text();
                       throw new Error(`API ${resp.status}: ${errText.slice(0, 200)}`);
                     }
                     const data = await resp.json();
                     if (!data.content?.[0]?.text) {
-                      throw new Error(apiKey ? 'API yanıt boş geldi' : 'Netlify proxy çalışmıyor. Ayarlar → Claude API Key girin veya Netlify\'da CLAUDE_API_KEY env var ekleyin.');
+                      throw new Error('Netlify proxy çalışmıyor. CLAUDE_API_KEY env var Netlify\'da tanımlı mı kontrol edin.');
                     }
                     const parsed = JSON.parse((data.content[0].text).replace(/```json|```/g, '').trim());
 
@@ -8201,32 +8189,14 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={labelStyle}>Anthropic API Key</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="password"
-                    value={appSettings?.claudeApiKey || ''}
-                    onChange={e => setAppSettings({ ...appSettings, claudeApiKey: e.target.value })}
-                    placeholder="sk-ant-api03-..."
-                    style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px', flex: 1 }}
-                  />
-                  {appSettings?.claudeApiKey && (
-                    <button onClick={() => setAppSettings({ ...appSettings, claudeApiKey: '' })}
-                      style={{ padding: '0 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>
-                      🗑️
-                    </button>
-                  )}
-                </div>
-                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>
-                  console.anthropic.com'dan alınan API anahtarı. Buraya girilince 🤖 AI Quick Add doğrudan kullanır.
+              <div style={{ padding: '14px', background: 'rgba(16,185,129,0.08)', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>
+                  🔒 API Key güvenli şekilde sunucuda tutuluyor
                 </p>
-              </div>
-              <div style={{ padding: '12px', background: appSettings?.claudeApiKey ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)', borderRadius: '10px', border: `1px solid ${appSettings?.claudeApiKey ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}` }}>
-                <p style={{ margin: 0, fontSize: '11px', color: appSettings?.claudeApiKey ? '#10b981' : '#f59e0b' }}>
-                  {appSettings?.claudeApiKey
-                    ? '✅ API Key kayıtlı — AI Quick Add aktif'
-                    : '⚠️ API Key girilmedi — AI Quick Add çalışmaz. Netlify env var olarak da ekleyebilirsiniz: CLAUDE_API_KEY'}
+                <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8', lineHeight: '1.5' }}>
+                  Claude API çağrıları artık Netlify Function üzerinden geçiyor. Tarayıcıda API key tutulmuyor, fatura riskine karşı korumalı.
+                  <br/><br/>
+                  <strong style={{ color: '#94a3b8' }}>Aktif olması için:</strong> Netlify → Site settings → Environment variables → <code style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '3px', fontSize: '10px' }}>CLAUDE_API_KEY</code> ekli olmalı.
                 </p>
               </div>
               <div>
