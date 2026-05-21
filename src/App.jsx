@@ -6617,8 +6617,132 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
   );
 }
 
+// FİYAT DÖNEMİ MODAL (Otel için)
+function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, showToast }) {
+  const [period, setPeriod] = useState({
+    startDate: existing?.startDate || '',
+    endDate: existing?.endDate || '',
+    currency: existing?.currency || '€',
+    rates: existing?.rates || {}
+  });
+
+  const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '500' };
+
+  const updateRate = (roomType, concept, val) => {
+    setPeriod({
+      ...period,
+      rates: {
+        ...period.rates,
+        [roomType]: {
+          ...(period.rates[roomType] || {}),
+          [concept]: parseFloat(val) || 0
+        }
+      }
+    });
+  };
+
+  const dayCount = (() => {
+    if (!period.startDate || !period.endDate) return 0;
+    const d1 = new Date(period.startDate), d2 = new Date(period.endDate);
+    if (isNaN(d1) || isNaN(d2)) return 0;
+    return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+  })();
+
+  const handleSave = () => {
+    if (!period.startDate || !period.endDate) { showToast?.('Tarih aralığı zorunlu', 'error'); return; }
+    if (new Date(period.endDate) < new Date(period.startDate)) { showToast?.('Bitiş tarihi başlangıçtan önce olamaz', 'error'); return; }
+    onSave(period);
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px', overflowY: 'auto' }}>
+      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
+        <h3 style={{ margin: '0 0 20px', fontSize: '17px' }}>{existing ? '✏️ Fiyat Dönemini Düzenle' : '➕ Yeni Fiyat Dönemi'}</h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Başlangıç *</label>
+              <input type="date" value={period.startDate} onChange={e => setPeriod({...period, startDate: e.target.value})} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Bitiş *</label>
+              <input type="date" value={period.endDate} onChange={e => setPeriod({...period, endDate: e.target.value})} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Para</label>
+              <select value={period.currency} onChange={e => setPeriod({...period, currency: e.target.value})} style={inputStyle}>
+                <option value="€">€</option>
+                <option value="$">$</option>
+                <option value="£">£</option>
+                <option value="₺">₺</option>
+              </select>
+            </div>
+          </div>
+
+          {dayCount > 0 && (
+            <div style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', fontSize: '12px', color: '#3b82f6' }}>
+              📅 {dayCount} gün — tüm bu günler için aynı fiyat uygulanır
+            </div>
+          )}
+
+          {concepts.length === 0 ? (
+            <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
+              ⚠️ Önce konsept seçin (RO/BB/HB/FB)
+            </div>
+          ) : roomTypes.length === 0 ? (
+            <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
+              ⚠️ Ayarlar → Oteller bölümünden oda tipleri ekleyin
+            </div>
+          ) : (
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px' }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b' }}>💰 Fiyatlar (oda başı, gecelik)</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>Oda Tipi</th>
+                      {concepts.map(c => (
+                        <th key={c} style={{ padding: '8px', textAlign: 'center', color: '#f59e0b', fontWeight: '600', fontSize: '11px' }}>{c.toUpperCase()}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roomTypes.map(rt => (
+                      <tr key={rt} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '8px', fontWeight: '600', color: '#e2e8f0' }}>{rt}</td>
+                        {concepts.map(c => (
+                          <td key={c} style={{ padding: '4px' }}>
+                            <input type="number" min="0"
+                              value={period.rates?.[rt]?.[c] || 0}
+                              onChange={e => updateRate(rt, c, e.target.value)}
+                              style={{...inputStyle, padding: '6px 8px', fontSize: '12px'}} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+            <button onClick={handleSave} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>
+              {existing ? '💾 Güncelle' : '✅ Dönemi Kaydet'}
+            </button>
+            <button onClick={onClose} style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer' }}>İptal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // OTEL MODÜLÜ
-function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer }) {
+function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings }) {
   const [view, setView] = useState('list'); // list, detail, form
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
@@ -6627,16 +6751,16 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const [searchQuery, setSearchQuery] = useState('');
   const [showCustList, setShowCustList] = useState(false);
   const [custSearch, setCustSearch] = useState('');
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [editingPricePeriod, setEditingPricePeriod] = useState(null);
+
+  // Ayarlardan oda tipleri (varsayılan)
+  const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', email: '', website: '',
-    prices: {
-      single: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
-      double: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
-      triple: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
-      suite: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } }
-    },
-    enabledConcepts: ['bb'], // varsayılan sadece kahvaltı dahil göster
+    enabledConcepts: ['bb'], // RO/BB/HB/FB
+    priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
     notes: '',
     reservations: []
@@ -6645,7 +6769,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   const emptyRes = {
     customerId: '', customerName: '', customerPhone: '', customerEmail: '',
-    checkIn: '', checkOut: '', roomType: 'double', concept: 'bb', guests: 1,
+    checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1,
     price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
     notes: ''
@@ -6862,104 +6986,104 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
           </div>
 
           <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>Hangi konseptlerle anlaşmanız var? İşaretlediklerinizin fiyat alanları açılır.</p>
-
-            {/* Konsept seçimi */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-              {[
-                {key: 'ro', label: 'Sadece Oda (RO)', tip: 'Yemek dahil değil'},
-                {key: 'bb', label: 'Kahvaltı Dahil (BB)', tip: 'Bed & Breakfast'},
-                {key: 'hb', label: 'Yarım Pansiyon (HB)', tip: 'Kahvaltı + akşam yemeği'},
-                {key: 'fb', label: 'Tam Pansiyon (FB)', tip: 'Tüm öğünler dahil'}
-              ].map(({key, label, tip}) => {
-                const enabled = (hotelForm.enabledConcepts || []).includes(key);
-                return (
-                  <button key={key} type="button" onClick={() => {
-                    const cur = hotelForm.enabledConcepts || [];
-                    const updated = enabled ? cur.filter(x => x !== key) : [...cur, key];
-                    setHotelForm({...hotelForm, enabledConcepts: updated});
-                  }} title={tip} style={{
-                    padding: '8px 14px',
-                    background: enabled ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${enabled ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                    borderRadius: '8px',
-                    color: enabled ? '#f59e0b' : '#94a3b8',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: enabled ? '600' : '500'
-                  }}>
-                    {enabled ? '✓ ' : ''}{label}
-                  </button>
-                );
-              })}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
+                <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Tarih dönemleri ekleyin. Her dönem için oda tipi × yemek konsepti fiyatları girin.</p>
+              </div>
+              <button type="button" onClick={() => { setEditingPricePeriod(null); setShowPriceModal(true); }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
+                ➕ Fiyat Dönemi Ekle
+              </button>
             </div>
 
-            {/* Fiyat tablosu - dinamik */}
-            {(hotelForm.enabledConcepts || []).length === 0 ? (
+            {/* Konsept seçimi */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{...labelStyle, marginBottom: '6px'}}>Anlaşmalı Konseptler</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {[
+                  {key: 'ro', label: 'RO (Sadece Oda)'},
+                  {key: 'bb', label: 'BB (Kahvaltı)'},
+                  {key: 'hb', label: 'HB (Yarım Pansiyon)'},
+                  {key: 'fb', label: 'FB (Tam Pansiyon)'}
+                ].map(({key, label}) => {
+                  const enabled = (hotelForm.enabledConcepts || []).includes(key);
+                  return (
+                    <button key={key} type="button" onClick={() => {
+                      const cur = hotelForm.enabledConcepts || [];
+                      const updated = enabled ? cur.filter(x => x !== key) : [...cur, key];
+                      setHotelForm({...hotelForm, enabledConcepts: updated});
+                    }} style={{
+                      padding: '6px 10px',
+                      background: enabled ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${enabled ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: '6px',
+                      color: enabled ? '#f59e0b' : '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: enabled ? '600' : '500'
+                    }}>
+                      {enabled ? '✓ ' : ''}{label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Fiyat dönemleri listesi */}
+            {(hotelForm.priceList || []).length === 0 ? (
               <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                ↑ Üstten en az bir konsept seçin
+                📅 Henüz fiyat dönemi eklenmedi. "➕ Fiyat Dönemi Ekle" ile başlayın.
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '500px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>Oda Tipi</th>
-                      {(hotelForm.enabledConcepts || []).map(c => (
-                        <th key={c} style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>
-                          {c === 'ro' ? 'RO' : c === 'bb' ? 'BB' : c === 'hb' ? 'HB' : 'FB'}
-                        </th>
-                      ))}
-                      <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px', width: '70px' }}>Para</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      {key: 'single', label: 'Single'},
-                      {key: 'double', label: 'Double'},
-                      {key: 'triple', label: 'Triple'},
-                      {key: 'suite', label: 'Suite'}
-                    ].map(({key, label}) => (
-                      <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <td style={{ padding: '6px 8px', fontWeight: '600', color: '#e2e8f0' }}>{label}</td>
-                        {(hotelForm.enabledConcepts || []).map(c => (
-                          <td key={c} style={{ padding: '6px 4px' }}>
-                            <input type="number" min="0" value={hotelForm.prices?.[key]?.[c]?.amount || 0}
-                              onChange={e => setHotelForm({
-                                ...hotelForm,
-                                prices: {
-                                  ...hotelForm.prices,
-                                  [key]: {
-                                    ...(hotelForm.prices?.[key] || {}),
-                                    [c]: { ...(hotelForm.prices?.[key]?.[c] || {}), amount: parseFloat(e.target.value) || 0 }
-                                  }
-                                }
-                              })}
-                              style={{...inputStyle, padding: '6px 8px', fontSize: '12px'}} />
-                          </td>
-                        ))}
-                        <td style={{ padding: '6px 4px' }}>
-                          <select value={hotelForm.prices?.[key]?.bb?.currency || hotelForm.prices?.[key]?.ro?.currency || '€'}
-                            onChange={e => {
-                              const newCur = e.target.value;
-                              const updatedRowPrices = {...(hotelForm.prices?.[key] || {})};
-                              ['ro', 'bb', 'hb', 'fb'].forEach(c => {
-                                updatedRowPrices[c] = { ...(updatedRowPrices[c] || {amount: 0}), currency: newCur };
-                              });
-                              setHotelForm({ ...hotelForm, prices: { ...hotelForm.prices, [key]: updatedRowPrices } });
-                            }}
-                            style={{...selectStyle, padding: '6px 4px', fontSize: '12px'}}>
-                            <option value="€">€</option>
-                            <option value="$">$</option>
-                            <option value="£">£</option>
-                            <option value="₺">₺</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(hotelForm.priceList || []).map((p, idx) => {
+                  const concepts = hotelForm.enabledConcepts || ['bb'];
+                  return (
+                    <div key={p.id || idx} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(245,158,11,0.15)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: '600' }}>
+                          📅 {formatDate(p.startDate)} → {formatDate(p.endDate)}
+                          <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>({p.currency})</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button type="button" onClick={() => { setEditingPricePeriod(p); setShowPriceModal(true); }} style={{ padding: '4px 8px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '5px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>✏️</button>
+                          <button type="button" onClick={() => {
+                            if (window.confirm('Bu fiyat dönemini silmek istiyor musunuz?')) {
+                              setHotelForm({ ...hotelForm, priceList: (hotelForm.priceList || []).filter((_, i) => i !== idx) });
+                            }
+                          }} style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                        </div>
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
+                              {concepts.map(c => (
+                                <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hotelRoomTypes.map(rt => (
+                              <tr key={rt}>
+                                <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
+                                {concepts.map(c => {
+                                  const val = p.rates?.[rt]?.[c];
+                                  return (
+                                    <td key={c} style={{ padding: '4px 8px', textAlign: 'center', color: val > 0 ? '#fff' : '#475569' }}>
+                                      {val > 0 ? `${val} ${p.currency}` : '—'}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -6978,6 +7102,27 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
             )}
           </div>
         </div>
+
+        {/* FİYAT DÖNEMİ MODAL */}
+        {showPriceModal && (
+          <PricePeriodModal
+            existing={editingPricePeriod}
+            roomTypes={hotelRoomTypes}
+            concepts={hotelForm.enabledConcepts || ['bb']}
+            onClose={() => { setShowPriceModal(false); setEditingPricePeriod(null); }}
+            onSave={(period) => {
+              const list = hotelForm.priceList || [];
+              if (editingPricePeriod) {
+                const updated = list.map(p => p.id === editingPricePeriod.id ? { ...period, id: editingPricePeriod.id } : p);
+                setHotelForm({ ...hotelForm, priceList: updated });
+              } else {
+                setHotelForm({ ...hotelForm, priceList: [...list, { ...period, id: generateUniqueId() }] });
+              }
+              setShowPriceModal(false); setEditingPricePeriod(null);
+            }}
+            showToast={showToast}
+          />
+        )}
       </div>
     );
   }
@@ -7025,48 +7170,49 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları {h.season && <span style={{fontSize:'11px', color:'#64748b'}}>({h.season})</span>}</div>
+          <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları</div>
           {(() => {
+            const list = h.priceList || [];
             const concepts = h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['bb'];
-            const conceptLabels = { ro: 'RO', bb: 'BB', hb: 'HB', fb: 'FB' };
+            if (list.length === 0) {
+              return <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>Henüz fiyat dönemi eklenmedi</div>;
+            }
             return (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '400px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: '11px' }}>Oda Tipi</th>
-                      {concepts.map(c => (
-                        <th key={c} style={{ padding: '6px 8px', textAlign: 'center', color: '#f59e0b', fontSize: '11px', fontWeight: '600' }}>
-                          {conceptLabels[c] || c.toUpperCase()}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      {key: 'single', label: 'Single'},
-                      {key: 'double', label: 'Double'},
-                      {key: 'triple', label: 'Triple'},
-                      {key: 'suite', label: 'Suite'}
-                    ].map(({key, label}) => (
-                      <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <td style={{ padding: '8px', color: '#e2e8f0', fontWeight: '600' }}>{label}</td>
-                        {concepts.map(c => {
-                          const priceObj = h.prices?.[key]?.[c];
-                          // Geriye uyumluluk - eski format
-                          const oldPrice = h.prices?.[key];
-                          const amount = priceObj?.amount ?? (typeof oldPrice?.amount === 'number' ? oldPrice.amount : 0);
-                          const currency = priceObj?.currency || oldPrice?.currency || '€';
-                          return (
-                            <td key={c} style={{ padding: '8px', textAlign: 'center', color: amount > 0 ? '#fff' : '#475569', fontWeight: amount > 0 ? '700' : '400' }}>
-                              {amount > 0 ? `${amount} ${currency}` : '—'}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {list.map(p => (
+                  <div key={p.id} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px' }}>
+                    <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '8px' }}>
+                      📅 {formatDate(p.startDate)} → {formatDate(p.endDate)} <span style={{color:'#64748b', fontWeight:'400'}}>({p.currency})</span>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
+                            {concepts.map(c => (
+                              <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(appSettings?.hotelRoomTypes || ['Single','Double','Triple','Suite']).map(rt => (
+                            <tr key={rt}>
+                              <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
+                              {concepts.map(c => {
+                                const val = p.rates?.[rt]?.[c];
+                                return (
+                                  <td key={c} style={{ padding: '4px 8px', textAlign: 'center', color: val > 0 ? '#fff' : '#475569' }}>
+                                    {val > 0 ? `${val} ${p.currency}` : '—'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             );
           })()}
@@ -7174,7 +7320,13 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Giriş Tarihi *</label>
-                    <input type="date" value={resData.checkIn} onChange={e => setResData({...resData, checkIn: e.target.value})} style={inputStyle} />
+                    <input type="date" value={resData.checkIn} onChange={e => {
+                      const ci = e.target.value;
+                      const rt = resData.roomType, concept = resData.concept || 'bb';
+                      const period = (h.priceList || []).find(p => ci && p.startDate <= ci && p.endDate >= ci);
+                      const price = period?.rates?.[rt]?.[concept];
+                      setResData({...resData, checkIn: ci, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
+                    }} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Çıkış Tarihi *</label>
@@ -7182,11 +7334,20 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   </div>
                 </div>
 
-                {resData.checkIn && resData.checkOut && (
-                  <div style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', fontSize: '12px', color: '#3b82f6' }}>
-                    🌙 {calcNights(resData.checkIn, resData.checkOut)} gece konaklama
-                  </div>
-                )}
+                {resData.checkIn && resData.checkOut && (() => {
+                  const nights = calcNights(resData.checkIn, resData.checkOut);
+                  const nightlyPrice = parseFloat(resData.price) || 0;
+                  const totalForNights = nightlyPrice * nights;
+                  return (
+                    <div style={{ padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', fontSize: '12px', color: '#3b82f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <span>🌙 {nights} gece konaklama</span>
+                      <span style={{ color: '#94a3b8' }}>{nightlyPrice} {resData.currency}/gece × {nights} = <strong style={{ color: '#f59e0b' }}>{totalForNights.toFixed(2)} {resData.currency}</strong></span>
+                      <button type="button" onClick={() => setResData({...resData, price: totalForNights})} style={{ padding: '4px 10px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '5px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
+                        Toplama uygula →
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
@@ -7194,13 +7355,14 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <select value={resData.roomType} onChange={e => {
                       const rt = e.target.value;
                       const concept = resData.concept || 'bb';
-                      const priceObj = h.prices?.[rt]?.[concept] || h.prices?.[rt];
-                      setResData({...resData, roomType: rt, price: priceObj?.amount ?? resData.price, currency: priceObj?.currency || resData.currency});
+                      // Check-in tarihine uyan price period bul
+                      const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
+                      const price = period?.rates?.[rt]?.[concept];
+                      setResData({...resData, roomType: rt, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
                     }} style={selectStyle}>
-                      <option value="single">Single</option>
-                      <option value="double">Double</option>
-                      <option value="triple">Triple</option>
-                      <option value="suite">Suite</option>
+                      {(appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite']).map(rt => (
+                        <option key={rt} value={rt}>{rt}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -7208,8 +7370,9 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <select value={resData.concept || 'bb'} onChange={e => {
                       const concept = e.target.value;
                       const rt = resData.roomType;
-                      const priceObj = h.prices?.[rt]?.[concept] || h.prices?.[rt];
-                      setResData({...resData, concept, price: priceObj?.amount ?? resData.price, currency: priceObj?.currency || resData.currency});
+                      const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
+                      const price = period?.rates?.[rt]?.[concept];
+                      setResData({...resData, concept, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
                     }} style={selectStyle}>
                       {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
                         <option key={c} value={c}>
@@ -8067,6 +8230,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [newPersonalField, setNewPersonalField] = useState('');
   const [newVisaStatus, setNewVisaStatus] = useState('');
   const [newSector, setNewSector] = useState('');
+  const [newHotelRoomType, setNewHotelRoomType] = useState('');
   const [newDuration, setNewDuration] = useState({ category: 'usa', value: '', price: 0, currency: '€' });
   const [newRoomType, setNewRoomType] = useState('');
 
@@ -8631,6 +8795,37 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                     style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
                   <button onClick={() => { if (newSector.trim()) { setAppSettings({ ...appSettings, sectors: [...sectorList, newSector.trim()] }); setNewSector(''); } }}
                     style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    ➕ Ekle
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* OTEL ODA TİPLERİ */}
+          {(() => {
+            const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
+            return (
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#f59e0b' }}>🏨 Otel Oda Tipleri</h3>
+                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
+                  Otel formunda ve rezervasyonlarda kullanılacak oda tipleri (örn: Single, Double, Deluxe, Aile Süiti).
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                  {hotelRoomTypes.map((rt, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(139,92,246,0.12)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                      <span style={{ fontSize: '12px', color: '#a78bfa' }}>{rt}</span>
+                      <button onClick={() => setAppSettings({ ...appSettings, hotelRoomTypes: hotelRoomTypes.filter((_, i) => i !== idx) })}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="text" value={newHotelRoomType || ''} onChange={e => setNewHotelRoomType(e.target.value)}
+                    placeholder="Yeni oda tipi ekle..." onKeyPress={e => { if (e.key === 'Enter' && (newHotelRoomType || '').trim()) { setAppSettings({ ...appSettings, hotelRoomTypes: [...hotelRoomTypes, newHotelRoomType.trim()] }); setNewHotelRoomType(''); } }}
+                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
+                  <button onClick={() => { if ((newHotelRoomType || '').trim()) { setAppSettings({ ...appSettings, hotelRoomTypes: [...hotelRoomTypes, newHotelRoomType.trim()] }); setNewHotelRoomType(''); } }}
+                    style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                     ➕ Ekle
                   </button>
                 </div>
@@ -9318,7 +9513,7 @@ export default function App() {
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
