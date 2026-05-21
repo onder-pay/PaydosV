@@ -6631,11 +6631,12 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', email: '', website: '',
     prices: {
-      single: { amount: 0, currency: '€' },
-      double: { amount: 0, currency: '€' },
-      triple: { amount: 0, currency: '€' },
-      suite: { amount: 0, currency: '€' }
+      single: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
+      double: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
+      triple: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } },
+      suite: { ro: { amount: 0, currency: '€' }, bb: { amount: 0, currency: '€' }, hb: { amount: 0, currency: '€' }, fb: { amount: 0, currency: '€' } }
     },
+    enabledConcepts: ['bb'], // varsayılan sadece kahvaltı dahil göster
     season: '',
     notes: '',
     reservations: []
@@ -6644,7 +6645,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   const emptyRes = {
     customerId: '', customerName: '', customerPhone: '', customerEmail: '',
-    checkIn: '', checkOut: '', roomType: 'double', guests: 1,
+    checkIn: '', checkOut: '', roomType: 'double', concept: 'bb', guests: 1,
     price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
     notes: ''
@@ -6861,28 +6862,106 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
           </div>
 
           <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '12px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>Hangi konseptlerle anlaşmanız var? İşaretlediklerinizin fiyat alanları açılır.</p>
+
+            {/* Konsept seçimi */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
               {[
-                {key: 'single', label: 'Single (Tek Kişilik)'},
-                {key: 'double', label: 'Double (Çift Kişilik)'},
-                {key: 'triple', label: 'Triple (Üç Kişilik)'},
-                {key: 'suite', label: 'Suite (Süit)'}
-              ].map(({key, label}) => (
-                <div key={key} style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>{label}</label>
-                    <input type="number" value={hotelForm.prices?.[key]?.amount || 0} onChange={e => setHotelForm({...hotelForm, prices: {...hotelForm.prices, [key]: {...(hotelForm.prices?.[key] || {}), amount: parseFloat(e.target.value) || 0}}})} style={inputStyle} />
-                  </div>
-                  <select value={hotelForm.prices?.[key]?.currency || '€'} onChange={e => setHotelForm({...hotelForm, prices: {...hotelForm.prices, [key]: {...(hotelForm.prices?.[key] || {}), currency: e.target.value}}})} style={{...selectStyle, width: '70px'}}>
-                    <option value="€">€</option>
-                    <option value="$">$</option>
-                    <option value="£">£</option>
-                    <option value="₺">₺</option>
-                  </select>
-                </div>
-              ))}
+                {key: 'ro', label: 'Sadece Oda (RO)', tip: 'Yemek dahil değil'},
+                {key: 'bb', label: 'Kahvaltı Dahil (BB)', tip: 'Bed & Breakfast'},
+                {key: 'hb', label: 'Yarım Pansiyon (HB)', tip: 'Kahvaltı + akşam yemeği'},
+                {key: 'fb', label: 'Tam Pansiyon (FB)', tip: 'Tüm öğünler dahil'}
+              ].map(({key, label, tip}) => {
+                const enabled = (hotelForm.enabledConcepts || []).includes(key);
+                return (
+                  <button key={key} type="button" onClick={() => {
+                    const cur = hotelForm.enabledConcepts || [];
+                    const updated = enabled ? cur.filter(x => x !== key) : [...cur, key];
+                    setHotelForm({...hotelForm, enabledConcepts: updated});
+                  }} title={tip} style={{
+                    padding: '8px 14px',
+                    background: enabled ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${enabled ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '8px',
+                    color: enabled ? '#f59e0b' : '#94a3b8',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: enabled ? '600' : '500'
+                  }}>
+                    {enabled ? '✓ ' : ''}{label}
+                  </button>
+                );
+              })}
             </div>
+
+            {/* Fiyat tablosu - dinamik */}
+            {(hotelForm.enabledConcepts || []).length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                ↑ Üstten en az bir konsept seçin
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '500px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>Oda Tipi</th>
+                      {(hotelForm.enabledConcepts || []).map(c => (
+                        <th key={c} style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>
+                          {c === 'ro' ? 'RO' : c === 'bb' ? 'BB' : c === 'hb' ? 'HB' : 'FB'}
+                        </th>
+                      ))}
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px', width: '70px' }}>Para</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {key: 'single', label: 'Single'},
+                      {key: 'double', label: 'Double'},
+                      {key: 'triple', label: 'Triple'},
+                      {key: 'suite', label: 'Suite'}
+                    ].map(({key, label}) => (
+                      <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '6px 8px', fontWeight: '600', color: '#e2e8f0' }}>{label}</td>
+                        {(hotelForm.enabledConcepts || []).map(c => (
+                          <td key={c} style={{ padding: '6px 4px' }}>
+                            <input type="number" min="0" value={hotelForm.prices?.[key]?.[c]?.amount || 0}
+                              onChange={e => setHotelForm({
+                                ...hotelForm,
+                                prices: {
+                                  ...hotelForm.prices,
+                                  [key]: {
+                                    ...(hotelForm.prices?.[key] || {}),
+                                    [c]: { ...(hotelForm.prices?.[key]?.[c] || {}), amount: parseFloat(e.target.value) || 0 }
+                                  }
+                                }
+                              })}
+                              style={{...inputStyle, padding: '6px 8px', fontSize: '12px'}} />
+                          </td>
+                        ))}
+                        <td style={{ padding: '6px 4px' }}>
+                          <select value={hotelForm.prices?.[key]?.bb?.currency || hotelForm.prices?.[key]?.ro?.currency || '€'}
+                            onChange={e => {
+                              const newCur = e.target.value;
+                              const updatedRowPrices = {...(hotelForm.prices?.[key] || {})};
+                              ['ro', 'bb', 'hb', 'fb'].forEach(c => {
+                                updatedRowPrices[c] = { ...(updatedRowPrices[c] || {amount: 0}), currency: newCur };
+                              });
+                              setHotelForm({ ...hotelForm, prices: { ...hotelForm.prices, [key]: updatedRowPrices } });
+                            }}
+                            style={{...selectStyle, padding: '6px 4px', fontSize: '12px'}}>
+                            <option value="€">€</option>
+                            <option value="$">$</option>
+                            <option value="£">£</option>
+                            <option value="₺">₺</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div>
@@ -6947,21 +7026,50 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
           <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları {h.season && <span style={{fontSize:'11px', color:'#64748b'}}>({h.season})</span>}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
-            {[
-              {key: 'single', label: 'Single'},
-              {key: 'double', label: 'Double'},
-              {key: 'triple', label: 'Triple'},
-              {key: 'suite', label: 'Suite'}
-            ].map(({key, label}) => (
-              <div key={key} style={{ padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b' }}>{label}</div>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>
-                  {h.prices?.[key]?.amount || 0} {h.prices?.[key]?.currency || '€'}
-                </div>
+          {(() => {
+            const concepts = h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['bb'];
+            const conceptLabels = { ro: 'RO', bb: 'BB', hb: 'HB', fb: 'FB' };
+            return (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '400px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: '11px' }}>Oda Tipi</th>
+                      {concepts.map(c => (
+                        <th key={c} style={{ padding: '6px 8px', textAlign: 'center', color: '#f59e0b', fontSize: '11px', fontWeight: '600' }}>
+                          {conceptLabels[c] || c.toUpperCase()}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {key: 'single', label: 'Single'},
+                      {key: 'double', label: 'Double'},
+                      {key: 'triple', label: 'Triple'},
+                      {key: 'suite', label: 'Suite'}
+                    ].map(({key, label}) => (
+                      <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '8px', color: '#e2e8f0', fontWeight: '600' }}>{label}</td>
+                        {concepts.map(c => {
+                          const priceObj = h.prices?.[key]?.[c];
+                          // Geriye uyumluluk - eski format
+                          const oldPrice = h.prices?.[key];
+                          const amount = priceObj?.amount ?? (typeof oldPrice?.amount === 'number' ? oldPrice.amount : 0);
+                          const currency = priceObj?.currency || oldPrice?.currency || '€';
+                          return (
+                            <td key={c} style={{ padding: '8px', textAlign: 'center', color: amount > 0 ? '#fff' : '#475569', fontWeight: amount > 0 ? '700' : '400' }}>
+                              {amount > 0 ? `${amount} ${currency}` : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
 
         {/* Rezervasyonlar Tablosu */}
@@ -6975,7 +7083,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '600px' }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda', 'Tutar', 'Ödeme', ''].map(h => (
+                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Tutar', 'Ödeme', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                     ))}
                   </tr>
@@ -6995,7 +7103,10 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
-                        <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{r.roomType}</td>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
+                          {r.roomType}
+                          {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{r.concept.toUpperCase()}</span>}
+                        </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#f59e0b' }}>{r.price} {r.currency || '€'}</td>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
@@ -7077,18 +7188,34 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Oda Tipi</label>
                     <select value={resData.roomType} onChange={e => {
                       const rt = e.target.value;
-                      const priceData = h.prices?.[rt];
-                      setResData({...resData, roomType: rt, price: priceData?.amount || resData.price, currency: priceData?.currency || resData.currency});
+                      const concept = resData.concept || 'bb';
+                      const priceObj = h.prices?.[rt]?.[concept] || h.prices?.[rt];
+                      setResData({...resData, roomType: rt, price: priceObj?.amount ?? resData.price, currency: priceObj?.currency || resData.currency});
                     }} style={selectStyle}>
-                      <option value="single">Single (Tek Kişilik)</option>
-                      <option value="double">Double (Çift Kişilik)</option>
-                      <option value="triple">Triple (Üç Kişilik)</option>
-                      <option value="suite">Suite (Süit)</option>
+                      <option value="single">Single</option>
+                      <option value="double">Double</option>
+                      <option value="triple">Triple</option>
+                      <option value="suite">Suite</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Konsept</label>
+                    <select value={resData.concept || 'bb'} onChange={e => {
+                      const concept = e.target.value;
+                      const rt = resData.roomType;
+                      const priceObj = h.prices?.[rt]?.[concept] || h.prices?.[rt];
+                      setResData({...resData, concept, price: priceObj?.amount ?? resData.price, currency: priceObj?.currency || resData.currency});
+                    }} style={selectStyle}>
+                      {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
+                        <option key={c} value={c}>
+                          {c === 'ro' ? 'Sadece Oda (RO)' : c === 'bb' ? 'Kahvaltı Dahil (BB)' : c === 'hb' ? 'Yarım Pansiyon (HB)' : 'Tam Pansiyon (FB)'}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
