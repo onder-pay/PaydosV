@@ -8,10 +8,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
 const defaultCustomers = [];
-const defaultVisaApplications = [];
-const defaultTours = [];
-const defaultHotels = [];
-const defaultHotelReservations = [];
 const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name: 'Önder', role: 'admin' }];
 
 const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
@@ -36,22 +32,16 @@ const tourCountries = [
   'Avustralya', 'Yeni Zelanda', 'Fiji'
 ];
 const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Evraklar Gönderildi', 'E-posta Gönderildi', 'Randevu Bekliyor', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Müşteri İptal Etti'];
-const tourStatuses = ['Planlama', 'Açık', 'Dolu', 'Devam Ediyor', 'Tamamlandı', 'İptal'];
-const mealPlans = ['Sadece Oda', 'Oda + Kahvaltı', 'Yarım Pansiyon', 'Tam Pansiyon', 'Her Şey Dahil'];
-const currencies = ['€ Euro', '$ Dolar', '₺ TL', '£ Sterlin'];
 
 const labelStyle = { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' };
 const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
 const selectStyle = { width: '100%', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
-const dateSelectStyle = { padding: '10px 6px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none' };
 
-const isValidEmail = (e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = String(d); if (d.includes('-')) return d.split('-').reverse().join('.'); if (d.includes('.')) return d; return d; };
 const safeParseTags = (val) => { if (!val) return []; if (Array.isArray(val)) return val.filter(t => t && typeof t === 'string'); if (typeof val === 'string') return val.split(',').map(t => t.trim()).filter(Boolean); return []; };
 const safeParseActivities = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
 const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
 const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
-const safeParseNumber = (val) => { if (!val) return 0; const cleaned = String(val).replace(/[€$£₺\s]/g, '').replace(',', '.'); const num = parseFloat(cleaned); return isNaN(num) ? 0 : num; };
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
@@ -196,21 +186,6 @@ function LoadingButton({ onClick, loading, disabled, children, style, ...props }
 }
 
 // Form Error Component
-function FormError({ error }) {
-  if (!error) return null;
-  return (
-    <p style={{ 
-      margin: '4px 0 0', 
-      fontSize: '11px', 
-      color: '#ef4444',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px'
-    }}>
-      ⚠️ {error}
-    </p>
-  );
-}
 
 function CalendarPicker({ label, value, onChange, minYear = 1920, maxYear = 2035, maxDate = null, minDate = null }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -619,7 +594,6 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
   const [aiResult, setAiResult] = useState(null);
   const [aiImages, setAiImages] = useState([]); // [{type, base64, preview, mediaType}]
   const [cropModal, setCropModal] = useState(null); // {type, src, rotation}
-  const cropCanvasRef = useRef(null);
   const [cropPos, setCropPos] = useState({ x: 0, y: 0 });
   const [cropZoom, setCropZoom] = useState(1);
   const cropDragRef = useRef(null);
@@ -870,26 +844,8 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     setShowForm(true); 
   };
 
-  const openPassportModal = (customer) => {
-    setSelectedCustomer(customer);
-    const savedPassports = safeParseJSON(customer.passports);
-    setPassports(savedPassports.length > 0 ? savedPassports : [{ ...emptyPassport, id: generateUniqueId() }]);
-    setShowPassportModal(true);
-  };
 
-  const openSchengenModal = (customer) => {
-    setSelectedCustomer(customer);
-    const saved = safeParseJSON(customer.schengenVisas).filter(v => v.country);
-    setSchengenVisas(saved.length > 0 ? saved : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }]);
-    setShowSchengenModal(true);
-  };
 
-  const openUsaModal = (customer) => {
-    setSelectedCustomer(customer);
-    const saved = customer.usaVisa ? (typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa) : customer.usaVisa) : {};
-    setUsaVisa({ startDate: saved.startDate || '', endDate: saved.endDate || '', image: saved.image || '' });
-    setShowUsaModal(true);
-  };
 
   const addPassport = () => {
     setPassports([...passports, { ...emptyPassport, id: generateUniqueId() }]);
@@ -930,34 +886,6 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     });
   };
 
-  const handleImageUpload = (callback) => async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { alert('Dosya boyutu 10MB\'dan büyük olamaz'); return; }
-    try {
-      // Önce base64'e çevir
-      const dataUrl = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onloadend = () => res(reader.result);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
-      // 300KB'ı geçiyorsa sıkıştır
-      const kb = Math.round(file.size / 1024);
-      const compressed = kb > 300 ? await compressImage(dataUrl, 300) : dataUrl;
-      const finalKb = Math.round((compressed.length * 3) / 4 / 1024);
-      if (finalKb > 300) {
-        const ok = window.confirm(`Görsel ${finalKb}KB — 300KB limitini geçiyor. Daha da küçültülsün mü?`);
-        if (!ok) return;
-        const smaller = await compressImage(dataUrl, 250);
-        callback(smaller);
-        return;
-      }
-      callback(compressed);
-    } catch (err) {
-      console.warn('Görsel işleme hatası:', err.message);
-    }
-  };
 
   const handleSubmit = async () => {
     if (!formData.firstName || !formData.lastName) {
@@ -1106,47 +1034,8 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     showToast?.('✅ Kaydedildi', 'success');
   };
 
-  const handlePassportSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedCustomer) return;
-    const updatedCustomer = { ...selectedCustomer, passports };
-    const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
-    setCustomers(updated);
-    setSelectedCustomer(updatedCustomer);
-    setShowPassportModal(false);
-    try {
-      const docId = selectedCustomer._docId || String(selectedCustomer.id);
-      await setDoc(doc(db, 'customers', docId), { passports: JSON.stringify(passports) }, { merge: true });
-    } catch(e) { console.error('Pasaport kayıt hatası:', e); }
-  };
 
-  const handleSchengenSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedCustomer) return;
-    const updatedCustomer = { ...selectedCustomer, schengenVisas };
-    const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
-    setCustomers(updated);
-    setSelectedCustomer(updatedCustomer);
-    setShowSchengenModal(false);
-    try {
-      const docId = selectedCustomer._docId || String(selectedCustomer.id);
-      await setDoc(doc(db, 'customers', docId), { schengenVisas: JSON.stringify(schengenVisas) }, { merge: true });
-    } catch(e) { console.error('Schengen kayıt hatası:', e); }
-  };
 
-  const handleUsaSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedCustomer) return;
-    const updatedCustomer = { ...selectedCustomer, usaVisa };
-    const updated = customers.map(c => c.id === selectedCustomer.id ? updatedCustomer : c);
-    setCustomers(updated);
-    setSelectedCustomer(updatedCustomer);
-    setShowUsaModal(false);
-    try {
-      const docId = selectedCustomer._docId || String(selectedCustomer.id);
-      await setDoc(doc(db, 'customers', docId), { usaVisa: JSON.stringify(usaVisa) }, { merge: true });
-    } catch(e) { console.error('ABD vize kayıt hatası:', e); }
-  };
 
   const deleteCustomer = async (id) => {
     if (!confirm('Silmek istediğinize emin misiniz?')) return;
@@ -1163,27 +1052,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px'
   });
 
-  const tabStyle = (active) => ({
-    flex: 1, padding: '8px', background: active ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)',
-    border: active ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '8px', color: active ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: active ? '600' : '400'
-  });
 
-  const ImageUploadBox = ({ label, value, onUpload, onClear, small }) => (
-    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: small ? '8px' : '10px', border: '1px solid rgba(255,255,255,0.1)' }}>
-      {value ? (
-        <div style={{ position: 'relative' }}>
-          <img src={value} alt={label} style={{ width: '100%', height: small ? '50px' : '70px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer' }} onClick={() => setImagePreview({ show: true, src: value, title: label })} />
-          <button type="button" onClick={onClear} style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', color: 'white', cursor: 'pointer', fontSize: '10px' }}>✕</button>
-        </div>
-      ) : (
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: small ? '50px' : '60px', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '4px', cursor: 'pointer', color: '#64748b', fontSize: '10px' }}>
-          📷 {label}
-          <input type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
-        </label>
-      )}
-    </div>
-  );
 
   // TAM SAYFA FORM - Müşteri Ekleme/Düzenleme
   const renderFullPageForm = () => (
@@ -3173,7 +3042,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     { id: 'other', label: 'Diğer', icon: '🌍', color: '#64748b', countries: ['Kanada', 'Avustralya', 'Japonya', 'Hindistan', 'Güney Kore', 'Brezilya', 'Meksika', 'Diğer'], durations: null }
   ];
 
-  const visaTypes = ['Ticari', 'Turistik', 'Aile/Arkadaş Ziyareti', 'Fuar Katılımcı', 'Tedavi', 'Eğitim', 'Transit', 'Diğer'];
   const visaStatuses = appSettings?.visaStatuses?.length > 0
     ? appSettings.visaStatuses
     : ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi'];
@@ -3632,27 +3500,22 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, #0a1628 0%, #132742 50%, #0a1628 100%)', zIndex: 300, overflow: 'auto' }}>
       <div style={{ position: 'sticky', top: 0, background: 'rgba(10,22,40,0.98)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
         <button onClick={() => {
-          console.log('Geri tıklandı, mevcut step:', formStep);
           if (formStep === 'search') {
             // Adım 1'deyse formu kapat
-            console.log('Adım 1, kapatılıyor');
             resetForm();
             setShowForm(false);
           } else if (formStep === 'checklist') {
             // Adım 2'deyse Adım 1'e dön
-            console.log('Adım 2 → 1');
             setSelectedCustomer(null);
             setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
             setFormStep('search');
           } else if (formStep === 'category') {
             // Adım 3'teyse Adım 2'ye dön
-            console.log('Adım 3 → 2');
             setSelectedCategory(null);
             setFormData({});
             setFormStep('checklist');
           } else if (formStep === 'details') {
             // Adım 4'teyse Adım 3'e dön
-            console.log('Adım 4 → 3');
             setFormData({});
             setFormStep('category');
           }
@@ -4327,14 +4190,6 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     cancelReason: ''
   });
 
-  const roomTypeLabels = {
-    doubleRoom: 'İki Kişilik Oda',
-    singleRoom: 'Tek Kişilik Oda',
-    extraBed: 'İlave Yatak',
-    baby: 'Bebek (0-1,99)',
-    child1: '1.Çocuk (7-11,99)',
-    child2: '2.Çocuk (2-6,99)'
-  };
 
   const filteredTours = tours.filter(tour => {
     const matchesSearch = !searchQuery || 
@@ -4514,7 +4369,6 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       const firstNonZero = Object.values(selectedTour.prices).find(p => p?.amount > 0);
       if (firstNonZero) priceData = firstNonZero;
     }
-    console.log('[Oda Tipi]', roomType, '→ priceKey:', priceKey, '→ priceData:', priceData, '| Tüm fiyatlar:', selectedTour?.prices);
     const tourPrice = priceData?.amount || 0;
     const currency = priceData?.currency || reservationData.currency || '€';
     setReservationData({ ...reservationData, roomType, tourPrice, currency, basePrice: tourPrice, discount: 0 });
@@ -4592,27 +4446,6 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     setEditingReservation(null);
   };
 
-  const deleteReservation = async (tourId, reservationId) => {
-    if (!window.confirm('Bu rezervasyonu silmek istediğinizden emin misiniz?')) return;
-    const targetTour = tours.find(t => t.id === tourId);
-    if (!targetTour) return;
-    const updatedTour = { ...targetTour, reservations: (targetTour.reservations || []).filter(r => r.id !== reservationId) };
-    const updatedTours = tours.map(t => t.id === tourId ? updatedTour : t);
-    setTours(updatedTours);
-    if (selectedTour?.id === tourId) setSelectedTour(updatedTour);
-    // Firestore'a anında yaz
-    try {
-      const docId = targetTour._docId || String(targetTour.id);
-      const saveData = { ...updatedTour };
-      delete saveData._docId;
-      await setDoc(doc(db, 'tours', docId), saveData, { merge: true });
-    } catch (err) {
-      console.error('Tur Firestore güncelleme hatası:', err);
-      showToast?.('❌ Silme kaydedilemedi: ' + err.message, 'error');
-      return;
-    }
-    showToast('Rezervasyon silindi', 'success');
-  };
 
   const exportToExcel = (tour) => {
     const ws_data = [
@@ -4862,7 +4695,6 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
                           const visas = safeParseJSON(customer.schengenVisas);
                           // DEBUG: müşteri ve vize listesini console'a yaz
-                          console.log('[Tur Vize]', res.customerName, '→', { visaCount: visas.length, visas, hasGreenPassport });
                           const validVisa = visas.find(v => {
                             if (!v.endDate) return false; // sadece tarih zorunlu
                             const days = getDaysLeft(v.endDate);
@@ -5843,13 +5675,6 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     doc.setTextColor(220, 53, 69);
     doc.text('HIZMET KALEMLERI', 20, 126);
     
-    const tableData = quote.items.map(item => [
-      item.service,
-      item.description,
-      item.quantity.toString(),
-      item.unitPrice.toFixed(2),
-      (item.quantity * item.unitPrice).toFixed(2)
-    ]);
     
     // Manuel tablo çizimi (autoTable yerine)
     let currentY = 132;
@@ -5967,7 +5792,6 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 
   const downloadPDF = (quote) => {
     try {
-      console.log('PDF oluşturuluyor...', quote);
       const doc = generatePDF(quote);
       doc.save(`${quote.number}.pdf`);
       showToast?.('PDF indirildi', 'success');
@@ -5979,7 +5803,6 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 
   const sendWhatsApp = async (quote) => {
     try {
-      console.log('WhatsApp gönderiliyor...', quote);
       const message = `Merhaba ${quote.customer.firstName},\n\n${quote.type === 'teklif' ? 'Teklifiniz' : 'Proforma faturanız'} hazır.\n\nBelge No: ${quote.number}\nToplam: ${quote.total.toFixed(2)} ${quote.currency}`;
       
       const phone = quote.customer.phone?.replace(/\D/g, '');
@@ -5998,7 +5821,6 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 
   const sendEmail = (quote) => {
     try {
-      console.log('E-posta gönderiliyor...', quote);
       const subject = `${quote.type === 'teklif' ? 'Teklif' : 'Proforma Fatura'} - ${quote.subject}`;
       const body = `Merhaba ${quote.customer.firstName} ${quote.customer.lastName},\n\n${quote.type === 'teklif' ? 'Teklifiniz' : 'Proforma faturanız'} ektedir.\n\nBelge No: ${quote.number}\nToplam: ${quote.total.toFixed(2)} ${quote.currency}\n\nİyi günler dileriz.\n\nPaydos Turizm`;
       
@@ -7224,57 +7046,6 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                 {/* Expanded Detail */}
                 {selectedApp?._docId === app._docId && (() => {
                   // PDF için field order (form doldurma sırasına göre)
-                  const fieldOrder = [
-                    // KİŞİSEL BİLGİLER
-                    'firstName','lastName','maidenSurname','gender','maritalStatus',
-                    'birthDate','birthPlace','birthCountry','nationality','otherNationality',
-                    'tcKimlik','homeAddress','homeZip','homePhone','phone','email',
-                    // PASAPORT BİLGİLERİ
-                    'passportType','passportNo','passportNumber','passportCity',
-                    'passportIssueDate','passportExpiry','passportExpDate',
-                    'oldPassport','lostPassport','travelHistory',
-                    // SEYAHAT VE DİĞER BİLGİLER
-                    'visaType','arrivalDate','departureDate','stayDuration',
-                    'usAddress','usPhone','usEmail','tripPayer',
-                    'hasCompanion','companionName','companionRelation','companionPhone','companionEmail',
-                    'inviterName','inviterRelation',
-                    // DAHA ÖNCE AMERİKA
-                    'beenToUS','usArrivalDate','usDepartureDate',
-                    'hadUSVisa','usVisaDate','visaNumber','sameVisaCategory',
-                    'hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason',
-                    'greencardPetition',
-                    // AİLE BİLGİSİ
-                    'fatherName','fatherBirth','fatherBirthPlace','fatherNationality',
-                    'motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality',
-                    'parentInUS',
-                    'relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen',
-                    'relativeAddress','relativePhone','relativeEmail',
-                    'relative2Name','relative2Relation','relative2USCitizen',
-                    'relative2Address','relative2Phone','relative2Email',
-                    // EŞ BİLGİLERİ
-                    'spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate',
-                    'divorceCount','exSpouseName','exSpouseBirth',
-                    'marriageDate','divorceDate','divorceReason',
-                    'exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2',
-                    // İŞ HAYATI
-                    'occupation','jobDescription','monthlySalary',
-                    'employerName','employerAddress','employerZip','employerPhone','employerCity','employerDistrict',
-                    'jobStartDate',
-                    'prevEmployerName','prevEmployerAddress','prevEmployerPhone',
-                    'prevJobStartDate','prevJobEndDate',
-                    // EĞİTİM
-                    'schoolName','schoolAddress','educationField','educationStartEnd',
-                    // DİĞER
-                    'militaryService','militaryRank','militaryStart','militaryEnd','languages',
-                    // SOSYAL MEDYA
-                    'facebook','instagram','twitter','linkedin','youtube',
-                    'reddit','pinterest','tumblr','vk','weibo','myspace',
-                    // GÜVENLİK SORULARI
-                    'sec_drugs','sec_laundering','sec_trafficking','sec_prostitution',
-                    'sec_terrorism','sec_genocide','sec_torture','sec_violence',
-                    'sec_assassin','sec_military','sec_spy','sec_disorder',
-                    'sec_arrested','sec_disease','sec_deported'
-                  ];
                   const fieldNames = {
                     // Kişisel
                     firstName:'Ad', lastName:'Soyad', maidenSurname:'Evlenmeden Önceki Soyadı',
