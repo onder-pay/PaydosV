@@ -459,6 +459,65 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
     return diff > 0 && diff <= 7;
   });
 
+  // Bugün Eklenen / Güncellenen Kayıtlar
+  const todayActivities = (() => {
+    const today = new Date();
+    const isToday = (val) => {
+      if (!val) return false;
+      const d = val instanceof Date ? val : new Date(val);
+      if (!d || isNaN(d.getTime())) return false;
+      return d.getDate() === today.getDate() &&
+             d.getMonth() === today.getMonth() &&
+             d.getFullYear() === today.getFullYear();
+    };
+    const activities = [];
+    customers.forEach(c => {
+      const name = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+      if (!name) return;
+
+      // Yeni müşteri (createdAt bugün)
+      const isNewCustomer = isToday(c.createdAt);
+      if (isNewCustomer) {
+        activities.push({ icon: '👤', text: `${name} müşteri olarak eklendi`, time: c.createdAt });
+      }
+
+      // Pasaport (createdAt veya addedAt veya issueDate bugünse)
+      safeParseJSON(c.passports).forEach(p => {
+        const passTime = p.createdAt || p.addedAt;
+        if (isToday(passTime)) {
+          activities.push({ icon: '📘', text: `${name} pasaportu eklendi (${p.passportNo || '?'})`, time: passTime });
+        }
+      });
+
+      // Schengen vize
+      safeParseJSON(c.schengenVisas).forEach(v => {
+        const vTime = v.createdAt || v.addedAt;
+        if (isToday(vTime)) {
+          const country = v.country ? ` (${v.country})` : '';
+          activities.push({ icon: '🇪🇺', text: `${name} Schengen vizesi${country} eklendi`, time: vTime });
+        }
+      });
+
+      // ABD vize
+      const usaVisa = typeof c.usaVisa === 'string' ? (() => { try { return JSON.parse(c.usaVisa); } catch { return {}; } })() : (c.usaVisa || {});
+      if (usaVisa && isToday(usaVisa.createdAt || usaVisa.addedAt)) {
+        activities.push({ icon: '🇺🇸', text: `${name} ABD vizesi eklendi`, time: usaVisa.createdAt || usaVisa.addedAt });
+      }
+
+      // Yeni müşteri olmadığı halde bugün güncellenmiş - generic kayıt
+      if (!isNewCustomer && isToday(c.updatedAt || c.lastEditedAt)) {
+        // Yukarıdaki pasaport/vize aktiviteleri yoksa bu güncellemeyi göster
+        const alreadyListed = activities.some(a => a.text.includes(name));
+        if (!alreadyListed) {
+          activities.push({ icon: '✏️', text: `${name} kaydı güncellendi`, time: c.updatedAt || c.lastEditedAt });
+        }
+      }
+    });
+    // En son üstte
+    activities.sort((a, b) => new Date(b.time) - new Date(a.time));
+    return activities;
+  })();
+
   const getAge = (birthDate) => {
     const birth = safeParseDate(birthDate);
     if (!birth) return '';
@@ -496,6 +555,31 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
           <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Bugün Doğanlar</div>
           <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '4px' }}>🎉 Tıkla ve gör!</div>
         </div>
+      </div>
+
+      {/* Bugün Eklenenler */}
+      <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <span style={{ fontSize: '15px', fontWeight: '600', color: '#e2e8f0' }}>📅 Bugün Eklenenler</span>
+          <span style={{ fontSize: '11px', color: '#64748b', background: 'rgba(59,130,246,0.15)', padding: '2px 8px', borderRadius: '10px' }}>{todayActivities.length}</span>
+        </div>
+        {todayActivities.length === 0 ? (
+          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Bugün henüz bir kayıt eklenmedi</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+            {todayActivities.map((a, i) => {
+              const t = a.time ? new Date(a.time) : null;
+              const timeStr = t && !isNaN(t.getTime()) ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '13px' }}>
+                  <span style={{ fontSize: '16px' }}>{a.icon}</span>
+                  <span style={{ flex: 1, color: '#cbd5e1' }}>{a.text}</span>
+                  {timeStr && <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{timeStr}</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Generic Liste Modal */}
@@ -2473,8 +2557,9 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                       <button onClick={() => {
                         const existing = aiResult._addPassportTo;
                         const existingPassports = safeParseJSON(existing.passports);
-                        const newPassports = [...existingPassports, ...(aiResult._passports || [])];
-                        const updated = { ...existing, passports: newPassports, verified: false, lastEditedAt: new Date().toISOString() };
+                        const now = new Date().toISOString();
+                        const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
+                        const updated = { ...existing, passports: newPassports, verified: false, lastEditedAt: now, updatedAt: now };
                         setCustomers(prev => prev.map(c => c.id === existing.id ? updated : c));
                         showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi`, 'success');
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
@@ -2503,12 +2588,15 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                         const newCust = {
                           ...aiResult,
                           id: generateUniqueId(),
-                          createdAt: now.split('T')[0],
+                          createdAt: now,
+                          updatedAt: now,
                           lastEditedAt: now,
                           verified: false,
-                          passports: aiResult._passports || [],
-                          schengenVisas: aiResult._schengen || [{ id: 1, country: '', startDate: '', endDate: '', image: '' }],
-                          usaVisa: aiResult._usaVisa || {},
+                          passports: (aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })),
+                          schengenVisas: (aiResult._schengen && aiResult._schengen.length > 0)
+                            ? aiResult._schengen.map(v => ({ ...v, createdAt: v.createdAt || now }))
+                            : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }],
+                          usaVisa: aiResult._usaVisa ? { ...aiResult._usaVisa, createdAt: aiResult._usaVisa.createdAt || now } : {},
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
                         setCustomers(prev => [newCust, ...prev]);
