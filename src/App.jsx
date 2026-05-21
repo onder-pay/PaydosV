@@ -944,31 +944,6 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     setPassports(passports.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  // Görseli 300KB altına sıkıştır
-  const compressImage = (dataUrl, maxKB = 300) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        let quality = 0.92;
-        let scale = 1;
-        const attempt = (q, s) => {
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.round(img.width * s);
-          canvas.height = Math.round(img.height * s);
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const result = canvas.toDataURL('image/jpeg', q);
-          const kb = Math.round((result.length * 3) / 4 / 1024);
-          if (kb <= maxKB || q <= 0.3) { resolve(result); return; }
-          // Önce quality düşür, sonra boyutu küçült
-          if (q > 0.4) attempt(q - 0.15, s);
-          else attempt(0.4, s - 0.15);
-        };
-        attempt(quality, scale);
-      };
-      img.src = dataUrl;
-    });
-  };
 
 
   const handleSubmit = async () => {
@@ -6642,6 +6617,538 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
   );
 }
 
+// OTEL MODÜLÜ
+function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer }) {
+  const [view, setView] = useState('list'); // list, detail, form
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [editingHotel, setEditingHotel] = useState(null);
+  const [showResForm, setShowResForm] = useState(false);
+  const [editingRes, setEditingRes] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCustList, setShowCustList] = useState(false);
+  const [custSearch, setCustSearch] = useState('');
+
+  const emptyHotel = {
+    name: '', city: '', country: '', stars: '4', phone: '', email: '', website: '',
+    prices: {
+      single: { amount: 0, currency: '€' },
+      double: { amount: 0, currency: '€' },
+      triple: { amount: 0, currency: '€' },
+      suite: { amount: 0, currency: '€' }
+    },
+    season: '',
+    notes: '',
+    reservations: []
+  };
+  const [hotelForm, setHotelForm] = useState(emptyHotel);
+
+  const emptyRes = {
+    customerId: '', customerName: '', customerPhone: '', customerEmail: '',
+    checkIn: '', checkOut: '', roomType: 'double', guests: 1,
+    price: 0, currency: '€',
+    payment1: 0, payment2: 0, payment3: 0,
+    notes: ''
+  };
+  const [resData, setResData] = useState(emptyRes);
+
+  const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' };
+  const selectStyle = { ...inputStyle };
+  const labelStyle = { fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '500' };
+
+  const openNewHotel = () => { setEditingHotel(null); setHotelForm({...emptyHotel}); setView('form'); };
+  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({...emptyHotel, ...h, prices: h.prices || emptyHotel.prices}); setView('form'); };
+  const openHotelDetail = (h) => { setSelectedHotel(h); setView('detail'); };
+
+  const saveHotel = async () => {
+    if (!hotelForm.name || !hotelForm.city) { showToast?.('Otel adı ve şehir zorunlu', 'error'); return; }
+    const now = new Date().toISOString();
+    let updated;
+    if (editingHotel) {
+      updated = { ...editingHotel, ...hotelForm, updatedAt: now };
+      const list = hotels.map(h => h.id === editingHotel.id ? updated : h);
+      setHotels(list);
+      try {
+        const docId = editingHotel._docId || String(editingHotel.id);
+        const sd = {...updated}; delete sd._docId;
+        await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+      } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+      showToast?.('✏️ Otel güncellendi', 'success');
+    } else {
+      const id = generateUniqueId();
+      updated = { ...hotelForm, id, _docId: id, createdAt: now, updatedAt: now };
+      setHotels([updated, ...hotels]);
+      try {
+        const sd = {...updated}; delete sd._docId;
+        await setDoc(doc(db, 'hotels', id), sd);
+      } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+      showToast?.('✅ Otel eklendi', 'success');
+    }
+    setView('list'); setEditingHotel(null);
+  };
+
+  const deleteHotel = async (h) => {
+    if (!window.confirm(`"${h.name}" otelini ve tüm rezervasyonlarını KALICI silmek istiyor musunuz?`)) return;
+    setHotels(hotels.filter(x => x.id !== h.id));
+    try {
+      const docId = h._docId || String(h.id);
+      await deleteDoc(doc(db, 'hotels', docId));
+    } catch(e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); return; }
+    showToast?.('🗑️ Otel silindi', 'info');
+    setView('list');
+  };
+
+  const openNewRes = () => { setEditingRes(null); setResData({...emptyRes, price: selectedHotel?.prices?.double?.amount || 0, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  const openEditRes = (r) => { setEditingRes(r); setResData({...r}); setShowResForm(true); };
+
+  const saveReservation = async () => {
+    if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
+    if (!resData.checkIn || !resData.checkOut) { showToast?.('Giriş/çıkış tarihleri zorunlu', 'error'); return; }
+    let updatedHotel;
+    if (editingRes) {
+      updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? {...resData, id: r.id} : r) };
+    } else {
+      const newRes = { ...resData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+      updatedHotel = { ...selectedHotel, reservations: [...(selectedHotel.reservations || []), newRes] };
+    }
+    const list = hotels.map(h => h.id === selectedHotel.id ? updatedHotel : h);
+    setHotels(list);
+    setSelectedHotel(updatedHotel);
+    try {
+      const docId = selectedHotel._docId || String(selectedHotel.id);
+      const sd = {...updatedHotel}; delete sd._docId;
+      await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+    } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+    showToast?.(editingRes ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
+    setShowResForm(false); setEditingRes(null);
+  };
+
+  const deleteReservation = async (r) => {
+    if (!window.confirm(`"${r.customerName}" rezervasyonunu silmek istiyor musunuz?`)) return;
+    const updatedHotel = { ...selectedHotel, reservations: selectedHotel.reservations.filter(x => x.id !== r.id) };
+    setHotels(hotels.map(h => h.id === selectedHotel.id ? updatedHotel : h));
+    setSelectedHotel(updatedHotel);
+    try {
+      const docId = selectedHotel._docId || String(selectedHotel.id);
+      const sd = {...updatedHotel}; delete sd._docId;
+      await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+    } catch(e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); return; }
+    showToast?.('Rezervasyon silindi', 'info');
+  };
+
+  const handleCustSelect = (c) => {
+    setResData({
+      ...resData,
+      customerId: c.id,
+      customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
+      customerPhone: c.phone || '',
+      customerEmail: c.email || ''
+    });
+    setShowCustList(false); setCustSearch('');
+  };
+
+  const calcNights = (cIn, cOut) => {
+    if (!cIn || !cOut) return 0;
+    const d1 = new Date(cIn), d2 = new Date(cOut);
+    if (isNaN(d1) || isNaN(d2)) return 0;
+    return Math.max(0, Math.round((d2 - d1) / 86400000));
+  };
+
+  const filteredHotels = hotels.filter(h => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return h.name?.toLowerCase().includes(q) || h.city?.toLowerCase().includes(q) || h.country?.toLowerCase().includes(q);
+  });
+
+  // ====== LİSTE GÖRÜNÜMÜ ======
+  if (view === 'list') {
+    return (
+      <div style={{ padding: isMobile ? '12px' : '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+          <h2 style={{ fontSize: '20px', margin: 0 }}>🏨 Oteller ({hotels.length})</h2>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input type="text" placeholder="🔍 Otel/şehir ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{...inputStyle, width: '220px'}} />
+            <button onClick={openNewHotel} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Otel</button>
+          </div>
+        </div>
+
+        {filteredHotels.length === 0 ? (
+          <div style={{ padding: '60px', textAlign: 'center', color: '#64748b' }}>
+            {hotels.length === 0 ? '🏨 Henüz otel eklenmedi. Sağ üstten "➕ Yeni Otel" ekleyin.' : 'Sonuç bulunamadı'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+            {filteredHotels.map(h => {
+              const resCount = (h.reservations || []).length;
+              const totalRevenue = (h.reservations || []).reduce((s, r) => s + (parseFloat(r.price) || 0), 0);
+              return (
+                <div key={h.id} onClick={() => openHotelDetail(h)} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all .2s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '15px', color: '#fff' }}>{h.name}</h3>
+                    <span style={{ fontSize: '11px', color: '#f59e0b' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span>
+                  </div>
+                  <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
+                  {h.phone && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>📞 {h.phone}</p>}
+                  <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span style={{ color: '#94a3b8' }}>📅 {resCount} rezervasyon</span>
+                    <span style={{ color: '#10b981', fontWeight: '600' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ====== OTEL FORM ======
+  if (view === 'form') {
+    return (
+      <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ margin: 0 }}>{editingHotel ? '✏️ Otel Düzenle' : '➕ Yeni Otel'}</h2>
+          <button onClick={() => setView('list')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px 16px', color: '#fff', cursor: 'pointer' }}>← Geri</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Otel Adı *</label>
+              <input type="text" value={hotelForm.name} onChange={e => setHotelForm({...hotelForm, name: e.target.value})} placeholder="örn: Hilton Istanbul" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Yıldız</label>
+              <select value={hotelForm.stars} onChange={e => setHotelForm({...hotelForm, stars: e.target.value})} style={selectStyle}>
+                {['3','4','5','6','7'].map(s => <option key={s} value={s}>{s} ★</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Şehir *</label>
+              <input type="text" value={hotelForm.city} onChange={e => setHotelForm({...hotelForm, city: e.target.value})} placeholder="örn: İstanbul" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Ülke</label>
+              <select value={hotelForm.country} onChange={e => setHotelForm({...hotelForm, country: e.target.value})} style={selectStyle}>
+                <option value="">Ülke seçin...</option>
+                {tourCountries.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Telefon</label>
+              <input type="text" value={hotelForm.phone} onChange={e => setHotelForm({...hotelForm, phone: e.target.value})} placeholder="+90..." style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>E-posta</label>
+              <input type="email" value={hotelForm.email} onChange={e => setHotelForm({...hotelForm, email: e.target.value})} placeholder="info@..." style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Web Sitesi</label>
+              <input type="text" value={hotelForm.website} onChange={e => setHotelForm({...hotelForm, website: e.target.value})} placeholder="https://..." style={inputStyle} />
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Sezon (opsiyonel)</label>
+            <input type="text" value={hotelForm.season} onChange={e => setHotelForm({...hotelForm, season: e.target.value})} placeholder="örn: Haziran-Eylül 2026" style={inputStyle} />
+          </div>
+
+          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '12px' }}>
+              {[
+                {key: 'single', label: 'Single (Tek Kişilik)'},
+                {key: 'double', label: 'Double (Çift Kişilik)'},
+                {key: 'triple', label: 'Triple (Üç Kişilik)'},
+                {key: 'suite', label: 'Suite (Süit)'}
+              ].map(({key, label}) => (
+                <div key={key} style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>{label}</label>
+                    <input type="number" value={hotelForm.prices?.[key]?.amount || 0} onChange={e => setHotelForm({...hotelForm, prices: {...hotelForm.prices, [key]: {...(hotelForm.prices?.[key] || {}), amount: parseFloat(e.target.value) || 0}}})} style={inputStyle} />
+                  </div>
+                  <select value={hotelForm.prices?.[key]?.currency || '€'} onChange={e => setHotelForm({...hotelForm, prices: {...hotelForm.prices, [key]: {...(hotelForm.prices?.[key] || {}), currency: e.target.value}}})} style={{...selectStyle, width: '70px'}}>
+                    <option value="€">€</option>
+                    <option value="$">$</option>
+                    <option value="£">£</option>
+                    <option value="₺">₺</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Notlar</label>
+            <textarea value={hotelForm.notes} onChange={e => setHotelForm({...hotelForm, notes: e.target.value})} placeholder="Otel hakkında notlar..." style={{...inputStyle, minHeight: '80px', resize: 'vertical'}} />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+            <button onClick={saveHotel} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>
+              {editingHotel ? '💾 Kaydet' : '✅ Otel Ekle'}
+            </button>
+            {editingHotel && (
+              <button onClick={() => deleteHotel(editingHotel)} style={{ padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}>🗑️ Sil</button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ====== OTEL DETAY ======
+  if (view === 'detail' && selectedHotel) {
+    const h = selectedHotel;
+    const reservations = h.reservations || [];
+    const totalRevenue = reservations.reduce((s, r) => s + (parseFloat(r.price) || 0), 0);
+    const totalPaid = reservations.reduce((s, r) => s + (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0), 0);
+
+    return (
+      <div style={{ padding: isMobile ? '12px' : '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Otel Listesi</button>
+            <h2 style={{ margin: 0, fontSize: '22px' }}>{h.name} <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span></h2>
+            <p style={{ margin: '4px 0', color: '#94a3b8', fontSize: '13px' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => openEditHotel(h)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+            <button onClick={openNewRes} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>➕ Rezervasyon</button>
+          </div>
+        </div>
+
+        {/* Özet İstatistikleri */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+          <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#3b82f6' }}>{reservations.length}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Rezervasyon</div>
+          </div>
+          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#10b981' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Tutar</div>
+          </div>
+          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#f59e0b' }}>{totalPaid.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Tahsil Edilen</div>
+          </div>
+          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#ef4444' }}>{(totalRevenue - totalPaid).toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan</div>
+          </div>
+        </div>
+
+        {/* Anlaşma fiyatları */}
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları {h.season && <span style={{fontSize:'11px', color:'#64748b'}}>({h.season})</span>}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+            {[
+              {key: 'single', label: 'Single'},
+              {key: 'double', label: 'Double'},
+              {key: 'triple', label: 'Triple'},
+              {key: 'suite', label: 'Suite'}
+            ].map(({key, label}) => (
+              <div key={key} style={{ padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: '#64748b' }}>{label}</div>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>
+                  {h.prices?.[key]?.amount || 0} {h.prices?.[key]?.currency || '€'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Rezervasyonlar Tablosu */}
+        {reservations.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
+            Henüz rezervasyon yok. Sağ üstten ekleyin.
+          </div>
+        ) : (
+          <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '600px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda', 'Tutar', 'Ödeme', ''].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.map(r => {
+                    const nights = calcNights(r.checkIn, r.checkOut);
+                    const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
+                    const total = parseFloat(r.price) || 0;
+                    const fullyPaid = paid >= total && total > 0;
+                    return (
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: '600' }}>
+                          <span onClick={() => { const c = customers.find(x => String(x.id) === String(r.customerId)); if (c && onNavigateToCustomer) onNavigateToCustomer(c); }} style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
+                            {r.customerName}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{r.roomType}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '600', color: '#f59e0b' }}>{r.price} {r.currency || '€'}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
+                            background: fullyPaid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
+                            color: fullyPaid ? '#10b981' : '#ef4444' }}>
+                            {fullyPaid ? '✓ Ödendi' : `${paid}/${total}`}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', display: 'flex', gap: '4px' }}>
+                          <button onClick={() => openEditRes(r)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                          <button onClick={() => deleteReservation(r)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* REZERVASYON FORMU MODAL */}
+        {showResForm && (
+          <div onClick={() => { setShowResForm(false); setEditingRes(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
+            <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+            <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
+              <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>{editingRes ? '✏️ Rezervasyon Düzenle' : '➕ Yeni Rezervasyon'} — {h.name}</h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Müşteri seçimi */}
+                <div style={{ position: 'relative' }}>
+                  <label style={labelStyle}>Müşteri Seç *</label>
+                  {resData.customerName ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px' }}>
+                      <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {resData.customerName}</span>
+                      <button onClick={() => { setResData({...resData, customerId: '', customerName: '', customerPhone: '', customerEmail: ''}); setShowCustList(true); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                    </div>
+                  ) : (
+                    <>
+                      <input type="text" value={custSearch} onChange={e => { setCustSearch(e.target.value); setShowCustList(true); }} onFocus={() => setShowCustList(true)} placeholder="Müşteri ara (ad, soyad, telefon)..." style={inputStyle} />
+                      {showCustList && custSearch.length >= 1 && (() => {
+                        const filtered = customers.filter(c => {
+                          const full = `${c.firstName || ''} ${c.lastName || ''} ${c.phone || ''}`.toLowerCase();
+                          return full.includes(custSearch.toLowerCase());
+                        }).slice(0, 10);
+                        return (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '300px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                            {filtered.length === 0 ? (
+                              <div style={{ padding: '14px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>Müşteri bulunamadı</div>
+                            ) : filtered.map(c => (
+                              <div key={c.id} onMouseDown={() => handleCustSelect(c)} style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                <div style={{ color: '#fff', fontWeight: '600' }}>{c.firstName} {c.lastName}</div>
+                                {c.phone && <div style={{ fontSize: '11px', color: '#64748b' }}>{c.phone}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Giriş Tarihi *</label>
+                    <input type="date" value={resData.checkIn} onChange={e => setResData({...resData, checkIn: e.target.value})} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Çıkış Tarihi *</label>
+                    <input type="date" value={resData.checkOut} onChange={e => setResData({...resData, checkOut: e.target.value})} style={inputStyle} />
+                  </div>
+                </div>
+
+                {resData.checkIn && resData.checkOut && (
+                  <div style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', fontSize: '12px', color: '#3b82f6' }}>
+                    🌙 {calcNights(resData.checkIn, resData.checkOut)} gece konaklama
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Oda Tipi</label>
+                    <select value={resData.roomType} onChange={e => {
+                      const rt = e.target.value;
+                      const priceData = h.prices?.[rt];
+                      setResData({...resData, roomType: rt, price: priceData?.amount || resData.price, currency: priceData?.currency || resData.currency});
+                    }} style={selectStyle}>
+                      <option value="single">Single (Tek Kişilik)</option>
+                      <option value="double">Double (Çift Kişilik)</option>
+                      <option value="triple">Triple (Üç Kişilik)</option>
+                      <option value="suite">Suite (Süit)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Kişi Sayısı</label>
+                    <input type="number" min="1" value={resData.guests} onChange={e => setResData({...resData, guests: parseInt(e.target.value) || 1})} style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b' }}>💰 Ödeme Bilgileri</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                    <div>
+                      <label style={labelStyle}>Toplam Tutar</label>
+                      <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0})} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Para Birimi</label>
+                      <select value={resData.currency} onChange={e => setResData({...resData, currency: e.target.value})} style={selectStyle}>
+                        <option value="€">€</option>
+                        <option value="$">$</option>
+                        <option value="£">£</option>
+                        <option value="₺">₺</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {[1, 2, 3].map(i => (
+                      <div key={i}>
+                        <label style={labelStyle}>{i}. Ödeme</label>
+                        <input type="number" value={resData[`payment${i}`]} onChange={e => setResData({...resData, [`payment${i}`]: parseFloat(e.target.value) || 0})} style={inputStyle} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '12px', color: '#94a3b8' }}>
+                    Toplam Ödenen: <span style={{ color: '#10b981', fontWeight: '700' }}>{((parseFloat(resData.payment1) || 0) + (parseFloat(resData.payment2) || 0) + (parseFloat(resData.payment3) || 0)).toFixed(2)} {resData.currency}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Notlar</label>
+                  <textarea value={resData.notes} onChange={e => setResData({...resData, notes: e.target.value})} placeholder="Özel notlar..." style={{...inputStyle, minHeight: '60px', resize: 'vertical'}} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  <button onClick={saveReservation} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>
+                    {editingRes ? '💾 Güncelle' : '✅ Rezervasyon Ekle'}
+                  </button>
+                  <button onClick={() => { setShowResForm(false); setEditingRes(null); }} style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer' }}>İptal</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ACENTELİKLER MODÜLÜ
 function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo }) {
   const [showForm, setShowForm] = useState(false);
@@ -8326,6 +8833,7 @@ export default function App() {
   const [customers, setCustomers] = useState(defaultCustomers);
   const [visaApplications, setVisaApplications] = useState([]);
   const [tours, setTours] = useState([]);
+  const [hotels, setHotels] = useState([]);
   const [agencies, setAgencies] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [quotes, setQuotes] = useState([]);
@@ -8495,6 +9003,7 @@ export default function App() {
     const smallCollections = [
       { name: 'visa_applications', setter: setVisaApplications },
       { name: 'tours', setter: setTours },
+      { name: 'hotels', setter: setHotels },
       { name: 'agencies', setter: setAgencies },
       { name: 'credit_cards', setter: setCreditCards },
       { name: 'quotes', setter: setQuotes },
@@ -8650,6 +9159,7 @@ export default function App() {
   // customers artık her işlemde anında Firestore'a yazılıyor - debounce gereksiz
   useEffect(() => { debouncedSave('visa_applications', 'visa_applications', visaApplications); }, [visaApplications]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
+  useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
   useEffect(() => { debouncedSave('credit_cards', 'credit_cards', creditCards); }, [creditCards]);
   useEffect(() => { debouncedSave('quotes', 'quotes', quotes); }, [quotes]);
@@ -8667,6 +9177,7 @@ export default function App() {
     { id: 'visa', icon: '🌍', label: 'Vize' },
     { id: 'ds160', icon: '🇺🇸', label: 'Amerika Vize' },
     { id: 'tours', icon: '🎫', label: 'Turlar' },
+    { id: 'hotels', icon: '🏨', label: 'Oteller' },
     { id: 'quotes', icon: '📄', label: 'Teklif & Proforma' },
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
@@ -8680,6 +9191,7 @@ export default function App() {
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
