@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
@@ -6629,17 +6629,28 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
   const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' };
   const labelStyle = { fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: '500' };
 
-  const updateRate = (roomType, concept, val) => {
+  const updateRate = (roomType, concept, type, val) => {
     setPeriod({
       ...period,
       rates: {
         ...period.rates,
         [roomType]: {
           ...(period.rates[roomType] || {}),
-          [concept]: parseFloat(val) || 0
+          [concept]: {
+            ...(period.rates[roomType]?.[concept] || {}),
+            [type]: parseFloat(val) || 0
+          }
         }
       }
     });
+  };
+
+  // Eski format desteği (sayı) - okurken yeniye çevir
+  const getRate = (roomType, concept, type) => {
+    const val = period.rates?.[roomType]?.[concept];
+    if (val === undefined || val === null) return 0;
+    if (typeof val === 'number') return type === 'sell' ? val : 0; // eski sayı → satış sayılır
+    return val?.[type] || 0;
   };
 
   const dayCount = (() => {
@@ -6698,14 +6709,25 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
             </div>
           ) : (
             <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px' }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b' }}>💰 Fiyatlar (oda başı, gecelik)</h4>
+              <h4 style={{ margin: '0 0 4px', fontSize: '13px', color: '#f59e0b' }}>💰 Fiyatlar (oda başı, gecelik)</h4>
+              <p style={{ margin: '0 0 10px', fontSize: '10px', color: '#64748b' }}>
+                <span style={{ color: '#ef4444' }}>● Alış</span> = otele ödediğin · <span style={{ color: '#10b981' }}>● Satış</span> = müşteriden aldığın
+              </p>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>Oda Tipi</th>
+                      <th rowSpan="2" style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px', verticalAlign: 'bottom' }}>Oda Tipi</th>
                       {concepts.map(c => (
-                        <th key={c} style={{ padding: '8px', textAlign: 'center', color: '#f59e0b', fontWeight: '600', fontSize: '11px' }}>{c.toUpperCase()}</th>
+                        <th key={c} colSpan="2" style={{ padding: '4px 8px', textAlign: 'center', color: '#f59e0b', fontWeight: '600', fontSize: '11px', borderLeft: '1px solid rgba(255,255,255,0.06)' }}>{c.toUpperCase()}</th>
+                      ))}
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      {concepts.map(c => (
+                        <Fragment key={c}>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', color: '#ef4444', fontWeight: '500', fontSize: '10px', borderLeft: '1px solid rgba(255,255,255,0.06)' }}>Alış</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', color: '#10b981', fontWeight: '500', fontSize: '10px' }}>Satış</th>
+                        </Fragment>
                       ))}
                     </tr>
                   </thead>
@@ -6714,12 +6736,20 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
                       <tr key={rt} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                         <td style={{ padding: '8px', fontWeight: '600', color: '#e2e8f0' }}>{rt}</td>
                         {concepts.map(c => (
-                          <td key={c} style={{ padding: '4px' }}>
-                            <input type="number" min="0"
-                              value={period.rates?.[rt]?.[c] || 0}
-                              onChange={e => updateRate(rt, c, e.target.value)}
-                              style={{...inputStyle, padding: '6px 8px', fontSize: '12px'}} />
-                          </td>
+                          <Fragment key={c}>
+                            <td style={{ padding: '3px', borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                              <input type="number" min="0"
+                                value={getRate(rt, c, 'buy')}
+                                onChange={e => updateRate(rt, c, 'buy', e.target.value)}
+                                style={{...inputStyle, padding: '5px 6px', fontSize: '11px', border: '1px solid rgba(239,68,68,0.25)'}} />
+                            </td>
+                            <td style={{ padding: '3px' }}>
+                              <input type="number" min="0"
+                                value={getRate(rt, c, 'sell')}
+                                onChange={e => updateRate(rt, c, 'sell', e.target.value)}
+                                style={{...inputStyle, padding: '5px 6px', fontSize: '11px', border: '1px solid rgba(16,185,129,0.25)'}} />
+                            </td>
+                          </Fragment>
                         ))}
                       </tr>
                     ))}
@@ -6772,7 +6802,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const emptyRes = {
     customerId: '', customerName: '', customerPhone: '', customerEmail: '',
     checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1,
-    price: 0, currency: '€',
+    buyPrice: 0, price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
     notes: ''
   };
@@ -7219,9 +7249,17 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                                 <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
                                 {concepts.map(c => {
                                   const val = p.rates?.[rt]?.[c];
+                                  const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
+                                  const sell = typeof val === 'number' ? val : (val?.sell || 0);
+                                  const hasAny = buy > 0 || sell > 0;
                                   return (
-                                    <td key={c} style={{ padding: '4px 8px', textAlign: 'center', color: val > 0 ? '#fff' : '#475569' }}>
-                                      {val > 0 ? `${val} ${p.currency}` : '—'}
+                                    <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                      {hasAny ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
+                                          <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
+                                          <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
+                                        </div>
+                                      ) : <span style={{ color: '#475569' }}>—</span>}
                                     </td>
                                   );
                                 })}
@@ -7282,6 +7320,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     const reservations = h.reservations || [];
     const totalRevenue = reservations.reduce((s, r) => s + (parseFloat(r.price) || 0), 0);
     const totalPaid = reservations.reduce((s, r) => s + (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0), 0);
+    const totalBuy = reservations.reduce((s, r) => s + (parseFloat(r.buyPrice) || 0), 0);
+    const totalProfit = totalRevenue - totalBuy;
 
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
@@ -7308,17 +7348,27 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
             <div style={{ fontSize: '22px', fontWeight: '700', color: '#3b82f6' }}>{reservations.length}</div>
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Rezervasyon</div>
           </div>
+          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#ef4444' }}>{totalBuy.toLocaleString('tr-TR')} €</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Alış</div>
+          </div>
           <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '12px' }}>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: '#10b981' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
-            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Tutar</div>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#10b981' }}>{totalRevenue.toLocaleString('tr-TR')} €</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Satış</div>
+          </div>
+          <div style={{ background: totalProfit >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${totalProfit >= 0 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`, borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: totalProfit >= 0 ? '#22c55e' : '#ef4444' }}>
+              {totalProfit >= 0 ? '+' : ''}{totalProfit.toLocaleString('tr-TR')} €
+            </div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam Kâr</div>
           </div>
           <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '12px' }}>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: '#f59e0b' }}>{totalPaid.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#f59e0b' }}>{totalPaid.toLocaleString('tr-TR')} €</div>
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Tahsil Edilen</div>
           </div>
-          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '12px' }}>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: '#ef4444' }}>{(totalRevenue - totalPaid).toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</div>
-            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan</div>
+          <div style={{ background: 'rgba(100,116,139,0.08)', border: '1px solid rgba(100,116,139,0.2)', borderRadius: '10px', padding: '12px' }}>
+            <div style={{ fontSize: '20px', fontWeight: '700', color: '#64748b' }}>{(totalRevenue - totalPaid).toLocaleString('tr-TR')} €</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan Tahsilat</div>
           </div>
         </div>
 
@@ -7354,9 +7404,17 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                               <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
                               {concepts.map(c => {
                                 const val = p.rates?.[rt]?.[c];
+                                const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
+                                const sell = typeof val === 'number' ? val : (val?.sell || 0);
+                                const hasAny = buy > 0 || sell > 0;
                                 return (
-                                  <td key={c} style={{ padding: '4px 8px', textAlign: 'center', color: val > 0 ? '#fff' : '#475569' }}>
-                                    {val > 0 ? `${val} ${p.currency}` : '—'}
+                                  <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                    {hasAny ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
+                                        <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
+                                        <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
+                                      </div>
+                                    ) : <span style={{ color: '#475569' }}>—</span>}
                                   </td>
                                 );
                               })}
@@ -7383,7 +7441,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '600px' }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Tutar', 'Ödeme', ''].map(h => (
+                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Alış', 'Satış', 'Kâr', 'Ödeme', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                     ))}
                   </tr>
@@ -7393,6 +7451,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                     const total = parseFloat(r.price) || 0;
+                    const buy = parseFloat(r.buyPrice) || 0;
+                    const profit = total - buy;
                     const fullyPaid = paid >= total && total > 0;
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -7407,7 +7467,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           {r.roomType}
                           {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{r.concept.toUpperCase()}</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', fontWeight: '600', color: '#f59e0b' }}>{r.price} {r.currency || '€'}</td>
+                        <td style={{ padding: '10px 12px', color: '#ef4444', fontWeight: '600', fontSize: '12px' }}>{buy > 0 ? `${buy} ${r.currency || '€'}` : '—'}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>{total} {r.currency || '€'}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '12px', fontWeight: '700', color: profit >= 0 ? '#10b981' : '#ef4444' }}>
+                          {buy > 0 ? `${profit >= 0 ? '+' : ''}${profit.toFixed(0)}` : '—'}
+                        </td>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
                             background: fullyPaid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
@@ -7478,8 +7542,10 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const ci = e.target.value;
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const period = (h.priceList || []).find(p => ci && p.startDate <= ci && p.endDate >= ci);
-                      const price = period?.rates?.[rt]?.[concept];
-                      setResData({...resData, checkIn: ci, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
+                      const rateVal = period?.rates?.[rt]?.[concept];
+                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
+                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
+                      setResData({...resData, checkIn: ci, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
                     }} style={inputStyle} />
                   </div>
                   <div>
@@ -7511,8 +7577,10 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const concept = resData.concept || 'bb';
                       // Check-in tarihine uyan price period bul
                       const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
-                      const price = period?.rates?.[rt]?.[concept];
-                      setResData({...resData, roomType: rt, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
+                      const rateVal = period?.rates?.[rt]?.[concept];
+                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
+                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
+                      setResData({...resData, roomType: rt, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
                     }} style={selectStyle}>
                       {(appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite']).map(rt => (
                         <option key={rt} value={rt}>{rt}</option>
@@ -7525,8 +7593,10 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const concept = e.target.value;
                       const rt = resData.roomType;
                       const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
-                      const price = period?.rates?.[rt]?.[concept];
-                      setResData({...resData, concept, price: price !== undefined ? price : resData.price, currency: period?.currency || resData.currency});
+                      const rateVal = period?.rates?.[rt]?.[concept];
+                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
+                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
+                      setResData({...resData, concept, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
                     }} style={selectStyle}>
                       {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
                         <option key={c} value={c}>
@@ -7543,13 +7613,17 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
                 <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
                   <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b' }}>💰 Ödeme Bilgileri</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: '10px', marginBottom: '10px' }}>
                     <div>
-                      <label style={labelStyle}>Toplam Tutar</label>
-                      <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0})} style={inputStyle} />
+                      <label style={{...labelStyle, color: '#ef4444'}}>Alış Fiyatı (otele)</label>
+                      <input type="number" value={resData.buyPrice || 0} onChange={e => setResData({...resData, buyPrice: parseFloat(e.target.value) || 0})} style={{...inputStyle, border: '1px solid rgba(239,68,68,0.25)'}} />
                     </div>
                     <div>
-                      <label style={labelStyle}>Para Birimi</label>
+                      <label style={{...labelStyle, color: '#10b981'}}>Satış (müşteriye)</label>
+                      <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0})} style={{...inputStyle, border: '1px solid rgba(16,185,129,0.25)'}} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Para</label>
                       <select value={resData.currency} onChange={e => setResData({...resData, currency: e.target.value})} style={selectStyle}>
                         <option value="€">€</option>
                         <option value="$">$</option>
@@ -7558,6 +7632,22 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       </select>
                     </div>
                   </div>
+                  {(() => {
+                    const buy = parseFloat(resData.buyPrice) || 0;
+                    const sell = parseFloat(resData.price) || 0;
+                    const profit = sell - buy;
+                    const margin = sell > 0 ? ((profit / sell) * 100) : 0;
+                    if (buy === 0 && sell === 0) return null;
+                    return (
+                      <div style={{ padding: '8px 12px', background: profit >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: '6px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '11px' }}>
+                        <span style={{ color: '#94a3b8' }}>Kâr/Zarar:</span>
+                        <span style={{ color: profit >= 0 ? '#10b981' : '#ef4444', fontWeight: '700', fontSize: '13px' }}>
+                          {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {resData.currency}
+                          {sell > 0 && <span style={{ marginLeft: '6px', fontSize: '11px', opacity: 0.8 }}>({margin.toFixed(1)}%)</span>}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                     {[1, 2, 3].map(i => (
                       <div key={i}>
