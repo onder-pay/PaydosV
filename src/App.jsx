@@ -6786,18 +6786,38 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({...emptyHotel, ...h, prices: h.prices || emptyHotel.prices}); setView('form'); };
   const openHotelDetail = (h) => { setSelectedHotel(h); setView('detail'); };
 
+  // undefined değerleri Firestore için temizle
+  const cleanForFirestore = (obj) => {
+    if (obj === null || obj === undefined) return null;
+    if (Array.isArray(obj)) return obj.map(cleanForFirestore).filter(x => x !== undefined);
+    if (typeof obj === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v === undefined) continue;
+        const cleaned = cleanForFirestore(v);
+        if (cleaned !== undefined) out[k] = cleaned;
+      }
+      return out;
+    }
+    return obj;
+  };
+
   const saveHotel = async () => {
     if (!hotelForm.name || !hotelForm.city) { showToast?.('Otel adı ve şehir zorunlu', 'error'); return; }
     const now = new Date().toISOString();
     let updated;
     if (editingHotel) {
       updated = { ...editingHotel, ...hotelForm, updatedAt: now };
+      // Eski yapıdaki kalıntı alanları sil
+      delete updated.prices;
+      delete updated.email;
+      delete updated.website;
       const list = hotels.map(h => h.id === editingHotel.id ? updated : h);
       setHotels(list);
       try {
         const docId = editingHotel._docId || String(editingHotel.id);
-        const sd = {...updated}; delete sd._docId;
-        await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+        const sd = cleanForFirestore({...updated}); delete sd._docId;
+        await setDoc(doc(db, 'hotels', docId), sd, { merge: false });
       } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
       showToast?.('✏️ Otel güncellendi', 'success');
     } else {
@@ -6805,7 +6825,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       updated = { ...hotelForm, id, _docId: id, createdAt: now, updatedAt: now };
       setHotels([updated, ...hotels]);
       try {
-        const sd = {...updated}; delete sd._docId;
+        const sd = cleanForFirestore({...updated}); delete sd._docId;
         await setDoc(doc(db, 'hotels', id), sd);
       } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
       showToast?.('✅ Otel eklendi', 'success');
@@ -6842,8 +6862,9 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     setSelectedHotel(updatedHotel);
     try {
       const docId = selectedHotel._docId || String(selectedHotel.id);
-      const sd = {...updatedHotel}; delete sd._docId;
-      await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+      const sd = cleanForFirestore({...updatedHotel}); delete sd._docId;
+      delete sd.prices; delete sd.email; delete sd.website;
+      await setDoc(doc(db, 'hotels', docId), sd, { merge: false });
     } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
     showToast?.(editingRes ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
     setShowResForm(false); setEditingRes(null);
@@ -6856,8 +6877,9 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     setSelectedHotel(updatedHotel);
     try {
       const docId = selectedHotel._docId || String(selectedHotel.id);
-      const sd = {...updatedHotel}; delete sd._docId;
-      await setDoc(doc(db, 'hotels', docId), sd, { merge: true });
+      const sd = cleanForFirestore({...updatedHotel}); delete sd._docId;
+      delete sd.prices; delete sd.email; delete sd.website;
+      await setDoc(doc(db, 'hotels', docId), sd, { merge: false });
     } catch(e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); return; }
     showToast?.('Rezervasyon silindi', 'info');
   };
@@ -7030,7 +7052,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       // Firestore'a yaz
                       try {
                         for (const h of newHotels) {
-                          const sd = {...h, _docId: h.id};
+                          const sd = cleanForFirestore({...h});
                           delete sd._docId;
                           await setDoc(doc(db, 'hotels', h.id), sd);
                         }
