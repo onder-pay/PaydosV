@@ -6753,12 +6753,14 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const [custSearch, setCustSearch] = useState('');
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [editingPricePeriod, setEditingPricePeriod] = useState(null);
+  const [showExcelModal, setShowExcelModal] = useState(false);
+  const [excelPreview, setExcelPreview] = useState(null);
 
   // Ayarlardan oda tipleri (varsayılan)
   const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
 
   const emptyHotel = {
-    name: '', city: '', country: '', stars: '4', phone: '', email: '', website: '',
+    name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
     enabledConcepts: ['bb'], // RO/BB/HB/FB
     priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
@@ -6890,8 +6892,9 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
           <h2 style={{ fontSize: '20px', margin: 0 }}>🏨 Oteller ({hotels.length})</h2>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input type="text" placeholder="🔍 Otel/şehir ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{...inputStyle, width: '220px'}} />
+            <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 14px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
             <button onClick={openNewHotel} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Otel</button>
           </div>
         </div>
@@ -6915,6 +6918,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   </div>
                   <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
                   {h.phone && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>📞 {h.phone}</p>}
+                  {h.bookingCode && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>🎫 {h.bookingCode}</p>}
                   <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span style={{ color: '#94a3b8' }}>📅 {resCount} rezervasyon</span>
                     <span style={{ color: '#10b981', fontWeight: '600' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</span>
@@ -6922,6 +6926,129 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* EXCEL TOPLU GİRİŞ MODAL */}
+        {showExcelModal && (
+          <div onClick={() => { setShowExcelModal(false); setExcelPreview(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
+            <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+            <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '800px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '17px' }}>📊 Excel ile Toplu Otel Girişi</h3>
+                <button onClick={() => { setShowExcelModal(false); setExcelPreview(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '22px' }}>×</button>
+              </div>
+
+              {!excelPreview ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ padding: '14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px' }}>
+                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>📋 Excel Şablonu</p>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Şu sütunlar olmalı (sıra önemli değil): <strong>Otel Adı, Şehir, Ülke, Yıldız, Telefon, Adres, Rezervasyon Kodu, Sezon, Notlar</strong></p>
+                    <button onClick={() => {
+                      const ws = XLSX.utils.aoa_to_sheet([
+                        ['Otel Adı', 'Şehir', 'Ülke', 'Yıldız', 'Telefon', 'Adres', 'Rezervasyon Kodu', 'Sezon', 'Notlar'],
+                        ['Hilton Istanbul', 'İstanbul', 'Türkiye', '5', '+90 212 ...', 'Cumhuriyet Cad. No:50, Şişli', 'PAY2026-001', 'Haziran-Eylül 2026', 'Anlaşmalı otel']
+                      ]);
+                      ws['!cols'] = [{wch:25},{wch:14},{wch:14},{wch:8},{wch:18},{wch:30},{wch:18},{wch:18},{wch:25}];
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Oteller');
+                      XLSX.writeFile(wb, 'Otel_Sablon.xlsx');
+                    }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                      📥 Şablonu İndir
+                    </button>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Excel Dosyası Yükle</label>
+                    <input type="file" accept=".xlsx,.xls" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const buf = await file.arrayBuffer();
+                        const wb = XLSX.read(buf, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                        if (rows.length === 0) { showToast?.('Dosya boş', 'error'); return; }
+                        const parsed = rows.map(r => ({
+                          name: String(r['Otel Adı'] || r['Otel'] || r['name'] || '').trim(),
+                          city: String(r['Şehir'] || r['city'] || '').trim(),
+                          country: String(r['Ülke'] || r['country'] || '').trim(),
+                          stars: String(r['Yıldız'] || r['stars'] || '4').trim(),
+                          phone: String(r['Telefon'] || r['phone'] || '').trim(),
+                          address: String(r['Adres'] || r['address'] || '').trim(),
+                          bookingCode: String(r['Rezervasyon Kodu'] || r['Rezervasyon No'] || r['bookingCode'] || '').trim(),
+                          season: String(r['Sezon'] || r['season'] || '').trim(),
+                          notes: String(r['Notlar'] || r['Not'] || r['notes'] || '').trim()
+                        })).filter(h => h.name);
+                        if (parsed.length === 0) { showToast?.('Geçerli otel kaydı bulunamadı (Otel Adı zorunlu)', 'error'); return; }
+                        setExcelPreview(parsed);
+                      } catch (err) {
+                        showToast?.('Excel okuma hatası: ' + err.message, 'error');
+                      }
+                    }} style={{...inputStyle, padding: '8px'}} />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', borderRadius: '8px', marginBottom: '14px', fontSize: '12px', color: '#3b82f6' }}>
+                    📋 <strong>{excelPreview.length}</strong> otel okundu. Önizleme aşağıda. Kaydet butonuna basana kadar hiçbir şey kaydedilmez.
+                  </div>
+                  <div style={{ maxHeight: '400px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: '#1a3a5c' }}>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          {['#', 'Otel', 'Şehir', 'Ülke', 'Yıldız', 'Telefon', 'Rez. Kodu'].map(h => (
+                            <th key={h} style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {excelPreview.map((h, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '6px 8px', color: '#64748b' }}>{i+1}</td>
+                            <td style={{ padding: '6px 8px', color: '#fff', fontWeight: '600' }}>{h.name}</td>
+                            <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.city}</td>
+                            <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.country}</td>
+                            <td style={{ padding: '6px 8px', color: '#f59e0b' }}>{h.stars}★</td>
+                            <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.phone}</td>
+                            <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.bookingCode}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                    <button onClick={async () => {
+                      const now = new Date().toISOString();
+                      const newHotels = excelPreview.map(h => ({
+                        ...emptyHotel,
+                        ...h,
+                        id: generateUniqueId(),
+                        createdAt: now,
+                        updatedAt: now
+                      }));
+                      // Firestore'a yaz
+                      try {
+                        for (const h of newHotels) {
+                          const sd = {...h, _docId: h.id};
+                          delete sd._docId;
+                          await setDoc(doc(db, 'hotels', h.id), sd);
+                        }
+                        setHotels([...newHotels, ...hotels]);
+                        showToast?.(`✅ ${newHotels.length} otel başarıyla eklendi`, 'success');
+                        setShowExcelModal(false);
+                        setExcelPreview(null);
+                      } catch (e) {
+                        showToast?.('❌ Kaydetme hatası: ' + e.message, 'error');
+                      }
+                    }} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: 'pointer' }}>
+                      ✅ {excelPreview.length} Oteli Kaydet
+                    </button>
+                    <button onClick={() => setExcelPreview(null)} style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer' }}>← Geri</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -6971,12 +7098,12 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               <input type="text" value={hotelForm.phone} onChange={e => setHotelForm({...hotelForm, phone: e.target.value})} placeholder="+90..." style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>E-posta</label>
-              <input type="email" value={hotelForm.email} onChange={e => setHotelForm({...hotelForm, email: e.target.value})} placeholder="info@..." style={inputStyle} />
+              <label style={labelStyle}>Rezervasyon Kodu</label>
+              <input type="text" value={hotelForm.bookingCode} onChange={e => setHotelForm({...hotelForm, bookingCode: e.target.value})} placeholder="örn: PAY2026-001" style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Web Sitesi</label>
-              <input type="text" value={hotelForm.website} onChange={e => setHotelForm({...hotelForm, website: e.target.value})} placeholder="https://..." style={inputStyle} />
+              <label style={labelStyle}>Adres</label>
+              <input type="text" value={hotelForm.address} onChange={e => setHotelForm({...hotelForm, address: e.target.value})} placeholder="Otelin açık adresi" style={inputStyle} />
             </div>
           </div>
 
@@ -7141,6 +7268,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
             <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Otel Listesi</button>
             <h2 style={{ margin: 0, fontSize: '22px' }}>{h.name} <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span></h2>
             <p style={{ margin: '4px 0', color: '#94a3b8', fontSize: '13px' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
+            {h.address && <p style={{ margin: '4px 0', color: '#64748b', fontSize: '12px' }}>📍 {h.address}</p>}
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '4px' }}>
+              {h.phone && <span style={{ fontSize: '12px', color: '#64748b' }}>📞 {h.phone}</span>}
+              {h.bookingCode && <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>🎫 {h.bookingCode}</span>}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => openEditHotel(h)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
