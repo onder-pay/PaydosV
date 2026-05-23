@@ -3808,6 +3808,62 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 )}
               </div>
 
+              {/* MALİ BİLGİLER */}
+              {(() => {
+                const costs = formData.costs || {};
+                const costFields = [
+                  { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+                  { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+                  { key: 'sigorta', label: 'Sigorta' },
+                  { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+                  { key: 'koordinasyon', label: 'Koordinasyon' },
+                  { key: 'sms', label: 'SMS' },
+                  { key: 'kargo', label: 'Kargo' },
+                  { key: 'kdv', label: 'KDV' },
+                  { key: 'diger', label: 'Diğer' }
+                ];
+                const totalCost = costFields.reduce((s, f) => s + (parseFloat(costs[f.key]) || 0), 0);
+                const salePrice = parseFloat(formData.visaPrice) || 0;
+                const currency = formData.visaCurrency || '€';
+                const profit = salePrice - totalCost;
+                const margin = salePrice > 0 ? (profit / salePrice * 100) : 0;
+                return (
+                  <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <h4 style={{ margin: 0, fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>💰 Mali Bilgiler (Maliyet Kalemleri)</h4>
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>Vize başına ödediğin kalemler</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                      {costFields.map(f => (
+                        <div key={f.key}>
+                          <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{f.label}</label>
+                          <input type="number" step="0.01" min="0" value={costs[f.key] || ''} onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})} placeholder="0" style={{ width: '100%', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Özet */}
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px', marginTop: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
+                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#ef4444' }}>{totalCost.toFixed(2)} {currency}</div>
+                      </div>
+                      <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Satış Tutarı</div>
+                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#10b981' }}>{salePrice.toFixed(2)} {currency}</div>
+                      </div>
+                      <div style={{ background: profit >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.15)', padding: '10px 12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar</div>
+                        <div style={{ fontSize: '16px', fontWeight: '700', color: profit >= 0 ? '#22c55e' : '#ef4444' }}>
+                          {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {currency}
+                          {salePrice > 0 && <span style={{ fontSize: '11px', marginLeft: '6px', opacity: 0.8 }}>({margin.toFixed(1)}%)</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Durum - Butonlar - Dinamik */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Başvuru Durumu</label>
@@ -6785,6 +6841,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   const [editingPricePeriod, setEditingPricePeriod] = useState(null);
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [excelPreview, setExcelPreview] = useState(null);
+  const [excelTab, setExcelTab] = useState('hotels'); // 'hotels' veya 'prices'
+  const [priceExcelPreview, setPriceExcelPreview] = useState(null);
 
   // Ayarlardan oda tipleri (varsayılan)
   const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
@@ -6983,19 +7041,46 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
         {/* EXCEL TOPLU GİRİŞ MODAL */}
         {showExcelModal && (
-          <div onClick={() => { setShowExcelModal(false); setExcelPreview(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
+          <div onClick={() => { setShowExcelModal(false); setExcelPreview(null); setPriceExcelPreview(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
             <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-            <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '800px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
+            <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '900px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '17px' }}>📊 Excel ile Toplu Otel Girişi</h3>
-                <button onClick={() => { setShowExcelModal(false); setExcelPreview(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '22px' }}>×</button>
+                <h3 style={{ margin: 0, fontSize: '17px' }}>📊 Excel ile Toplu Giriş</h3>
+                <button onClick={() => { setShowExcelModal(false); setExcelPreview(null); setPriceExcelPreview(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '22px' }}>×</button>
               </div>
 
-              {!excelPreview ? (
+              {/* TAB BUTONLARI */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <button onClick={() => { setExcelTab('hotels'); setPriceExcelPreview(null); }} style={{
+                  padding: '10px 16px',
+                  background: excelTab === 'hotels' ? 'rgba(245,158,11,0.15)' : 'transparent',
+                  border: 'none',
+                  borderBottom: excelTab === 'hotels' ? '2px solid #f59e0b' : '2px solid transparent',
+                  color: excelTab === 'hotels' ? '#f59e0b' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  marginBottom: '-1px'
+                }}>🏨 Otel Bilgileri</button>
+                <button onClick={() => { setExcelTab('prices'); setExcelPreview(null); }} style={{
+                  padding: '10px 16px',
+                  background: excelTab === 'prices' ? 'rgba(16,185,129,0.15)' : 'transparent',
+                  border: 'none',
+                  borderBottom: excelTab === 'prices' ? '2px solid #10b981' : '2px solid transparent',
+                  color: excelTab === 'prices' ? '#10b981' : '#94a3b8',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  marginBottom: '-1px'
+                }}>💰 Fiyat Dönemleri</button>
+              </div>
+
+              {/* OTEL BİLGİLERİ SEKMESİ */}
+              {excelTab === 'hotels' && (!excelPreview ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ padding: '14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px' }}>
-                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>📋 Excel Şablonu</p>
-                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Şu sütunlar olmalı (sıra önemli değil): <strong>Otel Adı, Şehir, Ülke, Yıldız, Telefon, Adres, Rezervasyon Kodu, Sezon, Notlar</strong></p>
+                  <div style={{ padding: '14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px' }}>
+                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>📋 Otel Şablonu</p>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Sütunlar: <strong>Otel Adı, Şehir, Ülke, Yıldız, Telefon, Adres, Rezervasyon Kodu, Sezon, Notlar</strong></p>
                     <button onClick={() => {
                       const ws = XLSX.utils.aoa_to_sheet([
                         ['Otel Adı', 'Şehir', 'Ülke', 'Yıldız', 'Telefon', 'Adres', 'Rezervasyon Kodu', 'Sezon', 'Notlar'],
@@ -7005,7 +7090,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const wb = XLSX.utils.book_new();
                       XLSX.utils.book_append_sheet(wb, ws, 'Oteller');
                       XLSX.writeFile(wb, 'Otel_Sablon.xlsx');
-                    }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                    }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                       📥 Şablonu İndir
                     </button>
                   </div>
@@ -7043,7 +7128,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               ) : (
                 <div>
                   <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', borderRadius: '8px', marginBottom: '14px', fontSize: '12px', color: '#3b82f6' }}>
-                    📋 <strong>{excelPreview.length}</strong> otel okundu. Önizleme aşağıda. Kaydet butonuna basana kadar hiçbir şey kaydedilmez.
+                    📋 <strong>{excelPreview.length}</strong> otel okundu. Önizleme aşağıda.
                   </div>
                   <div style={{ maxHeight: '400px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
@@ -7079,7 +7164,6 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                         createdAt: now,
                         updatedAt: now
                       }));
-                      // Firestore'a yaz
                       try {
                         for (const h of newHotels) {
                           const sd = cleanForFirestore({...h});
@@ -7099,7 +7183,228 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <button onClick={() => setExcelPreview(null)} style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer' }}>← Geri</button>
                   </div>
                 </div>
-              )}
+              ))}
+
+              {/* FİYAT DÖNEMLERİ SEKMESİ */}
+              {excelTab === 'prices' && (!priceExcelPreview ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ padding: '14px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px' }}>
+                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>📋 Fiyat Şablonu</p>
+                    <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#94a3b8' }}>
+                      Her satır = bir otelin bir tarih aralığındaki bir oda tipinin fiyatları. Aynı (Otel + Başlangıç + Bitiş) gruplandırılır.
+                    </p>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>
+                      Sütunlar: <strong>Otel Adı, Başlangıç, Bitiş, Para, Oda Tipi, RO Alış, RO Satış, BB Alış, BB Satış, HB Alış, HB Satış, FB Alış, FB Satış</strong>
+                    </p>
+                    <p style={{ margin: '0 0 10px', fontSize: '10px', color: '#f59e0b' }}>
+                      ⚠️ Otel adı mevcut otel listesindeki adla aynı olmalı (büyük/küçük harf önemsiz). Tarihler GG.AA.YYYY veya YYYY-AA-GG formatında olabilir.
+                    </p>
+                    <button onClick={() => {
+                      const ws = XLSX.utils.aoa_to_sheet([
+                        ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+                        ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Single', 50, 80, 60, 100, '', '', '', ''],
+                        ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Double', 80, 120, 90, 140, '', '', '', ''],
+                        ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Triple', 110, 160, 120, 180, '', '', '', ''],
+                        ['Hilton Istanbul', '2026-07-01', '2026-07-31', '€', 'Single', 60, 100, 70, 120, '', '', '', ''],
+                        ['Hilton Istanbul', '2026-07-01', '2026-07-31', '€', 'Double', 100, 150, 110, 170, '', '', '', '']
+                      ]);
+                      ws['!cols'] = [{wch:22},{wch:12},{wch:12},{wch:6},{wch:14},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10}];
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Fiyatlar');
+                      XLSX.writeFile(wb, 'Fiyat_Sablon.xlsx');
+                    }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                      📥 Şablonu İndir
+                    </button>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Excel Dosyası Yükle</label>
+                    <input type="file" accept=".xlsx,.xls" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const buf = await file.arrayBuffer();
+                        const wb = XLSX.read(buf, { type: 'array' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                        if (rows.length === 0) { showToast?.('Dosya boş', 'error'); return; }
+
+                        // Tarih normalleştirme (GG.AA.YYYY, YYYY-AA-GG, Date object, Excel serial)
+                        const normalizeDate = (val) => {
+                          if (!val && val !== 0) return '';
+                          if (val instanceof Date) return val.toISOString().split('T')[0];
+                          if (typeof val === 'number') {
+                            // Excel serial date
+                            const d = new Date((val - 25569) * 86400 * 1000);
+                            return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+                          }
+                          const s = String(val).trim();
+                          // GG.AA.YYYY veya GG/AA/YYYY
+                          let m = s.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{4})$/);
+                          if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+                          // YYYY-AA-GG
+                          m = s.match(/^(\d{4})[.\/\-](\d{1,2})[.\/\-](\d{1,2})$/);
+                          if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+                          return s;
+                        };
+
+                        const num = (v) => {
+                          if (v === '' || v === null || v === undefined) return 0;
+                          const n = parseFloat(String(v).replace(',','.'));
+                          return isNaN(n) ? 0 : n;
+                        };
+
+                        // Otel adı eşleştirme (case-insensitive)
+                        const hotelMap = {};
+                        hotels.forEach(h => { hotelMap[h.name.toLowerCase().trim()] = h; });
+
+                        // Satırları işle
+                        const items = [];
+                        const unmatchedHotels = new Set();
+                        for (const r of rows) {
+                          const name = String(r['Otel Adı'] || r['Otel'] || r['name'] || '').trim();
+                          if (!name) continue;
+                          const match = hotelMap[name.toLowerCase()];
+                          if (!match) { unmatchedHotels.add(name); continue; }
+                          items.push({
+                            hotelName: name,
+                            hotelId: match.id,
+                            startDate: normalizeDate(r['Başlangıç'] || r['Baslangic'] || r['Start']),
+                            endDate: normalizeDate(r['Bitiş'] || r['Bitis'] || r['End']),
+                            currency: String(r['Para'] || r['Currency'] || '€').trim() || '€',
+                            roomType: String(r['Oda Tipi'] || r['Oda'] || r['Room'] || '').trim(),
+                            ro_buy: num(r['RO Alış'] || r['RO Alis']),
+                            ro_sell: num(r['RO Satış'] || r['RO Satis']),
+                            bb_buy: num(r['BB Alış'] || r['BB Alis']),
+                            bb_sell: num(r['BB Satış'] || r['BB Satis']),
+                            hb_buy: num(r['HB Alış'] || r['HB Alis']),
+                            hb_sell: num(r['HB Satış'] || r['HB Satis']),
+                            fb_buy: num(r['FB Alış'] || r['FB Alis']),
+                            fb_sell: num(r['FB Satış'] || r['FB Satis'])
+                          });
+                        }
+
+                        if (items.length === 0) {
+                          showToast?.(`Geçerli kayıt bulunamadı. ${unmatchedHotels.size > 0 ? `Eşleşmeyen oteller: ${[...unmatchedHotels].slice(0,3).join(', ')}${unmatchedHotels.size > 3 ? '...' : ''}` : ''}`, 'error');
+                          return;
+                        }
+                        setPriceExcelPreview({ items, unmatchedHotels: [...unmatchedHotels] });
+                      } catch (err) {
+                        showToast?.('Excel okuma hatası: ' + err.message, 'error');
+                      }
+                    }} style={{...inputStyle, padding: '8px'}} />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', borderRadius: '8px', marginBottom: '10px', fontSize: '12px', color: '#3b82f6' }}>
+                    📋 <strong>{priceExcelPreview.items.length}</strong> fiyat satırı okundu. Aynı (otel + tarih) gruplandırılarak dönem oluşturulacak.
+                  </div>
+                  {priceExcelPreview.unmatchedHotels.length > 0 && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', marginBottom: '10px', fontSize: '11px', color: '#ef4444' }}>
+                      ⚠️ Otel listesinde olmadığı için <strong>{priceExcelPreview.unmatchedHotels.length}</strong> satır atlandı: {priceExcelPreview.unmatchedHotels.slice(0,5).join(', ')}{priceExcelPreview.unmatchedHotels.length > 5 ? '...' : ''}
+                    </div>
+                  )}
+                  <div style={{ maxHeight: '350px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <table style={{ width: '100%', fontSize: '10px', borderCollapse: 'collapse' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: '#1a3a5c' }}>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          {['Otel', 'Dönem', 'Oda', 'BB A', 'BB S', 'HB A', 'HB S', 'Para'].map(h => (
+                            <th key={h} style={{ padding: '6px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {priceExcelPreview.items.map((it, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '5px 6px', color: '#fff', fontWeight: '600' }}>{it.hotelName}</td>
+                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{it.startDate} → {it.endDate}</td>
+                            <td style={{ padding: '5px 6px', color: '#f59e0b' }}>{it.roomType}</td>
+                            <td style={{ padding: '5px 6px', color: '#ef4444' }}>{it.bb_buy || '—'}</td>
+                            <td style={{ padding: '5px 6px', color: '#10b981' }}>{it.bb_sell || '—'}</td>
+                            <td style={{ padding: '5px 6px', color: '#ef4444' }}>{it.hb_buy || '—'}</td>
+                            <td style={{ padding: '5px 6px', color: '#10b981' }}>{it.hb_sell || '—'}</td>
+                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{it.currency}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                    <button onClick={async () => {
+                      // Aynı (hotelId + startDate + endDate) gruplandır
+                      const groups = {};
+                      priceExcelPreview.items.forEach(it => {
+                        const key = `${it.hotelId}__${it.startDate}__${it.endDate}__${it.currency}`;
+                        if (!groups[key]) {
+                          groups[key] = {
+                            hotelId: it.hotelId,
+                            startDate: it.startDate,
+                            endDate: it.endDate,
+                            currency: it.currency,
+                            rates: {}
+                          };
+                        }
+                        const rates = groups[key].rates;
+                        if (!rates[it.roomType]) rates[it.roomType] = {};
+                        ['ro','bb','hb','fb'].forEach(c => {
+                          const buy = it[`${c}_buy`], sell = it[`${c}_sell`];
+                          if (buy > 0 || sell > 0) rates[it.roomType][c] = { buy: buy || 0, sell: sell || 0 };
+                        });
+                      });
+
+                      // Otel başına gruplama
+                      const byHotel = {};
+                      Object.values(groups).forEach(g => {
+                        if (!byHotel[g.hotelId]) byHotel[g.hotelId] = [];
+                        byHotel[g.hotelId].push({ id: generateUniqueId(), ...g, rates: g.rates });
+                      });
+
+                      // Her otele yaz
+                      try {
+                        let updatedCount = 0;
+                        const updatedHotels = hotels.map(h => {
+                          if (!byHotel[h.id]) return h;
+                          const newPeriods = byHotel[h.id].map(g => ({ id: g.id, startDate: g.startDate, endDate: g.endDate, currency: g.currency, rates: g.rates }));
+                          // Aktif konseptleri otomatik aç
+                          const enabledConcepts = new Set(h.enabledConcepts || []);
+                          newPeriods.forEach(p => {
+                            Object.values(p.rates).forEach(roomRates => {
+                              Object.keys(roomRates).forEach(c => enabledConcepts.add(c));
+                            });
+                          });
+                          const updated = {
+                            ...h,
+                            priceList: [...(h.priceList || []), ...newPeriods],
+                            enabledConcepts: [...enabledConcepts],
+                            updatedAt: new Date().toISOString()
+                          };
+                          delete updated.prices; delete updated.email; delete updated.website;
+                          updatedCount++;
+                          return updated;
+                        });
+
+                        for (const h of updatedHotels) {
+                          if (!byHotel[h.id]) continue;
+                          const sd = cleanForFirestore({...h});
+                          delete sd._docId;
+                          await setDoc(doc(db, 'hotels', h._docId || String(h.id)), sd, { merge: false });
+                        }
+
+                        setHotels(updatedHotels);
+                        showToast?.(`✅ ${updatedCount} otele toplam ${Object.values(groups).length} fiyat dönemi eklendi`, 'success');
+                        setShowExcelModal(false);
+                        setPriceExcelPreview(null);
+                      } catch (e) {
+                        showToast?.('❌ Kaydetme hatası: ' + e.message, 'error');
+                      }
+                    }} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: 'pointer' }}>
+                      ✅ Fiyatları Otellere Kaydet
+                    </button>
+                    <button onClick={() => setPriceExcelPreview(null)} style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer' }}>← Geri</button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
