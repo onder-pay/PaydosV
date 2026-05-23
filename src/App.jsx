@@ -3795,23 +3795,14 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     </button>
                   ))}
                 </div>
-                {creditCards && creditCards.length > 0 && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>💳 Ödeme Kartı</label>
-                    <select value={formData.paymentCardId || ''} onChange={e => setFormData({...formData, paymentCardId: e.target.value})} style={{ width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}>
-                      <option value="">— Kart seçiniz —</option>
-                      {creditCards.map(card => (
-                        <option key={card.id} value={card.id}>💳 {card.cardName} {card.bank ? `(${card.bank})` : ''}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
 
               {/* MALİ BİLGİLER */}
               {(() => {
                 const costs = formData.costs || {};
-                const costFields = [
+                const costCurrencies = formData.costCurrencies || {};
+                // Default kalemler (ayarlardan gelir, yoksa default'lar)
+                const defaultCostItems = [
                   { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
                   { key: 'araci', label: 'Aracı Hizmet Bedeli' },
                   { key: 'sigorta', label: 'Sigorta' },
@@ -3822,42 +3813,95 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   { key: 'kdv', label: 'KDV' },
                   { key: 'diger', label: 'Diğer' }
                 ];
-                const totalCost = costFields.reduce((s, f) => s + (parseFloat(costs[f.key]) || 0), 0);
+                const costFields = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
+                  ? appSettings.visaCostItems
+                  : defaultCostItems;
+
                 const salePrice = parseFloat(formData.visaPrice) || 0;
-                const currency = formData.visaCurrency || '€';
-                const profit = salePrice - totalCost;
-                const margin = salePrice > 0 ? (profit / salePrice * 100) : 0;
+                const saleCurrency = formData.visaCurrency || '€';
+                const discount = parseFloat(formData.visaDiscount) || 0;
+                const netSale = salePrice - discount;
+
+                // Her para birimi için ayrı toplam
+                const totalsByCurrency = {};
+                costFields.forEach(f => {
+                  const amount = parseFloat(costs[f.key]) || 0;
+                  if (amount === 0) return;
+                  const cur = costCurrencies[f.key] || saleCurrency;
+                  totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + amount;
+                });
+                // Satışla aynı para birimindeki toplam (kâr/zarar için)
+                const totalSameCurrency = totalsByCurrency[saleCurrency] || 0;
+                const profit = netSale - totalSameCurrency;
+                const margin = netSale > 0 ? (profit / netSale * 100) : 0;
+
                 return (
                   <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', padding: '14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                       <h4 style={{ margin: 0, fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>💰 Mali Bilgiler (Maliyet Kalemleri)</h4>
                       <span style={{ fontSize: '11px', color: '#94a3b8' }}>Vize başına ödediğin kalemler</span>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
                       {costFields.map(f => (
                         <div key={f.key}>
                           <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{f.label}</label>
-                          <input type="number" step="0.01" min="0" value={costs[f.key] || ''} onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})} placeholder="0" style={{ width: '100%', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <input type="number" step="0.01" min="0" value={costs[f.key] || ''}
+                              onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})}
+                              placeholder="0"
+                              style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', minWidth: 0 }} />
+                            <select value={costCurrencies[f.key] || saleCurrency}
+                              onChange={e => setFormData({...formData, costCurrencies: {...costCurrencies, [f.key]: e.target.value}})}
+                              style={{ width: '52px', padding: '7px 4px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '11px', boxSizing: 'border-box' }}>
+                              <option value="€">€</option>
+                              <option value="$">$</option>
+                              <option value="£">£</option>
+                              <option value="₺">₺</option>
+                            </select>
+                          </div>
                         </div>
                       ))}
                     </div>
 
+                    {/* İNDİRİM */}
+                    <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <label style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', whiteSpace: 'nowrap' }}>🏷️ İndirim:</label>
+                      <input type="number" step="0.01" min="0" value={formData.visaDiscount || ''}
+                        onChange={e => setFormData({...formData, visaDiscount: parseFloat(e.target.value) || 0})}
+                        placeholder="0"
+                        style={{ flex: '1 1 100px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', minWidth: 0 }} />
+                      <span style={{ fontSize: '12px', color: '#94a3b8' }}>{saleCurrency}</span>
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        Satış: <strong style={{ color: '#10b981' }}>{salePrice.toFixed(2)} {saleCurrency}</strong>
+                        {' '}→ Net: <strong style={{ color: '#22c55e' }}>{netSale.toFixed(2)} {saleCurrency}</strong>
+                      </span>
+                    </div>
+
                     {/* Özet */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px', marginTop: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                       <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#ef4444' }}>{totalCost.toFixed(2)} {currency}</div>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
+                          {Object.keys(totalsByCurrency).length === 0
+                            ? `0 ${saleCurrency}`
+                            : Object.entries(totalsByCurrency).map(([cur, val]) => `${val.toFixed(2)} ${cur}`).join(' + ')}
+                        </div>
                       </div>
                       <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Satış Tutarı</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#10b981' }}>{salePrice.toFixed(2)} {currency}</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Net Satış</div>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
+                        {discount > 0 && <div style={{ fontSize: '9px', color: '#f59e0b' }}>(-{discount} indirim)</div>}
                       </div>
                       <div style={{ background: profit >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.15)', padding: '10px 12px', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: profit >= 0 ? '#22c55e' : '#ef4444' }}>
-                          {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {currency}
-                          {salePrice > 0 && <span style={{ fontSize: '11px', marginLeft: '6px', opacity: 0.8 }}>({margin.toFixed(1)}%)</span>}
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar ({saleCurrency})</div>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: profit >= 0 ? '#22c55e' : '#ef4444' }}>
+                          {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {saleCurrency}
+                          {netSale > 0 && <span style={{ fontSize: '11px', marginLeft: '6px', opacity: 0.8 }}>({margin.toFixed(1)}%)</span>}
                         </div>
+                        {Object.keys(totalsByCurrency).filter(c => c !== saleCurrency).length > 0 && (
+                          <div style={{ fontSize: '9px', color: '#fbbf24', marginTop: '2px' }}>⚠️ Farklı para birimlerinde maliyet var</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -8780,6 +8824,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [newVisaStatus, setNewVisaStatus] = useState('');
   const [newSector, setNewSector] = useState('');
   const [newHotelRoomType, setNewHotelRoomType] = useState('');
+  const [newCostItem, setNewCostItem] = useState('');
   const [newDuration, setNewDuration] = useState({ category: 'usa', value: '', price: 0, currency: '€' });
   const [newRoomType, setNewRoomType] = useState('');
 
@@ -9346,6 +9391,83 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                     style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                     ➕ Ekle
                   </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* VİZE MALİYET KALEMLERİ */}
+          {(() => {
+            const defaultItems = [
+              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+              { key: 'sigorta', label: 'Sigorta' },
+              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+              { key: 'koordinasyon', label: 'Koordinasyon' },
+              { key: 'sms', label: 'SMS' },
+              { key: 'kargo', label: 'Kargo' },
+              { key: 'kdv', label: 'KDV' },
+              { key: 'diger', label: 'Diğer' }
+            ];
+            const items = appSettings?.visaCostItems || defaultItems;
+            const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            return (
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#ef4444' }}>💰 Vize Maliyet Kalemleri</h3>
+                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
+                  Yeni vize başvurusunda görünen maliyet kalemleri. Sıra önemli — listelenen sırada görünür.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                  {items.map((it, idx) => (
+                    <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button onClick={() => {
+                          if (idx === 0) return;
+                          const newItems = [...items];
+                          [newItems[idx-1], newItems[idx]] = [newItems[idx], newItems[idx-1]];
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
+                        <button onClick={() => {
+                          if (idx === items.length - 1) return;
+                          const newItems = [...items];
+                          [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', color: idx === items.length - 1 ? '#475569' : '#94a3b8', cursor: idx === items.length - 1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
+                      </div>
+                      <input type="text" value={it.label}
+                        onChange={e => {
+                          const newItems = [...items];
+                          newItems[idx] = { ...it, label: e.target.value };
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }}
+                        style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
+                      <button onClick={() => {
+                        if (!window.confirm(`"${it.label}" kalemini silmek istiyor musun?`)) return;
+                        setAppSettings({ ...appSettings, visaCostItems: items.filter((_, i) => i !== idx) });
+                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="text" value={newCostItem || ''} onChange={e => setNewCostItem(e.target.value)}
+                    placeholder="Yeni maliyet kalemi (örn: Vize Sigortası)"
+                    onKeyPress={e => {
+                      if (e.key === 'Enter' && (newCostItem || '').trim()) {
+                        const label = newCostItem.trim();
+                        const key = slugify(label) || 'kalem_' + Date.now();
+                        setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
+                        setNewCostItem('');
+                      }
+                    }}
+                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
+                  <button onClick={() => {
+                    if ((newCostItem || '').trim()) {
+                      const label = newCostItem.trim();
+                      const key = slugify(label) || 'kalem_' + Date.now();
+                      setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
+                      setNewCostItem('');
+                    }
+                  }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
                 </div>
               </div>
             );
