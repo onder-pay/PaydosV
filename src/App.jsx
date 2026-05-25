@@ -4076,21 +4076,52 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         </button>
         {/* Ayırıcı */}
         <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
-        {/* Durum filtre butonları */}
-        <button onClick={() => { setActiveTab('all'); setVisaStatusFilter('all'); }}
-          style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: activeTab === 'all' && visaStatusFilter === 'all' ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.05)', color: activeTab === 'all' && visaStatusFilter === 'all' ? '#3b82f6' : '#64748b' }}>
-          Tümü ({visaApplications.length})
-        </button>
-        {visaStatuses.map(s => (
-          <button key={s} onClick={() => { setActiveTab('all'); setVisaStatusFilter(s); }}
-            style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: activeTab === 'all' && visaStatusFilter === s ? `${getStatusColor(s)}30` : 'rgba(255,255,255,0.05)', color: activeTab === 'all' && visaStatusFilter === s ? getStatusColor(s) : '#64748b' }}>
-            {s} ({visaApplications.filter(v => v.status === s).length})
-          </button>
-        ))}
-        <button onClick={() => { setActiveTab('all'); setVisaStatusFilter('__odenmedi__'); }}
-          style={{ padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600', border: 'none', background: visaStatusFilter === '__odenmedi__' ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)', color: visaStatusFilter === '__odenmedi__' ? '#ef4444' : '#64748b' }}>
-          💸 Ödenmedi ({visaApplications.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length})
-        </button>
+        {/* Durum filtre dropdown */}
+        {(() => {
+          const totalCount = visaApplications.length;
+          const unpaidCount = visaApplications.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length;
+          const currentValue = activeTab !== 'all' ? '__noop__' : visaStatusFilter;
+          const currentColor = visaStatusFilter === 'all' ? '#3b82f6'
+            : visaStatusFilter === '__odenmedi__' ? '#ef4444'
+            : getStatusColor(visaStatusFilter);
+          return (
+            <select
+              value={currentValue}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '__noop__') return;
+                setActiveTab('all');
+                setVisaStatusFilter(val);
+              }}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '600',
+                border: `1px solid ${currentColor}40`,
+                background: `${currentColor}20`,
+                color: currentColor,
+                outline: 'none',
+                minWidth: '180px',
+                appearance: 'auto'
+              }}
+            >
+              <option value="all" style={{ background: '#0c1929', color: '#fff' }}>📋 Tümü ({totalCount})</option>
+              {visaStatuses.map(s => {
+                const count = visaApplications.filter(v => v.status === s).length;
+                return (
+                  <option key={s} value={s} style={{ background: '#0c1929', color: '#fff' }}>
+                    {s} ({count})
+                  </option>
+                );
+              })}
+              <option value="__odenmedi__" style={{ background: '#0c1929', color: '#fff' }}>
+                💸 Ödenmedi ({unpaidCount})
+              </option>
+            </select>
+          );
+        })()}
       </div>
 
       {/* TAKVİM */}
@@ -7034,6 +7065,326 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     return Math.max(0, Math.round((d2 - d1) / 86400000));
   };
 
+  // Bir rezervasyon için her geceyi tek tek hesapla
+  // Birden fazla fiyat dönemine yayılıyorsa toplar
+  const calcReservationPrice = (hotel, checkIn, checkOut, roomType, concept) => {
+    const result = { totalBuy: 0, totalSell: 0, nights: 0, currency: '€', gaps: [], periodsUsed: [] };
+    if (!checkIn || !checkOut || !hotel) return result;
+    const d1 = new Date(checkIn);
+    const d2 = new Date(checkOut);
+    if (isNaN(d1) || isNaN(d2) || d2 <= d1) return result;
+    result.nights = Math.round((d2 - d1) / 86400000);
+
+    const periods = hotel.priceList || [];
+    if (periods.length === 0) return result;
+
+    // Her gece için (checkIn dahil, checkOut hariç)
+    for (let i = 0; i < result.nights; i++) {
+      const day = new Date(d1.getTime() + i * 86400000);
+      const dayStr = day.toISOString().split('T')[0];
+      const period = periods.find(p => p.startDate <= dayStr && p.endDate >= dayStr);
+      if (!period) {
+        result.gaps.push(dayStr);
+        continue;
+      }
+      if (!result.periodsUsed.includes(period.id)) result.periodsUsed.push(period.id);
+      result.currency = period.currency || result.currency;
+      const rate = period.rates?.[roomType]?.[concept];
+      if (rate) {
+        const buy = typeof rate === 'number' ? 0 : (rate.buy || 0);
+        const sell = typeof rate === 'number' ? rate : (rate.sell || 0);
+        result.totalBuy += buy;
+        result.totalSell += sell;
+      }
+    }
+    return result;
+  };
+
+  // Otomatik fiyat senkronizasyonu - seçili otel detayında eski rezervasyon fiyatlarını sessizce güncelle
+  useEffect(() => {
+    if (!selectedHotel || view !== 'detail') return;
+    const res = selectedHotel.reservations || [];
+    if (res.length === 0) return;
+    if (!selectedHotel.priceList || selectedHotel.priceList.length === 0) return;
+
+    let needsUpdate = false;
+    const updated = res.map(r => {
+      if (!r.checkIn || !r.checkOut || !r.roomType) return r;
+      const calc = calcReservationPrice(selectedHotel, r.checkIn, r.checkOut, r.roomType, r.concept || 'bb');
+      if (calc.totalSell === 0 && calc.totalBuy === 0) return r;
+      const cb = parseFloat(r.buyPrice) || 0;
+      const cs = parseFloat(r.price) || 0;
+      // 0.5 € fark toleransı - değişiklik yoksa dokunma
+      if (Math.abs(cs - calc.totalSell) < 0.5 && Math.abs(cb - calc.totalBuy) < 0.5) return r;
+      needsUpdate = true;
+      return { ...r, price: calc.totalSell, buyPrice: calc.totalBuy, currency: calc.currency || r.currency };
+    });
+
+    if (!needsUpdate) return;
+    const newHotel = { ...selectedHotel, reservations: updated };
+    setHotels(prev => prev.map(x => x.id === selectedHotel.id ? newHotel : x));
+    setSelectedHotel(newHotel);
+    // Firestore'a sessiz kaydet
+    (async () => {
+      try {
+        const docId = selectedHotel._docId || String(selectedHotel.id);
+        const sd = cleanForFirestore({...newHotel}); delete sd._docId;
+        delete sd.prices; delete sd.email; delete sd.website;
+        await setDoc(doc(db, 'hotels', docId), sd, { merge: false });
+      } catch (e) {
+        console.error('Otomatik senkronizasyon hatası:', e);
+      }
+    })();
+  }, [selectedHotel?.id, view]);
+
+  // ====== PROFORMA OLUŞTURUCU ======
+  // hotel: otel objesi, reservations: array (tek rezervasyon için 1 elemanlı array)
+  const generateHotelProforma = (hotel, reservations) => {
+    if (!reservations || reservations.length === 0) {
+      showToast?.('Proforma için en az 1 rezervasyon gerekli', 'error');
+      return;
+    }
+    try {
+      const doc = new jsPDF();
+
+      // Türkçe karakter dönüştürücü
+      const tr = (text) => {
+        if (!text) return '';
+        return String(text)
+          .replace(/ı/g, 'i').replace(/İ/g, 'I')
+          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+          .replace(/ş/g, 's').replace(/Ş/g, 'S')
+          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
+      };
+
+      // Para birimi (ilk rezervasyondan)
+      const currency = reservations[0].currency || '€';
+      const currencyCode = currency === '€' ? 'EUR' : currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '₺' ? 'TRY' : 'EUR';
+
+      // Header
+      doc.setFontSize(20);
+      doc.setTextColor(220, 53, 69);
+      doc.text('Paydos Tur', 20, 20);
+
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
+      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
+      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+
+      // Proforma No
+      const now = new Date();
+      const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+
+      doc.setFontSize(16);
+      doc.setTextColor(40);
+      doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
+      doc.setFontSize(11);
+      doc.setTextColor(220, 53, 69);
+      doc.text(pno, 195, 30, { align: 'right' });
+
+      // Üst tablo
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(245, 245, 245);
+      doc.rect(20, 48, 175, 14, 'FD');
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text('TARIH', 24, 53);
+      doc.text('OPSIYON TARIHI', 70, 53);
+      doc.text('PARA BIRIMI', 120, 53);
+      doc.text('HAZIRLAYAN', 155, 53);
+      doc.setFontSize(10);
+      doc.setTextColor(40);
+      const optionDate = new Date(now.getTime() + 14 * 86400000); // 14 gün opsiyon
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60);
+      doc.text(optionDate.toLocaleDateString('tr-TR'), 70, 60);
+      doc.text(currencyCode, 120, 60);
+      doc.text('Onder Tasci', 155, 60);
+
+      // KONU
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('KONU', 20, 72);
+      doc.setFontSize(11);
+      doc.setTextColor(40);
+      const konu = reservations.length === 1
+        ? `${tr(hotel.name)} - Otel Konaklamasi`
+        : `${tr(hotel.name)} - Toplu Otel Konaklamasi (${reservations.length} rezervasyon)`;
+      doc.text(konu, 20, 78);
+
+      // MÜŞTERİ BİLGİLERİ
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.setDrawColor(220, 220, 220);
+      doc.line(20, 92, 195, 92);
+
+      // Tek müşteri varsa onu, toplu ise "Cesitli" yaz
+      const uniqueCustomers = [...new Set(reservations.map(r => r.customerName).filter(Boolean))];
+      const firstCustomer = customers.find(c => String(c.id) === String(reservations[0].customerId));
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Firma / Ad Soyad', 20, 99);
+      doc.text('Vergi Dairesi', 110, 99);
+      doc.setFontSize(11);
+      doc.setTextColor(40);
+      const custName = uniqueCustomers.length === 1
+        ? tr(uniqueCustomers[0])
+        : `Cesitli (${uniqueCustomers.length} kisi)`;
+      doc.text(custName, 20, 105);
+      doc.text(tr(firstCustomer?.taxOffice || '-'), 110, 105);
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Telefon', 20, 113);
+      doc.text('E-posta', 110, 113);
+      doc.setFontSize(11);
+      doc.setTextColor(40);
+      doc.text(tr(reservations[0].customerPhone || firstCustomer?.phone || '-'), 20, 119);
+      doc.text(tr(reservations[0].customerEmail || firstCustomer?.email || '-'), 110, 119);
+
+      // HİZMET KALEMLERİ
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('HIZMET KALEMLERI', 20, 132);
+      doc.line(20, 134, 195, 134);
+
+      // Tablo başlığı
+      doc.setFillColor(245, 245, 245);
+      doc.rect(20, 137, 175, 7, 'F');
+      doc.setFontSize(8);
+      doc.setTextColor(80);
+      doc.text('OTEL / HIZMET', 22, 142);
+      doc.text('ACIKLAMA', 80, 142);
+      doc.text('GECE', 145, 142, { align: 'center' });
+      doc.text('GECELIK', 165, 142, { align: 'right' });
+      doc.text('TOPLAM', 193, 142, { align: 'right' });
+
+      let yPos = 149;
+      let subtotal = 0;
+      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvalti' : c === 'hb' ? 'Yarim Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
+
+      reservations.forEach((r, i) => {
+        const nights = calcNights(r.checkIn, r.checkOut);
+        const totalForRes = parseFloat(r.price) || 0;
+        const perNight = nights > 0 ? totalForRes / nights : totalForRes;
+        subtotal += totalForRes;
+
+        // Açıklama satırı
+        const formatD = (d) => {
+          if (!d) return '';
+          const dt = new Date(d);
+          return isNaN(dt) ? d : dt.toLocaleDateString('tr-TR');
+        };
+        const aciklama = `${tr(r.customerName || '')}\n${formatD(r.checkIn)} > ${formatD(r.checkOut)}\n${tr(r.roomType || '')} (${conceptLabel(r.concept)})`;
+
+        // Sıra zebra renk
+        if (i % 2 === 1) {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(20, yPos - 4, 175, 18, 'F');
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(40);
+        doc.text(tr(hotel.name).substring(0, 30), 22, yPos);
+
+        doc.setFontSize(8);
+        doc.setTextColor(80);
+        const lines = aciklama.split('\n');
+        lines.forEach((line, idx) => {
+          doc.text(line.substring(0, 40), 80, yPos + (idx * 4));
+        });
+
+        doc.setFontSize(10);
+        doc.setTextColor(40);
+        doc.text(String(nights), 145, yPos + 4, { align: 'center' });
+        doc.text(`${perNight.toFixed(2)}`, 165, yPos + 4, { align: 'right' });
+        doc.text(`${totalForRes.toFixed(2)}`, 193, yPos + 4, { align: 'right' });
+
+        yPos += 18;
+
+        // Sayfa taşması koruması
+        if (yPos > 240 && i < reservations.length - 1) {
+          doc.addPage();
+          yPos = 30;
+        }
+      });
+
+      // Alt çizgi
+      doc.setDrawColor(220, 220, 220);
+      doc.line(20, yPos, 195, yPos);
+      yPos += 8;
+
+      // Toplamlar
+      doc.setFontSize(10);
+      doc.setTextColor(80);
+      doc.text('Ara Toplam:', 145, yPos);
+      doc.text(`${subtotal.toFixed(2)} ${currencyCode}`, 193, yPos, { align: 'right' });
+      yPos += 6;
+      doc.text('KDV (0%):', 145, yPos);
+      doc.text(`0.00 ${currencyCode}`, 193, yPos, { align: 'right' });
+      yPos += 8;
+
+      doc.setFillColor(220, 53, 69);
+      doc.rect(140, yPos - 5, 55, 10, 'F');
+      doc.setFontSize(12);
+      doc.setTextColor(255);
+      doc.text('TOPLAM:', 145, yPos + 2);
+      doc.text(`${subtotal.toFixed(2)} ${currencyCode}`, 193, yPos + 2, { align: 'right' });
+
+      yPos += 18;
+
+      // Banka bilgileri
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('BANKA BILGILERI', 20, yPos);
+      doc.setDrawColor(220, 220, 220);
+      doc.line(20, yPos + 2, 195, yPos + 2);
+      yPos += 7;
+      doc.setFontSize(9);
+      doc.setTextColor(40);
+      doc.text('Garanti Bankasi A.S. - Denizli Cinar Subesi (781)', 20, yPos);
+      yPos += 5;
+      doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, yPos);
+      yPos += 5;
+      doc.text('IBAN (TL):  TR40 0006 2000 7810 0006 2962 46', 20, yPos);
+      yPos += 5;
+      doc.text('IBAN (EUR): TR73 0006 2000 7810 0009 0910 95', 20, yPos);
+      yPos += 5;
+      doc.text('IBAN (USD): TR46 0006 2000 7810 0009 0910 96', 20, yPos);
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('Bu proforma fatura bilgi amaclidir ve yasal belge niteligi tasimaz.', 105, 285, { align: 'center' });
+      doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
+
+      // Kaydet
+      const fileName = reservations.length === 1
+        ? `Proforma_${tr(hotel.name).replace(/\s/g,'_')}_${tr(reservations[0].customerName || '').replace(/\s/g,'_')}.pdf`
+        : `Proforma_${tr(hotel.name).replace(/\s/g,'_')}_Toplu_${reservations.length}rez.pdf`;
+      doc.save(fileName);
+      showToast?.('✅ Proforma indirildi', 'success');
+    } catch (e) {
+      console.error('Proforma hatası:', e);
+      showToast?.('❌ Proforma oluşturulamadı: ' + e.message, 'error');
+    }
+  };
+
+  // Checkbox seçimi için state (otel detayında)
+  const [selectedResIds, setSelectedResIds] = useState([]);
+  const toggleResSelection = (id) => {
+    setSelectedResIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Fiyat dönemleri açık/kapalı state
+  const [expandedPeriods, setExpandedPeriods] = useState({});
+  const togglePeriod = (id) => setExpandedPeriods(prev => ({ ...prev, [id]: !prev[id] }));
+  const [pricesCollapsed, setPricesCollapsed] = useState(true);
+
   const filteredHotels = hotels.filter(h => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -7566,14 +7917,16 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {(hotelForm.priceList || []).map((p, idx) => {
                   const concepts = hotelForm.enabledConcepts || ['bb'];
+                  const isOpen = expandedPeriods[p.id];
                   return (
-                    <div key={p.id || idx} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(245,158,11,0.15)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: '600' }}>
+                    <div key={p.id || idx} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.15)', overflow: 'hidden' }}>
+                      <div onClick={() => togglePeriod(p.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer', userSelect: 'none', background: isOpen ? 'rgba(245,158,11,0.08)' : 'transparent' }}>
+                        <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '10px' }}>{isOpen ? '▼' : '▶'}</span>
                           📅 {formatDate(p.startDate)} → {formatDate(p.endDate)}
-                          <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>({p.currency})</span>
+                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({p.currency})</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                           <button type="button" onClick={() => { setEditingPricePeriod(p); setShowPriceModal(true); }} style={{ padding: '4px 8px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '5px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>✏️</button>
                           <button type="button" onClick={() => {
                             if (window.confirm('Bu fiyat dönemini silmek istiyor musunuz?')) {
@@ -7582,7 +7935,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           }} style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
                         </div>
                       </div>
-                      <div style={{ overflowX: 'auto' }}>
+                      {isOpen && (
+                      <div style={{ overflowX: 'auto', padding: '0 12px 12px' }}>
                         <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -7617,6 +7971,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           </tbody>
                         </table>
                       </div>
+                      )}
                     </div>
                   );
                 })}
@@ -7685,8 +8040,55 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               {h.bookingCode && <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>🎫 {h.bookingCode}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button onClick={() => openEditHotel(h)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+
+            {/* Excel Export */}
+            {reservations.length > 0 && (
+              <button onClick={() => {
+                const rows = [];
+                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Notlar']);
+                reservations.forEach(r => {
+                  const nights = calcNights(r.checkIn, r.checkOut);
+                  const total = parseFloat(r.price) || 0;
+                  const buy = parseFloat(r.buyPrice) || 0;
+                  const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
+                  rows.push([
+                    r.customerName || '',
+                    r.customerPhone || '',
+                    r.checkIn || '',
+                    r.checkOut || '',
+                    nights,
+                    r.roomType || '',
+                    r.concept ? r.concept.toUpperCase() : '',
+                    buy,
+                    total,
+                    total - buy,
+                    r.currency || '€',
+                    paid,
+                    total - paid,
+                    r.notes || ''
+                  ]);
+                });
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!cols'] = [{wch:22},{wch:14},{wch:12},{wch:12},{wch:6},{wch:14},{wch:8},{wch:10},{wch:10},{wch:10},{wch:6},{wch:10},{wch:10},{wch:30}];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Rezervasyonlar');
+                XLSX.writeFile(wb, `${h.name.replace(/\s/g,'_')}_Rezervasyonlar.xlsx`);
+                showToast?.('✅ Excel indirildi', 'success');
+              }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                📊 Excel
+              </button>
+            )}
+
+            {selectedResIds.length > 0 && (
+              <button onClick={() => {
+                const selected = reservations.filter(r => selectedResIds.includes(r.id));
+                generateHotelProforma(h, selected);
+              }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                📄 Seçilenleri Proforma ({selectedResIds.length})
+              </button>
+            )}
             <button onClick={openNewRes} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>➕ Rezervasyon</button>
           </div>
         </div>
@@ -7723,57 +8125,74 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları</div>
-          {(() => {
+          <div onClick={() => setPricesCollapsed(!pricesCollapsed)} style={{ fontSize: '13px', color: '#94a3b8', marginBottom: pricesCollapsed ? 0 : '10px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', userSelect: 'none' }}>
+            <span style={{ fontSize: '11px', color: '#f59e0b' }}>{pricesCollapsed ? '▶' : '▼'}</span>
+            💰 Anlaşma Fiyatları
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({(h.priceList || []).length} dönem)</span>
+          </div>
+          {!pricesCollapsed && (() => {
             const list = h.priceList || [];
             const concepts = h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['bb'];
             if (list.length === 0) {
               return <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>Henüz fiyat dönemi eklenmedi</div>;
             }
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {list.map(p => (
-                  <div key={p.id} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '8px' }}>
-                      📅 {formatDate(p.startDate)} → {formatDate(p.endDate)} <span style={{color:'#64748b', fontWeight:'400'}}>({p.currency})</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {list.map(p => {
+                  const isOpen = expandedPeriods[p.id];
+                  return (
+                    <div key={p.id} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div onClick={() => togglePeriod(p.id)} style={{
+                        fontSize: '12px', color: '#f59e0b', fontWeight: '600',
+                        padding: '10px', cursor: 'pointer', userSelect: 'none',
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        background: isOpen ? 'rgba(245,158,11,0.08)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}>
+                        <span style={{ fontSize: '10px', color: '#f59e0b' }}>{isOpen ? '▼' : '▶'}</span>
+                        📅 {formatDate(p.startDate)} → {formatDate(p.endDate)}
+                        <span style={{color:'#64748b', fontWeight:'400', fontSize: '11px'}}>({p.currency})</span>
+                      </div>
+                      {isOpen && (
+                        <div style={{ overflowX: 'auto', padding: '0 10px 10px' }}>
+                          <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
+                                {concepts.map(c => (
+                                  <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(appSettings?.hotelRoomTypes || ['Single','Double','Triple','Suite']).map(rt => (
+                                <tr key={rt}>
+                                  <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
+                                  {concepts.map(c => {
+                                    const val = p.rates?.[rt]?.[c];
+                                    const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
+                                    const sell = typeof val === 'number' ? val : (val?.sell || 0);
+                                    const hasAny = buy > 0 || sell > 0;
+                                    return (
+                                      <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                        {hasAny ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
+                                            <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
+                                            <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
+                                          </div>
+                                        ) : <span style={{ color: '#475569' }}>—</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
-                            {concepts.map(c => (
-                              <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(appSettings?.hotelRoomTypes || ['Single','Double','Triple','Suite']).map(rt => (
-                            <tr key={rt}>
-                              <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
-                              {concepts.map(c => {
-                                const val = p.rates?.[rt]?.[c];
-                                const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
-                                const sell = typeof val === 'number' ? val : (val?.sell || 0);
-                                const hasAny = buy > 0 || sell > 0;
-                                return (
-                                  <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
-                                    {hasAny ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
-                                        <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
-                                        <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
-                                      </div>
-                                    ) : <span style={{ color: '#475569' }}>—</span>}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}
@@ -7790,6 +8209,12 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
               <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '600px' }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <th style={{ padding: '10px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px', width: '32px' }}>
+                      <input type="checkbox"
+                        checked={reservations.length > 0 && selectedResIds.length === reservations.length}
+                        onChange={e => setSelectedResIds(e.target.checked ? reservations.map(r => r.id) : [])}
+                        style={{ cursor: 'pointer' }} />
+                    </th>
                     {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Alış', 'Satış', 'Kâr', 'Ödeme', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                     ))}
@@ -7804,7 +8229,10 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     const profit = total - buy;
                     const fullyPaid = paid >= total && total > 0;
                     return (
-                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: selectedResIds.includes(r.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                          <input type="checkbox" checked={selectedResIds.includes(r.id)} onChange={() => toggleResSelection(r.id)} style={{ cursor: 'pointer' }} />
+                        </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600' }}>
                           <span onClick={() => { const c = customers.find(x => String(x.id) === String(r.customerId)); if (c && onNavigateToCustomer) onNavigateToCustomer(c); }} style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
                             {r.customerName}
@@ -7829,6 +8257,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', display: 'flex', gap: '4px' }}>
+                          <button onClick={() => generateHotelProforma(h, [r])} style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="Proforma İndir">📄</button>
                           <button onClick={() => openEditRes(r)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                           <button onClick={() => deleteReservation(r)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
                         </td>
@@ -7890,30 +8319,48 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <input type="date" value={resData.checkIn} onChange={e => {
                       const ci = e.target.value;
                       const rt = resData.roomType, concept = resData.concept || 'bb';
-                      const period = (h.priceList || []).find(p => ci && p.startDate <= ci && p.endDate >= ci);
-                      const rateVal = period?.rates?.[rt]?.[concept];
-                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
-                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
-                      setResData({...resData, checkIn: ci, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
+                      const calc = calcReservationPrice(h, ci, resData.checkOut, rt, concept);
+                      setResData({...resData, checkIn: ci,
+                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
+                        currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Çıkış Tarihi *</label>
-                    <input type="date" value={resData.checkOut} onChange={e => setResData({...resData, checkOut: e.target.value})} style={inputStyle} />
+                    <input type="date" value={resData.checkOut} onChange={e => {
+                      const co = e.target.value;
+                      const rt = resData.roomType, concept = resData.concept || 'bb';
+                      const calc = calcReservationPrice(h, resData.checkIn, co, rt, concept);
+                      setResData({...resData, checkOut: co,
+                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
+                        currency: calc.currency || resData.currency});
+                    }} style={inputStyle} />
                   </div>
                 </div>
 
                 {resData.checkIn && resData.checkOut && (() => {
-                  const nights = calcNights(resData.checkIn, resData.checkOut);
-                  const nightlyPrice = parseFloat(resData.price) || 0;
-                  const totalForNights = nightlyPrice * nights;
+                  const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, resData.roomType, resData.concept || 'bb');
+                  const nights = calc.nights;
+                  if (nights === 0) return null;
+                  const hasMultiplePeriods = calc.periodsUsed.length > 1;
+                  const hasGaps = calc.gaps.length > 0;
                   return (
-                    <div style={{ padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', fontSize: '12px', color: '#3b82f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <span>🌙 {nights} gece konaklama</span>
-                      <span style={{ color: '#94a3b8' }}>{nightlyPrice} {resData.currency}/gece × {nights} = <strong style={{ color: '#f59e0b' }}>{totalForNights.toFixed(2)} {resData.currency}</strong></span>
-                      <button type="button" onClick={() => setResData({...resData, price: totalForNights})} style={{ padding: '4px 10px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '5px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
-                        Toplama uygula →
-                      </button>
+                    <div style={{ padding: '10px 12px', background: hasGaps ? 'rgba(239,68,68,0.08)' : 'rgba(59,130,246,0.1)', border: `1px solid ${hasGaps ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.2)'}`, borderRadius: '8px', fontSize: '12px', color: hasGaps ? '#ef4444' : '#3b82f6' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <span>🌙 {nights} gece konaklama {hasMultiplePeriods && <span style={{ fontSize: '10px', marginLeft: '4px', padding: '1px 6px', background: 'rgba(245,158,11,0.2)', color: '#f59e0b', borderRadius: '3px' }}>{calc.periodsUsed.length} dönem</span>}</span>
+                        {calc.totalSell > 0 && (
+                          <span style={{ color: '#94a3b8' }}>
+                            Hesap: <span style={{ color: '#ef4444', fontWeight: '600' }}>Alış {calc.totalBuy.toFixed(2)}</span> / <span style={{ color: '#10b981', fontWeight: '600' }}>Satış {calc.totalSell.toFixed(2)} {calc.currency}</span>
+                          </span>
+                        )}
+                      </div>
+                      {hasGaps && (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#fca5a5' }}>
+                          ⚠️ {calc.gaps.length} gün için fiyat dönemi yok: {calc.gaps.slice(0,3).join(', ')}{calc.gaps.length > 3 ? '...' : ''}. Bu günler hesaba dahil EDİLMEDİ. Eksik dönemi otel detayından ekleyin.
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -7924,12 +8371,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <select value={resData.roomType} onChange={e => {
                       const rt = e.target.value;
                       const concept = resData.concept || 'bb';
-                      // Check-in tarihine uyan price period bul
-                      const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
-                      const rateVal = period?.rates?.[rt]?.[concept];
-                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
-                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
-                      setResData({...resData, roomType: rt, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
+                      const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
+                      setResData({...resData, roomType: rt,
+                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
+                        currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
                       {(appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite']).map(rt => (
                         <option key={rt} value={rt}>{rt}</option>
@@ -7941,11 +8387,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <select value={resData.concept || 'bb'} onChange={e => {
                       const concept = e.target.value;
                       const rt = resData.roomType;
-                      const period = (h.priceList || []).find(p => resData.checkIn && p.startDate <= resData.checkIn && p.endDate >= resData.checkIn);
-                      const rateVal = period?.rates?.[rt]?.[concept];
-                      const price = typeof rateVal === 'number' ? rateVal : (rateVal?.sell || 0);
-                      const buyPrice = typeof rateVal === 'number' ? 0 : (rateVal?.buy || 0);
-                      setResData({...resData, concept, price: price !== undefined ? price : resData.price, buyPrice: buyPrice !== undefined ? buyPrice : resData.buyPrice, currency: period?.currency || resData.currency});
+                      const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
+                      setResData({...resData, concept,
+                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
+                        currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
                       {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
                         <option key={c} value={c}>
