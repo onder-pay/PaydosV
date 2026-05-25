@@ -7308,6 +7308,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     setSelectedResIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  // Fiyat dönemleri açık/kapalı state
+  const [expandedPeriods, setExpandedPeriods] = useState({});
+  const togglePeriod = (id) => setExpandedPeriods(prev => ({ ...prev, [id]: !prev[id] }));
+  const [pricesCollapsed, setPricesCollapsed] = useState(true);
+
   const filteredHotels = hotels.filter(h => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -8005,57 +8010,74 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
-          <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>💰 Anlaşma Fiyatları</div>
-          {(() => {
+          <div onClick={() => setPricesCollapsed(!pricesCollapsed)} style={{ fontSize: '13px', color: '#94a3b8', marginBottom: pricesCollapsed ? 0 : '10px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', userSelect: 'none' }}>
+            <span style={{ fontSize: '11px', color: '#f59e0b' }}>{pricesCollapsed ? '▶' : '▼'}</span>
+            💰 Anlaşma Fiyatları
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({(h.priceList || []).length} dönem)</span>
+          </div>
+          {!pricesCollapsed && (() => {
             const list = h.priceList || [];
             const concepts = h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['bb'];
             if (list.length === 0) {
               return <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>Henüz fiyat dönemi eklenmedi</div>;
             }
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {list.map(p => (
-                  <div key={p.id} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '8px' }}>
-                      📅 {formatDate(p.startDate)} → {formatDate(p.endDate)} <span style={{color:'#64748b', fontWeight:'400'}}>({p.currency})</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {list.map(p => {
+                  const isOpen = expandedPeriods[p.id];
+                  return (
+                    <div key={p.id} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div onClick={() => togglePeriod(p.id)} style={{
+                        fontSize: '12px', color: '#f59e0b', fontWeight: '600',
+                        padding: '10px', cursor: 'pointer', userSelect: 'none',
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        background: isOpen ? 'rgba(245,158,11,0.08)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}>
+                        <span style={{ fontSize: '10px', color: '#f59e0b' }}>{isOpen ? '▼' : '▶'}</span>
+                        📅 {formatDate(p.startDate)} → {formatDate(p.endDate)}
+                        <span style={{color:'#64748b', fontWeight:'400', fontSize: '11px'}}>({p.currency})</span>
+                      </div>
+                      {isOpen && (
+                        <div style={{ overflowX: 'auto', padding: '0 10px 10px' }}>
+                          <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
+                                {concepts.map(c => (
+                                  <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(appSettings?.hotelRoomTypes || ['Single','Double','Triple','Suite']).map(rt => (
+                                <tr key={rt}>
+                                  <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
+                                  {concepts.map(c => {
+                                    const val = p.rates?.[rt]?.[c];
+                                    const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
+                                    const sell = typeof val === 'number' ? val : (val?.sell || 0);
+                                    const hasAny = buy > 0 || sell > 0;
+                                    return (
+                                      <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                        {hasAny ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
+                                            <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
+                                            <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
+                                          </div>
+                                        ) : <span style={{ color: '#475569' }}>—</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                            <th style={{ padding: '4px 8px', textAlign: 'left', color: '#64748b', fontWeight: '600' }}>Oda</th>
-                            {concepts.map(c => (
-                              <th key={c} style={{ padding: '4px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{c.toUpperCase()}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(appSettings?.hotelRoomTypes || ['Single','Double','Triple','Suite']).map(rt => (
-                            <tr key={rt}>
-                              <td style={{ padding: '4px 8px', color: '#e2e8f0', fontWeight: '600' }}>{rt}</td>
-                              {concepts.map(c => {
-                                const val = p.rates?.[rt]?.[c];
-                                const buy = typeof val === 'number' ? 0 : (val?.buy || 0);
-                                const sell = typeof val === 'number' ? val : (val?.sell || 0);
-                                const hasAny = buy > 0 || sell > 0;
-                                return (
-                                  <td key={c} style={{ padding: '4px 8px', textAlign: 'center' }}>
-                                    {hasAny ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', fontSize: '10px' }}>
-                                        <span style={{ color: '#ef4444' }}>{buy > 0 ? `A: ${buy}` : '—'}</span>
-                                        <span style={{ color: '#10b981' }}>{sell > 0 ? `S: ${sell}` : '—'}</span>
-                                      </div>
-                                    ) : <span style={{ color: '#475569' }}>—</span>}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}
