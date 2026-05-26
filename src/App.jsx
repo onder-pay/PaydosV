@@ -6937,6 +6937,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1,
     buyPrice: 0, price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
+    tag: '',
     notes: ''
   };
   const [resData, setResData] = useState(emptyRes);
@@ -7375,6 +7376,213 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
   };
 
   // Checkbox seçimi için state (otel detayında)
+
+  // ====== OTEL VOUCHER OLUŞTURUCU ======
+  const generateHotelVoucher = (hotel, reservation) => {
+    if (!reservation) {
+      showToast?.('Voucher için rezervasyon gerekli', 'error');
+      return;
+    }
+    try {
+      const doc = new jsPDF();
+
+      const tr = (text) => {
+        if (!text) return '';
+        return String(text)
+          .replace(/ı/g, 'i').replace(/İ/g, 'I')
+          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+          .replace(/ş/g, 's').replace(/Ş/g, 'S')
+          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
+      };
+
+      const r = reservation;
+      const nights = calcNights(r.checkIn, r.checkOut);
+      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda (RO)' : c === 'bb' ? 'Kahvalti Dahil (BB)' : c === 'hb' ? 'Yarim Pansiyon (HB)' : c === 'fb' ? 'Tam Pansiyon (FB)' : (c || '').toUpperCase();
+      const fmt = (d) => {
+        if (!d) return '';
+        const dt = new Date(d);
+        return isNaN(dt) ? d : dt.toLocaleDateString('tr-TR');
+      };
+      const now = new Date();
+
+      // Header - Acente bilgileri
+      doc.setFontSize(20);
+      doc.setTextColor(220, 53, 69);
+      doc.text('Paydos Tur', 20, 20);
+
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.text('Paydos Turizm Ve Seyahat Acentaligi San. Tic. Ltd. Sti.', 20, 26);
+      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkiye', 20, 30);
+      doc.text('Tel: 0 258 263 71 76 | vize@paydostur.com', 20, 34);
+
+      // VOUCHER başlığı
+      doc.setFontSize(18);
+      doc.setTextColor(40);
+      doc.text('OTEL VOUCHER', 195, 22, { align: 'right' });
+      doc.setFontSize(10);
+      doc.setTextColor(220, 53, 69);
+      const vno = `V-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(r.id || '').toString().slice(-4)}`;
+      doc.text(vno, 195, 30, { align: 'right' });
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text(`Duzenleme Tarihi: ${now.toLocaleDateString('tr-TR')}`, 195, 36, { align: 'right' });
+
+      // OTEL BİLGİLERİ Kutusu
+      doc.setDrawColor(220, 53, 69);
+      doc.setFillColor(255, 248, 248);
+      doc.rect(20, 45, 175, 35, 'FD');
+      doc.setFontSize(9);
+      doc.setTextColor(220, 53, 69);
+      doc.text('OTEL BILGILERI', 24, 51);
+      doc.setFontSize(14);
+      doc.setTextColor(40);
+      doc.text(tr(hotel.name || ''), 24, 58);
+      doc.setFontSize(9);
+      doc.setTextColor(80);
+      if (hotel.address) doc.text(`Adres: ${tr(hotel.address)}`, 24, 64);
+      if (hotel.city || hotel.country) doc.text(`Sehir: ${tr(hotel.city || '')}${hotel.country ? ' / ' + tr(hotel.country) : ''}`, 24, 69);
+      if (hotel.phone) doc.text(`Telefon: ${tr(hotel.phone)}`, 24, 74);
+      if (hotel.bookingCode) {
+        doc.setFontSize(10);
+        doc.setTextColor(220, 53, 69);
+        doc.text(`Rezervasyon Kodu: ${tr(hotel.bookingCode)}`, 130, 74, { align: 'right' });
+      }
+
+      // MİSAFİR BİLGİLERİ
+      let yPos = 92;
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('MISAFIR BILGILERI', 20, yPos);
+      doc.setDrawColor(220, 220, 220);
+      doc.line(20, yPos + 2, 195, yPos + 2);
+      yPos += 9;
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Ad Soyad:', 20, yPos);
+      doc.text('Misafir Sayisi:', 110, yPos);
+      doc.setFontSize(12);
+      doc.setTextColor(40);
+      doc.text(tr(r.customerName || ''), 20, yPos + 6);
+      doc.text(String(r.guests || 1), 110, yPos + 6);
+      yPos += 14;
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Telefon:', 20, yPos);
+      doc.text('E-posta:', 110, yPos);
+      doc.setFontSize(10);
+      doc.setTextColor(40);
+      doc.text(tr(r.customerPhone || '-'), 20, yPos + 6);
+      doc.text(tr(r.customerEmail || '-'), 110, yPos + 6);
+      yPos += 16;
+
+      // KONAKLAMA BİLGİLERİ - büyük kutu
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('KONAKLAMA BILGILERI', 20, yPos);
+      doc.line(20, yPos + 2, 195, yPos + 2);
+      yPos += 7;
+
+      doc.setFillColor(245, 245, 250);
+      doc.rect(20, yPos, 175, 40, 'F');
+
+      // Giriş
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('GIRIS (Check-in)', 24, yPos + 7);
+      doc.setFontSize(14);
+      doc.setTextColor(40);
+      doc.text(fmt(r.checkIn), 24, yPos + 15);
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text('Saat: 14:00 itibariyle', 24, yPos + 21);
+
+      // Çıkış
+      doc.text('CIKIS (Check-out)', 110, yPos + 7);
+      doc.setFontSize(14);
+      doc.setTextColor(40);
+      doc.text(fmt(r.checkOut), 110, yPos + 15);
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text('Saat: 12:00\'a kadar', 110, yPos + 21);
+
+      // Gece sayısı - vurgulu
+      doc.setFillColor(220, 53, 69);
+      doc.rect(155, yPos + 5, 35, 20, 'F');
+      doc.setFontSize(20);
+      doc.setTextColor(255);
+      doc.text(String(nights), 172, yPos + 17, { align: 'center' });
+      doc.setFontSize(8);
+      doc.text('GECE', 172, yPos + 23, { align: 'center' });
+
+      // Oda tipi + konsept
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Oda Tipi:', 24, yPos + 32);
+      doc.text('Konsept:', 110, yPos + 32);
+      doc.setFontSize(11);
+      doc.setTextColor(40);
+      doc.text(tr(r.roomType || ''), 24, yPos + 37);
+      doc.text(tr(conceptLabel(r.concept)), 110, yPos + 37);
+
+      yPos += 50;
+
+      // ÖZEL NOTLAR
+      if (r.notes) {
+        doc.setFontSize(9);
+        doc.setTextColor(120);
+        doc.text('OZEL NOTLAR', 20, yPos);
+        doc.line(20, yPos + 2, 195, yPos + 2);
+        yPos += 7;
+        doc.setFontSize(10);
+        doc.setTextColor(40);
+        const noteLines = doc.splitTextToSize(tr(r.notes), 175);
+        doc.text(noteLines, 20, yPos);
+        yPos += noteLines.length * 5 + 5;
+      }
+
+      // ETIKET (varsa)
+      if (r.tag) {
+        doc.setFillColor(254, 243, 199);
+        doc.rect(20, yPos, 175, 10, 'F');
+        doc.setFontSize(10);
+        doc.setTextColor(146, 64, 14);
+        doc.text(`Etiket: ${tr(r.tag)}`, 24, yPos + 7);
+        yPos += 15;
+      }
+
+      // ÖDEME NOTU (önemli)
+      doc.setFillColor(254, 226, 226);
+      doc.setDrawColor(220, 53, 69);
+      doc.rect(20, yPos, 175, 18, 'FD');
+      doc.setFontSize(11);
+      doc.setTextColor(220, 53, 69);
+      doc.text('ODEME ACENTE TARAFINDAN YAPILACAKTIR', 105, yPos + 8, { align: 'center' });
+      doc.setFontSize(9);
+      doc.setTextColor(80);
+      doc.text('Bu voucher, Paydos Turizm tarafindan yapilan otel rezervasyonunun teyididir.', 105, yPos + 14, { align: 'center' });
+      yPos += 25;
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('Sorunsuz bir konaklama dileriz | www.paydosturizm.com', 105, 285, { align: 'center' });
+      doc.text(vno, 105, 290, { align: 'center' });
+
+      // Kaydet
+      const fileName = `Voucher_${tr(hotel.name || '').replace(/\s/g,'_')}_${tr(r.customerName || '').replace(/\s/g,'_')}.pdf`;
+      doc.save(fileName);
+      showToast?.('✅ Voucher indirildi', 'success');
+    } catch (e) {
+      console.error('Voucher hatası:', e);
+      showToast?.('❌ Voucher oluşturulamadı: ' + e.message, 'error');
+    }
+  };
+
   const [selectedResIds, setSelectedResIds] = useState([]);
   const toggleResSelection = (id) => {
     setSelectedResIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -8047,7 +8255,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
             {reservations.length > 0 && (
               <button onClick={() => {
                 const rows = [];
-                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Notlar']);
+                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar']);
                 reservations.forEach(r => {
                   const nights = calcNights(r.checkIn, r.checkOut);
                   const total = parseFloat(r.price) || 0;
@@ -8067,11 +8275,12 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     r.currency || '€',
                     paid,
                     total - paid,
+                    r.tag || '',
                     r.notes || ''
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
-                ws['!cols'] = [{wch:22},{wch:14},{wch:12},{wch:12},{wch:6},{wch:14},{wch:8},{wch:10},{wch:10},{wch:10},{wch:6},{wch:10},{wch:10},{wch:30}];
+                ws['!cols'] = [{wch:22},{wch:14},{wch:12},{wch:12},{wch:6},{wch:14},{wch:8},{wch:10},{wch:10},{wch:10},{wch:6},{wch:10},{wch:10},{wch:14},{wch:30}];
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Rezervasyonlar');
                 XLSX.writeFile(wb, `${h.name.replace(/\s/g,'_')}_Rezervasyonlar.xlsx`);
@@ -8237,6 +8446,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           <span onClick={() => { const c = customers.find(x => String(x.id) === String(r.customerId)); if (c && onNavigateToCustomer) onNavigateToCustomer(c); }} style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
                             {r.customerName}
                           </span>
+                          {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
@@ -8254,6 +8464,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                         </td>
                         <td style={{ padding: '10px 12px', display: 'flex', gap: '4px' }}>
                           <button onClick={() => generateHotelProforma(h, [r])} style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="Proforma İndir">📄</button>
+                          <button onClick={() => generateHotelVoucher(h, r)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#22c55e', cursor: 'pointer', fontSize: '14px' }} title="Voucher İndir">🎫</button>
                           <button onClick={() => openEditRes(r)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                           <button onClick={() => deleteReservation(r)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
                         </td>
@@ -8450,6 +8661,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   <div style={{ marginTop: '10px', fontSize: '12px', color: '#94a3b8' }}>
                     Toplam Ödenen: <span style={{ color: '#10b981', fontWeight: '700' }}>{((parseFloat(resData.payment1) || 0) + (parseFloat(resData.payment2) || 0) + (parseFloat(resData.payment3) || 0)).toFixed(2)} {resData.currency}</span>
                   </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>🏷️ Etiket <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — VIP, Acil, Tekrar müşteri vs.)</span></label>
+                  <input type="text" value={resData.tag || ''} onChange={e => setResData({...resData, tag: e.target.value})} placeholder="örn: VIP, Acil, Honeymoon, Kurumsal..." style={inputStyle} />
                 </div>
 
                 <div>
