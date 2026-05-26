@@ -7377,7 +7377,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   // Checkbox seçimi için state (otel detayında)
 
-  // ====== OTEL VOUCHER OLUŞTURUCU ======
+  // ====== OTEL VOUCHER OLUŞTURUCU (İngilizce - otele gönderilir) ======
   const generateHotelVoucher = (hotel, reservation) => {
     if (!reservation) {
       showToast?.('Voucher için rezervasyon gerekli', 'error');
@@ -7386,7 +7386,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     try {
       const doc = new jsPDF();
 
-      const tr = (text) => {
+      // Türkçe karakter dönüştürücü (jsPDF font sorunu için)
+      const ascii = (text) => {
         if (!text) return '';
         return String(text)
           .replace(/ı/g, 'i').replace(/İ/g, 'I')
@@ -7399,187 +7400,194 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
       const r = reservation;
       const nights = calcNights(r.checkIn, r.checkOut);
-      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda (RO)' : c === 'bb' ? 'Kahvalti Dahil (BB)' : c === 'hb' ? 'Yarim Pansiyon (HB)' : c === 'fb' ? 'Tam Pansiyon (FB)' : (c || '').toUpperCase();
-      const fmt = (d) => {
+      const mealPlan = (c) => c === 'ro' ? 'Room Only (RO)' : c === 'bb' ? 'Bed & Breakfast (BB)' : c === 'hb' ? 'Half Board (HB)' : c === 'fb' ? 'Full Board (FB)' : (c || '').toUpperCase();
+      const fmtEN = (d) => {
         if (!d) return '';
         const dt = new Date(d);
-        return isNaN(dt) ? d : dt.toLocaleDateString('tr-TR');
+        if (isNaN(dt)) return d;
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
       };
       const now = new Date();
 
-      // Header - Acente bilgileri
+      // Header - Acente
       doc.setFontSize(20);
       doc.setTextColor(220, 53, 69);
       doc.text('Paydos Tur', 20, 20);
 
       doc.setFontSize(8);
       doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi San. Tic. Ltd. Sti.', 20, 26);
-      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkiye', 20, 30);
-      doc.text('Tel: 0 258 263 71 76 | vize@paydostur.com', 20, 34);
+      doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
+      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
+      doc.text('Tel: +90 258 263 71 76 | Email: vize@paydostur.com', 20, 34);
 
       // VOUCHER başlığı
-      doc.setFontSize(18);
+      doc.setFontSize(20);
       doc.setTextColor(40);
-      doc.text('OTEL VOUCHER', 195, 22, { align: 'right' });
+      doc.text('HOTEL VOUCHER', 195, 22, { align: 'right' });
       doc.setFontSize(10);
       doc.setTextColor(220, 53, 69);
       const vno = `V-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(r.id || '').toString().slice(-4)}`;
       doc.text(vno, 195, 30, { align: 'right' });
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text(`Duzenleme Tarihi: ${now.toLocaleDateString('tr-TR')}`, 195, 36, { align: 'right' });
+      const issuedEN = (() => {
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `Issued: ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+      })();
+      doc.text(issuedEN, 195, 36, { align: 'right' });
 
-      // OTEL BİLGİLERİ Kutusu
+      // HOTEL DETAILS Kutusu
       doc.setDrawColor(220, 53, 69);
       doc.setFillColor(255, 248, 248);
       doc.rect(20, 45, 175, 35, 'FD');
       doc.setFontSize(9);
       doc.setTextColor(220, 53, 69);
-      doc.text('OTEL BILGILERI', 24, 51);
+      doc.text('HOTEL DETAILS', 24, 51);
       doc.setFontSize(14);
       doc.setTextColor(40);
-      doc.text(tr(hotel.name || ''), 24, 58);
+      doc.text(ascii(hotel.name || ''), 24, 58);
       doc.setFontSize(9);
       doc.setTextColor(80);
-      if (hotel.address) doc.text(`Adres: ${tr(hotel.address)}`, 24, 64);
-      if (hotel.city || hotel.country) doc.text(`Sehir: ${tr(hotel.city || '')}${hotel.country ? ' / ' + tr(hotel.country) : ''}`, 24, 69);
-      if (hotel.phone) doc.text(`Telefon: ${tr(hotel.phone)}`, 24, 74);
+      if (hotel.address) doc.text(`Address: ${ascii(hotel.address)}`, 24, 64);
+      if (hotel.city || hotel.country) doc.text(`Location: ${ascii(hotel.city || '')}${hotel.country ? ', ' + ascii(hotel.country) : ''}`, 24, 69);
+      if (hotel.phone) doc.text(`Phone: ${ascii(hotel.phone)}`, 24, 74);
       if (hotel.bookingCode) {
         doc.setFontSize(10);
         doc.setTextColor(220, 53, 69);
-        doc.text(`Rezervasyon Kodu: ${tr(hotel.bookingCode)}`, 130, 74, { align: 'right' });
+        doc.text(`Booking Ref: ${ascii(hotel.bookingCode)}`, 191, 74, { align: 'right' });
       }
 
-      // MİSAFİR BİLGİLERİ
+      // GUEST DETAILS
       let yPos = 92;
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('MISAFIR BILGILERI', 20, yPos);
+      doc.text('GUEST DETAILS', 20, yPos);
       doc.setDrawColor(220, 220, 220);
       doc.line(20, yPos + 2, 195, yPos + 2);
       yPos += 9;
 
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('Ad Soyad:', 20, yPos);
-      doc.text('Misafir Sayisi:', 110, yPos);
+      doc.text('Full Name:', 20, yPos);
+      doc.text('Number of Guests:', 110, yPos);
       doc.setFontSize(12);
       doc.setTextColor(40);
-      doc.text(tr(r.customerName || ''), 20, yPos + 6);
+      doc.text(ascii(r.customerName || ''), 20, yPos + 6);
       doc.text(String(r.guests || 1), 110, yPos + 6);
       yPos += 14;
 
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('Telefon:', 20, yPos);
-      doc.text('E-posta:', 110, yPos);
+      doc.text('Phone:', 20, yPos);
+      doc.text('Email:', 110, yPos);
       doc.setFontSize(10);
       doc.setTextColor(40);
-      doc.text(tr(r.customerPhone || '-'), 20, yPos + 6);
-      doc.text(tr(r.customerEmail || '-'), 110, yPos + 6);
+      doc.text(ascii(r.customerPhone || '-'), 20, yPos + 6);
+      doc.text(ascii(r.customerEmail || '-'), 110, yPos + 6);
       yPos += 16;
 
-      // KONAKLAMA BİLGİLERİ - büyük kutu
+      // ACCOMMODATION DETAILS
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('KONAKLAMA BILGILERI', 20, yPos);
+      doc.text('ACCOMMODATION DETAILS', 20, yPos);
       doc.line(20, yPos + 2, 195, yPos + 2);
       yPos += 7;
 
       doc.setFillColor(245, 245, 250);
       doc.rect(20, yPos, 175, 40, 'F');
 
-      // Giriş
+      // Check-in
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('GIRIS (Check-in)', 24, yPos + 7);
-      doc.setFontSize(14);
+      doc.text('CHECK-IN', 24, yPos + 7);
+      doc.setFontSize(13);
       doc.setTextColor(40);
-      doc.text(fmt(r.checkIn), 24, yPos + 15);
+      doc.text(fmtEN(r.checkIn), 24, yPos + 15);
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text('Saat: 14:00 itibariyle', 24, yPos + 21);
+      doc.text('From 14:00', 24, yPos + 21);
 
-      // Çıkış
-      doc.text('CIKIS (Check-out)', 110, yPos + 7);
-      doc.setFontSize(14);
+      // Check-out
+      doc.text('CHECK-OUT', 110, yPos + 7);
+      doc.setFontSize(13);
       doc.setTextColor(40);
-      doc.text(fmt(r.checkOut), 110, yPos + 15);
+      doc.text(fmtEN(r.checkOut), 110, yPos + 15);
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text('Saat: 12:00\'a kadar', 110, yPos + 21);
+      doc.text('Until 12:00', 110, yPos + 21);
 
-      // Gece sayısı - vurgulu
+      // Night badge
       doc.setFillColor(220, 53, 69);
       doc.rect(155, yPos + 5, 35, 20, 'F');
       doc.setFontSize(20);
       doc.setTextColor(255);
       doc.text(String(nights), 172, yPos + 17, { align: 'center' });
       doc.setFontSize(8);
-      doc.text('GECE', 172, yPos + 23, { align: 'center' });
+      doc.text(nights === 1 ? 'NIGHT' : 'NIGHTS', 172, yPos + 23, { align: 'center' });
 
-      // Oda tipi + konsept
+      // Room + meal plan
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('Oda Tipi:', 24, yPos + 32);
-      doc.text('Konsept:', 110, yPos + 32);
+      doc.text('Room Type:', 24, yPos + 32);
+      doc.text('Meal Plan:', 110, yPos + 32);
       doc.setFontSize(11);
       doc.setTextColor(40);
-      doc.text(tr(r.roomType || ''), 24, yPos + 37);
-      doc.text(tr(conceptLabel(r.concept)), 110, yPos + 37);
+      doc.text(ascii(r.roomType || ''), 24, yPos + 37);
+      doc.text(ascii(mealPlan(r.concept)), 110, yPos + 37);
 
       yPos += 50;
 
-      // ÖZEL NOTLAR
+      // SPECIAL NOTES
       if (r.notes) {
         doc.setFontSize(9);
         doc.setTextColor(120);
-        doc.text('OZEL NOTLAR', 20, yPos);
+        doc.text('SPECIAL NOTES', 20, yPos);
         doc.line(20, yPos + 2, 195, yPos + 2);
         yPos += 7;
         doc.setFontSize(10);
         doc.setTextColor(40);
-        const noteLines = doc.splitTextToSize(tr(r.notes), 175);
+        const noteLines = doc.splitTextToSize(ascii(r.notes), 175);
         doc.text(noteLines, 20, yPos);
         yPos += noteLines.length * 5 + 5;
       }
 
-      // ETIKET (varsa)
+      // TAG (varsa)
       if (r.tag) {
         doc.setFillColor(254, 243, 199);
         doc.rect(20, yPos, 175, 10, 'F');
         doc.setFontSize(10);
         doc.setTextColor(146, 64, 14);
-        doc.text(`Etiket: ${tr(r.tag)}`, 24, yPos + 7);
+        doc.text(`Tag: ${ascii(r.tag)}`, 24, yPos + 7);
         yPos += 15;
       }
 
-      // ÖDEME NOTU (önemli)
+      // PAYMENT NOTICE (önemli)
       doc.setFillColor(254, 226, 226);
       doc.setDrawColor(220, 53, 69);
       doc.rect(20, yPos, 175, 18, 'FD');
       doc.setFontSize(11);
       doc.setTextColor(220, 53, 69);
-      doc.text('ODEME ACENTE TARAFINDAN YAPILACAKTIR', 105, yPos + 8, { align: 'center' });
+      doc.text('PAYMENT TO BE SETTLED BY THE AGENCY', 105, yPos + 8, { align: 'center' });
       doc.setFontSize(9);
       doc.setTextColor(80);
-      doc.text('Bu voucher, Paydos Turizm tarafindan yapilan otel rezervasyonunun teyididir.', 105, yPos + 14, { align: 'center' });
+      doc.text('This voucher confirms the reservation made by Paydos Tourism on behalf of the guest.', 105, yPos + 14, { align: 'center' });
       yPos += 25;
 
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150);
-      doc.text('Sorunsuz bir konaklama dileriz | www.paydosturizm.com', 105, 285, { align: 'center' });
+      doc.text('We wish you a pleasant stay | www.paydosturizm.com', 105, 285, { align: 'center' });
       doc.text(vno, 105, 290, { align: 'center' });
 
       // Kaydet
-      const fileName = `Voucher_${tr(hotel.name || '').replace(/\s/g,'_')}_${tr(r.customerName || '').replace(/\s/g,'_')}.pdf`;
+      const fileName = `Voucher_${ascii(hotel.name || '').replace(/\s/g,'_')}_${ascii(r.customerName || '').replace(/\s/g,'_')}.pdf`;
       doc.save(fileName);
-      showToast?.('✅ Voucher indirildi', 'success');
+      showToast?.('✅ Voucher downloaded', 'success');
     } catch (e) {
-      console.error('Voucher hatası:', e);
-      showToast?.('❌ Voucher oluşturulamadı: ' + e.message, 'error');
+      console.error('Voucher error:', e);
+      showToast?.('❌ Voucher could not be created: ' + e.message, 'error');
     }
   };
 
