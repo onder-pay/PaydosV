@@ -3523,11 +3523,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   // Takvim renderı
   const renderCalendar = (days, monthName, year) => (
-    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b', textAlign: 'center' }}>{monthName} {year}</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', fontSize: '10px' }}>
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '18px', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <h4 style={{ margin: '0 0 14px', fontSize: '16px', color: '#f59e0b', textAlign: 'center', fontWeight: '700' }}>{monthName} {year}</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', fontSize: '13px' }}>
         {['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map(d => (
-          <div key={d} style={{ textAlign: 'center', color: '#64748b', padding: '4px', fontWeight: '600' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', color: '#64748b', padding: '8px 4px', fontWeight: '700', fontSize: '12px' }}>{d}</div>
         ))}
         {days.map((d, idx) => {
           const isToday = d.date === today.toISOString().split('T')[0];
@@ -3537,7 +3537,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               key={idx} 
               onClick={() => hasAppointments && setDayDetailModal({ date: d.date, appointments: d.appointments })}
               style={{ 
-                textAlign: 'center', padding: '4px 2px', borderRadius: '6px', minHeight: '32px',
+                textAlign: 'center', padding: '10px 4px', borderRadius: '8px', minHeight: '52px',
                 background: hasAppointments ? 'rgba(245,158,11,0.2)' : 'transparent',
                 border: isToday ? '2px solid #f59e0b' : '1px solid transparent',
                 color: d.day ? '#e8f1f8' : 'transparent',
@@ -3545,9 +3545,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              <span style={{ fontWeight: isToday ? '700' : '400' }}>{d.day || ''}</span>
+              <span style={{ fontWeight: isToday ? '700' : '500', fontSize: '14px' }}>{d.day || ''}</span>
               {hasAppointments && (
-                <span style={{ fontSize: '8px', color: '#f59e0b', marginTop: '1px' }}>
+                <span style={{ fontSize: '9px', color: '#f59e0b', marginTop: '2px', fontWeight: '600' }}>
                   {d.appointments.length > 2 ? `${d.appointments.length} randevu` : d.appointments.map(a => a.customerName?.split(' ')[0]).join(', ')}
                 </span>
               )}
