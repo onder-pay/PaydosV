@@ -8215,7 +8215,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                         onChange={e => setSelectedResIds(e.target.checked ? reservations.map(r => r.id) : [])}
                         style={{ cursor: 'pointer' }} />
                     </th>
-                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Alış', 'Satış', 'Kâr', 'Ödeme', ''].map(h => (
+                    {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Tutar', 'Ödeme', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
                     ))}
                   </tr>
@@ -8244,11 +8244,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                           {r.roomType}
                           {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{r.concept.toUpperCase()}</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', color: '#ef4444', fontWeight: '600', fontSize: '12px' }}>{buy > 0 ? `${buy} ${r.currency || '€'}` : '—'}</td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>{total} {r.currency || '€'}</td>
-                        <td style={{ padding: '10px 12px', fontSize: '12px', fontWeight: '700', color: profit >= 0 ? '#10b981' : '#ef4444' }}>
-                          {buy > 0 ? `${profit >= 0 ? '+' : ''}${profit.toFixed(0)}` : '—'}
-                        </td>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
                             background: fullyPaid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
