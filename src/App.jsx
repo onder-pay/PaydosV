@@ -3084,6 +3084,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
+  const [showIdataModal, setShowIdataModal] = useState(false);
+  const [idataText, setIdataText] = useState('');
+  const [idataParsed, setIdataParsed] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [dayDetailModal, setDayDetailModal] = useState(null);
@@ -3138,6 +3141,102 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   });
 
   // Excel export fonksiyonu
+  // ====== iDATA RANDEVU MAİLİ PARSER ======
+  // İsim normalize (eşleştirme için): büyük harf, Türkçe→ascii, fazla boşluk temizle
+  const normName = (s) => (s || '')
+    .toLocaleUpperCase('tr-TR')
+    .replace(/İ/g, 'I').replace(/I/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G')
+    .replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+    .replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+
+  const parseIdataText = (text) => {
+    if (!text || !text.trim()) { setIdataParsed([]); return; }
+    const lines = text.split('\n');
+    const rows = [];
+    // PNR pattern: SDP + 7-9 alfanumerik (SDPYKATUGMF) veya genel 3harf+8+
+    const pnrRe = /\b([A-Z]{2,4}[A-Z0-9]{6,10})\b/;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      // Başlık satırını atla
+      if (/AD\s*SOYAD|PNR|GİDİŞ|RANDEVU TARİHİ/i.test(line) && !pnrRe.test(line.replace(/PNR/i,''))) continue;
+      const m = line.match(pnrRe);
+      if (!m) continue;
+      const pnr = m[1];
+      // PNR öncesi = isim
+      const beforePnr = line.substring(0, m.index).trim();
+      // PNR sonrası: gidiş amacı, ofis, hizmet, randevu durumu (tab veya 2+ boşluk ayrımı)
+      const afterPnr = line.substring(m.index + pnr.length).trim();
+      const afterParts = afterPnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean);
+      // İsim temizle (tab/çoklu boşluk varsa son parça isim olabilir)
+      let name = beforePnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean).pop() || beforePnr;
+      if (!name || name.length < 3) continue;
+      rows.push({
+        name: name,
+        pnr: pnr,
+        purpose: afterParts[0] || '',
+        office: afterParts[1] || '',
+        serviceType: afterParts[2] || '',
+        appointmentStatus: afterParts[afterParts.length - 1] || '',
+        matchedCustomer: null,
+        matchedVisa: null
+      });
+    }
+
+    // CRM müşterileri + vize başvurularıyla eşleştir
+    rows.forEach(row => {
+      const target = normName(row.name);
+      // Önce vize başvurularında müşteri adı eşleşmesi
+      let bestVisa = null, bestScore = 0;
+      visaApplications.forEach(v => {
+        const vName = normName(v.customerName || '');
+        if (!vName) return;
+        let score = 0;
+        if (vName === target) score = 100;
+        else {
+          // Kelime bazlı eşleşme (isim sırası farklı olabilir)
+          const tWords = target.split(' ').filter(Boolean);
+          const vWords = vName.split(' ').filter(Boolean);
+          const common = tWords.filter(w => vWords.includes(w)).length;
+          const total = Math.max(tWords.length, vWords.length);
+          score = total > 0 ? (common / total) * 100 : 0;
+        }
+        if (score > bestScore) { bestScore = score; bestVisa = v; }
+      });
+      if (bestVisa && bestScore >= 60) {
+        row.matchedVisa = bestVisa;
+        row.matchScore = Math.round(bestScore);
+      }
+    });
+
+    setIdataParsed(rows);
+  };
+
+  const applyIdataMatches = () => {
+    const toApply = idataParsed.filter(r => r.matchedVisa);
+    if (toApply.length === 0) {
+      showToast?.('Eşleşen başvuru yok', 'warning');
+      return;
+    }
+    const updated = visaApplications.map(v => {
+      const match = toApply.find(r => r.matchedVisa && r.matchedVisa.id === v.id);
+      if (!match) return v;
+      return {
+        ...v,
+        pnr: match.pnr,
+        idataOffice: match.office || v.idataOffice,
+        // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
+        status: /atama bekliyor|bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status,
+        idataStatus: match.appointmentStatus || ''
+      };
+    });
+    setVisaApplications(updated);
+    showToast?.(`✅ ${toApply.length} başvuruya PNR işlendi`, 'success');
+    setShowIdataModal(false);
+    setIdataText('');
+    setIdataParsed([]);
+  };
+
   const exportToExcel = () => {
     if (visaApplications.length === 0) {
       showToast?.('Export edilecek vize başvurusu yok', 'warning');
@@ -4037,6 +4136,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>🌍 Vize Başvuruları ({visaApplications.length})</h2>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => { setShowIdataModal(true); setIdataText(''); setIdataParsed([]); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#a78bfa', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📧 iDATA Randevu İşle</button>
           <button onClick={exportToExcel} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', padding: '10px 16px', color: '#10b981', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Başvuru</button>
         </div>
@@ -4199,6 +4299,70 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {showForm && renderForm()}
 
       {/* GÜN DETAY MODAL */}
+      {/* iDATA RANDEVU İŞLE MODAL */}
+      {showIdataModal && (
+        <div onClick={() => setShowIdataModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '720px', width: '100%', maxHeight: '88vh', overflow: 'auto', border: '1px solid rgba(139,92,246,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#a78bfa' }}>📧 iDATA Randevu Maili İşle</h3>
+              <button onClick={() => setShowIdataModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+              iDATA mailindeki <strong>tabloyu</strong> (AD SOYAD / PNR / ... satırlarını) kopyalayıp aşağıya yapıştır. Sistem isimleri mevcut başvurularla eşleştirip PNR'leri otomatik işler.
+            </p>
+
+            <textarea
+              value={idataText}
+              onChange={e => { setIdataText(e.target.value); parseIdataText(e.target.value); }}
+              placeholder={"Mail tablosunu buraya yapıştırın...\n\nÖrnek:\nSEDA GUCLU AGAC\tSDPYKATUGMF\tAlmanya - Ticari\tİzmir Ofis\tSTANDART\tAtama Bekliyor"}
+              style={{ width: '100%', minHeight: '120px', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', color: '#e8f1f8', fontSize: '12px', fontFamily: 'monospace', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+
+            {idataParsed.length > 0 && (
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px', fontWeight: '600' }}>
+                  {idataParsed.length} kayıt bulundu — {idataParsed.filter(r => r.matchedVisa).length} eşleşti
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {idataParsed.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: r.matchedVisa ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${r.matchedVisa ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`, borderRadius: '8px', fontSize: '12px' }}>
+                      <span style={{ fontSize: '16px' }}>{r.matchedVisa ? '✅' : '❓'}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: '600', color: '#e8f1f8' }}>{r.name}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          <span style={{ color: '#a78bfa', fontWeight: '600' }}>{r.pnr}</span>
+                          {r.appointmentStatus && ` · ${r.appointmentStatus}`}
+                          {r.office && ` · ${r.office}`}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: '11px' }}>
+                        {r.matchedVisa ? (
+                          <span style={{ color: '#10b981' }}>→ {r.matchedVisa.customerName} <span style={{ color: '#64748b' }}>(%{r.matchScore})</span></span>
+                        ) : (
+                          <span style={{ color: '#ef4444' }}>Eşleşme yok</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                  <button onClick={() => setShowIdataModal(false)} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>İptal</button>
+                  <button onClick={applyIdataMatches} disabled={idataParsed.filter(r => r.matchedVisa).length === 0} style={{ flex: 2, padding: '12px', background: idataParsed.filter(r => r.matchedVisa).length > 0 ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : 'rgba(100,116,139,0.3)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', cursor: idataParsed.filter(r => r.matchedVisa).length > 0 ? 'pointer' : 'default', fontSize: '13px' }}>
+                    ✅ {idataParsed.filter(r => r.matchedVisa).length} Başvuruya PNR İşle
+                  </button>
+                </div>
+                {idataParsed.some(r => !r.matchedVisa) && (
+                  <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#fbbf24' }}>
+                    ⚠️ Eşleşmeyen kayıtlar işlenmez. Önce o müşteriler için vize başvurusu oluşturulmalı.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {dayDetailModal && (
         <div onClick={() => setDayDetailModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: '20px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '20px', maxWidth: '400px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}>
