@@ -11014,64 +11014,33 @@ export default function App() {
   // customers artık her işlemde anında Firestore'a yazılıyor - debounce gereksiz
   useEffect(() => { debouncedSave('visa_applications', 'visa_applications', visaApplications); }, [visaApplications]);
 
-  // 🇺🇸 DS-160 başvurularını otomatik ABD vize başvurusuna dönüştür
+  // 🧹 TEK SEFERLİK TEMİZLİK: yanlışlıkla visa_applications'a kopyalanmış
+  // DS-160 başvurularını sil (ds160SourceId olanlar). DS-160'lar zaten
+  // "Amerika Vize" sekmesinde ds160_applications'tan gösteriliyor.
+  const ds160CleanupDone = useRef(false);
   useEffect(() => {
     if (!initialLoadDone.current) return;
-    if (!ds160Applications || ds160Applications.length === 0) return;
-
-    // Zaten dönüştürülmüş DS-160'ları bul (ds160SourceId ile)
-    const existingSourceIds = new Set(
-      visaApplications.map(v => v.ds160SourceId).filter(Boolean)
-    );
-    const newApps = ds160Applications.filter(d => !existingSourceIds.has(d._docId));
-    if (newApps.length === 0) return;
-
-    const toIso = (v) => {
-      if (!v) return new Date().toISOString();
-      if (typeof v === 'string') return v;
-      if (v.seconds) return new Date(v.seconds * 1000).toISOString(); // Firestore Timestamp
-      if (v.toDate) try { return v.toDate().toISOString(); } catch { return new Date().toISOString(); }
-      return new Date().toISOString();
-    };
-
-    const converted = newApps.map(d => {
-      const fd = d.formData || {};
-      const name = d.customerName || fd.fullNameTr || `${fd.givenName || ''} ${fd.surname || ''}`.trim() || 'İsimsiz';
-      return {
-        id: generateUniqueId(),
-        ds160SourceId: d._docId,
-        category: 'usa',
-        customerName: name,
-        customerPhone: d.customerPhone || fd.phone || '',
-        customerEmail: d.customerEmail || fd.email || '',
-        status: 'Evrak Topluyor',
-        visaDuration: 'ABD Vize (DS-160)',
-        visaType: 'ABD Vize (DS-160)',
-        createdAt: toIso(d.createdAt),
-        ds160Data: fd,
-        notes: 'DS-160 online formundan otomatik oluşturuldu'
-      };
-    });
-
-    const updated = [...visaApplications, ...converted];
-    setVisaApplications(updated);
-
-    // ⚡ Anında Firestore'a yaz
+    if (ds160CleanupDone.current) return;
+    const copies = visaApplications.filter(v => v.ds160SourceId);
+    if (copies.length === 0) { ds160CleanupDone.current = true; return; }
+    ds160CleanupDone.current = true;
+    // Local state'ten çıkar
+    setVisaApplications(prev => prev.filter(v => !v.ds160SourceId));
+    // Firestore'dan sil
     (async () => {
       try {
         const batch = writeBatch(db);
-        const now = new Date().toISOString();
-        converted.forEach(v => {
-          const sd = { ...v, updatedAt: now };
-          batch.set(doc(db, 'visa_applications', String(v.id)), sd, { merge: true });
+        copies.forEach(v => {
+          const docId = v._docId || String(v.id);
+          batch.delete(doc(db, 'visa_applications', docId));
         });
         await batch.commit();
-        console.log(`${converted.length} DS-160 başvurusu ABD vizesine dönüştürüldü`);
+        console.log(`${copies.length} hatalı DS-160 kopyası temizlendi`);
       } catch (e) {
-        console.error('DS-160 dönüştürme Firestore hatası:', e.message);
+        console.error('DS-160 kopya temizleme hatası:', e.message);
       }
     })();
-  }, [ds160Applications, visaApplications]);
+  }, [visaApplications]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
