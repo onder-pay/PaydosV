@@ -31,7 +31,7 @@ const tourCountries = [
   // Okyanusya
   'Avustralya', 'Yeni Zelanda', 'Fiji'
 ];
-const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Evraklar Gönderildi', 'E-posta Gönderildi', 'Randevu Bekliyor', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Müşteri İptal Etti'];
+const visaStatuses = ['Evrak Topluyor', 'Evrak Tamamlandı', 'Evraklar Gönderildi', 'E-posta Gönderildi', 'Atama Bekliyor', 'Randevu Bekliyor', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Müşteri İptal Etti'];
 
 const labelStyle = { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' };
 const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
@@ -3226,7 +3226,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         pnr: match.pnr,
         idataOffice: match.office || v.idataOffice,
         // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
-        status: /atama bekliyor|bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status,
+        status: /atama bekliyor/i.test(match.appointmentStatus) ? 'Atama Bekliyor' : (/bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status),
         idataStatus: match.appointmentStatus || ''
       };
     });
@@ -3645,6 +3645,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const getStatusColor = (status) => ({
     'Evrak Topluyor': '#f59e0b', 'Evrak Tamamlandı': '#3b82f6', 'Randevu Alındı': '#8b5cf6',
+    'Atama Bekliyor': '#a855f7', 'Randevu Bekliyor': '#c084fc',
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
   }[status] || '#94a3b8');
 
