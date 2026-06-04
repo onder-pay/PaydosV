@@ -4154,6 +4154,22 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 </button>
               </div>
             )}
+
+            {/* Sil - Sadece düzenleme modunda */}
+            {editingVisa && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm(`"${formData.customerName}" vize başvurusunu silmek istediğinize emin misiniz?`)) return;
+                  await deleteVisa(editingVisa.id);
+                  setShowForm(false);
+                  setEditingVisa(null);
+                }}
+                style={{ width: '100%', marginTop: '12px', padding: '14px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}
+              >
+                🗑️ Başvuruyu Sil
+              </button>
+            )}
           </div>
         )}
       </div>
