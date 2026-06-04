@@ -3168,8 +3168,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       // PNR sonrası: gidiş amacı, ofis, hizmet, randevu durumu (tab veya 2+ boşluk ayrımı)
       const afterPnr = line.substring(m.index + pnr.length).trim();
       const afterParts = afterPnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean);
-      // İsim temizle (tab/çoklu boşluk varsa son parça isim olabilir)
-      let name = beforePnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean).pop() || beforePnr;
+      // İsim: PNR öncesi tüm harf içeren parçaları birleştir (ad+soyad ayrı sütun/tab olabilir)
+      const nameParts = beforePnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean);
+      const letterParts = nameParts.filter(p => /[A-Za-zĞÜŞİÖÇğüşıöçÂÎÛâîû]/.test(p));
+      let name = (letterParts.length ? letterParts.join(' ') : beforePnr).replace(/\s+/g, ' ').trim();
       if (!name || name.length < 3) continue;
       rows.push({
         name: name,
@@ -3198,8 +3200,13 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
           const tWords = target.split(' ').filter(Boolean);
           const vWords = vName.split(' ').filter(Boolean);
           const common = tWords.filter(w => vWords.includes(w)).length;
-          const total = Math.max(tWords.length, vWords.length);
-          score = total > 0 ? (common / total) * 100 : 0;
+          // Alt küme durumu için min'e göre de hesapla (örn 2 kelime CRM'de 3 kelimenin parçası)
+          const byMax = Math.max(tWords.length, vWords.length);
+          const byMin = Math.min(tWords.length, vWords.length);
+          const scoreMax = byMax > 0 ? (common / byMax) * 100 : 0;
+          const scoreMin = byMin > 0 ? (common / byMin) * 100 : 0;
+          // En az 2 ortak kelime varsa alt küme skorunu da değerlendir (tek ortak kelime yeterli değil)
+          score = (common >= 2) ? Math.max(scoreMax, scoreMin * 0.9) : scoreMax;
         }
         if (score > bestScore) { bestScore = score; bestVisa = v; }
       });
