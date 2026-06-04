@@ -9502,7 +9502,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                     <button onClick={(e) => {
                       e.stopPropagation();
                       const sep = ds160Url.includes('?') ? '&' : '?';
-                      window.open(`${ds160Url}${sep}id=${app._docId}`, '_blank');
+                      window.open(`${ds160Url}${sep}id=${app._docId}&edit=1`, '_blank');
                     }} style={{ width: '100%', padding: '11px', marginBottom: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
                       ✏️ Formu Aç ve Düzenle
                     </button>
