@@ -4279,7 +4279,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               const cat = getCategoryInfo(v.category);
               const daysLeft = getDaysLeft(v.appointmentDate);
               return (
-                <div key={v.id} onClick={() => setSelectedVisa(v)} style={{ background: daysLeft <= 3 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.1)', padding: '14px', borderRadius: '10px', border: daysLeft <= 3 ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>
+                <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: daysLeft <= 3 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.1)', padding: '14px', borderRadius: '10px', border: daysLeft <= 3 ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
@@ -4306,7 +4306,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             filteredVisaApplications.map(v => {
               const cat = getCategoryInfo(v.category);
               return (
-                <div key={v.id} onClick={() => setSelectedVisa(v)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
@@ -4401,7 +4401,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {dayDetailModal.appointments.map(v => {
                 const cat = getCategoryInfo(v.category);
                 return (
-                  <div key={v.id} onClick={() => { setDayDetailModal(null); setSelectedVisa(v); }} style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
+                  <div key={v.id} onClick={() => { setDayDetailModal(null); openEditVisa(v); }} style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
                     <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
                     <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.appointmentTime || '-'} • {v.country}</p>
                     <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
@@ -9183,11 +9183,16 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             _passportNo: data.passportNo || data.formData?.passportNo || '',
           };
         });
-        items.sort((a, b) => {
-          const ta = a.createdAt?.seconds || a.createdAt || '';
-          const tb = b.createdAt?.seconds || b.createdAt || '';
-          return tb > ta ? 1 : -1;
-        });
+        // createdAt karışık tipte olabilir (string ISO veya Firestore Timestamp) — ms'e çevir
+        const getTime = (v) => {
+          if (!v) return 0;
+          if (typeof v === 'object' && v.seconds) return v.seconds * 1000;
+          if (typeof v === 'object' && v.toDate) { try { return v.toDate().getTime(); } catch { return 0; } }
+          if (typeof v === 'string') return new Date(v).getTime() || 0;
+          if (typeof v === 'number') return v;
+          return 0;
+        };
+        items.sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt));
         setApplications(items);
       } catch (e) {
         console.error('DS-160 yükleme hatası:', e);
@@ -9476,6 +9481,14 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                   const tr = k => fieldNames[k] || k;
                   return (
                   <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    {/* Formu Düzenle - DS-160 formunu ?id ile aç */}
+                    <button onClick={(e) => {
+                      e.stopPropagation();
+                      const sep = ds160Url.includes('?') ? '&' : '?';
+                      window.open(`${ds160Url}${sep}id=${app._docId}`, '_blank');
+                    }} style={{ width: '100%', padding: '11px', marginBottom: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
+                      ✏️ Formu Aç ve Düzenle
+                    </button>
                     {/* Durum Güncelle + PDF */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
