@@ -5525,9 +5525,10 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
               });
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);
               return (
-                <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(139,92,246,0.05)', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', zIndex: 2000, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
+                  <button onClick={() => setRoomingTour(null)} style={{ marginBottom: '16px', padding: '10px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>← Tura Dön</button>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', color: '#8b5cf6' }}>🏨 Odalama ({totalRooms} oda)</h4>
+                    <h4 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🏨 {tour.name} — Odalama ({totalRooms} oda)</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => {
                       const hi = tour.voucherHotel || {};
