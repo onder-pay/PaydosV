@@ -7787,22 +7787,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
         yPos += noteLines.length * 5 + 5;
       }
 
-      // TAG (varsa)
-      if (r.tag) {
-        doc.setFillColor(254, 243, 199);
-        doc.rect(20, yPos, 175, 10, 'F');
-        doc.setFontSize(10);
-        doc.setTextColor(146, 64, 14);
-        doc.text(`Tag: ${ascii(r.tag)}`, 24, yPos + 7);
-        yPos += 15;
-      }
-
-      // ÖDEME DURUMU DAMGASI (Paid / Partially Paid / Pending)
-      const totalPaidV = (Number(r.payment1)||0) + (Number(r.payment2)||0) + (Number(r.payment3)||0);
-      const totalPriceV = Number(r.price)||0;
-      let pStat = 'PENDING', pc = [148,163,184];
-      if (totalPriceV > 0 && totalPaidV >= totalPriceV - 0.5) { pStat = 'PAID'; pc = [34,197,94]; }
-      else if (totalPaidV > 0) { pStat = 'PARTIALLY PAID'; pc = [245,158,11]; }
+      // ÖDEME DURUMU DAMGASI (her zaman PAID)
+      const pStat = 'PAID', pc = [34,197,94];
       doc.setDrawColor(pc[0], pc[1], pc[2]);
       doc.setLineWidth(1.5);
       doc.roundedRect(145, yPos, 50, 13, 2, 2, 'S');
