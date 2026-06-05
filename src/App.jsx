@@ -1189,13 +1189,32 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Telefon *</label>
-                    <input 
-                      type="tel" 
-                      value={formData.phone || '+90 5'} 
-                      onChange={e => setFormData({...formData, phone: formatPhoneNumber(e.target.value)})} 
-                      placeholder="+90 5XX XXX XX XX"
-                      style={inputStyle}
-                    />
+                    {(() => {
+                      const phoneVal = formData.phone || '+90 ';
+                      const codeMatch = phoneVal.match(/^(\+\d{1,4})\s*/);
+                      const curCode = codeMatch ? codeMatch[1] : '+90';
+                      const curNum = phoneVal.replace(/^\+\d{1,4}\s*/, '');
+                      const codes = [
+                        ['🇹🇷 +90','+90'],['🇩🇪 +49','+49'],['🇬🇧 +44','+44'],['🇺🇸 +1','+1'],
+                        ['🇫🇷 +33','+33'],['🇮🇹 +39','+39'],['🇳🇱 +31','+31'],['🇦🇹 +43','+43'],
+                        ['🇨🇭 +41','+41'],['🇧🇪 +32','+32'],['🇪🇸 +34','+34'],['🇬🇷 +30','+30'],
+                        ['🇷🇺 +7','+7'],['🇦🇪 +971','+971'],['🇸🇦 +966','+966'],['🇺🇦 +380','+380']
+                      ];
+                      return (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <select value={curCode} onChange={e => setFormData({...formData, phone: e.target.value + ' ' + curNum})} style={{ ...inputStyle, width: '95px', flexShrink: 0, paddingLeft: '8px', paddingRight: '4px' }}>
+                            {codes.map(([label, val]) => <option key={val} value={val} style={{ background: '#0d1f33' }}>{label}</option>)}
+                          </select>
+                          <input
+                            type="tel"
+                            value={curNum}
+                            onChange={e => setFormData({...formData, phone: curCode + ' ' + e.target.value.replace(/[^\d ]/g, '')})}
+                            placeholder="5XX XXX XX XX"
+                            style={{ ...inputStyle, flex: 1 }}
+                          />
+                        </div>
+                      );
+                    })()}
                   </div>
                   <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="ornek@email.com" />
                 </div>
@@ -4557,7 +4576,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 }
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer }) {
+function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -4650,6 +4669,145 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     setFormData({...tour});
     setEditingTour(tour);
     setShowForm(true);
+  };
+
+  // ====== TUR VOUCHER (oda bazlı, İngilizce - otele gönderilir) ======
+  const ascii = (text) => {
+    if (!text) return '';
+    return String(text)
+      .replace(/ı/g, 'i').replace(/İ/g, 'I').replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+      .replace(/ü/g, 'u').replace(/Ü/g, 'U').replace(/ş/g, 's').replace(/Ş/g, 'S')
+      .replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
+  };
+
+  const generateTourVoucher = (tour, hi, room, roomNo) => {
+    const doc = new jsPDF();
+    const fmtEN = (d) => {
+      if (!d) return '-';
+      const dt = new Date(d);
+      if (isNaN(dt)) return d;
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
+    };
+    const nightsCalc = (a,b) => { try { const d=Math.round((new Date(b)-new Date(a))/86400000); return d>0?d:0; } catch { return 0; } };
+    const mealPlan = (c) => c==='ro'?'Room Only (RO)':c==='bb'?'Bed & Breakfast (BB)':c==='hb'?'Half Board (HB)':c==='fb'?'Full Board (FB)':(c||'Bed & Breakfast (BB)');
+    const checkIn = hi.checkIn || tour.startDate || '';
+    const checkOut = hi.checkOut || tour.endDate || '';
+    const nights = nightsCalc(checkIn, checkOut);
+    const now = new Date();
+
+    // Header - Acente
+    doc.setFontSize(20); doc.setTextColor(220, 53, 69);
+    doc.text('Paydos Tur', 20, 20);
+    doc.setFontSize(8); doc.setTextColor(100);
+    doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
+    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
+
+    doc.setFontSize(20); doc.setTextColor(40);
+    doc.text('HOTEL VOUCHER', 195, 22, { align: 'right' });
+    doc.setFontSize(10); doc.setTextColor(220, 53, 69);
+    const vno = `V-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-R${roomNo}`;
+    doc.text(vno, 195, 30, { align: 'right' });
+    doc.setFontSize(8); doc.setTextColor(120);
+    doc.text(`Issued: ${now.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.getMonth()]} ${now.getFullYear()}`, 195, 36, { align: 'right' });
+
+    // HOTEL DETAILS
+    doc.setDrawColor(220, 53, 69); doc.setFillColor(255, 248, 248);
+    doc.rect(20, 45, 175, 35, 'FD');
+    doc.setFontSize(9); doc.setTextColor(220, 53, 69);
+    doc.text('HOTEL DETAILS', 24, 51);
+    doc.setFontSize(14); doc.setTextColor(40);
+    doc.text(ascii(hi.name || tour.name || ''), 24, 58);
+    doc.setFontSize(9); doc.setTextColor(80);
+    if (hi.address) doc.text(`Address: ${ascii(hi.address)}`, 24, 64);
+    const loc = `${ascii(hi.city || '')}${hi.country ? ', ' + ascii(hi.country) : ''}`;
+    if (loc.trim()) doc.text(`Location: ${loc}`, 24, 69);
+    if (hi.phone) doc.text(`Phone: ${ascii(hi.phone)}`, 24, 74);
+    const resCode = hi.bookingCode || '';
+    if (resCode) {
+      doc.setFillColor(220, 53, 69); doc.rect(135, 53, 58, 9, 'F');
+      doc.setFontSize(7); doc.setTextColor(255,255,255);
+      doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
+      doc.setFontSize(10); doc.text(ascii(resCode), 164, 61, { align: 'center' });
+    }
+
+    // GUEST DETAILS (oda misafirleri)
+    let yPos = 88;
+    doc.setFontSize(9); doc.setTextColor(120);
+    doc.text(`GUEST DETAILS — ROOM ${roomNo}`, 20, yPos);
+    doc.setDrawColor(220, 220, 220); doc.line(20, yPos + 2, 195, yPos + 2);
+    yPos += 8;
+    doc.setFontSize(11); doc.setTextColor(40);
+    room.forEach((g, i) => {
+      doc.text(`${i+1}. ${ascii(g.customerName || '')}`, 24, yPos);
+      yPos += 6;
+    });
+    yPos += 4;
+
+    // ACCOMMODATION DETAILS
+    doc.setFontSize(9); doc.setTextColor(120);
+    doc.text('ACCOMMODATION DETAILS', 20, yPos);
+    doc.line(20, yPos + 2, 195, yPos + 2);
+    yPos += 9;
+    doc.setFontSize(10); doc.setTextColor(40);
+    const roomType = room[0]?.roomType || hi.roomType || 'Standard';
+    doc.text(`Check-in:  ${fmtEN(checkIn)}`, 24, yPos); yPos += 6;
+    doc.text(`Check-out: ${fmtEN(checkOut)}`, 24, yPos); yPos += 6;
+    doc.text(`Nights: ${nights}   |   Room Type: ${ascii(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
+    doc.text(`Meal Plan: ${mealPlan(hi.concept)}`, 24, yPos); yPos += 10;
+
+    // PAID damgası
+    doc.setDrawColor(34,197,94); doc.setLineWidth(1.5);
+    doc.roundedRect(145, yPos, 50, 13, 2, 2, 'S');
+    doc.setFontSize(6); doc.setTextColor(120);
+    doc.text('PAYMENT STATUS', 170, yPos + 4, { align: 'center' });
+    doc.setFontSize(13); doc.setTextColor(34,197,94);
+    doc.text('PAID', 170, yPos + 10, { align: 'center' });
+    doc.setLineWidth(0.2); doc.setDrawColor(220, 53, 69);
+    yPos += 17;
+
+    // PAYMENT NOTICE
+    doc.setFillColor(254, 226, 226); doc.setDrawColor(220, 53, 69);
+    doc.rect(20, yPos, 175, 13, 'FD');
+    doc.setFontSize(10); doc.setTextColor(220, 53, 69);
+    doc.text('PAYMENT TO BE SETTLED BY THE AGENCY', 105, yPos + 6, { align: 'center' });
+    doc.setFontSize(7); doc.setTextColor(80);
+    doc.text('This voucher confirms the reservation made by Paydos Tourism on behalf of the guest.', 105, yPos + 10.5, { align: 'center' });
+    yPos += 18;
+
+    // Notlar (kompakt)
+    doc.setFontSize(9); doc.setTextColor(220, 53, 69);
+    doc.text('Important. Please Note', 20, yPos); yPos += 4.5;
+    doc.setFontSize(6); doc.setTextColor(90);
+    [
+      'Hotels may charge additional mandatory fees payable by the guest directly at the property, including but not exclusively: resort fee, facility fee, city tax, fee for the stay of foreign citizens.',
+      'The guest can be also asked to provide a credit card or cash deposit as a guarantee of payment for additional services such as: mini-bar, pay-TV, etc.',
+      'Agency is not responsible for the quality of services provided by the hotel. In case of any issues during check-in or check-out, please contact the Agency.'
+    ].forEach(p => { const l = doc.splitTextToSize(p, 175); doc.text(l, 20, yPos); yPos += l.length * 2.7 + 1.3; });
+    yPos += 2.5;
+    doc.setFontSize(9); doc.setTextColor(220, 53, 69);
+    doc.text('Amendment & Cancellation Policy', 20, yPos); yPos += 4.5;
+    doc.setFontSize(6); doc.setTextColor(90);
+    [
+      'An alteration of Reservation by the Customer is considered as a cancellation of Reservation and making new Reservation. We will try to negotiate the order amendment with the supplier but we cannot guarantee it will be approved.',
+      'Cancellation of reservation or no-show may result in penalties, according to rate and contract terms.',
+      'Please notify in advance if you expect to check-in after 6 pm. Hotel may cancel the reservation and charge the no-show fee in case you do not show up by that time.'
+    ].forEach(p => { const l = doc.splitTextToSize(p, 175); doc.text(l, 20, yPos); yPos += l.length * 2.7 + 1.3; });
+
+    // Footer
+    doc.setDrawColor(220, 53, 69); doc.setLineWidth(0.3); doc.line(20, 278, 190, 278);
+    doc.setFontSize(8); doc.setTextColor(80);
+    doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
+    doc.setTextColor(120);
+    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
+    doc.setTextColor(150);
+    doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
+
+    const guestName = ascii(room[0]?.customerName || `Room${roomNo}`).replace(/\s+/g, '_');
+    doc.save(`Voucher_${ascii(tour.name||'').replace(/\s+/g,'_')}_Room${roomNo}_${guestName}.pdf`);
   };
 
   const saveTour = () => {
@@ -5370,6 +5528,16 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                 <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(139,92,246,0.05)', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0, fontSize: '14px', color: '#8b5cf6' }}>🏨 Odalama ({totalRooms} oda)</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => {
+                      const hi = tour.voucherHotel || {};
+                      if (!hi.name) { showToast?.('Önce otel bilgilerini girin (aşağıdaki form)', 'warning'); return; }
+                      let n = 1;
+                      Object.values(roomTypes).forEach(rooms => rooms.forEach(room => {
+                        generateTourVoucher(tour, hi, room, n++);
+                      }));
+                      showToast?.(`${totalRooms} oda için voucher indirildi`, 'success');
+                    }} style={{ padding: '6px 12px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', color: '#22c55e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🎫 Toplu Voucher</button>
                     <button onClick={() => {
                       const rows = [['Oda No','Oda Tipi','Kişi 1','Kişi 2','Kişi 3']];
                       let n = 1;
@@ -5380,7 +5548,39 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       XLSX.utils.book_append_sheet(wb, ws, 'Odalama');
                       XLSX.writeFile(wb, `${tour.name}_Odalama.xlsx`);
                     }} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+                    </div>
                   </div>
+
+                  {/* Otel Bilgisi Girişi (Voucher için manuel) */}
+                  {(() => {
+                    const hi = tour.voucherHotel || {};
+                    const updateHotel = (field, val) => {
+                      const updated = tours.map(t => t.id === tour.id ? { ...t, voucherHotel: { ...(t.voucherHotel||{}), [field]: val } } : t);
+                      setTours(updated);
+                    };
+                    const fieldStyle = { padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '12px', width: '100%', boxSizing: 'border-box' };
+                    return (
+                      <div style={{ marginBottom: '14px', padding: '12px', background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '10px' }}>
+                        <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600', marginBottom: '8px' }}>🏨 Voucher Otel Bilgileri (manuel)</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+                          <input value={hi.name || ''} onChange={e => updateHotel('name', e.target.value)} placeholder="Otel Adı *" style={fieldStyle} />
+                          <input value={hi.bookingCode || ''} onChange={e => updateHotel('bookingCode', e.target.value)} placeholder="Rezervasyon Kodu (MB...)" style={fieldStyle} />
+                          <input value={hi.city || ''} onChange={e => updateHotel('city', e.target.value)} placeholder="Şehir" style={fieldStyle} />
+                          <input value={hi.country || ''} onChange={e => updateHotel('country', e.target.value)} placeholder="Ülke" style={fieldStyle} />
+                          <input value={hi.address || ''} onChange={e => updateHotel('address', e.target.value)} placeholder="Adres" style={fieldStyle} />
+                          <input value={hi.phone || ''} onChange={e => updateHotel('phone', e.target.value)} placeholder="Telefon" style={fieldStyle} />
+                          <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Giriş Tarihi</label><input type="date" value={hi.checkIn || tour.startDate || ''} onChange={e => updateHotel('checkIn', e.target.value)} style={fieldStyle} /></div>
+                          <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Çıkış Tarihi</label><input type="date" value={hi.checkOut || tour.endDate || ''} onChange={e => updateHotel('checkOut', e.target.value)} style={fieldStyle} /></div>
+                          <select value={hi.concept || 'bb'} onChange={e => updateHotel('concept', e.target.value)} style={fieldStyle}>
+                            <option value="ro" style={{background:'#1a3a5c'}}>Room Only (RO)</option>
+                            <option value="bb" style={{background:'#1a3a5c'}}>Bed & Breakfast (BB)</option>
+                            <option value="hb" style={{background:'#1a3a5c'}}>Half Board (HB)</option>
+                            <option value="fb" style={{background:'#1a3a5c'}}>Full Board (FB)</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {Object.entries(roomTypes).map(([type, rooms]) => (
                     <div key={type} style={{ marginBottom: '12px' }}>
                       <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '6px', padding: '4px 8px', background: 'rgba(245,158,11,0.1)', borderRadius: '6px', display: 'inline-block' }}>{type} ({rooms.length} oda)</div>
@@ -11175,7 +11375,7 @@ export default function App() {
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
