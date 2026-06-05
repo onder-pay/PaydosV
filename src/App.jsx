@@ -7694,7 +7694,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       }
 
       // GUEST DETAILS
-      let yPos = 92;
+      let yPos = 86;
       doc.setFontSize(9);
       doc.setTextColor(120);
       doc.text('GUEST DETAILS', 20, yPos);
@@ -7797,17 +7797,71 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
         yPos += 15;
       }
 
+      // ÖDEME DURUMU DAMGASI (Paid / Partially Paid / Pending)
+      const totalPaidV = (Number(r.payment1)||0) + (Number(r.payment2)||0) + (Number(r.payment3)||0);
+      const totalPriceV = Number(r.price)||0;
+      let pStat = 'PENDING', pc = [148,163,184];
+      if (totalPriceV > 0 && totalPaidV >= totalPriceV - 0.5) { pStat = 'PAID'; pc = [34,197,94]; }
+      else if (totalPaidV > 0) { pStat = 'PARTIALLY PAID'; pc = [245,158,11]; }
+      doc.setDrawColor(pc[0], pc[1], pc[2]);
+      doc.setLineWidth(1.5);
+      doc.roundedRect(145, yPos, 50, 13, 2, 2, 'S');
+      doc.setFontSize(6);
+      doc.setTextColor(120);
+      doc.text('PAYMENT STATUS', 170, yPos + 4, { align: 'center' });
+      doc.setFontSize(pStat.length > 5 ? 9 : 13);
+      doc.setTextColor(pc[0], pc[1], pc[2]);
+      doc.text(pStat, 170, yPos + 10, { align: 'center' });
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(220, 53, 69);
+      yPos += 17;
+
       // PAYMENT NOTICE (önemli)
       doc.setFillColor(254, 226, 226);
       doc.setDrawColor(220, 53, 69);
-      doc.rect(20, yPos, 175, 18, 'FD');
-      doc.setFontSize(11);
+      doc.rect(20, yPos, 175, 13, 'FD');
+      doc.setFontSize(10);
       doc.setTextColor(220, 53, 69);
-      doc.text('PAYMENT TO BE SETTLED BY THE AGENCY', 105, yPos + 8, { align: 'center' });
-      doc.setFontSize(9);
+      doc.text('PAYMENT TO BE SETTLED BY THE AGENCY', 105, yPos + 6, { align: 'center' });
+      doc.setFontSize(7);
       doc.setTextColor(80);
-      doc.text('This voucher confirms the reservation made by Paydos Tourism on behalf of the guest.', 105, yPos + 14, { align: 'center' });
-      yPos += 25;
+      doc.text('This voucher confirms the reservation made by Paydos Tourism on behalf of the guest.', 105, yPos + 10.5, { align: 'center' });
+      yPos += 18;
+
+      // ===== ÖNEMLİ NOTLAR + İPTAL POLİTİKASI (aynı sayfa, kompakt) =====
+      doc.setFontSize(9);
+      doc.setTextColor(220, 53, 69);
+      doc.text('Important. Please Note', 20, yPos);
+      yPos += 4.5;
+      doc.setFontSize(6);
+      doc.setTextColor(90);
+      const note1 = [
+        'Hotels may charge additional mandatory fees payable by the guest directly at the property, including but not exclusively: resort fee, facility fee, city tax, fee for the stay of foreign citizens.',
+        'The guest can be also asked to provide a credit card or cash deposit as a guarantee of payment for additional services such as: mini-bar, pay-TV, etc.',
+        'Agency is not responsible for the quality of services provided by the hotel. Client can contact administration of hotel directly to claim on volume and quality of provided services. In case of any issues during check-in or check-out, please contact the Agency.'
+      ];
+      note1.forEach(p => {
+        const lines = doc.splitTextToSize(p, 175);
+        doc.text(lines, 20, yPos);
+        yPos += lines.length * 2.7 + 1.3;
+      });
+      yPos += 2.5;
+      doc.setFontSize(9);
+      doc.setTextColor(220, 53, 69);
+      doc.text('Amendment & Cancellation Policy', 20, yPos);
+      yPos += 4.5;
+      doc.setFontSize(6);
+      doc.setTextColor(90);
+      const note2 = [
+        'An alteration of Reservation by the Customer is considered as a cancellation of Reservation and making new Reservation. We will try to negotiate the order amendment with the supplier but we cannot guarantee it will be approved.',
+        'Cancellation of reservation or no-show may result in penalties, according to rate and contract terms.',
+        'Please notify in advance if you expect to check-in after 6 pm. Hotel may cancel the reservation and charge the no-show fee in case you do not show up by that time.'
+      ];
+      note2.forEach(p => {
+        const lines = doc.splitTextToSize(p, 175);
+        doc.text(lines, 20, yPos);
+        yPos += lines.length * 2.7 + 1.3;
+      });
 
       // Footer - Firma bilgisi
       doc.setDrawColor(220, 53, 69);
