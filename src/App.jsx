@@ -4680,7 +4680,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       .replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
   };
 
-  const generateTourVoucher = (tour, hi, room, roomNo) => {
+  const generateTourVoucher = (tour, hi, room, roomNo, returnDoc = false) => {
     const doc = new jsPDF();
     const fmtEN = (d) => {
       if (!d) return '-';
@@ -4807,8 +4807,20 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
     const guestName = ascii(room[0]?.customerName || `Room${roomNo}`).replace(/\s+/g, '_');
-    doc.save(`Voucher_${ascii(tour.name||'').replace(/\s+/g,'_')}_Room${roomNo}_${guestName}.pdf`);
+    const fileName = `Voucher_${ascii(tour.name||'').replace(/\s+/g,'_')}_Oda${roomNo}_${guestName}.pdf`;
+    if (returnDoc) return { doc, fileName };
+    doc.save(fileName);
   };
+
+  // JSZip'i CDN'den dinamik yükle (toplu voucher için)
+  const loadJSZip = () => new Promise((resolve, reject) => {
+    if (window.JSZip) return resolve(window.JSZip);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload = () => resolve(window.JSZip);
+    s.onerror = () => reject(new Error('JSZip yüklenemedi'));
+    document.head.appendChild(s);
+  });
 
   const saveTour = () => {
     if (!formData.name || !formData.country || !formData.startDate || !formData.endDate) {
@@ -5530,15 +5542,31 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🏨 {tour.name} — Odalama ({totalRooms} oda)</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       const hi = tour.voucherHotel || {};
                       if (!hi.name) { showToast?.('Önce otel bilgilerini girin (aşağıdaki form)', 'warning'); return; }
-                      let n = 1;
-                      Object.values(roomTypes).forEach(rooms => rooms.forEach(room => {
-                        generateTourVoucher(tour, hi, room, n++);
-                      }));
-                      showToast?.(`${totalRooms} oda için voucher indirildi`, 'success');
-                    }} style={{ padding: '6px 12px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', color: '#22c55e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🎫 Toplu Voucher</button>
+                      try {
+                        showToast?.('Voucherlar hazırlanıyor...', 'info');
+                        const JSZip = await loadJSZip();
+                        const zip = new JSZip();
+                        let n = 1;
+                        Object.values(roomTypes).forEach(rooms => rooms.forEach(room => {
+                          const { doc, fileName } = generateTourVoucher(tour, hi, room, n, true);
+                          zip.file(fileName, doc.output('blob'));
+                          n++;
+                        }));
+                        const blob = await zip.generateAsync({ type: 'blob' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${ascii(tour.name||'Tur').replace(/\s+/g,'_')}_Voucherlar.zip`;
+                        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        showToast?.(`${totalRooms} voucher tek ZIP olarak indirildi`, 'success');
+                      } catch (e) {
+                        showToast?.('ZIP oluşturulamadı: ' + e.message, 'error');
+                      }
+                    }} style={{ padding: '6px 12px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', color: '#22c55e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🎫 Toplu Voucher (ZIP)</button>
                     <button onClick={() => {
                       const rows = [['Oda No','Oda Tipi','Kişi 1','Kişi 2','Kişi 3']];
                       let n = 1;
