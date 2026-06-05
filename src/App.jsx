@@ -3231,6 +3231,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       return {
         ...v,
         pnr: match.pnr,
+        processor: v.processor || 'İdata',
         idataOffice: match.office || v.idataOffice,
         // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
         status: /atama bekliyor/i.test(match.appointmentStatus) ? 'Atama Bekliyor' : (/bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status),
