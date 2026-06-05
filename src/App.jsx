@@ -3077,7 +3077,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
   }
 }
 
-function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, appSettings, showToast, addToUndo, creditCards }) {
+function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
@@ -3835,6 +3835,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         {/* ADIM 4: DETAYLAR */}
         {formStep === 'details' && selectedCategory && (
           <div>
+            {/* Üst navigasyon */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+              <button onClick={() => { setShowForm(false); resetForm(); }} style={{ flex: 1, padding: '11px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', color: '#a78bfa', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                ← Vize Listesine Dön
+              </button>
+              <button onClick={() => { setShowForm(false); resetForm(); onNavigateHome?.(); }} style={{ flex: 1, padding: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+                🏠 Ana Sayfa
+              </button>
+            </div>
             <div style={{ background: `rgba(${hexToRgb(selectedCategory.color)},0.1)`, padding: '16px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${selectedCategory.color}30` }}>
               <p style={{ margin: 0, fontSize: '13px', color: selectedCategory.color }}>{selectedCategory.icon} Adım 4/4: {selectedCategory.label} Vize Detayları</p>
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{selectedCustomer?.firstName} {selectedCustomer?.lastName}</strong></p>
@@ -11111,7 +11120,7 @@ export default function App() {
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
