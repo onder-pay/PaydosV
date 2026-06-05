@@ -7131,7 +7131,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
-function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings }) {
+function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
@@ -7165,6 +7165,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1,
     buyPrice: 0, price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
+    reservationCode: '',
     tag: '',
     notes: ''
   };
@@ -7648,7 +7649,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       doc.setTextColor(100);
       doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
       doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
-      doc.text('Tel: +90 258 263 71 76 | Email: vize@paydostur.com', 20, 34);
+      doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
 
       // VOUCHER başlığı
       doc.setFontSize(20);
@@ -7681,10 +7682,15 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       if (hotel.address) doc.text(`Address: ${ascii(hotel.address)}`, 24, 64);
       if (hotel.city || hotel.country) doc.text(`Location: ${ascii(hotel.city || '')}${hotel.country ? ', ' + ascii(hotel.country) : ''}`, 24, 69);
       if (hotel.phone) doc.text(`Phone: ${ascii(hotel.phone)}`, 24, 74);
-      if (hotel.bookingCode) {
+      const resCode = r.reservationCode || hotel.bookingCode || '';
+      if (resCode) {
+        doc.setFillColor(220, 53, 69);
+        doc.rect(135, 53, 58, 9, 'F');
+        doc.setFontSize(7);
+        doc.setTextColor(255, 255, 255);
+        doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
         doc.setFontSize(10);
-        doc.setTextColor(220, 53, 69);
-        doc.text(`Booking Ref: ${ascii(hotel.bookingCode)}`, 191, 74, { align: 'right' });
+        doc.text(ascii(resCode), 164, 61, { align: 'center' });
       }
 
       // GUEST DETAILS
@@ -7803,11 +7809,18 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
       doc.text('This voucher confirms the reservation made by Paydos Tourism on behalf of the guest.', 105, yPos + 14, { align: 'center' });
       yPos += 25;
 
-      // Footer
+      // Footer - Firma bilgisi
+      doc.setDrawColor(220, 53, 69);
+      doc.setLineWidth(0.3);
+      doc.line(20, 278, 190, 278);
       doc.setFontSize(8);
+      doc.setTextColor(80);
+      doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
+      doc.setTextColor(120);
+      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
+      doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
       doc.setTextColor(150);
-      doc.text('We wish you a pleasant stay | www.paydosturizm.com', 105, 285, { align: 'center' });
-      doc.text(vno, 105, 290, { align: 'center' });
+      doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
       // Kaydet
       const fileName = `Voucher_${ascii(hotel.name || '').replace(/\s/g,'_')}_${ascii(r.customerName || '').replace(/\s/g,'_')}.pdf`;
@@ -11123,7 +11136,7 @@ export default function App() {
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
