@@ -10996,8 +10996,10 @@ export default function App() {
           const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
           await setDoc(doc(db, collectionName, docId), data, { merge: true });
         } else {
-          // Müşteriler için silme sync YAPMA (4000+ kayıt çok pahalı - silme deleteDoc ile yapılıyor)
-          if (collectionName !== 'customers') {
+          // Silme sync YAPMA: customers (4000+ kayıt pahalı) ve visa_applications (iDATA/işlem
+          // sırasında race condition + _docId tutarsızlığı veri kaybına yol açıyordu).
+          // Bu modüllerde silme zaten anında deleteDoc ile yapılıyor.
+          if (collectionName !== 'customers' && collectionName !== 'visa_applications') {
             const snapshot = await getDocs(collection(db, collectionName));
             const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
             let delBatch = writeBatch(db);
