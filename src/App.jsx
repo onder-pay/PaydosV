@@ -9047,7 +9047,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, ci, resData.checkOut, rt, concept);
                       setResData({...resData, checkIn: ci,
-                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -9059,7 +9059,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, resData.checkIn, co, rt, concept);
                       setResData({...resData, checkOut: co,
-                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -9099,7 +9099,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
                       setResData({...resData, roomType: rt,
-                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
@@ -9115,7 +9115,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const rt = resData.roomType;
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
                       setResData({...resData, concept,
-                        price: calc.totalSell > 0 ? calc.totalSell : resData.price,
+                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
