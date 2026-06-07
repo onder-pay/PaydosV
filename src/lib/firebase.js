@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBGPKWfZA6Zck1zJaT3JAhOa1iUVIPjwZo",
+  apiKey: "AIzaSyBGPKWf2A6Zck1zJaT3JAhOai1UVIPjwZo",
   authDomain: "paydos-crm.firebaseapp.com",
   projectId: "paydos-crm",
   storageBucket: "paydos-crm.firebasestorage.app",
@@ -13,6 +13,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// ÖNEMLİ: named database 'paydos' — değiştirme!
 export const db = getFirestore(app, 'paydos');
 export const auth = getAuth(app);
+
 export default app;
