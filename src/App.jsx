@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'rea
 import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
-import { db } from './lib/firebase';
+import { db, auth } from './lib/firebase';
 import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 
@@ -375,15 +376,29 @@ function LoginScreen({ onLogin, users }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     if (!email) { setError('E-posta adresi gerekli'); return; }
     if (!password) { setError('Şifre gerekli'); return; }
     setLoading(true);
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-    if (user) { onLogin(user); } else { setError('E-posta veya şifre hatalı'); }
-    setLoading(false);
+    try {
+      // Firebase Auth ile giriş (Firestore Rules güvenliği için)
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      // users koleksiyonundan profil/rol bul (yoksa temel profil)
+      const profile = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+      onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
+    } catch (err) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError('E-posta veya şifre hatalı');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Çok fazla deneme. Biraz bekleyin.');
+      } else {
+        setError('Giriş hatası: ' + (err.code || err.message));
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -11211,10 +11226,11 @@ export default function App() {
   // 🔥 FIRESTORE'DAN YÜKLE — tam veri
   const firestoreLoaded = useRef(false);
   useEffect(() => {
-    if (firestoreLoaded.current) return;
-    firestoreLoaded.current = true;
-
-    const unsubs = [];
+    let unsubs = [];
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+      // Firebase Auth oturumu yoksa veri çekme (Firestore Rules güvenliği)
+      if (!user || firestoreLoaded.current) return;
+      firestoreLoaded.current = true;
 
     // Küçük koleksiyonlar: tam gerçek zamanlı dinleme
     const smallCollections = [
@@ -11319,8 +11335,9 @@ export default function App() {
     }, (e) => console.warn('app_settings dinleme hatası:', e.message));
     unsubs.push(settingsUnsub);
 
+    });
     // Cleanup: bileşen unmount olunca dinleyicileri kapat
-    return () => unsubs.forEach(u => u());
+    return () => { authUnsub(); unsubs.forEach(u => u()); };
   }, []);
 
   // 🔥 FIRESTORE'A KAYDET — debounced
@@ -11430,7 +11447,7 @@ export default function App() {
   useEffect(() => { debouncedSave('users', 'users', users); }, [users]);
   useEffect(() => { debouncedSave('app_settings', 'app_settings', appSettings, true); }, [appSettings]);
   const handleLogin = (user) => { setIsLoggedIn(true); setCurrentUser(user); localStorage.setItem('paydos_logged_in', 'true'); localStorage.setItem('paydos_current_user', JSON.stringify(user)); };
-  const handleLogout = () => { setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem('paydos_logged_in'); localStorage.removeItem('paydos_current_user'); };
+  const handleLogout = () => { signOut(auth).catch(()=>{}); firestoreLoaded.current = false; setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem('paydos_logged_in'); localStorage.removeItem('paydos_current_user'); };
 
   if (!isLoggedIn) return <LoginScreen onLogin={handleLogin} users={users} />;
   if (isLoading) return (<div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 50%, #0d2137 100%)' }}><div style={{ textAlign: 'center' }}><div style={{ fontSize: '48px', marginBottom: '16px' }}>✈️</div><p style={{ color: '#94a3b8' }}>Yükleniyor...</p></div></div>);
