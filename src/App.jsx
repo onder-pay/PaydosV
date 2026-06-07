@@ -5818,9 +5818,10 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
       {/* Rezervasyon Formu Modal */}
       {showReservationForm && selectedTour && (
-        <div onClick={() => { setShowReservationForm(false); setEditingReservation(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', zIndex: 2000, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
           <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '700px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="hide-scrollbar">
+          <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+            <button onClick={() => { setShowReservationForm(false); setEditingReservation(null); }} style={{ marginBottom: '16px', padding: '10px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>← Geri</button>
             <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>
               {editingReservation ? '✏️ Rezervasyon Düzenle' : '➕ Rezervasyon Ekle'} — {selectedTour.name}
             </h3>
