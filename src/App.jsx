@@ -11008,6 +11008,39 @@ export default function App() {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [prevModule, setPrevModule] = useState(null);
   const navigateTo = (mod) => { setPrevModule(activeModule); setActiveModule(mod); };
+
+  // 🔄 Tüm veriyi Firebase'den yenile (onSnapshot kaldırıldığı için manuel tazeleme)
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAllData = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    showToast?.('🔄 Firebase\'den yenileniyor...', 'info');
+    try {
+      const cols = [
+        ['visa_applications', setVisaApplications],
+        ['ds160_applications', setDs160Applications],
+        ['tours', setTours],
+        ['hotels', setHotels],
+        ['agencies', setAgencies],
+        ['credit_cards', setCreditCards],
+        ['quotes', setQuotes],
+        ['users', setUsers],
+      ];
+      await Promise.all(cols.map(async ([name, setter]) => {
+        const snap = await getDocs(collection(db, name));
+        setter(snap.empty ? [] : snap.docs.map(d => ({ ...d.data(), _docId: d.id })));
+      }));
+      const cs = await getDocs(collection(db, 'customers'));
+      let citems = cs.empty ? [] : cs.docs.map(d => ({ ...d.data(), _docId: d.id }));
+      citems = citems.filter(c => c.firstName || c.lastName);
+      setCustomers(citems);
+      showToast?.('✅ Tüm veriler güncellendi', 'success');
+    } catch (e) {
+      showToast?.('❌ Yenileme hatası: ' + e.message, 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const navigateBack = () => { if (prevModule) { setActiveModule(prevModule); setPrevModule(null); } else setActiveModule('dashboard'); };
   const [openCustomerId, setOpenCustomerId] = useState(null); // dashboard'dan müşteriye git
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -11194,15 +11227,31 @@ export default function App() {
       { name: 'users', setter: setUsers }
     ];
 
-    for (const col of smallCollections) {
-      const unsub = onSnapshot(collection(db, col.name), (snapshot) => {
-        if (snapshot.empty) { col.setter([]); return; }
-        const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
-        col.setter(items);
-        try { localStorage.setItem(`paydos_${col.name}`, JSON.stringify(items)); } catch(e) {}
-      }, (e) => console.warn(`${col.name} dinleme hatası:`, e.message));
-      unsubs.push(unsub);
-    }
+    // Performans: sürekli onSnapshot yerine tek seferlik getDocs (telefonda çok daha hızlı).
+    // localStorage cache zaten anında render ediyor; bu arka planda bir kez tazeliyor.
+    (async () => {
+      await Promise.all(smallCollections.map(async (col) => {
+        try {
+          const snapshot = await getDocs(collection(db, col.name));
+          const items = snapshot.empty ? [] : snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+          col.setter(items);
+          // localStorage'a hafif (resimsiz) kaydet — quota aşımını önler
+          try {
+            const lite = items.map(it => {
+              const o = { ...it };
+              if (o.formData && typeof o.formData === 'object') {
+                const fd = { ...o.formData };
+                ['passport','visa','usaVisa'].forEach(k => { if (fd[k] && fd[k].image) fd[k] = { ...fd[k], image: (fd[k].image||'').startsWith('http') ? fd[k].image : '' }; });
+                o.formData = fd;
+              }
+              ['passportImage','visaImage','image'].forEach(k => { if (o[k] && !String(o[k]).startsWith('http')) o[k] = ''; });
+              return o;
+            });
+            localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
+          } catch(e) {}
+        } catch (e) { console.warn(`${col.name} yükleme hatası:`, e.message); }
+      }));
+    })();
 
     // Customers: ilk yükleme getDocs, sonra değişen kayıtları onSnapshot ile yakala
     const loadCustomers = async () => {
@@ -11428,12 +11477,12 @@ export default function App() {
       
       {isMobile && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100 }} />}
       <aside style={{ position: 'fixed', left: isMobile ? (sidebarOpen ? 0 : '-280px') : 0, top: 0, bottom: 0, width: '260px', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 200, transition: 'left 0.3s ease', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div></div></div>
+        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
         <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>⌘{idx+1}</span>}</button>))}</nav>
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}><div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px' }}>{currentUser?.name?.[0] || 'U'}</div><div><p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>{currentUser?.name}</p><p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p></div></div><button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🚪 Çıkış Yap</button></div>
       </aside>
       <main style={{ marginLeft: isMobile ? 0 : '260px', minHeight: '100vh' }}>
-        {isMobile && <header style={{ position: 'sticky', top: 0, background: 'rgba(12,25,41,0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}><button onClick={() => setSidebarOpen(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px 12px', color: '#e8f1f8', cursor: 'pointer', fontSize: '18px' }}>☰</button><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>✈️</span><span style={{ fontWeight: '700' }}>Paydos</span></div><div style={{ width: '40px' }} /></header>}
+        {isMobile && <header style={{ position: 'sticky', top: 0, background: 'rgba(12,25,41,0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}><button onClick={() => setSidebarOpen(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px 12px', color: '#e8f1f8', cursor: 'pointer', fontSize: '18px' }}>☰</button><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>✈️</span><span style={{ fontWeight: '700' }}>Paydos</span></div><button onClick={refreshAllData} disabled={refreshing} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px', width: '40px' }}>{refreshing ? '⏳' : '🔄'}</button></header>}
         {renderModule()}
       </main>
     </div>
