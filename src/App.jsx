@@ -9533,7 +9533,12 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
         setLoading(false);
       }
     };
-    loadApplications();
+    // Firebase Auth oturumu hazır olunca çek (Rules okuma için auth ister)
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) { setLoading(false); return; }
+      loadApplications();
+    });
+    return () => unsub();
   }, []);
 
   const statusColors = {
