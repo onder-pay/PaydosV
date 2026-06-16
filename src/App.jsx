@@ -9751,7 +9751,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                       {/* Kişiye özel devam linki */}
                       <button onClick={(e) => {
                         e.stopPropagation();
-                        const link = `${ds160Url}${ds160Url.includes('?') ? '&' : '?'}id=${app._docId}`;
+                        const link = `${ds160Url}${ds160Url.includes('?') ? '&' : '?'}id=${app._docId}&edit=1`;
                         navigator.clipboard.writeText(link);
                         showToast?.('Devam linki kopyalandı — müşteriye gönderin', 'success');
                       }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', padding: '4px 8px', fontSize: '13px' }} title="Bu kişinin devam linkini kopyala">
