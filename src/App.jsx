@@ -2648,7 +2648,8 @@ JSON formatı:
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
 
-                    const model = appSettings?.claudeModel || 'claude-sonnet-4-6';
+                    const savedModel = appSettings?.claudeModel;
+                    const model = (!savedModel || savedModel === 'claude-sonnet-4-20250514') ? 'claude-sonnet-4-6' : savedModel;
 
                     const userContent = [];
                     for (const img of aiImages) {
