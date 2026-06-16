@@ -7,3 +7,15 @@
 
 [build.environment]
   SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
+
+# DS-160 formu — SPA catch-all'dan ÖNCE gelmeli, yoksa CRM'i açar
+[[redirects]]
+  from = "/ds160.html"
+  to = "/ds160.html"
+  status = 200
+
+# SPA fallback — diğer tüm yollar React uygulamasına
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
