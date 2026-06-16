@@ -10,16 +10,13 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8888'   // Netlify dev
 ];
 
-// İzin verilen Claude modelleri (whitelist)
+// İzin verilen Claude modelleri (whitelist) — Haziran 2026 güncel modeller
 const ALLOWED_MODELS = [
-  'claude-sonnet-4-5',
-  'claude-sonnet-4-5-20250929',
-  'claude-sonnet-4-20250514',
+  'claude-fable-5',
+  'claude-opus-4-8',
+  'claude-sonnet-4-6',
   'claude-haiku-4-5',
-  'claude-haiku-4-5-20251001',
-  'claude-3-5-sonnet-20241022',
-  'claude-3-5-haiku-20241022',
-  'claude-3-haiku-20240307'
+  'claude-haiku-4-5-20251001'
 ];
 
 const MAX_TOKENS_CAP = 2000; // max_tokens üst limit
