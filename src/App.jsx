@@ -5487,7 +5487,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   )}
 
                   {/* AKTİF REZERVASYONLAR */}
-                  {!showCancelled[tour.id] && aktifRes.length > 0 && (
+                  {!(showCancelled[tour.id] && iptalRes.length > 0) && aktifRes.length > 0 && (
                     <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '12px' }}>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
