@@ -5509,29 +5509,32 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                     </div>
                   )}
 
-                  {/* İPTAL EDİLEN REZERVASYONLAR */}
+                  {/* İPTAL EDİLENLER — AYRI PENCERE (MODAL) */}
                   {iptalRes.length > 0 && showCancelled[tour.id] && (
-                    <div style={{ background: 'rgba(239,68,68,0.03)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(239,68,68,0.15)' }}>
-                      <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: '700' }}>⊘ İptal Edilenler ({iptalRes.length})</span>
-                        <span style={{ fontSize: '11px', color: '#64748b' }}>— Kararınız değişirse geri alabilirsiniz</span>
-                      </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
-                          <thead>
-                            <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(239,68,68,0.1)' }}>
-                              {(detailedView[tour.id]
-                                ? ['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', '']
-                                : ['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', '']
-                              ).map(h => (
-                                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {iptalRes.map(res => detailedView[tour.id] ? renderDetailRow(res) : renderRow(res))}
-                          </tbody>
-                        </table>
+                    <div onClick={() => setShowCancelled(prev => ({...prev, [tour.id]: false}))} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 12px', overflowY: 'auto' }}>
+                      <div onClick={e => e.stopPropagation()} style={{ background: '#0f1b2e', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '16px', width: '100%', maxWidth: '760px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+                        <div style={{ padding: '14px 18px', background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '15px', color: '#ef4444', fontWeight: '700' }}>⊘ İptal Edilenler ({iptalRes.length})</span>
+                          <span style={{ fontSize: '12px', color: '#64748b', flex: 1 }}>— Kararınız değişirse ↩ ile geri alabilirsiniz</span>
+                          <button onClick={() => setShowCancelled(prev => ({...prev, [tour.id]: false}))} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 12px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>✕ Kapat</button>
+                        </div>
+                        <div style={{ overflowX: 'auto', maxHeight: '70vh', overflowY: 'auto' }}>
+                          <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
+                            <thead>
+                              <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(239,68,68,0.1)' }}>
+                                {(detailedView[tour.id]
+                                  ? ['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', '']
+                                  : ['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', '']
+                                ).map(h => (
+                                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#64748b', fontWeight: '600', fontSize: '11px' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {iptalRes.map(res => detailedView[tour.id] ? renderDetailRow(res) : renderRow(res))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   )}
