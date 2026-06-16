@@ -2710,6 +2710,7 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
                     else if (err.message.includes('500') || err.message.includes('529')) errMsg = 'AI servisi şu an meşgul. Birkaç saniye sonra tekrar deneyin.';
                     else if (err.message.includes('JSON')) errMsg = 'AI yanıtı işlenemedi. Lütfen tekrar deneyin.';
                     else if (err.message.includes('proxy')) errMsg = 'Bağlantı sorunu. Sayfayı yenileyip tekrar deneyin.';
+                    else errMsg = 'AI okuma başarısız: ' + (err.message || '').slice(0, 180);
                     showToast?.(errMsg, 'error');
                   } finally {
                     setAiLoading(false);
