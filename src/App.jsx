@@ -5233,7 +5233,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
             {/* Rezervasyon İstatistikleri */}
 
             {/* Özet */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '10px' }}>
               {(() => {
                 const totalBedel = activeRes.reduce((s, r) => s + (r.tourPrice || 0), 0);
                 const totalOdenen = activeRes.reduce((s, r) => s + (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0), 0);
@@ -5246,9 +5246,9 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                   { label: 'Ödenmemiş', value: totalOdenmemis > 0 ? totalOdenmemis.toLocaleString('tr') : '0', color: totalOdenmemis > 0 ? '#ef4444' : '#64748b', suffix: ` ${cur}` },
                 ];
               })().map(s => (
-                <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', textAlign: 'center', border: `1px solid ${s.color}20` }}>
-                  <div style={{ fontSize: '18px', fontWeight: '700', color: s.color }}>{s.value}{s.suffix}</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{s.label}</div>
+                <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '7px 8px', textAlign: 'center', border: `1px solid ${s.color}20` }}>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: s.color }}>{s.value}{s.suffix}</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{s.label}</div>
                 </div>
               ))}
             </div>
