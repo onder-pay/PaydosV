@@ -1361,7 +1361,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                             const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu pasaport. SADECE JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthPlace":"","nationality":"TUR"}. nationality 3 harfli ISO kodu.' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu pasaport. SADECE JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthPlace":"","nationality":"TUR"}. nationality 3 harfli ISO kodu.' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
@@ -1454,7 +1454,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                             const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu Schengen vizesi. SADECE JSON: {"country":"Almanya","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu Schengen vizesi. SADECE JSON: {"country":"Almanya","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
@@ -2648,7 +2648,7 @@ JSON formatı:
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
 
-                    const model = appSettings?.claudeModel || 'claude-sonnet-4-20250514';
+                    const model = appSettings?.claudeModel || 'claude-sonnet-4-6';
 
                     const userContent = [];
                     for (const img of aiImages) {
@@ -9618,6 +9618,14 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
           }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 14px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>
             📋 Link Kopyala
           </button>
+          <button onClick={() => {
+            const newId = 'a' + Math.random().toString(36).slice(2,8) + Date.now().toString(36);
+            const link = `${ds160Url}${ds160Url.includes('?') ? '&' : '?'}id=${newId}`;
+            navigator.clipboard.writeText(link);
+            showToast?.('Yeni kişiye özel link kopyalandı — müşteriye gönderin', 'success');
+          }} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', padding: '8px 14px', color: '#0c1929', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }} title="Her müşteriye ayrı, devam edilebilir link üretir">
+            ➕ Yeni Başvuru Linki
+          </button>
         </div>
       </div>
 
@@ -9738,6 +9746,15 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                       <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}30` }}>
                         {status}
                       </span>
+                      {/* Kişiye özel devam linki */}
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        const link = `${ds160Url}${ds160Url.includes('?') ? '&' : '?'}id=${app._docId}`;
+                        navigator.clipboard.writeText(link);
+                        showToast?.('Devam linki kopyalandı — müşteriye gönderin', 'success');
+                      }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', padding: '4px 8px', fontSize: '13px' }} title="Bu kişinin devam linkini kopyala">
+                        🔗
+                      </button>
                       {/* Sil butonu */}
                       <button onClick={async (e) => {
                         e.stopPropagation();
@@ -10816,11 +10833,11 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               <div>
                 <label style={labelStyle}>AI Modeli</label>
                 <select
-                  value={appSettings?.claudeModel || 'claude-sonnet-4-20250514'}
+                  value={appSettings?.claudeModel || 'claude-sonnet-4-6'}
                   onChange={e => setAppSettings({ ...appSettings, claudeModel: e.target.value })}
                   style={selectStyle}
                 >
-                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Önerilen)</option>
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Önerilen)</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Hızlı/Ucuz)</option>
                 </select>
               </div>
