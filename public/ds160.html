@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Paydos Turizm - DS-160</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a);font-family:'DM Sans',sans-serif;color:#e0e0e0}
+.c{max-width:700px;margin:0 auto;padding:20px 16px}
+.logo{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;background:linear-gradient(135deg,#e2b04a,#f0c96e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
+.sub{color:#8888aa;font-size:14px;text-align:center;margin:4px 0 16px}
+.pb{width:100%;background:#1a1a2e;border-radius:8px;height:6px;overflow:hidden}
+.pf{height:100%;background:linear-gradient(90deg,#e2b04a,#f0c96e);border-radius:8px;transition:width .4s}
+.pt{text-align:right;font-size:12px;color:#8888aa;margin-top:4px}
+.sn{display:flex;flex-wrap:wrap;gap:4px;margin:12px 0}
+.sb{padding:5px 8px;border-radius:6px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif;border:none;transition:all .2s}
+.sb.a{border:2px solid #e2b04a;background:#2a2a4a;color:#e2b04a}
+.sb.d{border:1px solid #2a2a4a;background:#1a3a2a;color:#6fcf97}
+.sb.x{border:1px solid #2a2a4a;background:#12122a;color:#8888aa}
+.card{background:#16162a;border-radius:16px;border:1px solid #2a2a4a;padding:24px;margin-top:8px}
+.card h2{font-family:'Playfair Display',serif;color:#e2b04a;font-size:20px;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+.fg{display:flex;flex-direction:column;gap:14px}
+.fl label{display:block;font-size:13px;color:#c0c0d0;margin-bottom:5px;font-weight:500}
+.fl input,.fl select{width:100%;padding:11px 13px;border-radius:8px;border:1px solid #2a2a4a;background:#0d0d1a;color:#e0e0e0;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;font-family:'DM Sans',sans-serif}
+.fl select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238888aa' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+.fl input:focus,.fl select:focus{border-color:#e2b04a;box-shadow:0 0 0 2px rgba(226,176,74,.15)}
+.fl .nt{font-size:11px;color:#666680;margin-top:3px;font-style:italic}
+.fl .ai{border-color:#e2b04a!important;background:rgba(226,176,74,.05)!important}
+.sec{font-size:13px;color:#e2b04a;font-weight:700;padding:8px 0 4px;border-bottom:1px solid #2a2a4a;margin:8px 0}
+.nb{display:flex;gap:10px;margin-top:16px;padding-bottom:40px}
+.nb button{flex:1;padding:14px 0;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+.bg{border:none;background:linear-gradient(135deg,#e2b04a,#d4943a);color:#0d0d1a}
+.bo{border:1px solid #2a2a4a;background:#12122a;color:#8888aa}
+.uz{border:2px dashed #2a2a4a;border-radius:12px;padding:30px 16px;text-align:center;cursor:pointer;transition:all .3s}
+.uz:hover{border-color:#e2b04a;background:rgba(226,176,74,.03)}
+.uz.ok{border-style:solid;border-color:#6fcf97;cursor:default;padding:14px}
+.uz input[type=file]{display:none}
+.ap{padding:16px;background:rgba(226,176,74,.05);border:1px solid rgba(226,176,74,.2);border-radius:12px;text-align:center;margin-top:12px}
+.dots::after{content:'';animation:dots 1.5s steps(3) infinite}
+@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.spx{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.spx span{font-size:11px;padding:4px 10px;border-radius:20px;background:rgba(226,176,74,.08);color:#e2b04a;border:1px solid rgba(226,176,74,.15);margin:2px;display:inline-block}
+.bsub{width:100%;padding:16px 0;border-radius:12px;border:none;background:linear-gradient(135deg,#e2b04a,#d4943a);color:#0d0d1a;font-size:17px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:16px}
+.bwa{width:100%;padding:14px 0;border-radius:12px;border:1px solid #25D366;background:rgba(37,211,102,.08);color:#25D366;font-size:15px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:10px}
+.sr{display:flex;gap:8px;font-size:12px;padding:2px 0;color:#c0c0d0}
+.sr .lbl{color:#8888aa;min-width:130px}
+.warn{background:rgba(226,176,74,.06);border:1px solid rgba(226,176,74,.2);border-radius:10px;padding:14px;margin:12px 0;font-size:13px;color:#ddd;line-height:1.7}
+.warn b{color:#e2b04a}
+.warn .red{color:#ff6b6b}
+.il{list-style:none;padding:0;margin:12px 0}
+.il li{padding:8px 0;font-size:13px;color:#c0c0d0;display:flex;align-items:flex-start;gap:8px;border-bottom:1px solid rgba(42,42,74,.5)}
+@media(max-width:500px){.sb .st{display:none}.sr{flex-direction:column;gap:2px}.sr .lbl{min-width:0}}
+</style>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyBGPKWf2A6Zck1zJaT3JAhOai1UVIPjwZo",
+    authDomain: "paydos-crm.firebaseapp.com",
+    projectId: "paydos-crm",
+    storageBucket: "paydos-crm.firebasestorage.app",
+    messagingSenderId: "1085867941071",
+    appId: "1:1085867941071:web:f0b93edb5efed7de70abba"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app, 'paydos');
+  // Forma Firebase kaydetme helper'ı sağla
+  window.__saveDS160 = async (id, data) => {
+    await setDoc(doc(db, 'ds160_applications', id), data, { merge: true });
+  };
+  window.__loadDS160 = async (id) => {
+    const snap = await getDoc(doc(db, 'ds160_applications', id));
+    return snap.exists() ? snap.data() : null;
+  };
+  window.__ds160FBReady = true;
+  // Hazır olunca bekleyen kaydı yaz
+  if (window.__ds160PendingSave) { window.__ds160PendingSave(); window.__ds160PendingSave = null; }
+</script>
+</head>
+<body>
+<div class="c" id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+var _mem={};
+var store={get:function(k){try{return localStorage.getItem(k)}catch(e){return _mem[k]||null}},set:function(k,v){try{localStorage.setItem(k,v)}catch(e){_mem[k]=v}},del:function(k){try{localStorage.removeItem(k)}catch(e){delete _mem[k]}}};
+var WA="905XXXXXXXXX";
+var ID=(function(){var p=new URLSearchParams(location.search);var i=p.get("id");if(!i){i="a"+Math.random().toString(36).slice(2,8)+Date.now().toString(36);history.replaceState(null,"","?id="+i)}return i})();
+var SK="ds160_"+ID;
+var ST=[{"id": "intro", "t": "Hoş Geldiniz", "i": "🇺🇸", "tp": "intro", "f": []}, {"id": "docs", "t": "Belge Yükle", "i": "📁", "tp": "docs", "f": []}, {"id": "p1", "t": "Kişisel Bilgiler", "i": "👤", "f": [{"k": "lastName", "l": "Soyadı", "n": "Pasaporttaki gibi, Türkçe karakter KULLANMAYIN"}, {"k": "firstName", "l": "Adı", "n": "Pasaporttaki gibi, Türkçe karakter KULLANMAYIN"}, {"k": "maidenSurname", "l": "Evlenmeden Önceki Soyadınız", "n": "Yoksa boş bırakın"}, {"k": "fullNameTr", "l": "Ad Soyad (Türkçe karakterli)"}, {"k": "gender", "l": "Cinsiyet", "s": 1, "o": ["ERKEK", "KADIN"]}, {"k": "maritalStatus", "l": "Medeni Durum", "s": 1, "o": ["BEKAR", "EVLİ", "DUL", "BOŞANMIŞ"]}, {"k": "birthDate", "l": "Doğum Tarihi", "s": "date"}, {"k": "birthPlace", "l": "Doğum Yeri (Şehir)"}, {"k": "birthCountry", "l": "Doğum Ülkesi"}, {"k": "nationality", "l": "Uyruğunuz"}, {"k": "otherNationality", "l": "Başka bir uyruğunuz var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "otherNationalityCountry", "l": "Varsa hangi ülke?", "c": "otherNationality=EVET"}, {"k": "tcKimlik", "l": "TC Kimlik Numarası"}]}, {"id": "cn", "t": "İletişim", "i": "📞", "f": [{"k": "homeAddress", "l": "İkametgah Adresi (E-Devlet'teki)", "n": "Türkçe karakter kullanmayın"}, {"k": "homeDistrict", "l": "İlçe"}, {"k": "homeCity", "l": "Şehir"}, {"k": "homeZip", "l": "Posta Kodu"}, {"k": "homePhone", "l": "Ev Telefonu", "n": "Yoksa boş bırakın"}, {"k": "phone", "l": "Cep Telefonu"}, {"k": "email", "l": "E-posta Adresi", "n": "Her başvuru için ayrı olmalıdır"}]}, {"id": "pi", "t": "Pasaport Bilgileri", "i": "📄", "f": [{"k": "passportType", "l": "Pasaport Türü", "s": 1, "o": ["NORMAL (BORDO)", "YEŞİL", "HUSUSİ", "DİPLOMATİK"]}, {"k": "passportNo", "l": "Pasaport Numarası"}, {"k": "passportCity", "l": "Pasaportu Veren Yer"}, {"k": "passportIssueDate", "l": "Veriliş Tarihi", "s": "date"}, {"k": "passportExpiry", "l": "Geçerlilik Tarihi", "s": "date"}, {"k": "oldPassport", "l": "Eski pasaportunuz var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "lostPassport", "l": "Pasaportunuz çalındı veya kayboldu mu?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "lostPassportDetail", "l": "Varsa açıklama", "c": "lostPassport=EVET"}]}, {"id": "tr", "t": "Seyahat Bilgileri", "i": "✈️", "f": [{"k": "travelHistory", "l": "Son 5 yılda seyahat ettiğiniz ülkeler", "n": "Virgülle ayırın"}, {"k": "travelPurpose", "l": "Seyahat Amacınız"}, {"k": "visaType", "l": "Vize Türü", "s": 1, "o": ["B1/B2 (İş/Turist)", "B1 (İş)", "B2 (Turist)"]}, {"k": "departureDate", "l": "Gidiş Tarihi", "s": "date"}, {"k": "arrivalDate", "l": "Dönüş Tarihi", "s": "date"}, {"k": "usAddress", "l": "ABD'de Kalacağınız Adres", "n": "Otelde kalacaksanız otel adını yazın"}, {"k": "usPhone", "l": "Kalacağınız Yerin Telefonu"}, {"k": "usEmail", "l": "Kalacağınız Yerin E-postası"}, {"k": "tripPayer", "l": "Seyahatinizi Kim Karşılıyor?", "s": 1, "o": ["KENDİM", "İŞVEREN", "BAŞKA ŞAHIS", "BAŞKA ŞİRKET", "DAVETÇİ"]}, {"k": "payerDetails", "l": "Başkası ise detayları", "c": "tripPayer=İŞVEREN,BAŞKA ŞAHIS,BAŞKA ŞİRKET,DAVETÇİ"}]}, {"id": "co", "t": "Seyahat Arkadaşı & Davet", "i": "👥", "f": [{"k": "hasCompanion", "l": "Sizinle seyahat eden başka kişi var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "companionName", "l": "Adı Soyadı", "c": "hasCompanion=EVET"}, {"k": "companionRelation", "l": "Yakınlık Derecesi", "c": "hasCompanion=EVET", "s": 1, "o": ["EŞ", "ÇOCUK", "KARDEŞ", "ARKADAŞ", "İŞ ARKADAŞI", "DİĞER"]}, {"k": "companionPhone", "l": "Cep Telefonu", "c": "hasCompanion=EVET"}, {"k": "companionEmail", "l": "E-posta Adresi", "c": "hasCompanion=EVET"}, {"k": "inviterName", "l": "Davet Eden Kişinin Adı Soyadı", "n": "Yoksa boş bırakın"}, {"k": "inviterRelation", "l": "Davet Eden Kişi ile Bağınız"}]}, {"id": "pr", "t": "Önceki ABD Deneyimi", "i": "🗽", "f": [{"k": "beenToUS", "l": "Daha önce ABD'de bulundunuz mu?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "usArrivalDate", "l": "Gidiş Tarihi", "s": "date", "c": "beenToUS=EVET"}, {"k": "usDepartureDate", "l": "Dönüş Tarihi", "s": "date", "c": "beenToUS=EVET"}, {"k": "hadUSVisa", "l": "Daha önce ABD vizesi aldınız mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "usVisaDate", "l": "Vize Veriliş Tarihi", "s": "date", "c": "hadUSVisa=EVET"}, {"k": "visaNumber", "l": "Vize Numarası (sağ altta kırmızı numara)", "c": "hadUSVisa=EVET"}, {"k": "sameVisaCategory", "l": "Aynı vize kategorisine mi başvuruyorsunuz?", "s": 1, "o": ["EVET", "HAYIR"], "c": "hadUSVisa=EVET"}, {"k": "hadFingerprint", "l": "Daha önce parmak iziniz alındı mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "visaLost", "l": "Vize çalındı veya kayboldu mu?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "visaCancelled", "l": "Vize iptal edildi mi?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "visaRefused", "l": "Vize başvurusundan red aldınız mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "refusalReason", "l": "Red sebebini kısaca belirtiniz", "c": "visaRefused=EVET"}, {"k": "greencardPetition", "l": "Greencard'a başvurdunuz mu?", "s": 1, "o": ["HAYIR", "EVET"]}]}, {"id": "fa", "t": "Aile Bilgileri", "i": "👨‍👩‍👧", "f": [{"k": "fatherName", "l": "Babanızın Adı Soyadı"}, {"k": "fatherBirth", "l": "Babanızın Doğum Tarihi", "s": "date"}, {"k": "fatherBirthPlace", "l": "Babanızın Doğum Yeri"}, {"k": "fatherNationality", "l": "Babanızın Vatandaşlığı"}, {"k": "motherName", "l": "Annenizin Adı Soyadı"}, {"k": "motherBirth", "l": "Annenizin Doğum Tarihi", "s": "date"}, {"k": "motherBirthPlace", "l": "Annenizin Doğum Yeri"}, {"k": "motherMaidenName", "l": "Annenizin Kızlık Soyadı"}, {"k": "motherNationality", "l": "Annenizin Vatandaşlığı"}, {"k": "parentInUS", "l": "Anneniz veya babanız ABD'de mi?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "relativeInUS", "l": "ABD'de 1. derece akraba var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "relativeInUSName", "l": "Akraba Adı Soyadı", "c": "relativeInUS=EVET"}, {"k": "relativeRelation", "l": "Yakınlık Derecesi", "c": "relativeInUS=EVET"}, {"k": "relativeUSCitizen", "l": "ABD vatandaşı mı?", "s": 1, "o": ["EVET", "HAYIR"], "c": "relativeInUS=EVET"}, {"k": "relativeAddress", "l": "Adresi", "c": "relativeInUS=EVET"}, {"k": "relativePhone", "l": "Telefonu", "c": "relativeInUS=EVET"}, {"k": "relativeEmail", "l": "E-posta", "c": "relativeInUS=EVET"}, {"k": "hasRelative2", "l": "Başka akraba var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "relative2Name", "l": "2. Akraba Adı Soyadı", "c": "hasRelative2=EVET"}, {"k": "relative2Relation", "l": "Yakınlık Derecesi", "c": "hasRelative2=EVET"}, {"k": "relative2USCitizen", "l": "ABD vatandaşı mı?", "s": 1, "o": ["EVET", "HAYIR"], "c": "hasRelative2=EVET"}]}, {"id": "es", "t": "Eş Bilgileri", "i": "💍", "f": [{"k": "spouseName", "l": "Eşinizin Adı Soyadı", "n": "Evli değilseniz boş bırakın"}, {"k": "spouseMaidenName", "l": "Eşinizin Kızlık Soyadı"}, {"k": "spouseBirthDate", "l": "Eşinizin Doğum Tarihi", "s": "date"}, {"k": "spouseBirthPlace", "l": "Eşinizin Doğum Yeri"}, {"k": "marriageDate", "l": "Evlenme Tarihi", "s": "date"}, {"k": "divorceCount", "l": "Boşandıysanız kaç kere?", "s": 1, "o": ["0", "1", "2"]}, {"k": "exSpouseName", "l": "Eski Eşinizin Adı Soyadı", "c": "divorceCount=1,2"}, {"k": "exSpouseBirth", "l": "Doğum Tarihi ve Yeri", "c": "divorceCount=1,2"}, {"k": "marriageDate", "l": "Evlenme Tarihi", "c": "divorceCount=1,2"}, {"k": "divorceDate", "l": "Boşanma Tarihi ve Sebebi", "c": "divorceCount=1,2"}, {"k": "exSpouse2Name", "l": "2. Eski Eş Adı Soyadı", "c": "divorceCount=2"}, {"k": "exSpouse2Birth", "l": "Doğum Tarihi ve Yeri", "c": "divorceCount=2"}, {"k": "marriageDate2", "l": "Evlenme Tarihi", "c": "divorceCount=2"}, {"k": "divorceDate2", "l": "Boşanma Tarihi ve Sebebi", "c": "divorceCount=2"}]}, {"id": "wk", "t": "İş Bilgileri", "i": "💼", "f": [{"k": "occupation", "l": "Mesleğiniz", "s": 1, "o": ["İŞLETME", "TARIM", "MÜHENDİSLİK", "EĞİTİM", "SAĞLIK", "BİLGİSAYAR", "HUKUK", "ÖĞRENCİ", "EMEKLİ", "ÇALIŞMIYOR", "DİĞER"]}, {"k": "jobDescription", "l": "İşyerindeki Göreviniz"}, {"k": "monthlySalary", "l": "Aylık Net Kazancınız (TL)"}, {"k": "employerName", "l": "İşyeri Adı"}, {"k": "employerAddress", "l": "İşyeri Adresi"}, {"k": "employerDistrict", "l": "İşyeri İlçesi"}, {"k": "employerCity", "l": "İşyeri Şehri"}, {"k": "employerZip", "l": "İşyeri Posta Kodu"}, {"k": "employerPhone", "l": "İş Telefonu"}, {"k": "jobStartDate", "l": "İşe Başlama Tarihi", "s": "date"}, {"k": "prevEmployerName", "l": "Önceki İşyeri Adı", "n": "Yoksa boş bırakın"}, {"k": "prevEmployerAddress", "l": "Önceki İşyeri Adresi"}, {"k": "prevEmployerPhone", "l": "Telefonu"}, {"k": "prevJobStartDate", "l": "Başlama Tarihi", "s": "date"}, {"k": "prevJobEndDate", "l": "Ayrılma Tarihi", "s": "date"}]}, {"id": "ed", "t": "Eğitim Bilgileri", "i": "🎓", "f": [{"k": "schoolName", "l": "En Son Mezun Olduğunuz Okul"}, {"k": "schoolAddress", "l": "Okul Adresi"}, {"k": "educationField", "l": "Bölümünüz"}, {"k": "educationStart", "l": "Başlangıç Tarihi", "s": "date"}, {"k": "educationEnd", "l": "Bitiş Tarihi", "s": "date"}]}, {"id": "ml", "t": "Askerlik & Dil", "i": "🎖️", "f": [{"k": "militaryService", "l": "Askerliğinizi yaptınız mı?", "s": 1, "o": ["EVET", "HAYIR", "MUAF", "TECİLLİ"]}, {"k": "militaryRank", "l": "Rütbe", "c": "militaryService=EVET"}, {"k": "militaryStart", "l": "Başlangıç Tarihi", "s": "date", "c": "militaryService=EVET"}, {"k": "militaryEnd", "l": "Bitiş Tarihi", "s": "date", "c": "militaryService=EVET"}, {"k": "languages", "l": "Konuşabildiğiniz Diller", "n": "Virgülle ayırın: Türkçe, İngilizce"}]}, {"id": "sm", "t": "Sosyal Medya", "i": "📱", "f": [{"k": "facebook", "l": "Facebook"}, {"k": "instagram", "l": "Instagram"}, {"k": "twitter", "l": "Twitter / X"}, {"k": "linkedin", "l": "LinkedIn"}, {"k": "youtube", "l": "YouTube"}, {"k": "tiktok", "l": "TikTok"}, {"k": "pinterest", "l": "Pinterest"}, {"k": "reddit", "l": "Reddit"}, {"k": "tumblr", "l": "Tumblr"}, {"k": "flickr", "l": "Flickr"}, {"k": "vk", "l": "VKontakte (VK)"}, {"k": "weibo", "l": "Sina Weibo"}, {"k": "otherSocial", "l": "Diğer Platformlar", "n": "Platform: kullanıcı adı"}]}, {"id": "sc", "t": "Güvenlik Soruları", "i": "🔒", "f": [{"k": "sec_disease", "l": "Bulaşıcı hastalığınız var mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "sec_disorder", "l": "Fiziksel/zihinsel rahatsızlık?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "sec_drugs", "l": "Uyuşturucu bağımlılığı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "sec_arrested", "l": "Suçtan tutuklandınız mı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "sec_trafficking", "l": "İnsan kaçakçılığı?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "sec_laundering", "l": "Kara para aklama?", "s": 1, "o": ["HAYIR", "EVET"]}, {"k": "securityNote", "l": "EVET varsa açıklama", "n": "EVET otomatik red anlamına gelmez"}]}, {"id": "fn", "t": "Kontrol & Gönder", "i": "✅", "tp": "final", "f": [{"k": "securityQuestion", "l": "Güvenlik Sorusu (Annenizin annesinin adı)", "n": "DS-160 güvenlik sorusu — unutmayın!"}]}];
+var AK=[];ST.forEach(function(s){s.f.forEach(function(f){AK.push(f.k)})});
+var D={},cur=0,ppB64=null,ppName="",phB64=null,phName="",phMeta=null,aiK=[],aiL=false,aiErr="",done=false,stm=null;
+function ld(){try{var r=store.get(SK);if(r){var o=JSON.parse(r);D=o.d||{};cur=o.c||0;ppB64=o.pp||null;ppName=o.pn||"";phB64=o.ph||null;phName=o.hn||"";phMeta=o.hm||null;done=o.dn||false}}catch(e){}}
+function sv(){try{store.set(SK,JSON.stringify({d:D,c:cur,pp:ppB64,pn:ppName,ph:phB64,hn:phName,hm:phMeta,dn:done}))}catch(e){}fbSave()}
+function fbSave(){
+  // Firestore'a kaydet (ds160_applications/{ID})
+  if(!D.__createdAt)D.__createdAt=new Date().toISOString();
+  var total=AK.length||1;
+  var payload={
+    customerName:(D.fullNameTr||((D.firstName||"")+" "+(D.lastName||""))).trim()||"İsimsiz",
+    customerPhone:D.phone||D.homePhone||"",
+    customerEmail:D.email||"",
+    currentStep:cur,
+    progress:Math.round(fc()/total*100),
+    status:done?"submitted":"draft",
+    done:!!done,
+    formData:D,
+    createdAt:D.__createdAt,
+    updatedAt:new Date().toISOString()
+  };
+  var doSave=function(){
+    if(window.__saveDS160){window.__saveDS160(ID,payload).catch(function(e){console.error("Firebase kayit hatasi:",e)})}
+  };
+  if(window.__ds160FBReady)doSave();
+  else window.__ds160PendingSave=doSave;
+}
+function dsv(){clearTimeout(stm);stm=setTimeout(sv,800)}
+function vis(f){if(!f.c)return true;var p=f.c.split("=");return p[1].split(",").indexOf(D[p[0]])>=0}
+function fc(){var c=0;AK.forEach(function(k){if(D[k])c++});return c}
+function tcc(){return AK.length}
+function esc(s){if(!s)return"";s=String(s);var d=document.createElement("span");d.textContent=s;return d.innerHTML}
+function f2b(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(",")[1])};r.onerror=rej;r.readAsDataURL(file)})}
+function f2d(file){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result)};r.onerror=rej;r.readAsDataURL(file)})}
+function rsz(du,mw,mh){return new Promise(function(res){var im=new Image();im.onload=function(){var w=im.width,h=im.height;if(w>mw){h=h*(mw/w);w=mw}if(h>mh){w=w*(mh/h);h=mh}var cv=document.createElement("canvas");cv.width=w;cv.height=h;cv.getContext("2d").drawImage(im,0,0,w,h);res(cv.toDataURL("image/jpeg",0.7))};im.src=du})}
+function hPP(inp){
+  var fl=inp.files[0];if(!fl)return;ppName=fl.name;aiErr="";
+  var isImg=fl.type.indexOf("image/")===0;
+  var afterThumb=function(){sv();aiL=true;R();
+    f2b(fl).then(function(b){
+      var mt=fl.type==="application/pdf"?"application/pdf":fl.type;
+      var kd=[];var seen={};
+      AK.forEach(function(k){if(seen[k])return;seen[k]=1;ST.forEach(function(s){s.f.forEach(function(x){if(x.k===k)kd.push('"'+k+'":"'+x.l+'"')})})});
+      var prompt="Bu bir Turk pasaportu. Bilgileri oku, SADECE JSON dondur. Backtick yok.\nAlanlar: {"+kd.join(",")+"}\nKurallar: surname/givenName BUYUK HARF Turkce karakter YOK. fullNameTr Turkce karakterli. Tarih YYYY-MM-DD. gender ERKEK/KADIN. nationality TURKEY. passType NORMAL (BORDO) veya YESIL. Okunamayani ekleme.";
+      var ct=[{type:mt==="application/pdf"?"document":"image",source:{type:"base64",media_type:mt,data:b}},{type:"text",text:prompt}];
+      return fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:ct}]})});
+    }).then(function(r){if(!r.ok)throw new Error("API HTTP "+r.status);return r.json()}).then(function(data){
+      if(data.error)throw new Error(data.error.message||JSON.stringify(data.error));
+      if(!data.content||!data.content.length)throw new Error("Bos yanit");
+      var rw="";data.content.forEach(function(i){rw+=i.text||""});
+      var cl=rw.replace(/```json|```/g,"").trim();
+      var pr=JSON.parse(cl);
+      Object.keys(pr).forEach(function(k){D[k]=pr[k]});
+      aiK=Object.keys(pr);aiErr="";sv();
+    }).catch(function(er){console.error("OCR:",er);aiErr=er.message||"Bilinmeyen hata"}).finally(function(){aiL=false;R()});
+  };
+  if(isImg){f2d(fl).then(function(du){return rsz(du,300,200)}).then(function(th){ppB64=th;afterThumb()})}
+  else{ppB64="pdf";afterThumb()}
+}
+function hPH(inp){
+  var fl=inp.files[0];if(!fl)return;phName=fl.name;
+  var im=new Image(),ou=URL.createObjectURL(fl);
+  im.onload=function(){
+    var w=im.width,h=im.height,kb=(fl.size/1024).toFixed(1),ms=[];
+    if(w<600||h<600)ms.push("Dusuk ("+w+"x"+h+"). Min 600x600");
+    if(w>1200||h>1200)ms.push("Yuksek ("+w+"x"+h+"). Max 1200x1200");
+    if(Math.abs(w-h)>20)ms.push("Kare olmali ("+w+"x"+h+")");
+    if(fl.size>5*1024*1024)ms.push("Dosya cok buyuk ("+kb+"KB). Max 5MB");
+    phMeta={w:w,h:h,kb:kb,ok:ms.length===0,ms:ms};
+    f2d(fl).then(function(du){return rsz(du,300,300)}).then(function(th){phB64=th;sv();R();URL.revokeObjectURL(ou)});
+  };im.src=ou;
+}
+function sub(){done=true;sv();genPDF();R()}
+function genPDF(){
+  try{
+    if(!window.jspdf){console.error("jsPDF yuklenmedi");return}
+    var jsPDF=window.jspdf.jsPDF;
+    var doc=new jsPDF();
+    // Turkce karakter -> ascii (jsPDF default font Turkce desteklemez)
+    var tr=function(t){if(!t)return"";return String(t).replace(/ı/g,"i").replace(/İ/g,"I").replace(/ğ/g,"g").replace(/Ğ/g,"G").replace(/ü/g,"u").replace(/Ü/g,"U").replace(/ş/g,"s").replace(/Ş/g,"S").replace(/ö/g,"o").replace(/Ö/g,"O").replace(/ç/g,"c").replace(/Ç/g,"C")};
+    // Baslik
+    doc.setFontSize(18);doc.setTextColor(212,148,58);
+    doc.text("PAYDOS TURIZM",105,18,{align:"center"});
+    doc.setFontSize(13);doc.setTextColor(40);
+    doc.text("DS-160 ABD Vize Basvuru Formu",105,26,{align:"center"});
+    var nm=tr(D.fullNameTr||((D.firstName||"")+" "+(D.lastName||"")));
+    doc.setFontSize(11);doc.setTextColor(100);
+    doc.text(nm,105,33,{align:"center"});
+    doc.setDrawColor(212,148,58);doc.line(20,37,190,37);
+    var y=45;
+    ST.forEach(function(ss){
+      if(!ss.f.length)return;
+      var sf=[];ss.f.forEach(function(f){if(vis(f)&&D[f.k])sf.push(f)});
+      if(!sf.length)return;
+      // Sayfa tasmasi
+      if(y>270){doc.addPage();y=20}
+      // Bolum basligi
+      doc.setFontSize(11);doc.setTextColor(212,148,58);doc.setFont(undefined,"bold");
+      doc.text(tr(ss.t),20,y);y+=6;
+      doc.setFont(undefined,"normal");doc.setFontSize(9);doc.setTextColor(60);
+      sf.forEach(function(f){
+        if(y>280){doc.addPage();y=20}
+        var lbl=tr(f.l)+": ";
+        var val=tr(D[f.k]);
+        var line=lbl+val;
+        var split=doc.splitTextToSize(line,165);
+        doc.text(split,24,y);
+        y+=split.length*5;
+      });
+      y+=4;
+    });
+    // Footer
+    doc.setFontSize(8);doc.setTextColor(150);
+    var dt=new Date().toLocaleDateString("tr-TR");
+    doc.text("Olusturma: "+dt+" | www.paydosturizm.com",105,290,{align:"center"});
+    var fn="DS160_"+(nm.replace(/\s+/g,"_")||"Basvuru")+".pdf";
+    doc.save(fn);
+  }catch(e){console.error("PDF hatasi:",e)}
+}
+function sWA(){
+  var t="DS-160 BASVURU\n=================\n\n";
+  ST.forEach(function(s){if(!s.f.length)return;var sf=[];s.f.forEach(function(f){if(vis(f)&&D[f.k])sf.push(f)});if(!sf.length)return;t+=s.i+" "+s.t+"\n";sf.forEach(function(f){t+="  "+f.l+": "+D[f.k]+"\n"});t+="\n"});
+  window.open("https://wa.me/"+WA+"?text="+encodeURIComponent(t),"_blank");
+}
+function rst(){D={};cur=0;ppB64=null;ppName="";phB64=null;phName="";phMeta=null;aiK=[];aiErr="";done=false;store.del(SK);R()}
+function R(){
+  var $=document.getElementById("app");
+  if(done){var nm=D.fullNameTr||D.givenName||"";$.innerHTML='<h1 class="logo">PAYDOS TUR\u0130ZM</h1><div class="card" style="text-align:center;padding:40px"><div style="font-size:64px">\u2705</div><h2 style="font-family:Playfair Display,serif;color:#6fcf97;font-size:24px;margin:16px 0 8px">Ba\u015fvurunuz G\u00f6nderildi!</h2><p style="color:#8888aa;font-size:14px;line-height:1.6">Ba\u015fvurunuz Paydos Turizm\'e iletildi.<br>En k\u0131sa s\u00fcrede sizinle ileti\u015fime ge\u00e7ece\u011fiz.</p><button class="bsub" style="max-width:300px;margin:20px auto 0" onclick="genPDF()">\ud83d\udcc5 Formu PDF \u0130ndir</button><button class="bg" style="margin-top:12px;padding:14px 32px;border-radius:10px" onclick="rst()">Yeni Form</button></div>';return}
+  var s=ST[cur],pc=((cur+1)/ST.length*100);
+  var h='<h1 class="logo">PAYDOS TUR\u0130ZM</h1><p class="sub">DS-160 ABD Vize Ba\u015fvuru Formu</p>';
+  h+='<div style="text-align:right;font-size:11px;color:#6fcf97;margin-bottom:6px">\u2713 Otomatik kaydedildi</div>';
+  h+='<div class="pb"><div class="pf" style="width:'+pc+'%"></div></div><div class="pt">Ad\u0131m '+(cur+1)+' / '+ST.length+'</div>';
+  h+='<div class="sn">';
+  ST.forEach(function(ss,i){var dn=false;if(ss.tp==="docs")dn=true;else if(ss.tp!=="final"&&ss.tp!=="intro"){var fl2=0,vl2=0;ss.f.forEach(function(ff){if(vis(ff)){vl2++;if(D[ff.k])fl2++}});dn=fl2===vl2&&vl2>0}h+='<button class="sb '+(i===cur?"a":dn?"d":"x")+'" onclick="go('+i+')">'+ss.i+'<span class="st">'+ss.t+'</span>'+(dn?'<span style="font-size:10px">\u2713</span>':'')+'</button>'});
+  h+='</div>';
+  if(s.tp==="intro"){
+    h+='<div class="card"><h2><span style="font-size:28px">\u{1F1FA}\u{1F1F8}</span>ABD Vize Ba\u015fvuru Bilgi Formu</h2>';
+    h+='<div class="warn"><b>\u26A0\uFE0F \u00d6NEML\u0130:</b> A\u015fa\u011f\u0131da belirtilen bilgiler <b>DS-160 online formunuz</b> i\u00e7in olup, <span class="red">eksik ya da yanl\u0131\u015f bilgiler vize ba\u015fvurunuzun olumsuz sonu\u00e7lanmas\u0131na yol a\u00e7abilir.</span></div>';
+    h+='<ul class="il">';
+    h+='<li><span>\u{1F4D8}</span>Pasaportunuzun foto\u011fraf\u0131n\u0131 haz\u0131r bulundurun</li>';
+    h+='<li><span>\u{1F4F7}</span>Biyometrik vize foto\u011fraf\u0131n\u0131z\u0131 haz\u0131r bulundurun (5x5cm, g\u00f6zl\u00fcks\u00fcz, beyaz arka plan)</li>';
+    h+='<li><span>\u{1F4DD}</span>T\u00fcm bilgileri <b>pasaportta yazd\u0131\u011f\u0131 gibi</b> doldurun</li>';
+    h+='<li><span>\u26A0\uFE0F</span>Form otomatik kaydedilir, istedi\u011finiz zaman \u00e7\u0131k\u0131p kald\u0131\u011f\u0131n\u0131z yerden devam edebilirsiniz</li>';
+    h+='<li><span>\u{1F550}</span>Formun tamamlanmas\u0131 yakla\u015f\u0131k <b>15-20 dakika</b> s\u00fcrer</li>';
+    h+='<li><span>\u{1F4DE}</span>Sorular\u0131n\u0131z i\u00e7in: <b>Paydos Turizm</b></li>';
+    h+='</ul></div>';
+  }
+  else if(s.tp==="docs"){
+    h+='<div class="card"><h2><span style="font-size:28px">\u{1F4C1}</span>Pasaport & Foto\u011fraf</h2>';
+    h+='<div style="padding:20px;background:rgba(226,176,74,.04);border:1px solid rgba(226,176,74,.15);border-radius:12px;text-align:center">';
+    h+='<div style="font-size:48px;margin-bottom:12px">\u{1F4E7}</div>';
+    h+='<h3 style="color:#e2b04a;font-size:16px;margin-bottom:8px;font-family:Playfair Display,serif">Pasaport ve Foto\u011fraf\u0131n\u0131z\u0131 E-posta ile G\u00f6nderin</h3>';
+    h+='<p style="color:#c0c0d0;font-size:13px;line-height:1.6;margin-bottom:16px">Pasaportunuzun foto\u011fraf\u0131n\u0131 / taramas\u0131n\u0131 ve biyometrik vize foto\u011fraf\u0131n\u0131z\u0131 a\u015fa\u011f\u0131daki adrese g\u00f6nderin:</p>';
+    h+='<a href="mailto:vize@paydostur.com" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#e2b04a,#d4943a);color:#0d0d1a;font-weight:700;font-size:16px;text-decoration:none;border-radius:10px;transition:all .2s">vize@paydostur.com</a>';
+    h+='</div>';
+    h+='<div style="margin-top:16px;padding:14px;background:#12122a;border-radius:10px;border:1px solid #2a2a4a">';
+    h+='<div style="color:#e2b04a;font-weight:700;font-size:13px;margin-bottom:10px">\u{1F4CB} G\u00f6nderilecekler:</div>';
+    h+='<div style="display:flex;flex-direction:column;gap:8px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#c0c0d0"><span>\u{1F4D8}</span> Pasaport foto\u011fraf\u0131 veya taramas\u0131 (JPEG, PNG veya PDF)</div>';
+    h+='<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#c0c0d0"><span>\u{1F4F7}</span> Biyometrik vize foto\u011fraf\u0131 (5x5cm, g\u00f6zl\u00fcks\u00fcz, beyaz arka plan)</div>';
+    h+='</div></div>';
+    h+='</div>';
+  }
+  else if(s.tp==="final"){
+    var fcc=fc(),ttt=tcc(),pct2=Math.round(fcc/ttt*100),bc2=pct2>80?"#6fcf97":"#e2b04a";
+    h+='<div class="card"><h2><span style="font-size:28px">\u2705</span>Kontrol & G\u00f6nder</h2><div class="fg">';
+    s.f.forEach(function(f){h+='<div class="fl"><label>'+f.l+'</label><input type="text" value="'+esc(D[f.k]||"")+'" oninput="sv160(\''+f.k+'\',this.value)">';if(f.n)h+='<div class="nt">'+f.n+'</div>';h+='</div>'});
+    h+='</div>';
+    h+='<div style="margin-top:16px;padding:14px;background:#12122a;border-radius:10px;border:1px solid #2a2a4a"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:#8888aa;font-size:13px">Tamamlanma</span><span style="color:'+bc2+';font-weight:700">'+pct2+'%</span></div><div style="width:100%;background:#1a1a2e;border-radius:6px;height:8px;overflow:hidden"><div style="width:'+pct2+'%;height:100%;background:'+bc2+';border-radius:6px"></div></div><div style="font-size:11px;color:#8888aa;margin-top:4px">'+fcc+' / '+ttt+' alan</div></div>';
+    h+='<div style="margin-top:14px">';
+    ST.forEach(function(ss){if(!ss.f.length)return;var sf=[];ss.f.forEach(function(f){if(vis(f)&&D[f.k])sf.push(f)});if(!sf.length)return;h+='<div style="margin-bottom:8px"><div style="color:#e2b04a;font-size:11px;font-weight:700">'+ss.i+' '+ss.t+'</div>';sf.forEach(function(f){h+='<div class="sr"><span class="lbl">'+f.l+':</span><span>'+esc(D[f.k])+'</span></div>'});h+='</div>'});
+    h+='</div>';
+    h+='<button class="bsub" onclick="sub()">Formu G\u00f6nder ve \u0130ndir</button>';
+    h+='<button class="bwa" style="border-color:#e2b04a;background:rgba(226,176,74,.08);color:#e2b04a" onclick="genPDF()">\ud83d\udcc5 Sadece PDF \u0130ndir</button>';
+    h+='<button class="bwa" onclick="sWA()">WhatsApp ile G\u00f6nder</button>';
+    h+='<p style="text-align:center;font-size:11px;color:#8888aa;margin-top:8px">Eksik bilgiler varsa sizinle ileti\u015fime ge\u00e7ilecektir.</p></div>';
+  }
+  else{
+    h+='<div class="card"><h2><span style="font-size:28px">'+s.i+'</span>'+s.t+'</h2><div class="fg">';
+    s.f.forEach(function(f){
+      if(!vis(f))return;var ia=aiK.indexOf(f.k)>=0;
+      h+='<div class="fl"><label>'+f.l+(ia?'<span style="color:#e2b04a;font-size:10px;margin-left:6px">\u{1F916} otomatik</span>':'')+'</label>';
+      if(f.s===1){h+='<select class="'+(ia?"ai":"")+'" onchange="sv160(\''+f.k+'\',this.value)"><option value="">Se\u00e7iniz...</option>';f.o.forEach(function(o){h+='<option value="'+esc(o)+'"'+(D[f.k]===o?" selected":"")+'>'+esc(o)+'</option>'});h+='</select>'}
+      else if(f.s==="date"){h+='<input class="'+(ia?"ai":"")+'" type="date" value="'+esc(D[f.k]||"")+'" oninput="sv160(\''+f.k+'\',this.value)">'}
+      else{h+='<input class="'+(ia?"ai":"")+'" type="text" value="'+esc(D[f.k]||"")+'" placeholder="'+(f.p?esc(f.p):"")+'" oninput="sv160(\''+f.k+'\',this.value)">'}
+      if(f.n)h+='<div class="nt">'+f.n+'</div>';h+='</div>';
+    });
+    h+='</div></div>';
+  }
+  h+='<div class="nb">';
+  if(cur>0)h+='<button class="bo" onclick="go('+(cur-1)+')">\u2190 Geri</button>';
+  if(cur<ST.length-1)h+='<button class="bg" onclick="go('+(cur+1)+')">Ileri \u2192</button>';
+  h+='</div>';
+  $.innerHTML=h;
+}
+window.go=function(i){cur=i;sv();R();scrollTo({top:0,behavior:"smooth"})};
+window.sv160=function(k,v){D[k]=v;dsv()};
+ld();R();
+// CRM'den "Formu Aç ve Düzenle" (?edit=1) ile gelince VEYA localStorage'da dolu veri yoksa
+// Firebase'den yükle
+(function(){
+  var p=new URLSearchParams(location.search);
+  var forceEdit=p.get("edit")==="1";
+  var dEmpty=!D||Object.keys(D).length===0;
+  if(!forceEdit&&!dEmpty)return;
+  var attempts=0;
+  var tryLoad=function(){
+    if(window.__loadDS160){
+      window.__loadDS160(ID).then(function(data){
+        if(data&&data.formData&&Object.keys(data.formData).length>0){
+          D=data.formData;
+          if(typeof data.currentStep==="number")cur=data.currentStep;
+          if(data.done)done=data.done;
+          sv();R();
+        }
+      }).catch(function(e){console.error("Firebase yukleme hatasi:",e)});
+    }else if(attempts++<20){setTimeout(tryLoad,300)}
+  };
+  tryLoad();
+})();
+
+</script>
+</body>
+</html>
