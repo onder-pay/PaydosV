@@ -4830,6 +4830,25 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     doc.save(fileName);
   };
 
+  // Voucher'ı WhatsApp/paylaş menüsüne gönder (mobilde dosya ekli paylaşım)
+  const shareTourVoucher = async (tour, hi, room, roomNo) => {
+    if (!hi?.name) { showToast?.('Önce otel bilgilerini girin (Odalama formu)', 'warning'); return; }
+    try {
+      const { doc, fileName } = generateTourVoucher(tour, hi, room, roomNo, true);
+      const blob = doc.output('blob');
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fileName, text: `${tour.name} - Otel Voucher` });
+      } else {
+        doc.save(fileName);
+        showToast?.('Bu cihaz dosya paylaşımını desteklemiyor — voucher indirildi, WhatsApp\'tan elle ekleyin', 'info');
+      }
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+      showToast?.('Voucher paylaşılamadı: ' + e.message, 'error');
+    }
+  };
+
   // JSZip'i CDN'den dinamik yükle (toplu voucher için)
   const loadJSZip = () => new Promise((resolve, reject) => {
     if (window.JSZip) return resolve(window.JSZip);
@@ -5659,19 +5678,23 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                       </div>
                     );
                   })()}
-                  {Object.entries(roomTypes).map(([type, rooms]) => (
+                  {Object.entries(roomTypes).map(([type, rooms], typeIdx) => {
+                    const roomOffset = Object.entries(roomTypes).slice(0, typeIdx).reduce((s, [, rs]) => s + rs.length, 0);
+                    return (
                     <div key={type} style={{ marginBottom: '12px' }}>
                       <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600', marginBottom: '6px', padding: '4px 8px', background: 'rgba(245,158,11,0.1)', borderRadius: '6px', display: 'inline-block' }}>{type} ({rooms.length} oda)</div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
                         {rooms.map((room, i) => (
                           <div key={i} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>Oda {i+1}</div>
+                            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>Oda {roomOffset+i+1}</div>
                             {room.map((p, j) => <div key={j} style={{ fontSize: '12px', color: '#e8f1f8', padding: '2px 0' }}>👤 {p.customerName}</div>)}
+                            <button onClick={() => shareTourVoucher(tour, tour.voucherHotel || {}, room, roomOffset+i+1)} style={{ marginTop: '8px', width: '100%', padding: '6px', background: 'rgba(37,211,102,0.15)', border: '1px solid rgba(37,211,102,0.35)', borderRadius: '6px', color: '#25d366', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📲 Voucher Gönder</button>
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
