@@ -3204,6 +3204,13 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       // PNR sonrası: gidiş amacı, ofis, hizmet, randevu durumu (tab veya 2+ boşluk ayrımı)
       const afterPnr = line.substring(m.index + pnr.length).trim();
       const afterParts = afterPnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean);
+      // Randevu tarihi + saati (DD/MM/YYYY ve HH:MM) — sütun sırasından bağımsız regex
+      const dm = afterPnr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      const tm = afterPnr.match(/(\d{1,2}):(\d{2})/);
+      const apptDate = dm ? `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}` : '';
+      const apptTime = tm ? `${tm[1].padStart(2,'0')}:${tm[2]}` : '';
+      // Tarih/saat parçalarını sütunlardan çıkar ki amaç/ofis/hizmet/durum temiz kalsın
+      const cleanParts = afterParts.filter(p => !/\d{1,2}\/\d{1,2}\/\d{4}/.test(p) && !/^\d{1,2}:\d{2}$/.test(p));
       // İsim: PNR öncesi tüm harf içeren parçaları birleştir (ad+soyad ayrı sütun/tab olabilir)
       const nameParts = beforePnr.split(/\t|\s{2,}/).map(s => s.trim()).filter(Boolean);
       const letterParts = nameParts.filter(p => /[A-Za-zĞÜŞİÖÇğüşıöçÂÎÛâîû]/.test(p));
@@ -3212,10 +3219,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       rows.push({
         name: name,
         pnr: pnr,
-        purpose: afterParts[0] || '',
-        office: afterParts[1] || '',
-        serviceType: afterParts[2] || '',
-        appointmentStatus: afterParts[afterParts.length - 1] || '',
+        purpose: cleanParts[0] || '',
+        office: cleanParts[1] || '',
+        serviceType: cleanParts[2] || '',
+        appointmentDate: apptDate,
+        appointmentTime: apptTime,
+        appointmentStatus: cleanParts.slice(3).join(' ') || '',
         matchedCustomer: null,
         matchedVisa: null
       });
@@ -3269,6 +3278,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         pnr: match.pnr,
         processor: v.processor || 'İdata',
         idataOffice: match.office || v.idataOffice,
+        appointmentDate: match.appointmentDate || v.appointmentDate,
+        appointmentTime: match.appointmentTime || v.appointmentTime,
         // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
         status: /atama bekliyor/i.test(match.appointmentStatus) ? 'Atama Bekliyor' : (/bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status),
         idataStatus: match.appointmentStatus || ''
@@ -4433,6 +4444,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                           <span style={{ color: '#a78bfa', fontWeight: '600' }}>{r.pnr}</span>
                           {r.appointmentStatus && ` · ${r.appointmentStatus}`}
                           {r.office && ` · ${r.office}`}
+                          {r.appointmentDate && <span style={{ color: '#22d3ee' }}> · 📅 {formatDate(r.appointmentDate)}{r.appointmentTime ? ` ${r.appointmentTime}` : ''}</span>}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', fontSize: '11px' }}>
