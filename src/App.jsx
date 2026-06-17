@@ -9611,15 +9611,6 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
           <button onClick={() => setShowUrlModal(true)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
             ⚙️ Site URL
           </button>
-          <button onClick={() => window.open(ds160Url, '_blank')} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', padding: '8px 14px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-            🔗 DS-160 Sitesi
-          </button>
-          <button onClick={() => {
-            navigator.clipboard.writeText(ds160Url);
-            showToast?.('Link kopyalandı!', 'success');
-          }} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 14px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>
-            📋 Link Kopyala
-          </button>
           <button onClick={() => {
             const newId = 'a' + Math.random().toString(36).slice(2,8) + Date.now().toString(36);
             const link = `${ds160Url}${ds160Url.includes('?') ? '&' : '?'}id=${newId}`;
@@ -9640,12 +9631,6 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>{ds160Url}</p>
           </div>
         </div>
-        <button onClick={() => {
-          navigator.clipboard.writeText(ds160Url);
-          showToast?.('Link kopyalandı!', 'success');
-        }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 16px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-          📋 Kopyala
-        </button>
       </div>
 
       {/* Arama + Filtre */}
