@@ -10575,6 +10575,83 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               </details>
             </div>
           </div>
+
+          {/* VİZE MALİYET KALEMLERİ */}
+          {(() => {
+            const defaultItems = [
+              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+              { key: 'sigorta', label: 'Sigorta' },
+              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+              { key: 'koordinasyon', label: 'Koordinasyon' },
+              { key: 'sms', label: 'SMS' },
+              { key: 'kargo', label: 'Kargo' },
+              { key: 'kdv', label: 'KDV' },
+              { key: 'diger', label: 'Diğer' }
+            ];
+            const items = appSettings?.visaCostItems || defaultItems;
+            const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            return (
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#ef4444' }}>💰 Vize Maliyet Kalemleri</h3>
+                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
+                  Yeni vize başvurusunda görünen maliyet kalemleri. Sıra önemli — listelenen sırada görünür.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                  {items.map((it, idx) => (
+                    <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <button onClick={() => {
+                          if (idx === 0) return;
+                          const newItems = [...items];
+                          [newItems[idx-1], newItems[idx]] = [newItems[idx], newItems[idx-1]];
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
+                        <button onClick={() => {
+                          if (idx === items.length - 1) return;
+                          const newItems = [...items];
+                          [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', color: idx === items.length - 1 ? '#475569' : '#94a3b8', cursor: idx === items.length - 1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
+                      </div>
+                      <input type="text" value={it.label}
+                        onChange={e => {
+                          const newItems = [...items];
+                          newItems[idx] = { ...it, label: e.target.value };
+                          setAppSettings({ ...appSettings, visaCostItems: newItems });
+                        }}
+                        style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
+                      <button onClick={() => {
+                        if (!window.confirm(`"${it.label}" kalemini silmek istiyor musun?`)) return;
+                        setAppSettings({ ...appSettings, visaCostItems: items.filter((_, i) => i !== idx) });
+                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="text" value={newCostItem || ''} onChange={e => setNewCostItem(e.target.value)}
+                    placeholder="Yeni maliyet kalemi (örn: Vize Sigortası)"
+                    onKeyPress={e => {
+                      if (e.key === 'Enter' && (newCostItem || '').trim()) {
+                        const label = newCostItem.trim();
+                        const key = slugify(label) || 'kalem_' + Date.now();
+                        setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
+                        setNewCostItem('');
+                      }
+                    }}
+                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
+                  <button onClick={() => {
+                    if ((newCostItem || '').trim()) {
+                      const label = newCostItem.trim();
+                      const key = slugify(label) || 'kalem_' + Date.now();
+                      setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
+                      setNewCostItem('');
+                    }
+                  }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -10652,83 +10729,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                     style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                     ➕ Ekle
                   </button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* VİZE MALİYET KALEMLERİ */}
-          {(() => {
-            const defaultItems = [
-              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-              { key: 'sigorta', label: 'Sigorta' },
-              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-              { key: 'koordinasyon', label: 'Koordinasyon' },
-              { key: 'sms', label: 'SMS' },
-              { key: 'kargo', label: 'Kargo' },
-              { key: 'kdv', label: 'KDV' },
-              { key: 'diger', label: 'Diğer' }
-            ];
-            const items = appSettings?.visaCostItems || defaultItems;
-            const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-            return (
-              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#ef4444' }}>💰 Vize Maliyet Kalemleri</h3>
-                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
-                  Yeni vize başvurusunda görünen maliyet kalemleri. Sıra önemli — listelenen sırada görünür.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                  {items.map((it, idx) => (
-                    <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <button onClick={() => {
-                          if (idx === 0) return;
-                          const newItems = [...items];
-                          [newItems[idx-1], newItems[idx]] = [newItems[idx], newItems[idx-1]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
-                        <button onClick={() => {
-                          if (idx === items.length - 1) return;
-                          const newItems = [...items];
-                          [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', color: idx === items.length - 1 ? '#475569' : '#94a3b8', cursor: idx === items.length - 1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
-                      </div>
-                      <input type="text" value={it.label}
-                        onChange={e => {
-                          const newItems = [...items];
-                          newItems[idx] = { ...it, label: e.target.value };
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }}
-                        style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
-                      <button onClick={() => {
-                        if (!window.confirm(`"${it.label}" kalemini silmek istiyor musun?`)) return;
-                        setAppSettings({ ...appSettings, visaCostItems: items.filter((_, i) => i !== idx) });
-                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input type="text" value={newCostItem || ''} onChange={e => setNewCostItem(e.target.value)}
-                    placeholder="Yeni maliyet kalemi (örn: Vize Sigortası)"
-                    onKeyPress={e => {
-                      if (e.key === 'Enter' && (newCostItem || '').trim()) {
-                        const label = newCostItem.trim();
-                        const key = slugify(label) || 'kalem_' + Date.now();
-                        setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                        setNewCostItem('');
-                      }
-                    }}
-                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
-                  <button onClick={() => {
-                    if ((newCostItem || '').trim()) {
-                      const label = newCostItem.trim();
-                      const key = slugify(label) || 'kalem_' + Date.now();
-                      setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                      setNewCostItem('');
-                    }
-                  }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
                 </div>
               </div>
             );
