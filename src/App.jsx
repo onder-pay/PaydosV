@@ -9128,8 +9128,15 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <input type="date" value={resData.checkIn} onChange={e => {
                       const ci = e.target.value;
                       const rt = resData.roomType, concept = resData.concept || 'bb';
-                      const calc = calcReservationPrice(h, ci, resData.checkOut, rt, concept);
-                      setResData({...resData, checkIn: ci,
+                      // Çıkış boşsa ya da girişten önce/aynıysa otomatik ertesi gün
+                      let co = resData.checkOut;
+                      if (ci && (!co || co <= ci)) {
+                        const [y, m, d] = ci.split('-').map(Number);
+                        const nd = new Date(y, m - 1, d + 1);
+                        co = `${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}`;
+                      }
+                      const calc = calcReservationPrice(h, ci, co, rt, concept);
+                      setResData({...resData, checkIn: ci, checkOut: co,
                         price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
@@ -9137,7 +9144,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   </div>
                   <div>
                     <label style={labelStyle}>Çıkış Tarihi *</label>
-                    <input type="date" value={resData.checkOut} onChange={e => {
+                    <input type="date" value={resData.checkOut} min={resData.checkIn ? (() => { const [y,m,d]=resData.checkIn.split('-').map(Number); const nd=new Date(y,m-1,d+1); return `${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}`; })() : undefined} onChange={e => {
                       const co = e.target.value;
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, resData.checkIn, co, rt, concept);
