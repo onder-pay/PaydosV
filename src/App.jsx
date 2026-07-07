@@ -914,7 +914,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
   };
 
   const resetForm = () => { 
-    setFormData(emptyForm); 
+    setFormData({ ...emptyForm, id: generateUniqueId() }); 
     setEditingCustomer(null); 
     setFormTab('info');
     setPassports([{ ...emptyPassport, id: generateUniqueId() }]);
@@ -957,6 +957,24 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
 
   const updatePassport = (id, field, value) => {
     setPassports(passports.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  // === Firebase Storage yükleme (base64 -> Storage URL) ===
+  const uploadDocImage = async (imageData, customerId, fileName) => {
+    if (!imageData || imageData.startsWith('http')) return imageData;   // zaten URL
+    if (!imageData.startsWith('data:')) return imageData;               // beklenmedik format
+    const storage = getStorage();
+    const blob = await (await fetch(imageData)).blob();
+    const sRef = ref(storage, `documents/${customerId}/${fileName}`);
+    await uploadBytes(sRef, blob, { contentType: blob.type || 'image/jpeg' });
+    return await getDownloadURL(sRef);
+  };
+  // OCR için: URL ise indirip base64'e çevir, base64 ise olduğu gibi ver
+  const imageToBase64 = async (imageData) => {
+    if (!imageData) return '';
+    if (imageData.startsWith('data:')) return imageData.split(',')[1];
+    const blob = await (await fetch(imageData)).blob();
+    return await new Promise((res, rej) => { const r = new FileReader(); r.onloadend = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
   };
 
 
@@ -1093,7 +1111,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
         }, { merge: true });
       } catch (err) { console.error('Firestore kayıt hatası:', err); }
     } else {
-      const newId = generateUniqueId();
+      const newId = formData.id || generateUniqueId();
       const newCustomer = { ...fullData, id: newId, _docId: newId, createdAt: now.split('T')[0], lastEditedAt: now, updatedAt: now, verified: true };
       setCustomers([...customers, newCustomer]);
       try {
@@ -1357,7 +1375,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                           if (!passport.image) { showToast?.('Önce görsel ekleyin', 'error'); return; }
                           showToast?.('AI pasaport okuyor...', 'info');
                           try {
-                            const b64 = passport.image.startsWith('data:') ? passport.image.split(',')[1] : passport.image;
+                            const b64 = await imageToBase64(passport.image);
                             const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1385,7 +1403,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                         </button>
                         <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>
                           🔄 Değiştir
-                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => updatePassport(passport.id, 'image', img) }); reader.readAsDataURL(file); } }} />
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `pasaport_${passport.id}.jpg`); updatePassport(passport.id, 'image', url); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); updatePassport(passport.id, 'image', img); } } }); reader.readAsDataURL(file); } }} />
                         </label>
                         <button type="button" onClick={() => updatePassport(passport.id, 'image', '')}
                           style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
@@ -1395,7 +1413,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(59,130,246,0.06)', border: '2px dashed rgba(59,130,246,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
                       <span style={{ fontSize: '28px' }}>📷</span>
                       <span style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>Pasaport Görseli Ekle</span>
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => updatePassport(passport.id, 'image', img) }); reader.readAsDataURL(file); } }} />
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `pasaport_${passport.id}.jpg`); updatePassport(passport.id, 'image', url); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); updatePassport(passport.id, 'image', img); } } }); reader.readAsDataURL(file); } }} />
                     </label>
                   )}
                 </div>
@@ -1450,7 +1468,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                           if (!visa.image) return;
                           showToast?.('AI vize okuyor...', 'info');
                           try {
-                            const b64 = visa.image.startsWith('data:') ? visa.image.split(',')[1] : visa.image;
+                            const b64 = await imageToBase64(visa.image);
                             const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1466,7 +1484,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                         </button>
                         <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#10b981', fontWeight: '600' }}>
                           🔄 Değiştir
-                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: img} : v)) }); reader.readAsDataURL(file); } }} />
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `schengen_${visa.id}.jpg`); setSchengenVisas(prev => prev.map(v => v.id === visa.id ? {...v, image: url} : v)); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); setSchengenVisas(prev => prev.map(v => v.id === visa.id ? {...v, image: img} : v)); } } }); reader.readAsDataURL(file); } }} />
                         </label>
                         <button type="button" onClick={() => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: ''} : v))}
                           style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
@@ -1476,7 +1494,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(16,185,129,0.06)', border: '2px dashed rgba(16,185,129,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
                       <span style={{ fontSize: '28px' }}>📷</span>
                       <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>Vize Görseli Ekle</span>
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setSchengenVisas(schengenVisas.map(v => v.id === visa.id ? {...v, image: img} : v)) }); reader.readAsDataURL(file); } }} />
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `schengen_${visa.id}.jpg`); setSchengenVisas(prev => prev.map(v => v.id === visa.id ? {...v, image: url} : v)); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); setSchengenVisas(prev => prev.map(v => v.id === visa.id ? {...v, image: img} : v)); } } }); reader.readAsDataURL(file); } }} />
                     </label>
                   )}
                 </div>
@@ -1514,7 +1532,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                       <label style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}>
                         🔄 Değiştir
-                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setUsaVisa({...usaVisa, image: img}) }); reader.readAsDataURL(file); } }} />
+                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `abd_vize.jpg`); setUsaVisa(prev => ({...prev, image: url})); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); setUsaVisa(prev => ({...prev, image: img})); } } }); reader.readAsDataURL(file); } }} />
                       </label>
                       <button type="button" onClick={() => setUsaVisa({...usaVisa, image: ''})}
                         style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>× Kaldır</button>
@@ -1524,7 +1542,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '125/90', background: 'rgba(139,92,246,0.06)', border: '2px dashed rgba(139,92,246,0.25)', borderRadius: '10px', cursor: 'pointer', gap: '6px' }}>
                     <span style={{ fontSize: '28px' }}>📷</span>
                     <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: '600' }}>Vize Görseli Ekle</span>
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: (img) => setUsaVisa({...usaVisa, image: img}) }); reader.readAsDataURL(file); } }} />
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onloadend = () => setCropModal({ type: 'passport', src: reader.result, rotation: 0, onSave: async (img) => { try { const url = await uploadDocImage(img, formData.id, `abd_vize.jpg`); setUsaVisa(prev => ({...prev, image: url})); } catch(err){ showToast?.('Görsel yüklenemedi: '+err.message,'error'); setUsaVisa(prev => ({...prev, image: img})); } } }); reader.readAsDataURL(file); } }} />
                   </label>
                 )}
               </div>
@@ -7462,6 +7480,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   // Ayarlardan oda tipleri (varsayılan)
   const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
+  // Oda tipinden kişi kapasitesi (Single=1, Triple=3, Quad=4, diğerleri=2)
+  const roomCapacity = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki/.test(s)) return 4; return 2; };
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
@@ -7475,7 +7495,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   const emptyRes = {
     customerId: '', customerName: '', customerPhone: '', customerEmail: '',
-    checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1,
+    checkIn: '', checkOut: '', roomType: hotelRoomTypes[0] || 'Double', concept: 'bb', guests: 1, guestNames: [], priceManual: false,
     buyPrice: 0, price: 0, currency: '€',
     payment1: 0, payment2: 0, payment3: 0,
     reservationCode: '',
@@ -7550,8 +7570,8 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
     setView('list');
   };
 
-  const openNewRes = () => { setEditingRes(null); setResData({...emptyRes, price: selectedHotel?.prices?.double?.amount || 0, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setEditingRes(r); setResData({...r}); setShowResForm(true); };
+  const openNewRes = () => { setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  const openEditRes = (r) => { setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
@@ -9137,7 +9157,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       }
                       const calc = calcReservationPrice(h, ci, co, rt, concept);
                       setResData({...resData, checkIn: ci, checkOut: co,
-                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -9149,7 +9169,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, resData.checkIn, co, rt, concept);
                       setResData({...resData, checkOut: co,
-                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -9187,9 +9207,11 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     <select value={resData.roomType} onChange={e => {
                       const rt = e.target.value;
                       const concept = resData.concept || 'bb';
+                      const cap = roomCapacity(rt);
+                      const gn = (resData.guestNames || []).slice(0, Math.max(0, cap - 1));
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
-                      setResData({...resData, roomType: rt,
-                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
+                      setResData({...resData, roomType: rt, guests: cap, guestNames: gn,
+                        price: (resData.priceManual ? resData.price : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
@@ -9205,7 +9227,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       const rt = resData.roomType;
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
                       setResData({...resData, concept,
-                        price: (parseFloat(resData.price) > 0 ? parseFloat(resData.price) : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : calc.totalSell),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
@@ -9222,6 +9244,26 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                   </div>
                 </div>
 
+                {(() => {
+                  const cap = roomCapacity(resData.roomType);
+                  if (cap <= 1) return null;
+                  const extra = cap - 1;
+                  return (
+                    <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: '10px', padding: '12px' }}>
+                      <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '8px' }}>👥 Odadaki diğer kişiler ({resData.roomType} — {cap} kişilik)</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: extra > 1 ? '1fr 1fr' : '1fr', gap: '8px' }}>
+                        {Array.from({ length: extra }).map((_, idx) => (
+                          <input key={idx} type="text" placeholder={`${idx + 2}. Kişi Ad Soyad`} value={(resData.guestNames || [])[idx] || ''} onChange={e => {
+                            const gn = [...(resData.guestNames || [])];
+                            gn[idx] = e.target.value;
+                            setResData({...resData, guestNames: gn});
+                          }} style={inputStyle} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
                   <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#f59e0b' }}>💰 Ödeme Bilgileri</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: '10px', marginBottom: '10px' }}>
@@ -9231,7 +9273,14 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                     </div>
                     <div>
                       <label style={{...labelStyle, color: '#10b981'}}>Satış (müşteriye)</label>
-                      <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0})} style={{...inputStyle, border: '1px solid rgba(16,185,129,0.25)'}} />
+                      <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0, priceManual: true})} style={{...inputStyle, border: '1px solid rgba(16,185,129,0.25)'}} />
+                      {resData.priceManual && (() => {
+                        const c = calcReservationPrice(h, resData.checkIn, resData.checkOut, resData.roomType, resData.concept || 'bb');
+                        if (c.totalSell > 0 && Math.abs((parseFloat(resData.price) || 0) - c.totalSell) > 0.5) {
+                          return <button type="button" onClick={() => setResData({...resData, price: c.totalSell, priceManual: false})} style={{ marginTop: '4px', width: '100%', padding: '4px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>↺ Hesaba dön ({c.totalSell.toFixed(0)} {c.currency})</button>;
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div>
                       <label style={labelStyle}>Para</label>
