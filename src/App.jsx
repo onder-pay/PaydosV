@@ -86,10 +86,16 @@ const formatPassportNo = (value) => {
   return letter + digits;
 };
 
+// Türkçe + büyük/küçük harf duyarsız normalize (arama için): Önder=Onder=ÖNDER
+const normalizeTr = (s) => (s == null ? '' : String(s))
+  .replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u')
+  .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
+  .toLowerCase().trim();
+
 const validatePassportNo = (passportNo) => {
   if (!passportNo) return null;
-  const regex = /^[USZD][0-9]{7}$/;
-  if (!regex.test(passportNo)) return '❌ Pasaport no 1 harf + 7 rakam olmalı (örn: U1234567)';
+  const regex = /^[A-Z][0-9]{7,8}$/;
+  if (!regex.test(passportNo)) return '❌ Pasaport no 1 harf + 7-8 rakam olmalı (örn: U1234567)';
   return null; // geçerli
 };
 
@@ -811,7 +817,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     const matchField = (field, value) => {
       if (!value || value.trim() === '') return true;
       const fieldVal = c[field] || '';
-      return fieldVal.toLowerCase().includes(value.toLowerCase());
+      return normalizeTr(fieldVal).includes(normalizeTr(value));
     };
 
     return matchField('firstName', filters.firstName) &&
@@ -5241,7 +5247,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} &nbsp;|&nbsp; 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {tour.pdfUrl && <button onClick={() => window.open(tour.pdfUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 PDF</button>}
+                {tour.pdfUrl && <button onClick={() => window.open(tour.pdfUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
+                {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
@@ -5899,6 +5906,45 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                     }} />
                     <button type="button" onClick={() => document.getElementById('tourPdfInput').click()} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>
                       📤 PDF Seç & Yükle (max 10MB)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Tur Sözleşmesi PDF */}
+              <div>
+                <label style={labelStyle}>📄 Tur Sözleşmesi PDF</label>
+                {formData.contractUrl ? (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>📄</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>Sözleşme Yüklendi</div>
+                      <div style={{ fontSize: '10px', color: '#64748b', wordBreak: 'break-all' }}>{formData.contractUrl.split('/').pop()?.split('?')[0] || 'sozlesme.pdf'}</div>
+                    </div>
+                    <button type="button" onClick={() => window.open(formData.contractUrl, '_blank')} style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>👁️</button>
+                    <button type="button" onClick={() => setFormData({...formData, contractUrl: ''})} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
+                  </div>
+                ) : (
+                  <div>
+                    <input type="file" accept=".pdf" id="tourContractInput" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 10 * 1024 * 1024) { showToast('PDF max 10MB olabilir', 'error'); return; }
+                      showToast('Sözleşme yükleniyor...', 'info');
+                      try {
+                        const storage = getStorage();
+                        const storageRef = ref(storage, `tour-contracts/${Date.now()}_${file.name}`);
+                        await uploadBytes(storageRef, file);
+                        const url = await getDownloadURL(storageRef);
+                        setFormData(prev => ({...prev, contractUrl: url}));
+                        showToast('Sözleşme yüklendi!', 'success');
+                      } catch(err) {
+                        console.error('Sözleşme yükleme hatası:', err);
+                        showToast('Sözleşme yüklenemedi: ' + err.message, 'error');
+                      }
+                    }} />
+                    <button type="button" onClick={() => document.getElementById('tourContractInput').click()} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>
+                      📤 Sözleşme Seç & Yükle (max 10MB)
                     </button>
                   </div>
                 )}
