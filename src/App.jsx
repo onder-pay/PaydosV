@@ -691,6 +691,9 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
 
 function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack }) {
   const [activeTab, setActiveTab] = useState('search');
+  const [dateRangeFrom, setDateRangeFrom] = useState('');
+  const [dateRangeTo, setDateRangeTo] = useState('');
+  const [dateRangeVisa, setDateRangeVisa] = useState('both'); // 'schengen' | 'usa' | 'both'
   const [showForm, setShowForm] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -797,6 +800,24 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
     const days = getDaysLeft(visa.endDate);
     return days !== null && days > 0 && days <= 30;
   });
+
+  // Girilen tarih aralığında vizesi GEÇERLİ olan müşteriler (kesişim)
+  const dateRangeMatches = (() => {
+    if (!dateRangeFrom || !dateRangeTo) return [];
+    const from = dateRangeFrom, to = dateRangeTo;
+    const overlaps = (start, end) => !!start && !!end && start <= to && end >= from;
+    return customers.filter(c => {
+      if (dateRangeVisa !== 'usa') {
+        if (safeParseJSON(c.schengenVisas).some(v => overlaps(v.startDate, v.endDate))) return true;
+      }
+      if (dateRangeVisa !== 'schengen') {
+        let visa = {};
+        try { visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {}; } catch(e) {}
+        if (overlaps(visa.issueDate || visa.startDate, visa.endDate)) return true;
+      }
+      return false;
+    });
+  })();
 
   // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
@@ -2021,7 +2042,74 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
           <span style={{ fontSize: '14px' }}>🟢</span>
           <span>Yeşil Pas. ({withGreenPassport.length})</span>
         </button>
+        <button onClick={() => setActiveTab('dateRange')} style={{ ...mainTabStyle(activeTab === 'dateRange'), background: activeTab === 'dateRange' ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'dateRange' ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'dateRange' ? '#06b6d4' : '#94a3b8' }}>
+          <span style={{ fontSize: '14px' }}>📅</span>
+          <span>Vize Tarih{dateRangeFrom && dateRangeTo ? ` (${dateRangeMatches.length})` : ''}</span>
+        </button>
       </div>
+
+      {/* VİZE TARİH ARALIĞI SEKMESİ */}
+      {activeTab === 'dateRange' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: '10px', padding: '14px' }}>
+            <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#06b6d4', fontWeight: '600' }}>📅 Bu tarih aralığında vizesi GEÇERLİ olanları bul</p>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+              <div>
+                <label style={labelStyle}>Başlangıç</label>
+                <input type="date" value={dateRangeFrom} onChange={e => setDateRangeFrom(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Bitiş</label>
+                <input type="date" value={dateRangeTo} min={dateRangeFrom || undefined} onChange={e => setDateRangeTo(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Vize Tipi</label>
+                <select value={dateRangeVisa} onChange={e => setDateRangeVisa(e.target.value)} style={selectStyle}>
+                  <option value="both">Schengen + ABD</option>
+                  <option value="schengen">Sadece Schengen</option>
+                  <option value="usa">Sadece ABD</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {(!dateRangeFrom || !dateRangeTo) ? (
+            <p style={{ textAlign: 'center', color: '#64748b', padding: '30px' }}>Başlangıç ve bitiş tarihi girin</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: '12px', color: '#06b6d4' }}>{dateRangeMatches.length} müşteri — {formatDate(dateRangeFrom)} – {formatDate(dateRangeTo)} arası vizesi geçerli</p>
+                {dateRangeMatches.length > 0 && (
+                  <button onClick={() => exportToExcel(dateRangeMatches, `Vize_Gecerli_${dateRangeFrom}_${dateRangeTo}`)} style={{ padding: '6px 12px', background: 'rgba(6,182,212,0.2)', border: 'none', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+                )}
+              </div>
+              {dateRangeMatches.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#64748b', padding: '30px' }}>Bu aralıkta vizesi geçerli müşteri yok</p>
+              ) : (
+                dateRangeMatches.map(c => {
+                  const sch = safeParseJSON(c.schengenVisas).find(v => v.startDate && v.endDate && v.startDate <= dateRangeTo && v.endDate >= dateRangeFrom);
+                  let usa = {}; try { usa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {}; } catch(e) {}
+                  const usaOk = (usa.issueDate || usa.startDate) && usa.endDate && (usa.issueDate || usa.startDate) <= dateRangeTo && usa.endDate >= dateRangeFrom;
+                  return (
+                    <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(6,182,212,0.2)', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                          <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '10px' }}>
+                          {sch && <div style={{ color: '#10b981' }}>🇪🇺 {sch.country} · {formatDate(sch.endDate)}</div>}
+                          {usaOk && <div style={{ color: '#8b5cf6' }}>🇺🇸 ABD · {formatDate(usa.endDate)}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* ARAMA SEKMESİ */}
       {activeTab === 'search' && (
