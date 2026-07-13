@@ -1246,7 +1246,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <FormInput label="Soyad *" value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Soyadı girin" />
                 </div>
                 <FormInput label="TC Kimlik No *" value={formData.tcKimlik || ''} onChange={e => setFormData({...formData, tcKimlik: e.target.value})} maxLength="11" placeholder="11 haneli TC kimlik numarası" />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Telefon *</label>
                     {(() => {
@@ -1406,7 +1406,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                             const resp = await fetch('/.netlify/functions/claude-proxy', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu pasaport. SADECE JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthPlace":"","nationality":"TUR"}. nationality 3 harfli ISO kodu.' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe. birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
@@ -1423,6 +1423,8 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                             }
                             if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
                             if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: parsed.birthPlace }));
+                            if (parsed.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.birthDate)) setFormData(fd => ({ ...fd, birthDate: parsed.birthDate }));
+                            if (parsed.tcKimlik && /^\d{11}$/.test(parsed.tcKimlik)) setFormData(fd => ({ ...fd, tcKimlik: fd.tcKimlik || parsed.tcKimlik }));
                             showToast?.('Pasaport okundu', 'success');
                           } catch(err) { showToast?.('AI okuma başarısız', 'error'); }
                         }} style={{ flex: 1, padding: '8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
@@ -4265,10 +4267,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {/* Randevu Bilgisi Gönder */}
               {formData.appointmentDate && (
                 <button type="button" onClick={() => {
-                  if (!formData.customerPhone) { alert('Telefon numarası bulunamadı!'); return; }
+                  const linked = customers?.find(c => c.id === formData.customerId || c._docId === formData.customerId);
+                  const rawPhone = formData.customerPhone || linked?.phone || '';
+                  if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
                   let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
                   message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
-                  const phone = formData.customerPhone.replace(/\D/g, '');
+                  const phone = rawPhone.replace(/\D/g, '');
                   const fullPhone = formatWhatsAppPhone(phone);
                   window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
                 }} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
@@ -4429,6 +4433,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 appearance: 'auto'
               }}
             >
+              {activeTab !== 'all' && <option value="__noop__" hidden>{activeTab === 'calendar' ? '📅 Takvim görünümü' : '🔔 Hatırlatıcılar'}</option>}
               <option value="all" style={{ background: '#0c1929', color: '#fff' }}>📋 Tümü ({totalCount})</option>
               {visaStatuses.map(s => {
                 const count = visaApplications.filter(v => v.status === s).length;
