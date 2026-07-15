@@ -6480,6 +6480,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   const [flightRaw, setFlightRaw] = useState('');
   const [flightBusy, setFlightBusy] = useState(false);
   const [flightWarn, setFlightWarn] = useState([]);
+  const [offerId, setOfferId] = useState(null); // düzenlenen tur teklifi (null = yeni)
   const [searchQuery, setSearchQuery] = useState('');
   const [formStep, setFormStep] = useState('type'); // type, customer, details
   const [formData, setFormData] = useState({
@@ -7341,6 +7342,27 @@ ${flightRaw}`;
     showToast?.(`${days.length} gün oluşturuldu`, 'success');
   };
 
+  // ===== Tur teklifini kaydet (quotes listesine 'tur-teklifi' türünde) =====
+  const saveTourOffer = () => {
+    if (!offer.title || offer.title === 'Tur Adı') { showToast?.('Tur başlığı girin', 'warning'); return; }
+    const now = new Date();
+    if (offerId) {
+      setQuotes(prev => prev.map(q => q.id === offerId ? { ...q, subject: offer.title, offer, updatedAt: now.toISOString() } : q));
+      showToast?.('Tur teklifi güncellendi', 'success');
+    } else {
+      const id = Date.now();
+      const newQ = {
+        id, type: 'tur-teklifi', subject: offer.title,
+        customer: { firstName: offer.subtitle || '', lastName: '' },
+        number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`,
+        offer, createdAt: now.toISOString(), createdBy: 'Önder Taşcı'
+      };
+      setQuotes(prev => [...prev, newQ]);
+      setOfferId(id);
+      showToast?.('Tur teklifi kaydedildi', 'success');
+    }
+  };
+
   const printOffer = () => {
     const w = window.open('', '_blank');
     if (!w) { showToast?.('Pop-up engellendi — tarayıcıda izin verin', 'error'); return; }
@@ -7366,8 +7388,11 @@ ${flightRaw}`;
           })}
         </datalist>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>🧾 Tur Teklifi Oluştur</h2>
-          <button onClick={() => setShowTourOffer(false)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
+          <h2 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>🧾 {offerId ? 'Tur Teklifi Düzenle' : 'Tur Teklifi Oluştur'}</h2>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={saveTourOffer} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>💾 Kaydet</button>
+            <button onClick={() => setShowTourOffer(false)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
+          </div>
         </div>
 
         <div style={card}>
@@ -7477,8 +7502,14 @@ ${flightRaw}`;
             <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 70px auto' : '2fr 70px 70px auto', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
                 <input style={inS} value={h.name} onChange={e => setHotel(i, {name: e.target.value})} placeholder="Otel adı" />
-                <input style={inS} value={h.stars} onChange={e => setHotel(i, {stars: e.target.value})} placeholder="5★" />
-                {!isMobile && <input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" />}
+                <select style={inS} value={h.stars} onChange={e => setHotel(i, {stars: e.target.value})}>
+                  {['5★','4★','3★','2★','Apart','Butik','—'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                </select>
+                {!isMobile && (
+                  <select style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})}>
+                    {['USD','EUR','TRY','GBP'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                  </select>
+                )}
                 {offer.hotels.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, hotels: p.hotels.filter((_,j)=>j!==i)}))}>🗑️</button>}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(6, 1fr)', gap: '6px' }}>
@@ -7489,7 +7520,11 @@ ${flightRaw}`;
                 <div><label style={{...lbl, fontSize: '10px', color: '#60a5fa'}}>1.Çocuk (7–11,99)</label><input style={inS} value={h.priceChild1} onChange={e => setHotel(i, {priceChild1: e.target.value})} placeholder="—" /></div>
                 <div><label style={{...lbl, fontSize: '10px', color: '#60a5fa'}}>2.Çocuk (2–6,99)</label><input style={inS} value={h.priceChild2} onChange={e => setHotel(i, {priceChild2: e.target.value})} placeholder="—" /></div>
               </div>
-              {isMobile && <div style={{ marginTop: '6px' }}><label style={{...lbl, fontSize: '10px'}}>Para Birimi</label><input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" /></div>}
+              {isMobile && <div style={{ marginTop: '6px' }}><label style={{...lbl, fontSize: '10px'}}>Para Birimi</label>
+                <select style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})}>
+                  {['USD','EUR','TRY','GBP'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                </select>
+              </div>}
               <input style={{...inS, marginTop: '6px'}} value={h.note} onChange={e => setHotel(i, {note: e.target.value})} placeholder="Not (örn. 14-17 Ekim için) — opsiyonel" />
             </div>
           ))}
@@ -7523,7 +7558,10 @@ ${flightRaw}`;
           </div>
         </div>
 
-        <button onClick={printOffer} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📄 PDF Oluştur (Yazdır)</button>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <button onClick={saveTourOffer} style={{ padding: '14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>💾 Kaydet</button>
+          <button onClick={printOffer} style={{ padding: '14px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📄 PDF Oluştur (Yazdır)</button>
+        </div>
         <p style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>Yeni sekmede açılır → Ctrl+P → "PDF olarak kaydet" seçin</p>
       </div>
     );
@@ -7537,7 +7575,7 @@ ${flightRaw}`;
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{filteredQuotes.length} / {quotes.length} kayıt</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => { setOffer(emptyOffer); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>🧾 Tur Teklifi</button>
+          <button onClick={() => { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>🧾 Tur Teklifi</button>
           <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
         </div>
       </div>
@@ -7554,6 +7592,9 @@ ${flightRaw}`;
             </button>
             <button onClick={() => setFilterType('proforma')} style={{ padding: '10px 20px', background: filterType === 'proforma' ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)', border: filterType === 'proforma' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'proforma' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               💰 Proformalar ({quotes.filter(q => q.type === 'proforma').length})
+            </button>
+            <button onClick={() => setFilterType('tur-teklifi')} style={{ padding: '10px 20px', background: filterType === 'tur-teklifi' ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: filterType === 'tur-teklifi' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'tur-teklifi' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              🧾 Tur Teklifleri ({quotes.filter(q => q.type === 'tur-teklifi').length})
             </button>
           </div>
 
@@ -7585,7 +7626,36 @@ ${flightRaw}`;
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-          {filteredQuotes.map(quote => (
+          {filteredQuotes.map(quote => quote.type === 'tur-teklifi' ? (
+            <div key={quote.id} style={{ background: 'rgba(232,145,42,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(232,145,42,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '18px' }}>🧾</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{quote.number}</span>
+              </div>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#ffffff' }}>{quote.subject}</h3>
+              <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>{quote.offer?.subtitle || '—'}</p>
+              <div style={{ padding: '10px 12px', background: 'rgba(232,145,42,0.1)', borderRadius: '8px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', color: '#e8912a', fontWeight: '600' }}>{offerDateRange(quote.offer || {}) || 'Tarih yok'}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{offerDuration(quote.offer || {})}{offerLocation(quote.offer || {}) ? ' · ' + offerLocation(quote.offer) : ''}</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={() => { setOffer({ ...emptyOffer, ...quote.offer }); setOfferId(quote.id); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Aç / Düzenle</button>
+                <button onClick={() => {
+                  const now = new Date(); const id = Date.now();
+                  const copy = { ...quote, id, _docId: undefined, subject: `${quote.subject} (Kopya)`, number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`, createdAt: now.toISOString() };
+                  setQuotes(prev => [...prev, copy]);
+                  showToast?.('Teklif kopyalandı', 'success');
+                }} style={{ padding: '8px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📋 Kopyala</button>
+                <button onClick={() => {
+                  const w = window.open('', '_blank');
+                  if (!w) { showToast?.('Pop-up engellendi', 'error'); return; }
+                  w.document.write(genOfferHTML({ ...emptyOffer, ...quote.offer })); w.document.close();
+                  setTimeout(() => { w.focus(); w.print(); }, 500);
+                }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄</button>
+                <button onClick={async () => { if (window.confirm(`"${quote.subject}" teklifini silmek istediğinizden emin misiniz?`)) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Teklif silindi', 'warning'); try { const docId = quote._docId || quote.id?.toString(); if (docId) await deleteDoc(doc(db, 'quotes', docId)); } catch(e) { console.warn('Firestore silme hatası:', e.message); } } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
+              </div>
+            </div>
+          ) : (
             <div key={quote.id} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <span style={{ fontSize: '18px' }}>{quote.type === 'teklif' ? '📝' : '💰'}</span>
