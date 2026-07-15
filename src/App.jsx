@@ -6450,15 +6450,36 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   const [viewingQuote, setViewingQuote] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
   const emptyOffer = {
-    title: 'Tur Adı', subtitle: '', dateRange: '', duration: '', location: '',
+    title: 'Tur Adı', subtitle: '', startDate: '', endDate: '',
+    destinations: [{ country: '', city: '' }],
     flightOut: { date: '', airline: '', dep: '', arr: '', plane: '' },
     flightRet: { date: '', airline: '', dep: '', arr: '', plane: '' },
     days: [{ title: '1. GÜN', date: '', items: [''] }],
     hotels: [{ name: '', stars: '5★', priceDouble: '', priceSingle: '', currency: 'USD', note: '' }],
-    included: [''], excluded: [''], extraNote: ''
+    included: [
+      'Belirtilen otelde konaklama',
+      'Belirtilen uçuşlar',
+      'Otelde açık büfe kahvaltı',
+      'Havaalanı – otel – havaalanı transferleri',
+      'Rehberlik hizmeti dahil "Şehir Turu"',
+      'Konser bileti (General Admission)',
+      'Seyahat sigortası'
+    ],
+    excluded: [
+      'Kişisel harcamalar, oteldeki ekstralar',
+      'Şahsi tercümanlık hizmetleri',
+      '20 kg üstü ekstra bagaj',
+      'Belirtilen program dışında her türlü rezervasyon değişikliği',
+      'Sağlık sigortası',
+      'Yurtdışı çıkış harcı'
+    ],
+    extraNote: ''
   };
   const [showTourOffer, setShowTourOffer] = useState(false);
   const [offer, setOffer] = useState(emptyOffer);
+  const [flightRaw, setFlightRaw] = useState('');
+  const [flightBusy, setFlightBusy] = useState(false);
+  const [flightWarn, setFlightWarn] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [formStep, setFormStep] = useState('type'); // type, customer, details
   const [formData, setFormData] = useState({
@@ -7099,6 +7120,25 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   }
 
   // ===== TUR TEKLİFİ: yazdırılabilir şık HTML üretici =====
+  const TR_AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const offerDateRange = (o) => {
+    if (!o.startDate) return '';
+    const [y1,m1,d1] = o.startDate.split('-').map(Number);
+    if (!o.endDate) return `${d1} ${TR_AYLAR[m1-1]} ${y1}`;
+    const [y2,m2,d2] = o.endDate.split('-').map(Number);
+    if (y1 === y2 && m1 === m2) return `${d1} – ${d2} ${TR_AYLAR[m1-1]} ${y1}`;
+    if (y1 === y2) return `${d1} ${TR_AYLAR[m1-1]} – ${d2} ${TR_AYLAR[m2-1]} ${y1}`;
+    return `${d1} ${TR_AYLAR[m1-1]} ${y1} – ${d2} ${TR_AYLAR[m2-1]} ${y2}`;
+  };
+  const offerDuration = (o) => {
+    if (!o.startDate || !o.endDate) return '';
+    const a = new Date(o.startDate + 'T00:00:00'), b = new Date(o.endDate + 'T00:00:00');
+    const nights = Math.round((b - a) / 86400000);
+    if (isNaN(nights) || nights < 0) return '';
+    return `${nights + 1} Gün${nights > 0 ? ` / ${nights} Gece` : ''}`;
+  };
+  const offerLocation = (o) => (o.destinations || []).filter(d => d.country || d.city)
+    .map(d => [d.city, d.country].filter(Boolean).join(', ')).join(' · ');
   const genOfferHTML = (o) => {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const flightCard = (f, label) => `
@@ -7160,7 +7200,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 </style></head><body>
   <div class="header">
     <div><div class="brand">✈ PAYDOS TURİZM</div><h1>${esc(o.title)}</h1><div class="sub">${esc(o.subtitle)}</div></div>
-    <div class="r"><div class="date">${esc(o.dateRange)}</div><div class="meta">${esc(o.duration)}${o.location?' · '+esc(o.location):''}</div></div>
+    <div class="r"><div class="date">${esc(offerDateRange(o))}</div><div class="meta">${esc(offerDuration(o))}${offerLocation(o)?' · '+esc(offerLocation(o)):''}</div></div>
   </div>
   ${(o.flightOut.airline||o.flightRet.airline)?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
   ${o.days.some(d=>d.items.some(x=>x.trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
@@ -7170,6 +7210,86 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   <div class="foot"><div><b>Paydos Turizm Seyahat Acentalığı</b><br><small>Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / Denizli</small></div><div class="r"><div class="ph">0 258 263 71 76</div><small>info@paydostur.com · www.paydostur.com</small></div></div>
 </body></html>`;
   };
+  // ===== Uçuşları AI ile düzenle + tutarlılık kontrolü =====
+  const checkFlights = (fo, fr, o) => {
+    const w = [];
+    const mins = (s) => { const m = String(s||'').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null; };
+    const plus1 = (s) => /\(\+1\)|ertesi|next day/i.test(String(s||''));
+    [[fo,'Gidiş'],[fr,'Dönüş']].forEach(([f,lab]) => {
+      const d = mins(f.dep), a = mins(f.arr);
+      if (d !== null && a !== null && a < d && !plus1(f.arr)) w.push(`${lab}: varış (${f.arr}) kalkıştan (${f.dep}) erken — gece uçuşuysa "(+1)" ekleyin.`);
+      const dur = String(f.plane||'').match(/(\d+)\s*s\w*\s*(\d+)?/);
+      if (d !== null && a !== null && dur) {
+        let diff = a - d; if (diff < 0) diff += 1440;
+        const stated = (+dur[1])*60 + (dur[2] ? +dur[2] : 0);
+        if (Math.abs(diff - stated) > 90) w.push(`${lab}: yazılan süre (${dur[0]}) saatlerle uyuşmuyor (~${Math.floor(diff/60)}s ${diff%60}dk). Saat dilimi farkı olabilir.`);
+      }
+      if (!f.airline) w.push(`${lab}: havayolu/uçuş no boş.`);
+    });
+    const parseD = (s) => { const m = String(s||'').match(/(\d{1,2})[.\/\s-](\d{1,2}|\p{L}+)[.\/\s-]?(\d{4})?/u); return m ? m[0] : null; };
+    if (o.startDate && o.endDate && fo.date && fr.date) {
+      const norm = (s) => String(s).replace(/\D/g,'');
+      if (norm(fo.date) && norm(fr.date) && norm(fo.date) > norm(fr.date)) w.push('Gidiş tarihi dönüşten sonra görünüyor — kontrol edin.');
+    }
+    return w;
+  };
+  const parseFlightsAI = async () => {
+    if (!flightRaw.trim()) { showToast?.('Önce uçuş bilgilerini yapıştırın', 'warning'); return; }
+    setFlightBusy(true); setFlightWarn([]);
+    try {
+      const prompt = `Aşağıdaki serbest metinden uçuş bilgilerini çıkar. SADECE şu JSON'u döndür, başka hiçbir şey yazma:
+{"flightOut":{"date":"","airline":"","dep":"","arr":"","plane":""},"flightRet":{"date":"","airline":"","dep":"","arr":"","plane":""}}
+Kurallar:
+- date: "15 Ekim 2026 Perşembe" gibi Türkçe biçim
+- airline: "Azerbaijan Airlines (J2 8004)" gibi havayolu + uçuş no
+- dep: "Ankara ESB · 22:55" (şehir/havalimanı kodu · saat)
+- arr: "Bakü GYD · 02:25 (+1)" — ertesi güne sarkıyorsa (+1) ekle
+- plane: "Airbus A320 · 2s 30dk" (uçak tipi · süre) — bilinmiyorsa sadece süre veya boş
+- Bilinmeyen alanı boş string bırak. Uydurma.
+METİN:
+${flightRaw}`;
+      const resp = await fetch('/.netlify/functions/claude-proxy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (!resp.ok) { const t = await resp.text(); throw new Error(`API ${resp.status}: ${t.slice(0,120)}`); }
+      const data = await resp.json();
+      const txt = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+      const m = txt.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('AI yanıtı okunamadı');
+      const p = JSON.parse(m[0]);
+      const fo = { ...offer.flightOut, ...(p.flightOut || {}) };
+      const fr = { ...offer.flightRet, ...(p.flightRet || {}) };
+      setOffer(prev => ({ ...prev, flightOut: fo, flightRet: fr }));
+      const w = checkFlights(fo, fr, offer);
+      setFlightWarn(w);
+      showToast?.(w.length ? `Uçuşlar dolduruldu — ${w.length} uyarı var` : 'Uçuşlar dolduruldu, tutarlı görünüyor', w.length ? 'warning' : 'success');
+    } catch (e) {
+      showToast?.('Uçuş okunamadı: ' + e.message, 'error');
+    } finally { setFlightBusy(false); }
+  };
+  // ===== Tarihlere göre günleri otomatik oluştur =====
+  const buildDaysFromDates = () => {
+    if (!offer.startDate || !offer.endDate) { showToast?.('Önce başlangıç ve bitiş tarihi seçin', 'warning'); return; }
+    const a = new Date(offer.startDate + 'T00:00:00'), b = new Date(offer.endDate + 'T00:00:00');
+    const n = Math.round((b - a) / 86400000);
+    if (isNaN(n) || n < 0) { showToast?.('Tarihler hatalı', 'error'); return; }
+    if (n > 30) { showToast?.('30 günden uzun tur için elle ekleyin', 'warning'); return; }
+    const gunler = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+    const days = [];
+    for (let i = 0; i <= n; i++) {
+      const d = new Date(a.getFullYear(), a.getMonth(), a.getDate() + i);
+      const eski = offer.days[i];
+      days.push({
+        title: `${i + 1}. GÜN`,
+        date: `${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${gunler[d.getDay()]}`,
+        items: (eski && eski.items.some(x => x.trim())) ? eski.items : ['']
+      });
+    }
+    setOffer(p => ({ ...p, days }));
+    showToast?.(`${days.length} gün oluşturuldu`, 'success');
+  };
+
   const printOffer = () => {
     const w = window.open('', '_blank');
     if (!w) { showToast?.('Pop-up engellendi — tarayıcıda izin verin', 'error'); return; }
@@ -7199,15 +7319,45 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
             <div><label style={lbl}>Tur Başlığı</label><input style={inS} value={offer.title} onChange={e => setOffer({...offer, title: e.target.value})} placeholder="Bakü Build Fuar Turu" /></div>
             <div><label style={lbl}>Alt Başlık (grup/oda adı)</label><input style={inS} value={offer.subtitle} onChange={e => setOffer({...offer, subtitle: e.target.value})} placeholder="Denizli İnşaat Mühendisleri Odası" /></div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '8px' }}>
-            <div><label style={lbl}>Tarih Aralığı</label><input style={inS} value={offer.dateRange} onChange={e => setOffer({...offer, dateRange: e.target.value})} placeholder="15 – 18 Ekim 2026" /></div>
-            <div><label style={lbl}>Süre</label><input style={inS} value={offer.duration} onChange={e => setOffer({...offer, duration: e.target.value})} placeholder="4 Gün" /></div>
-            <div><label style={lbl}>Yer</label><input style={inS} value={offer.location} onChange={e => setOffer({...offer, location: e.target.value})} placeholder="Azerbaycan" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+            <div><label style={lbl}>Başlangıç Tarihi</label><input type="date" style={inS} value={offer.startDate} onChange={e => setOffer({...offer, startDate: e.target.value})} /></div>
+            <div><label style={lbl}>Bitiş Tarihi</label><input type="date" style={inS} min={offer.startDate || undefined} value={offer.endDate} onChange={e => setOffer({...offer, endDate: e.target.value})} /></div>
+            <div><label style={lbl}>Süre (otomatik)</label><div style={{...inS, color: '#e8912a', fontWeight: '600', lineHeight: '1.4'}}>{offerDuration(offer) || '—'}</div></div>
           </div>
+          {offer.startDate && <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 10px' }}>Teklifte görünecek: <b style={{ color: '#e8912a' }}>{offerDateRange(offer)}</b></p>}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <label style={lbl}>Ülke / Şehir</label>
+            <button style={addBtn} onClick={() => setOffer(p => ({...p, destinations: [...p.destinations, { country: '', city: '' }]}))}>+ Destinasyon Ekle</button>
+          </div>
+          {offer.destinations.map((d, i) => (
+            <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+              <select style={{...inS, flex: 1}} value={d.country} onChange={e => setOffer(p => ({...p, destinations: p.destinations.map((x,j)=>j===i?{...x, country: e.target.value}:x)}))}>
+                <option value="" style={{ background: '#0c1929' }}>Ülke seçin...</option>
+                {tourCountries.map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+              </select>
+              <input style={{...inS, flex: 1}} value={d.city} onChange={e => setOffer(p => ({...p, destinations: p.destinations.map((x,j)=>j===i?{...x, city: e.target.value}:x)}))} placeholder="Şehir (örn. Bakü)" />
+              {offer.destinations.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, destinations: p.destinations.filter((_,j)=>j!==i)}))}>🗑️</button>}
+            </div>
+          ))}
         </div>
 
         <div style={card}>
           <div style={secTitle}>✈ Uçuş Bilgileri</div>
+          <div style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '8px', padding: '10px', marginBottom: '12px' }}>
+            <label style={{...lbl, color: '#a78bfa'}}>🤖 Uçuşları buraya yapıştır — AI düzenleyip alanlara yazsın</label>
+            <textarea style={{...inS, minHeight: '70px', fontFamily: 'inherit', resize: 'vertical'}} value={flightRaw} onChange={e => setFlightRaw(e.target.value)} placeholder={"Örn:\n15 Ekim Ankara-Bakü AZAL J2 8004 22:55-02:25 A320\n18 Ekim Bakü-Ankara J2 8003 20:15-21:55"} />
+            <button disabled={flightBusy} onClick={parseFlightsAI} style={{ marginTop: '8px', padding: '8px 14px', background: flightBusy ? 'rgba(139,92,246,0.3)' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: 'white', cursor: flightBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+              {flightBusy ? '⏳ Okunuyor...' : '🤖 AI ile Düzenle & Kontrol Et'}
+            </button>
+            {flightWarn.length > 0 && (
+              <div style={{ marginTop: '8px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', padding: '8px' }}>
+                <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: '700', marginBottom: '4px' }}>⚠️ Tutarlılık uyarıları</div>
+                {flightWarn.map((w, i) => <div key={i} style={{ fontSize: '11px', color: '#fbbf24', padding: '2px 0' }}>• {w}</div>)}
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>Not: AI gerçek uçuş tarifesini doğrulayamaz, sadece mantık/tutarlılık kontrolü yapar.</div>
+              </div>
+            )}
+          </div>
           {[['flightOut','GİDİŞ'],['flightRet','DÖNÜŞ']].map(([key,lab]) => (
             <div key={key} style={{ marginBottom: '10px' }}>
               <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '6px' }}>{lab}</div>
@@ -7225,7 +7375,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={secTitle}>◆ Günlük Program</div>
-            <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [''] }]}))}>+ Gün Ekle</button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button style={{...addBtn, background: 'rgba(6,182,212,0.15)', borderColor: 'rgba(6,182,212,0.3)', color: '#06b6d4'}} onClick={buildDaysFromDates}>📅 Tarihlerden Oluştur</button>
+              <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [''] }]}))}>+ Gün Ekle</button>
+            </div>
           </div>
           {offer.days.map((d, i) => (
             <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '8px' }}>
