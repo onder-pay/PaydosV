@@ -7273,10 +7273,23 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
         }
       }
     });
-    const parseD = (s) => { const m = String(s||'').match(/(\d{1,2})[.\/\s-](\d{1,2}|\p{L}+)[.\/\s-]?(\d{4})?/u); return m ? m[0] : null; };
-    if (o.startDate && o.endDate && fo.date && fr.date) {
-      const norm = (s) => String(s).replace(/\D/g,'');
-      if (norm(fo.date) && norm(fr.date) && norm(fo.date) > norm(fr.date)) w.push('Gidiş tarihi dönüşten sonra görünüyor — kontrol edin.');
+    // Türkçe tarih metnini gerçek tarihe çevir ("9 Ekim 2026 Cuma" -> Date)
+    const trDate = (s) => {
+      const t = String(s || '').toLocaleLowerCase('tr');
+      const m = t.match(/(\d{1,2})\s*([a-zçğıöşü]+)\s*(\d{4})?/);
+      if (!m) return null;
+      const idx = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr').startsWith(m[2].slice(0, 3)));
+      if (idx < 0) return null;
+      const yil = m[3] ? +m[3] : (o.startDate ? +o.startDate.slice(0, 4) : new Date().getFullYear());
+      return new Date(yil, idx, +m[1]);
+    };
+    const dOut = trDate(fo.date), dRet = trDate(fr.date);
+    if (dOut && dRet && dOut > dRet) w.push('Gidiş tarihi dönüşten sonra görünüyor — kontrol edin.');
+    // Uçuş tarihleri seçilen tur aralığında mı?
+    if (o.startDate && o.endDate) {
+      const a = new Date(o.startDate + 'T00:00:00'), b = new Date(o.endDate + 'T00:00:00');
+      if (dOut && (dOut < a || dOut > b)) w.push(`Gidiş tarihi (${fo.date}) seçilen tur aralığının dışında.`);
+      if (dRet && (dRet < a || dRet > b)) w.push(`Dönüş tarihi (${fr.date}) seçilen tur aralığının dışında.`);
     }
     return w;
   };
@@ -7363,12 +7376,65 @@ ${flightRaw}`;
     }
   };
 
-  const printOffer = () => {
-    const w = window.open('', '_blank');
-    if (!w) { showToast?.('Pop-up engellendi — tarayıcıda izin verin', 'error'); return; }
-    w.document.write(genOfferHTML(offer)); w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 500);
+  // html2canvas'ı CDN'den dinamik yükle (teklif PDF'i için)
+  const loadHtml2Canvas = () => new Promise((resolve, reject) => {
+    if (window.html2canvas) return resolve(window.html2canvas);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => reject(new Error('html2canvas yüklenemedi'));
+    document.head.appendChild(s);
+  });
+
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const makeOfferPDF = async (o) => {
+    const data = { ...emptyOffer, ...o };
+    setPdfBusy(true);
+    let holder = null;
+    try {
+      const html2canvas = await loadHtml2Canvas();
+      // Teklifi ekran dışında render et
+      holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
+      const inner = genOfferHTML(data);
+      const bodyMatch = inner.match(/<body>([\s\S]*)<\/body>/);
+      const styleMatch = inner.match(/<style>([\s\S]*?)<\/style>/);
+      holder.innerHTML = `<style>${styleMatch ? styleMatch[1] : ''}</style><div style="padding:14px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2b3a;font-size:12px;background:#fff">${bodyMatch ? bodyMatch[1] : ''}</div>`;
+      document.body.appendChild(holder);
+      await new Promise(r => setTimeout(r, 250)); // yerleşim otursun
+
+      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      const img = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pw = 210, ph = 297;
+      const iw = pw, ih = (canvas.height * pw) / canvas.width;
+      if (ih <= ph) {
+        pdf.addImage(img, 'JPEG', 0, 0, iw, ih);
+      } else {
+        // uzun içerik -> sayfalara böl
+        let left = ih, pos = 0;
+        pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
+        left -= ph;
+        while (left > 0) {
+          pos -= ph;
+          pdf.addPage();
+          pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
+          left -= ph;
+        }
+      }
+      const safe = (data.title || 'Tur_Teklifi').replace(/[^\w\sğüşıöçĞÜŞİÖÇ-]/g, '').replace(/\s+/g, '_');
+      pdf.save(`${safe}.pdf`);
+      showToast?.('PDF indirildi', 'success');
+    } catch (e) {
+      console.error('PDF hatası:', e);
+      showToast?.('PDF oluşturulamadı: ' + e.message, 'error');
+    } finally {
+      if (holder) document.body.removeChild(holder);
+      setPdfBusy(false);
+    }
   };
+
+  const printOffer = () => makeOfferPDF(offer);
 
   if (showTourOffer) {
     const inS = { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
@@ -7560,9 +7626,9 @@ ${flightRaw}`;
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <button onClick={saveTourOffer} style={{ padding: '14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>💾 Kaydet</button>
-          <button onClick={printOffer} style={{ padding: '14px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📄 PDF Oluştur (Yazdır)</button>
+          <button onClick={printOffer} disabled={pdfBusy} style={{ padding: '14px', background: pdfBusy ? 'rgba(232,145,42,0.4)' : 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: pdfBusy ? 'wait' : 'pointer' }}>{pdfBusy ? '⏳ PDF hazırlanıyor...' : '📄 PDF Oluştur'}</button>
         </div>
-        <p style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>Yeni sekmede açılır → Ctrl+P → "PDF olarak kaydet" seçin</p>
+
       </div>
     );
   }
@@ -7646,12 +7712,7 @@ ${flightRaw}`;
                   setQuotes(prev => [...prev, copy]);
                   showToast?.('Teklif kopyalandı', 'success');
                 }} style={{ padding: '8px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📋 Kopyala</button>
-                <button onClick={() => {
-                  const w = window.open('', '_blank');
-                  if (!w) { showToast?.('Pop-up engellendi', 'error'); return; }
-                  w.document.write(genOfferHTML({ ...emptyOffer, ...quote.offer })); w.document.close();
-                  setTimeout(() => { w.focus(); w.print(); }, 500);
-                }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄</button>
+                <button onClick={() => makeOfferPDF(quote.offer)} disabled={pdfBusy} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: pdfBusy ? 'wait' : 'pointer', fontSize: '11px', fontWeight: '600' }}>{pdfBusy ? '⏳' : '📄'}</button>
                 <button onClick={async () => { if (window.confirm(`"${quote.subject}" teklifini silmek istediğinizden emin misiniz?`)) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Teklif silindi', 'warning'); try { const docId = quote._docId || quote.id?.toString(); if (docId) await deleteDoc(doc(db, 'quotes', docId)); } catch(e) { console.warn('Firestore silme hatası:', e.message); } } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
               </div>
             </div>
