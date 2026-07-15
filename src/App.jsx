@@ -6452,8 +6452,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   const emptyOffer = {
     title: 'Tur Adı', subtitle: '', startDate: '', endDate: '',
     destinations: [{ country: '', city: '' }],
-    flightOut: { date: '', airline: '', dep: '', arr: '', plane: '' },
-    flightRet: { date: '', airline: '', dep: '', arr: '', plane: '' },
+    flightOut: { date: '', legs: [{ airline: '', dep: '', arr: '', plane: '' }] },
+    flightRet: { date: '', legs: [{ airline: '', dep: '', arr: '', plane: '' }] },
     days: [{ title: '1. GÜN', date: '', items: [{ time: '', text: '' }] }],
     hotels: [{ name: '', stars: '5★', priceDouble: '', priceSingle: '', priceExtraBed: '', priceBaby: '', priceChild1: '', priceChild2: '', currency: 'USD', note: '' }],
     included: [
@@ -7141,14 +7141,22 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     .map(d => [d.city, d.country].filter(Boolean).join(', ')).join(' · ');
   const genOfferHTML = (o) => {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const flightCard = (f, label) => `
+    const flightCard = (f, label) => {
+      const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
+      if (!legs.length) return '';
+      return `
       <div class="fcard">
-        <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span></div>
-        <div class="frow"><span>Havayolu</span> <b>${esc(f.airline)}</b></div>
-        <div class="frow"><span>Kalkış</span> <b>${esc(f.dep)}</b></div>
-        <div class="frow"><span>Varış</span> <b>${esc(f.arr)}</b></div>
-        <div class="frow"><span>Uçak</span> <b>${esc(f.plane)}</b></div>
+        <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span>${legs.length > 1 ? '<span class="conn">Aktarmalı</span>' : ''}</div>
+        ${legs.map((l, i) => `
+          <div class="fleg">
+            ${legs.length > 1 ? `<div class="flegno">${i + 1}. Bacak</div>` : ''}
+            ${l.airline ? `<div class="frow"><span>Havayolu</span> <b>${esc(l.airline)}</b></div>` : ''}
+            ${l.dep ? `<div class="frow"><span>Kalkış</span> <b>${esc(l.dep)}</b></div>` : ''}
+            ${l.arr ? `<div class="frow"><span>Varış</span> <b>${esc(l.arr)}</b></div>` : ''}
+            ${l.plane ? `<div class="frow"><span>Uçak</span> <b>${esc(l.plane)}</b></div>` : ''}
+          </div>`).join('')}
       </div>`;
+    };
     const daysHTML = o.days.map((d,i) => `
       <div class="drow">
         <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
@@ -7197,6 +7205,9 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   .fcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
   .fhead{background:#14508c;color:#fff;font-weight:700;padding:6px 10px}.fhead .fdate{color:#bcd0e6;font-weight:400;font-size:11px}
   .frow{padding:4px 10px;border-bottom:1px solid #dbe4ee}.frow span{color:#5a6b7b}
+  .conn{background:#e8912a;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:700}
+  .fleg{border-bottom:2px solid #d5e0ec}.fleg:last-child{border-bottom:none}
+  .flegno{background:#dce7f2;color:#14508c;font-size:9px;font-weight:700;padding:2px 10px}
   .drow{display:flex;border:1px solid #d5e0ec;border-bottom:none}
   .drow:last-child{border-bottom:1px solid #d5e0ec}
   .dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
@@ -7224,7 +7235,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     <div><div class="brand">✈ PAYDOS TURİZM</div><h1>${esc(o.title)}</h1><div class="sub">${esc(o.subtitle)}</div></div>
     <div class="r"><div class="date">${esc(offerDateRange(o))}</div><div class="meta">${esc(offerDuration(o))}${offerLocation(o)?' · '+esc(offerLocation(o)):''}</div></div>
   </div>
-  ${(o.flightOut.airline||o.flightRet.airline)?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
+  ${(flightCard(o.flightOut,'GİDİŞ')||flightCard(o.flightRet,'DÖNÜŞ'))?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
   ${o.days.some(d=>d.items.some(x=>(x.time||'').trim()||(x.text||'').trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
   ${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="hstack">${hotelsHTML}</div>`:''}
   ${o.extraNote?`<div class="note">${esc(o.extraNote)}</div>`:''}
@@ -7238,15 +7249,28 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     const mins = (s) => { const m = String(s||'').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null; };
     const plus1 = (s) => /\(\+1\)|ertesi|next day/i.test(String(s||''));
     [[fo,'Gidiş'],[fr,'Dönüş']].forEach(([f,lab]) => {
-      const d = mins(f.dep), a = mins(f.arr);
-      if (d !== null && a !== null && a < d && !plus1(f.arr)) w.push(`${lab}: varış (${f.arr}) kalkıştan (${f.dep}) erken — gece uçuşuysa "(+1)" ekleyin.`);
-      const dur = String(f.plane||'').match(/(\d+)\s*s\w*\s*(\d+)?/);
-      if (d !== null && a !== null && dur) {
-        let diff = a - d; if (diff < 0) diff += 1440;
-        const stated = (+dur[1])*60 + (dur[2] ? +dur[2] : 0);
-        if (Math.abs(diff - stated) > 90) w.push(`${lab}: yazılan süre (${dur[0]}) saatlerle uyuşmuyor (~${Math.floor(diff/60)}s ${diff%60}dk). Saat dilimi farkı olabilir.`);
+      const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
+      legs.forEach((l, idx) => {
+        const tag = legs.length > 1 ? `${lab} ${idx+1}. bacak` : lab;
+        const d = mins(l.dep), a = mins(l.arr);
+        if (d !== null && a !== null && a < d && !plus1(l.arr)) w.push(`${tag}: varış (${l.arr}) kalkıştan (${l.dep}) erken — gece uçuşuysa "(+1)" ekleyin.`);
+        const dur = String(l.plane||'').match(/(\d+)\s*s\w*\s*(\d+)?/);
+        if (d !== null && a !== null && dur) {
+          let diff = a - d; if (diff < 0) diff += 1440;
+          const stated = (+dur[1])*60 + (dur[2] ? +dur[2] : 0);
+          if (Math.abs(diff - stated) > 90) w.push(`${tag}: yazılan süre (${dur[0]}) saatlerle uyuşmuyor (~${Math.floor(diff/60)}s ${diff%60}dk). Saat dilimi farkı olabilir.`);
+        }
+        if (!l.airline) w.push(`${tag}: havayolu/uçuş no boş.`);
+      });
+      // Aktarma bekleme süresi kontrolü
+      for (let i = 1; i < legs.length; i++) {
+        const prevArr = mins(legs[i-1].arr), nextDep = mins(legs[i].dep);
+        if (prevArr !== null && nextDep !== null) {
+          let wait = nextDep - prevArr; if (wait < 0) wait += 1440;
+          if (wait < 60) w.push(`${lab}: ${i}. aktarma bekleme süresi çok kısa (~${wait} dk) — bağlantı riskli.`);
+          if (wait > 600) w.push(`${lab}: ${i}. aktarma bekleme süresi çok uzun (~${Math.floor(wait/60)} saat) — kontrol edin.`);
+        }
       }
-      if (!f.airline) w.push(`${lab}: havayolu/uçuş no boş.`);
     });
     const parseD = (s) => { const m = String(s||'').match(/(\d{1,2})[.\/\s-](\d{1,2}|\p{L}+)[.\/\s-]?(\d{4})?/u); return m ? m[0] : null; };
     if (o.startDate && o.endDate && fo.date && fr.date) {
@@ -7259,15 +7283,16 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     if (!flightRaw.trim()) { showToast?.('Önce uçuş bilgilerini yapıştırın', 'warning'); return; }
     setFlightBusy(true); setFlightWarn([]);
     try {
-      const prompt = `Aşağıdaki serbest metinden uçuş bilgilerini çıkar. SADECE şu JSON'u döndür, başka hiçbir şey yazma:
-{"flightOut":{"date":"","airline":"","dep":"","arr":"","plane":""},"flightRet":{"date":"","airline":"","dep":"","arr":"","plane":""}}
+      const prompt = `Aşağıdaki serbest metinden uçuş bilgilerini çıkar. Aktarmalı uçuşlarda HER BACAĞI ayrı bir legs elemanı yap. SADECE şu JSON'u döndür, başka hiçbir şey yazma:
+{"flightOut":{"date":"","legs":[{"airline":"","dep":"","arr":"","plane":""}]},"flightRet":{"date":"","legs":[{"airline":"","dep":"","arr":"","plane":""}]}}
 Kurallar:
-- date: "15 Ekim 2026 Perşembe" gibi Türkçe biçim
-- airline: "Azerbaijan Airlines (J2 8004)" gibi havayolu + uçuş no
-- dep: "Ankara ESB · 22:55" (şehir/havalimanı kodu · saat)
-- arr: "Bakü GYD · 02:25 (+1)" — ertesi güne sarkıyorsa (+1) ekle
-- plane: "Airbus A320 · 2s 30dk" (uçak tipi · süre) — bilinmiyorsa sadece süre veya boş
-- Bilinmeyen alanı boş string bırak. Uydurma.
+- date: "15 Ekim 2026 Perşembe" gibi Türkçe biçim (o yönün ilk kalkış tarihi)
+- legs: aktarmasız uçuşta 1 eleman, aktarmalıda her bacak için bir eleman (örn. Madrid→İstanbul, İstanbul→İzmir = 2 eleman)
+- airline: "Turkish Airlines (TK 1856)" gibi havayolu + uçuş no
+- dep: "Madrid MAD · 14:30" (şehir + havalimanı kodu · saat)
+- arr: "İstanbul SAW · 19:40" — ertesi güne sarkıyorsa "(+1)" ekle
+- plane: "Airbus A321 · 4s 10dk" — bilinmiyorsa boş bırak
+- Bilinmeyen alanı boş string bırak. UYDURMA.
 METİN:
 ${flightRaw}`;
       const resp = await fetch('/.netlify/functions/claude-proxy', {
@@ -7280,8 +7305,12 @@ ${flightRaw}`;
       const m = txt.match(/\{[\s\S]*\}/);
       if (!m) throw new Error('AI yanıtı okunamadı');
       const p = JSON.parse(m[0]);
-      const fo = { ...offer.flightOut, ...(p.flightOut || {}) };
-      const fr = { ...offer.flightRet, ...(p.flightRet || {}) };
+      const norm = (x, prev) => {
+        const legs = Array.isArray(x?.legs) && x.legs.length ? x.legs.map(l => ({ airline: l.airline || '', dep: l.dep || '', arr: l.arr || '', plane: l.plane || '' })) : prev.legs;
+        return { date: x?.date || prev.date || '', legs };
+      };
+      const fo = norm(p.flightOut, offer.flightOut);
+      const fr = norm(p.flightRet, offer.flightRet);
       setOffer(prev => ({ ...prev, flightOut: fo, flightRet: fr }));
       const w = checkFlights(fo, fr, offer);
       setFlightWarn(w);
@@ -7386,18 +7415,29 @@ ${flightRaw}`;
               </div>
             )}
           </div>
-          {[['flightOut','GİDİŞ'],['flightRet','DÖNÜŞ']].map(([key,lab]) => (
-            <div key={key} style={{ marginBottom: '10px' }}>
-              <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '6px' }}>{lab}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '6px' }}>
-                <input style={inS} value={offer[key].date} onChange={e => setOffer({...offer, [key]: {...offer[key], date: e.target.value}})} placeholder="Tarih" />
-                <input style={inS} value={offer[key].airline} onChange={e => setOffer({...offer, [key]: {...offer[key], airline: e.target.value}})} placeholder="Havayolu / Uçuş No" />
-                <input style={inS} value={offer[key].dep} onChange={e => setOffer({...offer, [key]: {...offer[key], dep: e.target.value}})} placeholder="Kalkış" />
-                <input style={inS} value={offer[key].arr} onChange={e => setOffer({...offer, [key]: {...offer[key], arr: e.target.value}})} placeholder="Varış" />
-                <input style={inS} value={offer[key].plane} onChange={e => setOffer({...offer, [key]: {...offer[key], plane: e.target.value}})} placeholder="Uçak / Süre" />
+          {[['flightOut','GİDİŞ'],['flightRet','DÖNÜŞ']].map(([key,lab]) => {
+            const f = offer[key];
+            const setLeg = (li, patch) => setOffer(p => ({ ...p, [key]: { ...p[key], legs: p[key].legs.map((l,j) => j===li ? {...l, ...patch} : l) } }));
+            return (
+              <div key={key} style={{ marginBottom: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600' }}>{lab}{f.legs.length > 1 && <span style={{ marginLeft: '6px', fontSize: '10px', background: 'rgba(232,145,42,0.2)', color: '#e8912a', padding: '2px 6px', borderRadius: '8px' }}>Aktarmalı ({f.legs.length} bacak)</span>}</div>
+                  <button style={addBtn} onClick={() => setOffer(p => ({ ...p, [key]: { ...p[key], legs: [...p[key].legs, { airline: '', dep: '', arr: '', plane: '' }] } }))}>+ Aktarma Ekle</button>
+                </div>
+                <input style={{...inS, marginBottom: '6px'}} value={f.date} onChange={e => setOffer({...offer, [key]: {...f, date: e.target.value}})} placeholder="Tarih (örn. 15 Ekim 2026 Perşembe)" />
+                {f.legs.map((l, li) => (
+                  <div key={li} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.4fr 1.2fr 1.2fr 1fr auto', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                    {f.legs.length > 1 && <div style={{ gridColumn: '1 / -1', fontSize: '10px', color: '#64748b' }}>{li + 1}. Bacak</div>}
+                    <input style={inS} value={l.airline} onChange={e => setLeg(li, { airline: e.target.value })} placeholder="Havayolu / Uçuş No" />
+                    <input style={inS} value={l.dep} onChange={e => setLeg(li, { dep: e.target.value })} placeholder="Kalkış (Madrid MAD · 14:30)" />
+                    <input style={inS} value={l.arr} onChange={e => setLeg(li, { arr: e.target.value })} placeholder="Varış (İstanbul SAW · 19:40)" />
+                    <input style={inS} value={l.plane} onChange={e => setLeg(li, { plane: e.target.value })} placeholder="Uçak / Süre" />
+                    {f.legs.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({ ...p, [key]: { ...p[key], legs: p[key].legs.filter((_,j)=>j!==li) } }))}>🗑️</button>}
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div style={card}>
