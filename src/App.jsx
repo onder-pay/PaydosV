@@ -6449,6 +6449,16 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   const [showForm, setShowForm] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
+  const emptyOffer = {
+    title: 'Tur Adı', subtitle: '', dateRange: '', duration: '', location: '',
+    flightOut: { date: '', airline: '', dep: '', arr: '', plane: '' },
+    flightRet: { date: '', airline: '', dep: '', arr: '', plane: '' },
+    days: [{ title: '1. GÜN', date: '', items: [''] }],
+    hotels: [{ name: '', stars: '5★', priceDouble: '', priceSingle: '', currency: 'USD', note: '' }],
+    included: [''], excluded: [''], extraNote: ''
+  };
+  const [showTourOffer, setShowTourOffer] = useState(false);
+  const [offer, setOffer] = useState(emptyOffer);
   const [searchQuery, setSearchQuery] = useState('');
   const [formStep, setFormStep] = useState('type'); // type, customer, details
   const [formData, setFormData] = useState({
@@ -7088,6 +7098,206 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     );
   }
 
+  // ===== TUR TEKLİFİ: yazdırılabilir şık HTML üretici =====
+  const genOfferHTML = (o) => {
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const flightCard = (f, label) => `
+      <div class="fcard">
+        <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span></div>
+        <div class="frow"><span>Havayolu</span> <b>${esc(f.airline)}</b></div>
+        <div class="frow"><span>Kalkış</span> <b>${esc(f.dep)}</b></div>
+        <div class="frow"><span>Varış</span> <b>${esc(f.arr)}</b></div>
+        <div class="frow"><span>Uçak</span> <b>${esc(f.plane)}</b></div>
+      </div>`;
+    const daysHTML = o.days.map((d,i) => `
+      <div class="drow">
+        <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
+        <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>x.trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${esc(x)}</div>`).join('')}</div>
+      </div>`).join('');
+    const hotelsHTML = o.hotels.map(h => `
+      <div class="hcard">
+        <div class="hhead">${esc(h.name)} <span class="stars">${esc(h.stars)}</span>${h.note?`<div class="hnote">${esc(h.note)}</div>`:''}</div>
+        <div class="hbody">
+          <div class="hprice"><b>${esc(h.priceDouble)}</b> <s>${esc(h.currency)}</s><div>2 kişilik / kişi başı</div></div>
+          <div class="hprice"><b>${esc(h.priceSingle)}</b> <s>${esc(h.currency)}</s><div>Tek kişilik oda</div></div>
+        </div>
+      </div>`).join('');
+    const incHTML = o.included.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="ok">✔</span> ${esc(x)}</div>`).join('');
+    const excHTML = o.excluded.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="no">✘</span> ${esc(x)}</div>`).join('');
+    return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(o.title)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2b3a;font-size:12px;padding:14px;max-width:820px;margin:0 auto}
+  .band{background:#14508c;color:#fff;font-weight:700;font-size:13px;padding:7px 12px;border-radius:4px;border-left:5px solid #e8912a;margin:14px 0 8px}
+  .band.navy{background:#0c2340}
+  .header{background:#0c2340;color:#fff;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;border-top:5px solid #e8912a}
+  .header .brand{font-size:11px;color:#bcd0e6;font-weight:700;letter-spacing:1px}
+  .header h1{font-size:22px;margin:4px 0}
+  .header .sub{font-size:12px;color:#bcd0e6}
+  .header .r{text-align:right}
+  .header .date{color:#e8912a;font-weight:700;font-size:15px}
+  .header .meta{color:#bcd0e6;font-size:11px}
+  .two{display:flex;gap:12px}
+  .two>*{flex:1}
+  .fcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+  .fhead{background:#14508c;color:#fff;font-weight:700;padding:6px 10px}.fhead .fdate{color:#bcd0e6;font-weight:400;font-size:11px}
+  .frow{padding:4px 10px;border-bottom:1px solid #dbe4ee}.frow span{color:#5a6b7b}
+  .drow{display:flex;border:1px solid #d5e0ec;border-bottom:none}
+  .drow:last-child{border-bottom:1px solid #d5e0ec}
+  .dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
+  .dright{padding:8px 12px;flex:1;background:#fff}.dright.alt{background:#eef3f8}
+  .ditem{padding:2px 0}.dot{color:#e8912a}
+  .hcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+  .hhead{background:#14508c;color:#fff;font-weight:700;padding:7px 10px}.stars{color:#f0d9b8}.hnote{font-size:10px;color:#bcd0e6;font-weight:400}
+  .hbody{display:flex}.hprice{flex:1;padding:8px 12px;border-right:1px solid #d5e0ec}.hprice b{font-size:18px;color:#0c2340}.hprice s{color:#5a6b7b;text-decoration:none;font-size:10px}.hprice div{font-size:10px;color:#5a6b7b}
+  .scol{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+  .shead{color:#fff;font-weight:700;padding:6px 10px}.shead.g{background:#1f9d63}.shead.r{background:#c0392b}
+  .sitem{padding:4px 10px;border-bottom:1px solid #dbe4ee}.ok{color:#1f9d63;font-weight:700}.no{color:#c0392b;font-weight:700}
+  .foot{background:#0c2340;color:#fff;border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #e8912a;margin-top:16px}
+  .foot .r{text-align:right}.foot .ph{color:#e8912a;font-weight:700}.foot small{color:#bcd0e6}
+  .note{color:#5a6b7b;font-size:11px;margin-top:6px}
+  @media print{body{padding:0}}
+</style></head><body>
+  <div class="header">
+    <div><div class="brand">✈ PAYDOS TURİZM</div><h1>${esc(o.title)}</h1><div class="sub">${esc(o.subtitle)}</div></div>
+    <div class="r"><div class="date">${esc(o.dateRange)}</div><div class="meta">${esc(o.duration)}${o.location?' · '+esc(o.location):''}</div></div>
+  </div>
+  ${(o.flightOut.airline||o.flightRet.airline)?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
+  ${o.days.some(d=>d.items.some(x=>x.trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
+  ${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="two">${hotelsHTML}</div>`:''}
+  ${o.extraNote?`<div class="note">${esc(o.extraNote)}</div>`:''}
+  ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band navy">◆ HİZMET KAPSAMI</div><div class="two"><div class="scol"><div class="shead g">FİYATA DAHİL</div>${incHTML}</div><div class="scol"><div class="shead r">DAHİL DEĞİL</div>${excHTML}</div></div>`:''}
+  <div class="foot"><div><b>Paydos Turizm Seyahat Acentalığı</b><br><small>Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / Denizli</small></div><div class="r"><div class="ph">0 258 263 71 76</div><small>info@paydostur.com · www.paydostur.com</small></div></div>
+</body></html>`;
+  };
+  const printOffer = () => {
+    const w = window.open('', '_blank');
+    if (!w) { showToast?.('Pop-up engellendi — tarayıcıda izin verin', 'error'); return; }
+    w.document.write(genOfferHTML(offer)); w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 500);
+  };
+
+  if (showTourOffer) {
+    const inS = { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
+    const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
+    const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', marginBottom: '14px' };
+    const secTitle = { fontSize: '13px', color: '#e8912a', fontWeight: '700', marginBottom: '10px' };
+    const addBtn = { padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' };
+    const delBtn = { padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' };
+    const setDay = (i, patch) => setOffer(p => ({ ...p, days: p.days.map((d,j) => j===i ? {...d, ...patch} : d) }));
+    const setHotel = (i, patch) => setOffer(p => ({ ...p, hotels: p.hotels.map((h,j) => j===i ? {...h, ...patch} : h) }));
+    return (
+      <div style={{ padding: '16px', maxWidth: '780px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>🧾 Tur Teklifi Oluştur</h2>
+          <button onClick={() => setShowTourOffer(false)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
+        </div>
+
+        <div style={card}>
+          <div style={secTitle}>Üst Bilgi</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', marginBottom: '8px' }}>
+            <div><label style={lbl}>Tur Başlığı</label><input style={inS} value={offer.title} onChange={e => setOffer({...offer, title: e.target.value})} placeholder="Bakü Build Fuar Turu" /></div>
+            <div><label style={lbl}>Alt Başlık (grup/oda adı)</label><input style={inS} value={offer.subtitle} onChange={e => setOffer({...offer, subtitle: e.target.value})} placeholder="Denizli İnşaat Mühendisleri Odası" /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '8px' }}>
+            <div><label style={lbl}>Tarih Aralığı</label><input style={inS} value={offer.dateRange} onChange={e => setOffer({...offer, dateRange: e.target.value})} placeholder="15 – 18 Ekim 2026" /></div>
+            <div><label style={lbl}>Süre</label><input style={inS} value={offer.duration} onChange={e => setOffer({...offer, duration: e.target.value})} placeholder="4 Gün" /></div>
+            <div><label style={lbl}>Yer</label><input style={inS} value={offer.location} onChange={e => setOffer({...offer, location: e.target.value})} placeholder="Azerbaycan" /></div>
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={secTitle}>✈ Uçuş Bilgileri</div>
+          {[['flightOut','GİDİŞ'],['flightRet','DÖNÜŞ']].map(([key,lab]) => (
+            <div key={key} style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '6px' }}>{lab}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '6px' }}>
+                <input style={inS} value={offer[key].date} onChange={e => setOffer({...offer, [key]: {...offer[key], date: e.target.value}})} placeholder="Tarih" />
+                <input style={inS} value={offer[key].airline} onChange={e => setOffer({...offer, [key]: {...offer[key], airline: e.target.value}})} placeholder="Havayolu / Uçuş No" />
+                <input style={inS} value={offer[key].dep} onChange={e => setOffer({...offer, [key]: {...offer[key], dep: e.target.value}})} placeholder="Kalkış" />
+                <input style={inS} value={offer[key].arr} onChange={e => setOffer({...offer, [key]: {...offer[key], arr: e.target.value}})} placeholder="Varış" />
+                <input style={inS} value={offer[key].plane} onChange={e => setOffer({...offer, [key]: {...offer[key], plane: e.target.value}})} placeholder="Uçak / Süre" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={secTitle}>◆ Günlük Program</div>
+            <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [''] }]}))}>+ Gün Ekle</button>
+          </div>
+          {offer.days.map((d, i) => (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <input style={{...inS, flex: '0 0 90px'}} value={d.title} onChange={e => setDay(i, {title: e.target.value})} placeholder="1. GÜN" />
+                <input style={{...inS, flex: '0 0 90px'}} value={d.date} onChange={e => setDay(i, {date: e.target.value})} placeholder="15 Ekim" />
+                <div style={{ flex: 1 }} />
+                {offer.days.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, days: p.days.filter((_,j)=>j!==i)}))}>🗑️ Gün</button>}
+              </div>
+              {d.items.map((it, k) => (
+                <div key={k} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                  <input style={inS} value={it} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?e.target.value:x) })} placeholder="12:00 — açıklama" />
+                  {d.items.length > 1 && <button style={delBtn} onClick={() => setDay(i, { items: d.items.filter((_,m)=>m!==k) })}>×</button>}
+                </div>
+              ))}
+              <button style={{...addBtn, marginTop: '4px'}} onClick={() => setDay(i, { items: [...d.items, ''] })}>+ Madde</button>
+            </div>
+          ))}
+        </div>
+
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={secTitle}>★ Otel Seçenekleri</div>
+            <button style={addBtn} onClick={() => setOffer(p => ({...p, hotels: [...p.hotels, { name: '', stars: '5★', priceDouble: '', priceSingle: '', currency: 'USD', note: '' }]}))}>+ Otel Ekle</button>
+          </div>
+          {offer.hotels.map((h, i) => (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '8px', display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '2fr 0.7fr 1fr 1fr 0.8fr auto', gap: '6px', alignItems: 'center' }}>
+              <input style={inS} value={h.name} onChange={e => setHotel(i, {name: e.target.value})} placeholder="Otel adı" />
+              <input style={inS} value={h.stars} onChange={e => setHotel(i, {stars: e.target.value})} placeholder="5★" />
+              <input style={inS} value={h.priceDouble} onChange={e => setHotel(i, {priceDouble: e.target.value})} placeholder="2 kişi fiyat" />
+              <input style={inS} value={h.priceSingle} onChange={e => setHotel(i, {priceSingle: e.target.value})} placeholder="Tek kişi fiyat" />
+              <input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" />
+              {offer.hotels.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, hotels: p.hotels.filter((_,j)=>j!==i)}))}>🗑️</button>}
+              <input style={{...inS, gridColumn: '1 / -1'}} value={h.note} onChange={e => setHotel(i, {note: e.target.value})} placeholder="Not (örn. 14-17 Ekim için) — opsiyonel" />
+            </div>
+          ))}
+          <div><label style={lbl}>Ek Not (opsiyonel)</label><input style={inS} value={offer.extraNote} onChange={e => setOffer({...offer, extraNote: e.target.value})} placeholder="Ek: Ankara gidiş-geliş otobüs 65 USD" /></div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+          <div style={card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{...secTitle, color: '#10b981'}}>✔ Fiyata Dahil</div>
+              <button style={addBtn} onClick={() => setOffer(p => ({...p, included: [...p.included, '']}))}>+</button>
+            </div>
+            {offer.included.map((it, i) => (
+              <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                <input style={inS} value={it} onChange={e => setOffer(p => ({...p, included: p.included.map((x,j)=>j===i?e.target.value:x)}))} placeholder="Dahil hizmet" />
+                {offer.included.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, included: p.included.filter((_,j)=>j!==i)}))}>×</button>}
+              </div>
+            ))}
+          </div>
+          <div style={card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{...secTitle, color: '#ef4444'}}>✘ Dahil Değil</div>
+              <button style={addBtn} onClick={() => setOffer(p => ({...p, excluded: [...p.excluded, '']}))}>+</button>
+            </div>
+            {offer.excluded.map((it, i) => (
+              <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                <input style={inS} value={it} onChange={e => setOffer(p => ({...p, excluded: p.excluded.map((x,j)=>j===i?e.target.value:x)}))} placeholder="Dahil olmayan" />
+                {offer.excluded.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, excluded: p.excluded.filter((_,j)=>j!==i)}))}>×</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={printOffer} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📄 PDF Oluştur (Yazdır)</button>
+        <p style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>Yeni sekmede açılır → Ctrl+P → "PDF olarak kaydet" seçin</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -7095,7 +7305,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
           <h2 style={{ margin: 0, fontSize: '20px', color: '#ffffff' }}>📄 Teklif & Proforma</h2>
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{filteredQuotes.length} / {quotes.length} kayıt</p>
         </div>
-        <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => { setOffer(emptyOffer); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>🧾 Tur Teklifi</button>
+          <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
+        </div>
       </div>
 
       {/* Filtre Butonları */}
