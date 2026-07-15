@@ -6454,8 +6454,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     destinations: [{ country: '', city: '' }],
     flightOut: { date: '', airline: '', dep: '', arr: '', plane: '' },
     flightRet: { date: '', airline: '', dep: '', arr: '', plane: '' },
-    days: [{ title: '1. GÜN', date: '', items: [''] }],
-    hotels: [{ name: '', stars: '5★', priceDouble: '', priceSingle: '', currency: 'USD', note: '' }],
+    days: [{ title: '1. GÜN', date: '', items: [{ time: '', text: '' }] }],
+    hotels: [{ name: '', stars: '5★', priceDouble: '', priceSingle: '', priceExtraBed: '', priceBaby: '', priceChild1: '', priceChild2: '', currency: 'USD', note: '' }],
     included: [
       'Belirtilen otelde konaklama',
       'Belirtilen uçuşlar',
@@ -7152,15 +7152,30 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     const daysHTML = o.days.map((d,i) => `
       <div class="drow">
         <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
-        <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>x.trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${esc(x)}</div>`).join('')}</div>
+        <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>(x.time||'').trim()||(x.text||'').trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${x.time?`<b class="tm">${esc(x.time)}</b> — `:''}${esc(x.text)}</div>`).join('')}</div>
       </div>`).join('');
+    const priceCell = (v, cur) => v ? `<b>${esc(v)}</b> <s>${esc(cur)}</s>` : '<span class="dash">—</span>';
     const hotelsHTML = o.hotels.map(h => `
       <div class="hcard">
         <div class="hhead">${esc(h.name)} <span class="stars">${esc(h.stars)}</span>${h.note?`<div class="hnote">${esc(h.note)}</div>`:''}</div>
-        <div class="hbody">
-          <div class="hprice"><b>${esc(h.priceDouble)}</b> <s>${esc(h.currency)}</s><div>2 kişilik / kişi başı</div></div>
-          <div class="hprice"><b>${esc(h.priceSingle)}</b> <s>${esc(h.currency)}</s><div>Tek kişilik oda</div></div>
-        </div>
+        <table class="ptable">
+          <tr>
+            <th>İki Kişilik Oda<br><small>Kişi Başı</small></th>
+            <th>Tek Kişilik Oda</th>
+            <th>İlave Yatak</th>
+            <th class="kid">Bebek<br><small>0 – 1,99 Yaş</small></th>
+            <th class="kid">1.Çocuk<br><small>7,00 – 11,99 Yaş</small></th>
+            <th class="kid">2.Çocuk<br><small>2,00 – 6,99 Yaş</small></th>
+          </tr>
+          <tr>
+            <td>${priceCell(h.priceDouble, h.currency)}</td>
+            <td>${priceCell(h.priceSingle, h.currency)}</td>
+            <td>${priceCell(h.priceExtraBed, h.currency)}</td>
+            <td>${priceCell(h.priceBaby, h.currency)}</td>
+            <td>${priceCell(h.priceChild1, h.currency)}</td>
+            <td>${priceCell(h.priceChild2, h.currency)}</td>
+          </tr>
+        </table>
       </div>`).join('');
     const incHTML = o.included.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="ok">✔</span> ${esc(x)}</div>`).join('');
     const excHTML = o.excluded.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="no">✘</span> ${esc(x)}</div>`).join('');
@@ -7186,10 +7201,17 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   .drow:last-child{border-bottom:1px solid #d5e0ec}
   .dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
   .dright{padding:8px 12px;flex:1;background:#fff}.dright.alt{background:#eef3f8}
-  .ditem{padding:2px 0}.dot{color:#e8912a}
+  .ditem{padding:2px 0}.dot{color:#e8912a}.tm{color:#0c2340}
   .hcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
   .hhead{background:#14508c;color:#fff;font-weight:700;padding:7px 10px}.stars{color:#f0d9b8}.hnote{font-size:10px;color:#bcd0e6;font-weight:400}
-  .hbody{display:flex}.hprice{flex:1;padding:8px 12px;border-right:1px solid #d5e0ec}.hprice b{font-size:18px;color:#0c2340}.hprice s{color:#5a6b7b;text-decoration:none;font-size:10px}.hprice div{font-size:10px;color:#5a6b7b}
+  .ptable{width:100%;border-collapse:collapse;background:#fff}
+  .ptable th{background:#eef3f8;color:#0c2340;font-size:10px;font-weight:700;padding:5px 4px;border:1px solid #d5e0ec;text-align:center;line-height:1.25}
+  .ptable th small{font-weight:400;color:#5a6b7b;font-size:9px}
+  .ptable th.kid{background:#e3f0fb;color:#14508c}
+  .ptable td{text-align:center;padding:8px 4px;border:1px solid #d5e0ec}
+  .ptable td b{font-size:15px;color:#0c2340}.ptable td s{color:#5a6b7b;text-decoration:none;font-size:9px}
+  .dash{color:#b8c4d0}
+  .hstack{display:flex;flex-direction:column;gap:10px}
   .scol{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
   .shead{color:#fff;font-weight:700;padding:6px 10px}.shead.g{background:#1f9d63}.shead.r{background:#c0392b}
   .sitem{padding:4px 10px;border-bottom:1px solid #dbe4ee}.ok{color:#1f9d63;font-weight:700}.no{color:#c0392b;font-weight:700}
@@ -7203,8 +7225,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     <div class="r"><div class="date">${esc(offerDateRange(o))}</div><div class="meta">${esc(offerDuration(o))}${offerLocation(o)?' · '+esc(offerLocation(o)):''}</div></div>
   </div>
   ${(o.flightOut.airline||o.flightRet.airline)?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
-  ${o.days.some(d=>d.items.some(x=>x.trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
-  ${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="two">${hotelsHTML}</div>`:''}
+  ${o.days.some(d=>d.items.some(x=>(x.time||'').trim()||(x.text||'').trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
+  ${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="hstack">${hotelsHTML}</div>`:''}
   ${o.extraNote?`<div class="note">${esc(o.extraNote)}</div>`:''}
   ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band navy">◆ HİZMET KAPSAMI</div><div class="two"><div class="scol"><div class="shead g">FİYATA DAHİL</div>${incHTML}</div><div class="scol"><div class="shead r">DAHİL DEĞİL</div>${excHTML}</div></div>`:''}
   <div class="foot"><div><b>Paydos Turizm Seyahat Acentalığı</b><br><small>Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / Denizli</small></div><div class="r"><div class="ph">0 258 263 71 76</div><small>info@paydostur.com · www.paydostur.com</small></div></div>
@@ -7283,7 +7305,7 @@ ${flightRaw}`;
       days.push({
         title: `${i + 1}. GÜN`,
         date: `${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${gunler[d.getDay()]}`,
-        items: (eski && eski.items.some(x => x.trim())) ? eski.items : ['']
+        items: (eski && eski.items.some(x => (x.time||'').trim() || (x.text||'').trim())) ? eski.items : [{ time: '', text: '' }]
       });
     }
     setOffer(p => ({ ...p, days }));
@@ -7308,6 +7330,12 @@ ${flightRaw}`;
     const setHotel = (i, patch) => setOffer(p => ({ ...p, hotels: p.hotels.map((h,j) => j===i ? {...h, ...patch} : h) }));
     return (
       <div style={{ padding: '16px', maxWidth: '780px', margin: '0 auto' }}>
+        <datalist id="offerTimes">
+          {Array.from({ length: 48 }).map((_, i) => {
+            const t = `${String(Math.floor(i/2)).padStart(2,'0')}:${i%2 ? '30' : '00'}`;
+            return <option key={t} value={t} />;
+          })}
+        </datalist>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>🧾 Tur Teklifi Oluştur</h2>
           <button onClick={() => setShowTourOffer(false)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
@@ -7377,7 +7405,7 @@ ${flightRaw}`;
             <div style={secTitle}>◆ Günlük Program</div>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button style={{...addBtn, background: 'rgba(6,182,212,0.15)', borderColor: 'rgba(6,182,212,0.3)', color: '#06b6d4'}} onClick={buildDaysFromDates}>📅 Tarihlerden Oluştur</button>
-              <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [''] }]}))}>+ Gün Ekle</button>
+              <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [{ time: '', text: '' }] }]}))}>+ Gün Ekle</button>
             </div>
           </div>
           {offer.days.map((d, i) => (
@@ -7390,11 +7418,12 @@ ${flightRaw}`;
               </div>
               {d.items.map((it, k) => (
                 <div key={k} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
-                  <input style={inS} value={it} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?e.target.value:x) })} placeholder="12:00 — açıklama" />
+                  <input list="offerTimes" style={{...inS, flex: '0 0 88px', textAlign: 'center'}} value={it.time || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, time: e.target.value}:x) })} placeholder="12:00" />
+                  <input style={inS} value={it.text || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, text: e.target.value}:x) })} placeholder="Açıklama (örn. Havalimanına hareket)" />
                   {d.items.length > 1 && <button style={delBtn} onClick={() => setDay(i, { items: d.items.filter((_,m)=>m!==k) })}>×</button>}
                 </div>
               ))}
-              <button style={{...addBtn, marginTop: '4px'}} onClick={() => setDay(i, { items: [...d.items, ''] })}>+ Madde</button>
+              <button style={{...addBtn, marginTop: '4px'}} onClick={() => setDay(i, { items: [...d.items, { time: '', text: '' }] })}>+ Madde</button>
             </div>
           ))}
         </div>
@@ -7402,17 +7431,26 @@ ${flightRaw}`;
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={secTitle}>★ Otel Seçenekleri</div>
-            <button style={addBtn} onClick={() => setOffer(p => ({...p, hotels: [...p.hotels, { name: '', stars: '5★', priceDouble: '', priceSingle: '', currency: 'USD', note: '' }]}))}>+ Otel Ekle</button>
+            <button style={addBtn} onClick={() => setOffer(p => ({...p, hotels: [...p.hotels, { name: '', stars: '5★', priceDouble: '', priceSingle: '', priceExtraBed: '', priceBaby: '', priceChild1: '', priceChild2: '', currency: 'USD', note: '' }]}))}>+ Otel Ekle</button>
           </div>
           {offer.hotels.map((h, i) => (
-            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '8px', display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '2fr 0.7fr 1fr 1fr 0.8fr auto', gap: '6px', alignItems: 'center' }}>
-              <input style={inS} value={h.name} onChange={e => setHotel(i, {name: e.target.value})} placeholder="Otel adı" />
-              <input style={inS} value={h.stars} onChange={e => setHotel(i, {stars: e.target.value})} placeholder="5★" />
-              <input style={inS} value={h.priceDouble} onChange={e => setHotel(i, {priceDouble: e.target.value})} placeholder="2 kişi fiyat" />
-              <input style={inS} value={h.priceSingle} onChange={e => setHotel(i, {priceSingle: e.target.value})} placeholder="Tek kişi fiyat" />
-              <input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" />
-              {offer.hotels.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, hotels: p.hotels.filter((_,j)=>j!==i)}))}>🗑️</button>}
-              <input style={{...inS, gridColumn: '1 / -1'}} value={h.note} onChange={e => setHotel(i, {note: e.target.value})} placeholder="Not (örn. 14-17 Ekim için) — opsiyonel" />
+            <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 70px auto' : '2fr 70px 70px auto', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                <input style={inS} value={h.name} onChange={e => setHotel(i, {name: e.target.value})} placeholder="Otel adı" />
+                <input style={inS} value={h.stars} onChange={e => setHotel(i, {stars: e.target.value})} placeholder="5★" />
+                {!isMobile && <input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" />}
+                {offer.hotels.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, hotels: p.hotels.filter((_,j)=>j!==i)}))}>🗑️</button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(6, 1fr)', gap: '6px' }}>
+                <div><label style={{...lbl, fontSize: '10px'}}>İki Kişilik / Kişi Başı</label><input style={inS} value={h.priceDouble} onChange={e => setHotel(i, {priceDouble: e.target.value})} placeholder="650" /></div>
+                <div><label style={{...lbl, fontSize: '10px'}}>Tek Kişilik Oda</label><input style={inS} value={h.priceSingle} onChange={e => setHotel(i, {priceSingle: e.target.value})} placeholder="820" /></div>
+                <div><label style={{...lbl, fontSize: '10px'}}>İlave Yatak</label><input style={inS} value={h.priceExtraBed} onChange={e => setHotel(i, {priceExtraBed: e.target.value})} placeholder="—" /></div>
+                <div><label style={{...lbl, fontSize: '10px', color: '#60a5fa'}}>Bebek (0–1,99)</label><input style={inS} value={h.priceBaby} onChange={e => setHotel(i, {priceBaby: e.target.value})} placeholder="—" /></div>
+                <div><label style={{...lbl, fontSize: '10px', color: '#60a5fa'}}>1.Çocuk (7–11,99)</label><input style={inS} value={h.priceChild1} onChange={e => setHotel(i, {priceChild1: e.target.value})} placeholder="—" /></div>
+                <div><label style={{...lbl, fontSize: '10px', color: '#60a5fa'}}>2.Çocuk (2–6,99)</label><input style={inS} value={h.priceChild2} onChange={e => setHotel(i, {priceChild2: e.target.value})} placeholder="—" /></div>
+              </div>
+              {isMobile && <div style={{ marginTop: '6px' }}><label style={{...lbl, fontSize: '10px'}}>Para Birimi</label><input style={inS} value={h.currency} onChange={e => setHotel(i, {currency: e.target.value})} placeholder="USD" /></div>}
+              <input style={{...inS, marginTop: '6px'}} value={h.note} onChange={e => setHotel(i, {note: e.target.value})} placeholder="Not (örn. 14-17 Ekim için) — opsiyonel" />
             </div>
           ))}
           <div><label style={lbl}>Ek Not (opsiyonel)</label><input style={inS} value={offer.extraNote} onChange={e => setOffer({...offer, extraNote: e.target.value})} placeholder="Ek: Ankara gidiş-geliş otobüs 65 USD" /></div>
