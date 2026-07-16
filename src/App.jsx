@@ -689,6 +689,78 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
   );
 }
 
+// === Firma seçici: DTO üye listesinden arar, yoksa elle eklemeye izin verir ===
+let _companyCache = null;
+const loadCompanies = async () => {
+  if (_companyCache) return _companyCache;
+  const r = await fetch('/companies.json');
+  if (!r.ok) throw new Error('Firma listesi yüklenemedi');
+  _companyCache = await r.json();
+  return _companyCache;
+};
+function CompanyPicker({ value, onChange }) {
+  const [q, setQ] = useState(value || '');
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { setQ(value || ''); }, [value]);
+
+  const ensure = async () => {
+    if (list || loading) return;
+    setLoading(true); setErr('');
+    try { setList(await loadCompanies()); }
+    catch (e) { setErr('Liste yüklenemedi — elle yazabilirsiniz'); }
+    finally { setLoading(false); }
+  };
+  const results = useMemo(() => {
+    if (!list || !q.trim() || q.trim().length < 2) return [];
+    const nq = normalizeTr(q);
+    const out = [];
+    for (let i = 0; i < list.length && out.length < 30; i++) {
+      if (normalizeTr(list[i][0]).includes(nq)) out.push(list[i]);
+    }
+    return out;
+  }, [list, q]);
+  const exact = list && q.trim() && list.some(c => normalizeTr(c[0]) === normalizeTr(q));
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px', fontWeight: '500' }}>Firma</label>
+      <input
+        value={q}
+        onFocus={() => { setOpen(true); ensure(); }}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); setOpen(true); ensure(); }}
+        onBlur={() => setTimeout(() => setOpen(false), 180)}
+        placeholder="Firma adı yazın — listeden seçin veya elle girin"
+        style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
+      />
+      {open && q.trim().length >= 2 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: '4px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {loading && <div style={{ padding: '10px 12px', fontSize: '12px', color: '#64748b' }}>⏳ Firma listesi yükleniyor...</div>}
+          {err && <div style={{ padding: '10px 12px', fontSize: '12px', color: '#f59e0b' }}>{err}</div>}
+          {!loading && results.map((c, i) => (
+            <div key={i} onMouseDown={() => { onChange(c[0]); setQ(c[0]); setOpen(false); }}
+              style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', color: '#e8f1f8' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.15)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              {c[0]}
+              {c[1] && <span style={{ color: '#64748b', marginLeft: '6px' }}>· Sicil {c[1]}</span>}
+            </div>
+          ))}
+          {!loading && !err && results.length === 0 && <div style={{ padding: '8px 12px', fontSize: '12px', color: '#64748b' }}>Listede bulunamadı</div>}
+          {!loading && !exact && q.trim().length >= 2 && (
+            <div onMouseDown={() => { onChange(q.trim()); setOpen(false); }}
+              style={{ padding: '9px 12px', cursor: 'pointer', fontSize: '12px', color: '#10b981', fontWeight: '600', background: 'rgba(16,185,129,0.08)', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              ➕ "{q.trim()}" olarak ekle (listede yok)
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
@@ -1334,7 +1406,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                       {(appSettings?.sectors || []).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <FormInput label="Firma" value={formData.companyName || ''} onChange={e => setFormData({...formData, companyName: e.target.value})} placeholder="Firma adı" />
+                  <CompanyPicker value={formData.companyName || ''} onChange={v => setFormData({...formData, companyName: v})} />
                 </div>
                 <div>
                   <label style={labelStyle}>Notlar</label>
