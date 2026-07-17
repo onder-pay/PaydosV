@@ -17,6 +17,7 @@ const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danima
 
 const tourCountries = [
   'Türkiye',
+  'KKTC',
   // Schengen
   'Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan',
   // Diğer Avrupa
