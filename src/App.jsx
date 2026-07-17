@@ -15,6 +15,126 @@ const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Ama
 const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
 const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan'];
 
+// ===== PAKET TUR SÖZLEŞMESİ — SABİT YASAL METİN (birebir, numaralandırma düzeltmeleri hariç) =====
+const SOZLESME_SABIT = {
+  m2: [
+    `2) KONU`,
+    `İşbu sözleşmenin konusu; TÜKETİCİ’nin, ACENTA’ya ait, nitelikleri, satış fiyatı belirtilen ve broşürde bilgileri yer alan hizmetin, satışı ve ifası ile ilgili olarak 6502 Sayılı Tüketicinin Korunması Hakkındaki Kanun ve Paket Tur Sözleşmeleri Yönetmeliği hükümleri gereğince tarafların hak ve yükümlülüklerinin belirlenmesi hakkındadır.`,
+  ],
+  m5: [
+    `5) PAKET TURA İLİŞKİN VİZE İŞLEMLERİ VE DANIŞMANLIK HİZMETİ`,
+    `Vize işlemleri Tüketiciye(ve adına sözleşme imzaladığı şahıslara) ait olup Paket Tura içeriğindeki tüm ülkelerin vizelerinin temini bizzat Tüketici tarafından yapılacaktır. Tüketici iş bu paket tur sözleşmesini imzaladığı tarihte kendisine ve adına sözleşmeyi imzaladığı şahısların tamamı adına geçerli T.C. pasaportu`,
+    `bulunduğu ve iş bu pasaportların süresinin turun bitiş tarihinden itibaren 6 ay geçerli olduğu kabul ve taahhüt eder.`,
+    `Paket turun başlamasından 2 ay önce gerekli tüm belgelerin eksiksiz olarak Paydos Turizm’e teslim edilmesi halinde ücreti mukabilinde Vize Danışmanlık hizmeti verilebilir. Vize işlemleri tamamen paket tur kapsamında gidilen ülkenin konsoloslukların inisiyatifinde olduğundan Paydos Turizm’in, vize alınamamasından veya vizenin tur tarihine yetiştirilememesinden dolayı sorumluluğu yoktur. Konsolosluklardan gecikmelerden ve değişik aksamalardan Paydos Turizm sorumlu değildir.`,
+    `Herhangi bir nedenle tur iptal edilmesi halinde konsolosluklar tarafından alınan vize harcı, masrafı ve vize hizmet giderleri dışında kalan bakiye müşteriye iade edilecektir.`,
+    `Vize alınması o ülkeye giriş garanti vermediğinden, gidilen ülkede herhangi bir sebeple içeri sokulmayan veya vizeleri tamam olmasına rağmen Türkiye’den çıkmasına izin verilmeyen`,
+    `müşterilere paket tur ücreti iadesi yapılmayacak olup bu durumdan doğacak zararlardan Paydos Turizm sorumlu olmayacaktır.`,
+    `Tüketicinin, paket tur hizmeti sırasında kullanacağı ‘’Vize’’yi kendisinin alması/temin etmesi durumunda; vizenin paket tur hizmetinin başlangıcında giriş yapılan ilk ülkeden veya paket tur hizmeti sırasında en fazla konaklama yapılacak ülkeden alınması gereklidir Aksi halde; paket tur hizmeti sırasında, ilgili ülke`,
+    `Gümrüklerinde bulunan pasaport polislerinin Tüketiciyi ülkeye giriş yaptırmamasından Paydos Turizm sorumlu  olmadığı taraflarca gayri kabil rücu kabul edilmiştir.`,
+    `Paket turun herhangi bir sebepten ötürü iptali halinde; Paket Tur Sözleşmeleri Yönetmeliği 16. maddesi`,
+    `4. fıkrası uyarınca vize ücreti iade edilemez.`,
+    `Tüketicinin iştirak edeceği paket tur hizmetinin gerçekleşeceği ülkenin konsolosluğu tarafından alınan vize başvuru ücretleri, harçları ve sair ödeme ve ücretlerin artması durumunda eski ücret ile yeni ücret arasındaki farkın(ücret artış tutarının) Tüketici tarafından gecikmeksizin nakden ve defaten Paydos Turizm’e ödeneceği taraflarca kabul edilmiş olup Tüketicinin vize ücreti artışı sonrası oluşan fark ücretini Paydos Turizm’e zamanında ödememesi nedeniyle Tüketiciye vize alınamaması ve paket tur hizmetine bu nedenle katılamamasından Paydos Turizm sorumlu değildir.`,
+  ],
+  m6: [
+    `6) ZORUNLU SEYAHAT SİGORTASI`,
+    `Zorunlu seyahat sigortası bedeli 15€ olup Paydos Turizm tarafından paket tur bedeli dâhilinde yaptırılmaktadır. Zorunlu sigorta teminat kapsamı paket tur bedeli kadardır. Ancak Tüketici tarafından yapılan tek taraflı fesih halleri ile turun başlangıcına 30 günden fazla gün kala fesih ve iptaller ve tarih değişiklikleri dahi olsa, her bir tüketiciden bu bedel tahsil edilecek olup bedel iadesi mümkün değildir.`,
+    `Paydos Turizm tarafından yaptırılan sigorta haricinde ve Paket Turlar dışında kalan hizmetler kapsamında Tüketici dilerse konaklama hizmeti başlamadan evvel; kaza ve hastalık halinde çıkış noktasına dönüş masrafları ile her türlü kazadan doğan zarar ile tedavi masraflarını sigortalatabilir.`,
+    `Seyahat sağlık vize sigortası hizmeti satın alan veya seyahat sigortası seyahat paketinin içinde bulunan tüketicilerin eksik veya ayıplı ifa, hasar, zarar ve kayıpları ile ilgili teminatın kapsamı bu hizmeti sunan sigorta firmasının poliçesiyle belirlenmiştir. Paydos Turizm bu teminatların içeriği, kapsamları veya uygulama şekilleri ile ilgili herhangi bir sorumluluk taşımamaktadır.`,
+    `Paket turun herhangi bir sebepten ötürü iptali halinde; Paket Tur Sözleşmeleri Yönetmeliği 16. maddesi`,
+    `4. fıkrası uyarınca sigorta ücretleri iade edilemez.`,
+  ],
+  m7: [
+    `7) ÖDEME PLANI VE ŞEKLİ`,
+    `Paket Turun ödemesi nakit veya hesaba havale/ eft şeklinde yapılabilir.`,
+    `Vize işlemlerine ait ödemeler peşin olarak pasaport teslim edildiği tarihte yapılacaktır. Vize ücreti ödenmeden vize başvurusu yapılmayacaktır.`,
+    `20.08.2025 ön ödeme günüdür. 20.09.2025 Son ödeme günüdür. Ödeme belirtilen tarihlere kadar yapılmaz ise tur kaydı otomatik olarak iptal edilir.`,
+    `Banka Hesap Numaraları`,
+    `GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ TURK LIRASI HESABI ŞUBESİ – KODU 781 SWIFT	TGBATRIS`,
+    `IBAN NR	TR40 0006 2000 7810 0006 2962 46`,
+    `HESAP NUMARASI	0006 2962 46`,
+    `GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ EURO HESABI ŞUBESİ - KODU 781 SWIFT	TGBATRIS`,
+    `IBAN NR	TR73 0006 2000 7810 0009 0910 95`,
+    `HESAP NUMARASI	0009 0910 95`,
+  ],
+  m8: [
+    `8) TARAFLARCA KABUL EDİLEN ÖZEL TALEPLER`,
+    `Paket tur kapsamında satın alınan fuar giriş biletlerinin iadesi bulunmamaktadır. Fuar giriş biletleri katılımcı adına fuar firmasından satın alınmaktadır, dileyen tüketiciler kendi satın alabilir. Fuar giriş bileti ile fuar firmasına iade talebinde kendileri şahsen başvuru yapabilir. Tüketiciler vize başvuru ücretini kabul etmiş sayılırlar ve iadesi olmadığını bilirler.`,
+  ],
+  m9: [
+    `9) GENEL HÜKÜMLER`,
+    `DÜZENLEYİCİ veya ARACI paket turu satın almış tüketicilerin 1618 Sayılı Seyahat Acentaları Kanunu uyarınca düzenlenmiş, iflası da dahil olmak üzere taahhüdün yerine getirilmemesi ve hizmetin taahhüt edilen şekilde verilememesi teminatlarını kapsayan zorunlu paket tur sigortası yaptırır.`,
+    `DÜZENLEYİCİ veya ARACI esaslı sözleşme değişikliklerini ve bunun fiyat üzerindeki etkilerini TÜKETİCİYE derhal bildirir. Esaslı Sözleşme değişiklik halleri şunlardır;`,
+    `Paket turun başlamasından önce Tüketiciden kaynaklanmayan nedenlerle sözleşme içeriğinde yapılan önemli değişiklikler`,
+    `iş bu sözleşmenin 4.3. maddesinde belirtilen sebepler hariç olmak üzere diğer fiyat değişiklikleri.`,
+    `Turların düzenlenmesi için asgari katılımcı sayısı tüketiciye sunulan broşürde belirtilmiştir. Paket turun düzenlenmesi için 30 kişi sayısına ulaşılamaması halinde paket turun kısmen veya tamamen iptal edilebileceği hususu hareket tarihinden en az yirmi gün öncesine kadar TÜKETİCİYE bildirilir. Bu durumda TÜKETİCİNİN tazminat hakkı yoktur.`,
+    `Ancak seyahat acentası tüketiciden aldığı tüm ödemeleri ve tüketiciyi borç altına sokan tüm belgeleri 14 gün içinde tüketiciye iade edeceğini taahhüt eder.`,
+    `Seyahat Acentasının Düzenleyici Adresinde bulunan 05448800200 İrtibat numarası ile ve www.paydostur.com İnternet adresine sahip temsilcisi (bundan sonra TEMSİLCİ olarak anılacaktır) Önder TAŞCI’dır.`,
+    `DÜZENLEYİCİ veya ARACI, TÜKETİCİNİN reşit olmaması halinde küçük veya küçüğün kaldığı yerdeki sorumlu kişi ile doğrudan iletişim kurmayı sağlayacak bilgilere de yer vermesi zorunludur.`,
+    `DÜZENLEYİCİ veya ARACI, TÜKETİCİYE paket tur hizmeti başlamadan önce kaza ve hastalık halinde çıkış noktasına dönüş masrafları ile her türlü kazadan doğan zarar ile tedavi masraflarını sigortalaması hususunda tavsiyede bulunur`,
+    `DÜZENLEYİCİ veya ARACI, paket turun iptali durumunda 9.6 da belirtilen halleri kapsayacak isteğe bağlı bir sigorta sözleşmesi yapılmışsa buna ilişkin bilgilere yer verilmesi zorunludur.`,
+    `9.8. Tüketici, sözleşmenin ifası sürecinde ortaya çıkan her türlü eksikliği bağımsız hizmet sağlayıcısına, DÜZENLEYİCİ veya ARACIYA yazılı olarak derhal bildirmek zorundadır. Bu eksikliğin giderilmemesi halinde TÜKETİCİNİN sözleşme bedelinden eksiklik oranında indirim talep etme hakkı bulunmaktadır.`,
+  ],
+  m10: [
+    `10) MÜCBİR SEBEP HALLERİ`,
+    `10.1. Kanunlarda yer alan mücbir sebep halleri, gerekli tüm özeni göstermiş ve önlemleri almış olmasına rağmen olağanüstü ve öngörülemez nitelikte olan olaylar yüzünden ortaya çıkan ve paket turun başlamasına, devamına veya sonlanmasına engel oluşturan haller, acentanın ortaya çıkan olay üzerinde herhangi bir etkisinin olmadığı haller DÜZENLEYİCİ/ARACI için mücbir sebep sayılır. Bu haller;`,
+    `Yer sarsıntısı, yangın, yanardağ patlaması, sel, fırtına, kasırga, sis, çığ, yıldırım gibi ve bunlarla sınırlı olmaksızın doğal afetler veya salgın hastalıklar ile nükleer, kimyasal felaket veya serpintiler ile salgın hastalıklar ve bunlarla sınırlı olmaksızın benzer durumlar ve olaylar ile olağanüstü haller`,
+    `Türkiye’de sınır komşularında veya paket tur kapsamında gidilecek ülke/ülkelerde, sınır kapılarında ve /veya sınır kapısına komşu ülkede, uluslararası hava kara ve deniz ulaşımını engelleyen olağanüstü hallerde, savaş veya seferberlik halleri, halk ayaklanmaları, saldırı veya terör hareketleri, sabotajlar, isyanlar, işgal ve iç savaş, devrim, ayaklanma, zorla el koyma, askeri darbe veya yönetime zorla el konulması, sivil kargaşalar, endüstriyel anlaşmazlıklar, hükümet yaptırımları, ambargo, grevler, lokavtlar, limanların kapalı veya dolu olması ve bunlarla sınırlı olmaksızın her türlü olağanüstü haller veya çalışanları işten alıkoyabilecek haller`,
+    `Paket turun türüne göre tarafların sözleşme ile belirlediği diğer mücbir sebep halleri`,
+    `10.2. Mücbir sebebin mevcut olduğu hallerde DÜZENLEYİCİ/ARACI sözleşmenin hiç veya gereği gibi ifa edilmemesinden doğan zararlardan sorumlu tutulamaz. DÜZENLEYİCİ veya ARACI ile o yerdeki temsilcileri, tüketicinin zor durumda kalması halinde hızlı bir şekilde yardımda bulunmakla yükümlüdür.`,
+  ],
+  m12: [
+    `12) SÖZLEŞMENİN DEVRİ`,
+    `TÜKETİCİ, paket tura devam etmesinin mümkün olmaması durumunda, turun başlamasından en az 60 gün önce DÜZENLEYİCİ veya ARACIYA yazılı olarak veya kalıcı veri saklayıcısı ile bildirimde bulunarak sözleşmeyi, paket tur açısından geçerli tüm koşulları yerine getiren üçüncü bir kişiye devredebilir.`,
+    `Paket tur sözleşmesini devreden ve devralan, DÜZENLEYİCİ veya ARACIYA karşı bakiye tutarın ve söz konusu devirden doğan tüm ek masrafların, makul olması ve DÜZENLEYİCİ veya ARACI tarafından katlanılan gerçek maliyeti aşmaması kaydıyla ödenmesinden müteselsilen sorumludur.`,
+  ],
+  m13: [
+    `13) SÖZLEŞMEDEN DÖNME, SÖZLEŞMENİN İPTALİ İLE FESİH ŞARTLARI ve SONUÇLARI`,
+    `Paket turun başlamasından önce sözleşmenin esaslı unsurlarından birisinin değişmesi halinde tüketici bu değişikliği kabul edebileceği gibi, yapılan değişikliği kabul etmediğini DÜZENLEYİCİ veya ARACIYA yazılı olarak yada Kalıcı Veri Saklayıcısı ile bildirmek koşulu ile aşağıdaki seçimlik haklardan birisini kullanabilir.`,
+    `DÜZENLEYİCİ veya ARACI tarafından sunulan eşit veya daha yüksek değerde başka bir tura ek bir bedel ödemeksizin katılma`,
+    `Fiyat farkının kendisine iade edilmesi şartıyla daha düşük değerde bir paket tura katılma`,
+    `Herhangi bir bedel ödemeksizin sözleşmeden dönme`,
+    `Sözleşmeden dönülmesi halinde, DÜZENLEYİCİ veya ARACI, sözleşmeden dönme bildiriminin kendisine ulaştığı tarihten itibaren TÜKETİCİNİN ödemiş olduğu tüm bedeli herhangi bir kesinti yapmaksızın en geç 14 gün içinde TÜKETİCİYE iade etmekle yükümlüdür.`,
+    `Tüketiciden kaynaklanmayan bir sebepten dolayı DÜZENLEYİCİ veya ARACI tarafından paket turun başlamasından önce Paket turun iptal edilmesi halinde TÜKETİCİ sözleşmenin 13.1. maddesinde belirtilen seçimlik hakları kullanabilir.`,
+    `DÜZENLEYİCİ veya ARACININ paket tur başladıktan sonra önemli bir yükümlülüğünü yerine getirmediği veya getiremeyeceği tespit edilirse, DÜZENLEYİCİ veya ARACI paket turun devam etmesi için TÜKETİCİYE ilave maliyet getirmeyen eşdeğerde alternatif düzenlemeler sunar ve TÜKETİCİYE teklif edilen hizmetlerle sunulan hizmetler arasındaki farkı tazmin eder. TÜKETİCİ alternatif düzenlemeyi kabul etmeyerek sözleşmeden dönebilir. Bu halde DÜZENLEYİCİ veya ARACININ ücret talep etme hakkı sona erer ve yapılmış olan ödemeler sözleşmeden dönüldüğü tarihten itibaren katılımcıya en geç on dört gün içinde iade edilir. Ancak DÜZENLEYİCİ veya ARACI o ana kadar ifa etmiş olduğu edimler için tüketiciden hizmetten faydalandığı oranda uygun bir karşılık talep edebilir. Yine bu halde, DÜZENLEYİCİ veya ARACISI, tüketicinin paket tura`,
+    `başladığı yere veya üzerinde anlaşılan başka bir yere ücretsiz naklini sağlamak ve zorunlu konaklama olması halinde yapılan giderleri karşılamakla yükümlüdür.`,
+    `TÜKETİCİNİN, DÜZENLEYİCİ veya ARACIYA yazılı olarak veya kalıcı veri saklayıcısı ile bildirmek kaydıyla sözleşmeyi tek taraflı fesih hakkı bulunmaktadır. Bu feshin paket turun başlamasından en az 30 gün önce bildirilmesi halinde; ödenmesi zorunlu vergi, harç ve benzeri yasal yükümlülüklerden doğan masraflar hariç olmak üzere, herhangi bir kesinti yapılmaksızın ödenen bedel TÜKETİCİYE aynen iade edilir. Ancak bu feshin paket turun başlamasına 30 günden daha az bir süre kala bildirilmesi halinde iade yapılmaz.`,
+    `Tüketici veya birinci derecede akrabaları için; kanunlarda yer alan mücbir sebep halleri, tüketicinin, gemi paket tur sözleşmesinin hükümlerinden herhangi birinin yerine getirilmesine engel olacak derecedeki ağır kaza, tedavi gerektiren ağır hastalık, ölüm halleri TÜKETİCİ için mücbir sebep hali kabul edilir. Tüketici, mücbir sebebin varlığını resmi kurumlardan alınacak geçerli belge ile ispatlamak zorundadır. Tüketicinin gerekli tüm özeni göstermesine rağmen öngöremediği ve engelleyemediği bir durum veya bu maddede belirtilen mücbir sebep nedenleri ile paket turun başlamasına 30 günden daha az bir süre kala, yazılı veya kalıcı veri saklayıcısı ile fesih bildiriminde bulunması halinde ödenmesi zorunlu vergi, harç v.b. yasal yükümlülüklerden doğan masraflar ile 3. Kişilere ödenip belgelendirilebilen ve iadesi mümkün olmayan bedeller hariç olmak üzere, herhangi bir kesinti yapılmaksızın tüketicinin ödemiş olduğu bedel fesih bildiriminin DÜZENLEYİCİSİ veya ARACISINA ulaşmasından itibaren 14 gün içinde tüketiciye iade edilir.`,
+    `Tüketici iş bu sözleşmeyi ve paket turu hangi şekilde fesih ve iptal etmiş olursa olsun katıldıkları paket tur ile ilgili yapılan ve geri alınamayacak olan ödemeler Paket Tur Sözleşmeleri Yönetmeliği 16. maddesi 4. fıkrası`,
+    `kapsamında (havayolu ve sair ulaşım şirketleri ile otellerin iptal ve iade şartlarına uymaması nedeniyle)`,
+    `düşüldükten sonra kalan tutar iade edilecektir.`,
+  ],
+  m14: [
+    `14) SORUMLULUKTAN KURTULUŞ KARİNESİ`,
+    `DÜZENLEYİCİ veya ARACI, sözleşmeye aykırılığın aşağıdaki hallerden kaynaklanması durumunda sözleşmenin hiç veya gereği gibi ifa edilmemesinden doğan zararlardan sorumlu tutulamaz:`,
+    `TÜKETİCİNİN kusurunun bulunması.`,
+    `Sözleşmenin ifası sürecine dahil olmayan üçüncü bir kişinin beklenmeyen ve önlenemez bir davranışının bulunması.`,
+    `Sözleşmenin 10. maddesinde düzenlenen mücbir sebep hallerinden birinin bulunması.`,
+    `ç) DÜZENLEYİCİNİN, ARACININ veya bağımsız hizmet sağlayıcısının gerekli tüm özeni göstermelerine rağmen öngöremedikleri ve engelleyemedikleri bir olayın meydana gelmesi.`,
+    `Paket turun düzenlenmesi için öngörülen asgari katılımın sağlanamaması nedeniyle iptal edilmesi ve iptalin sözleşmede öngörülen sürede paket turun başlamasından en az yirmi gün önce yazılı olarak veya kalıcı veri saklayıcısı ile TÜKETİCİYE bildirilmiş olması.`,
+    `Sözleşmenin 14.1 maddesinin (b), (c) ve (ç) alt maddelerinde belirtilen hallerde, DÜZENLEYİCİ veya ARACI ile o yerdeki temsilcileri, TÜKETİCİYE zor durumda kalması halinde hızlı bir şekilde yardımda bulunmakla yükümlüdür.`,
+    `Taraflar arasında iki nüsha olarak tanzim edilmiş bulunan işbu Sözleşme taraf yetkililerince tüm ekleri ile birlikte önlü arkalı olarak tanzim edilmiş okunmuş, kontrol edilerek kabul edilmiştir. Taraflar karşılıklı kabul ettikleri, taahhüt ve edinimlerini birlikte imza altına alarak, kabul ve teyid etmişlerdir. Seyahate katılacak olan ve bu sözleşmede adları yazılı katılımcı adına iş bu sözleşmeyi kabul eden taraf adına temsilen imzalamış olduğu kişilere karşı tüm hukuki sorumluluğun kendisine ait olduğunu ayrıca kabul ve taahhüt etmiştir.`,
+    `ACENTA’nın sözleşmeye kısmen ya da tamamen uymaması hallerinde ödenecek tazminatın hesaplanmasında TÜRSAB Kütahya Çizelgesi hükümleri esas alınacaktır.`,
+    `12 punto olarak düzenlenen işbu sözleşmeyi kendim ve aşağıda adları yazılı şahıslar adına birlikte düzenlenmiş, son hali tarafımdan okunup, kabul edilip onaylanmıştır ve bir nüshası tarafıma tüm ekleri ile birlikte yazılı / kalıcı veri saklayıcı vasıtasıyla teslim edilmiştir. Tüketicinin Korunması Hakkında Kanun ve Paket Tur Sözleşmeleri Yönetmeliği çerçevesinde işbu sözleşme konusu satın aldığı paket tur kapsamında, sunulan tüm hizmetleri ve niteliklerini, satış fiyatı ve ödeme şekil ile ifaya ilişkin tüm ön bilgileri, okuyup bilgi sahibi olduğumu ve paket tur sözleşmesinin içeriğini ve maddelerini okuyarak anladığımı, bilgilendirildiğimi kabul beyan ve taahhüt ederim. Paket tur ile ilgili ihtiyari sigortası yaptırtabileceğim tarafıma beyan edilmiştir. Bu beyanım, rezervasyon işlemlerimin, kendi yerime bir başkası tarafından yürütülmüş ve imzalanmış olması halinde de geçerlidir.`,
+    `İşbu sözleşmenin imzalanması öncesinde aşağıdaki hususlar hakkında tarafıma yazılı olarak bilgi verilmiştir.`,
+    `Seyahat acentasının yerel temsilcisinin adı, adresi ve iletişim bilgilerinin ile bunların bulunmaması halinde tüketicinin zor durumda kaldığında başvurabileceği yerel irtibat noktasının adı, adresi ve iletişim bilgilerinin, yerel irtibat noktasının ve yerel temsilcinin bulunmaması durumunda DÜZENLEYİCİ veya ARACININ en kısa sürede iletişim kurabileceği bilgileri,`,
+    `Varsa ara durakların zamanı, yeri ve ulaştırma bağlantıları ile yolcu tarafından kullanılacak ulaşım aracının özellikleri,`,
+    `Reşit olmayan kişilerin yurt dışına yolculuğu veya yurt dışında kalmaları halinde, tüketici veya tüketicinin kaldığı yerle doğrudan teması sağlayacak bilgiler,`,
+    `Tüketici tarafından iptal masraflarını ya da kaza veya hastalık halinde ülkesine geri gönderilme de dahil olmak üzere yardım masraflarını teminat altına alacak, isteğe bağlı bir sigorta sözleşmesi yapılmasıyla ilgili bilgiler.`,
+    `f) Tüketiciye verilen broşür veya sözleşmede, bu maddede belirtilen bilgilerin değişmemiş olması halinde yolculuk öncesinde tekrar bilgilendirilme yapılmayacaktır.`,
+    `SÖZLEŞMEYİ OKUDUM.`,
+    `BİR SURETİNİ TESLİM ALDIM`,
+    `Tüketici ve katılımcı adına		Belgeyi Tanzim ve imza eden Paydos Turizm Seyahat acentesi yetkilisi`,
+    `İSİM SOYADI`,
+    `Adres: Adres: Mehmetçik Mah. Ulus Cad No:124/ 1 Pamukkale / Denizli`,
+    `Telefon:	Telefon: 0 258 263 71 76`,
+    `Fax:	Fax: 0258 263 71 77`,
+    `E-mail:	E-mail: info@paydostur.com`,
+    `İmza	İmza :`,
+  ],
+};
+// ===== Ülke -> vize durumu (T.C. Dışişleri Bakanlığı listesi) =====
+const VIZE_DURUM = {"Türkiye":{"b":"yurtici","y":"yurtici","t":"Yurt içi seyahat — vize gerekmez."},"KKTC":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır. Vatandaşlarımızın KKTC’ye geçerli kimlik belgeleri ile vizesiz olarak seyahat edebilmeleri mümkündür. 30 Haziran 2021 tarihi itibariyle eski tip nüfus cüzdanları ile seyahat uygulaması sona erecek olup, KKTC’ye seyahat edecek vatandaşlarımız yalnızca yeni nesil Türkiye Cumhuriyeti kimlik kartlarını kullanabilecektir."},"Almanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Avusturya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Belçika":{"b":"tabi","y":"muaf","t":"Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili Türk vatandaşları 1 Aralık 2022 tarihi itibariyle Belçika üzerinden yapacakları transit uçuşlarda havalimanı transit vizeye tabidir."},"Çekya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Danimarka":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Estonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Finlandiya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Fransa":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hırvatistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hollanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hususi ve umuma mahsus pasaport hamili Türk vatandaşları Hollanda havalimanlarından transit olarak Schengen bölgesi dışına yapacakları transit geçişlerde transit vizeye tabidir. Türk vatandaşı gemi mürettebatı, Uluslararası Çalışma Örgütü Gemi Adamı Kimlik Belgesi Sözleşmesi No: 108 (1958) veya No: 185 (2003), Uluslararası Deniz Trafiğinin Kolaylaştırılması Sözleşmesi ve ilgili Hollanda ulusal mevz"},"İspanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsviçre":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İtalya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"İzlanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Letonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Liechtenstein":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Litvanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lüksemburg":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Macaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içerisinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Malta":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamilleri vizeden muaftır."},"Norveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Oslo Gardermoen Havalimanı üzerinden üçüncü ülkelere seyahat edecek vatandaşlarımızın Norveç temsilciliklerinden transit vize alması gerekmektedir."},"Polonya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Portekiz":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Slovakya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri anılan ülkeye yapacakları seyahatlerinde 90 gün için vizeden muaftır."},"Slovenya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Yunanistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Birleşik Krallık":{"b":"tabi","y":"tabi","t":"Diplomatik, hususî, hizmet ve umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. İngiltere üzerinden diğer ülkelere aktarmalı seyahat edecek vatandaşlarımız transit vizeye tabidir. Bununla birlikte, vatandaşlarımızın, gidilecek ülkeye (onward flight) 24 saat içinde uçmaları ve gerekli vizelerinin/belgelerinin olması şartının yanı sıra belirli koşulları sağlamaları halinde, transit vizeden muaf olacakları (transit without visa concession) Londra Başkonsolosluğumuz tarafından bildirilmektedir. Ayrıntılı bilgi için http://www.mfa.gov.tr/ingiltere-uzerinden-diger-ulkelere-aktarmali-seyah"},"İrlanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet ve hususî pasaport hamilleri vizeye tabidir. Diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Bakan heyetine dahil olarak resmî ziyarette bulunan hizmet ve hususî pasaport hamilleri vizeden muaftır."},"Romanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, altı ay içinde üç ayı aşmamak kaydıyla, vizeden muaftır."},"Bulgaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi pasaport hamilleri ülkeye ilk giriş tarihinden itibaren 180 gün içerisinde 90 gün süreyle vizeden muaftır. Diplomatik pasaport ile Hizmet pasaportu hamilleri ise anılan ülkeye yapacakları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sırbistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Karadağ":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız 30 gün süreyle vizeden muaftır. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 90 gün süreyle vizeden muaftır."},"Kuzey Makedonya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Kuzey Makedonya’ya Öğrenim Vizesi İçin Talep Edilen Belgeler (site_media/html/viza-dstudies.doc)"},"Bosna Hersek":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır. Diplomatik, hususi ve hizmet pasaportu hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Arnavutluk":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kosova":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Ukrayna":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Vatandaşlarımız geçerli biyometrik kimlik belgeleri (yeni tip kimlik kartı) ile, Türkiye’den seyahat etmek şartıyla, Ukrayna’ya vizesiz olarak giriş yapabilmektedirler."},"Rusya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hususî ve hizmet pasaportu hamilleri her 180 günde 90 günü aşmamak şartıyla 30 gün süreyle vizeden muaftır. Diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır. Vatandaşlarımız Rusya Federasyonu’na elektronik vizeyle seyahat edebilmektedirler. E-vize, Rusya Dışişleri Bakanlığı'nın https://electronic-visa.kdmid.ru (https://electronic-visa.kdmid.ru/) adresindeki özel web sitesinde veya belirtilen web sitesinden indirilecek mobil uygulamada elektronik olarak doldurulan başvuru formu üzerinden verilir. E-vize başvurusu Rusya Federasyonu'na t"},"Belarus":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili Türk vatandaşları 30 gün süreyle vizeden muaftır. Toplam kalış süresi ilk giriş tarihinden itibaren 1 yıl içerisinde 90 günü geçemez."},"Moldova":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Vatikan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"Andorra":{"b":"?","y":"?","t":"Schengen bölgesine dahil olmayan Andorra’ya doğrudan seyahat imkanı bulunmamakta olup, ülkeye giriş İspanya ya da Fransa üzerinden yapılabilmektedir. Bu çerçevede, vatandaşlarımızın Andorra’ya seyahat edebilmek için çift girişli veya müteaddit girişli Schengen vizesi alması gerekmektedir."},"Monako":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Monako’ya seyahat etmek isteyen vatandaşlarımızın vize başvurularını, resmi ikametleri başka bir ülkede bulunmadığı takdirde, Türkiye’deki Fransa Büyükelçiliği veya Başkonsolosluklarına yapmaları gerekmektedir."},"San Marino":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"BAE":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır."},"Suudi Arabistan":{"b":"tabi","y":"?","t":"Umuma mahsus ve resmi pasaport hamili vatandaşlarımız vizeye tabi olup, turistik amaçlı e-vizelerini “https://visa.visitsaudi.com (https://visa.visitsaudi.com) ” internet adresinden, Suudi Arabistan'a varışlarında havalimanlarında bulunan e-vize kabinlerinden veya anılan ülkenin Türkiye'de mukim temsilciliklerinden “365 günde 90 gün” kalış süreli “tek girişli” veya “çok girişli” olarak alabileceklerdir. Bahsekonu e-vizeler Hac ziyaretlerini kapsamamaktadır (menfi). Hac döneminde, e-vizeyle yalnızca kutsal bölgeler haricindeki şehirlere turistik ziyaret mümkün olabilecektir. 2025 yılı Hac dönem"},"Katar":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Bahreyn":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 30 gün süreli vizelerini Bahreyn’e seyahatlerinden önce e-vize olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kuveyt":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 90 gün süreli vizelerini sınır kapılarında ücretsiz olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 180 günde 90 gün süreyle vizeden muaftır."},"Umman":{"b":"muaf","y":"muaf","t":"Diplomatik, hizmet ve hususî pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma mahsus pasaport hamilleri her 180 günde 90 günü aşmamak kaydıyla her ziyarette 30 gün süreyle vizeden muaftır."},"Ürdün":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lübnan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Lübnan’da göreve atanan Diplomatik, Hizmet ve Hususi Pasaport hamilleri görevleri müddetince, vizeden muaftır."},"İsrail":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Filistin":{"b":"?","y":"?","t":"Vatandaşlarımıza vize uygulanmamaktadır. Filistin’e seyahat edecek Türkiye Cumhuriyeti vatandaşlarının İsrail vizesi almaları gerekmektedir (Mısır üzerinden Gazze Şeridi’ne girecek vatandaşlarımız hariç)."},"Mısır":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır. Mısır’a seyahat eden vatandaşlarımız sınır kapılarında vize alabilmektedirler."},"İran":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Irak":{"b":"muaf","y":"muaf","t":"15 yaşından küçük ve 50 yaşından büyük umuma mahsus pasaport hamilleri 30 gün süreyle vizeden muaftır. 15-50 yaş arasındaki umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Çin Halk Cumhuriyeti":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususi pasaport hamilleri 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Turistik grup vizesi alarak Çin’e seyahat eden vatandaşlarımıza Çin Halk Cumhuriyeti konsoloslukları tarafından biri Çin’e girişte, diğeri ise çıkışta ibraz edilmek üzere 2 adet grup vize belgesi verilmektedir. Ülkeye girişte veya çıkışta sorun yaşanmaması için belgelerin girişte ve çıkışta ibraz edilmesi gerekmektedir. Buna ilaveten, grup vizesiyle seyahat edenlerin Çin’e girişte ve çıkışta birlikte hareket etmeleri beklenmekte, çok acil d"},"Hong Kong":{"b":"muaf","y":"muaf","t":"Pasaport geçerlilik süresi en az 6 ay olan umuma mahsus pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları turistik veya iş görüşmesi amaçlı seyahatlerinde vizeden muaftır. Pasaport geçerlilik süresi en az 6 ay olan diplomatik, hizmet ve hususi pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları seyahatlerinde vizeden muaftır"},"Tayvan":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaportlar vizeye tabidir. Diplomatik ve hizmet pasaportu hamili vatandaşlarımızın basılı (kağıt) vize almaları gerekmektedir. Umuma mahsus ve hususî pasaport hamili vatandaşlarımızın 30 güne kadar ikamet süreli tek girişli vizelerini e-vize olarak (ücretsiz) almaları mümkündür. Havalimanında (varışta) vize uygulaması 15 Ocak 2026 tarihi itibarıyla sona ermiştir."},"Japonya":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Güney Kore":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Öte yandan, vatandaşlarımızın Kore'ye seyahatleri öncesinde Elektronik Seyahat Yetkilendirme (k-eta) kaydını www.k-eta.go.kr (http://www.k-eta.go.kr) internet adresinden başvuru yaparak tamamlamaları gerekmektedir."},"Hindistan":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tayland":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 60 güne kadar vizeden muaftır. Diplomatik, Hizmet, Hususi Pasaport Hamilleri ise 90 güne kadar vizeden muaftır. Diplomatlar ve resmi görevliler de dahil olmak üzere, Tayland'a seyahat edecek tüm vatandaşların, varış tarihlerinden 3 gün önce https://tdac.immigration.go.th (https://tdac.immigration.go.th/) linki üzerinden \"Tayland Dijital Varış Kartı\"nı doldurmaları gerekmektedir."},"Vietnam":{"b":"tabi","y":"muaf","t":"Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir."},"Singapur":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili vatandaşlarımız vizeden muaftır. Singapur’a ilk girişte 30 gün kalış imkanı sağlanmakta, başvuru üzerine onay alınması halinde kalış süresi 90 güne kadar uzatılabilmektedir."},"Malezya":{"b":"?","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımıza ülkeye girişlerinde 90 gün ikamet süreli turistik amaçlı giriş vizesi ücretsiz olarak tatbik edilmektedir. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Endonezya":{"b":"muaf","y":"muaf","t":"Diplomatik, hususî ve hizmet ve umuma mahsus pasaport hamili vatandaşlarımız 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Endonezya'ya gidecek bütün yolcuların 1 Ekim 2025 tarihinden itibaren https://allindonesia.imigrasi.go.id (https://allindonesia.imigrasi.go.id) websitesi üzerinden varış tarihinden en fazla 3 gün içerisinde (Endonezya’ya varmadan önceki 72 saat içinde) bildirimde bulunmaları ve sistem üzerinden kendilerine iletilen QR kodu ülkeye girişte sınır birimlerine ibraz etmeleri gerekmektedir."},"Filipinler":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sri Lanka":{"b":"tabi","y":"tabi","t":"Diplomatik, hizmet, hususi ve umuma mahsus pasaport hamilleri vizeye tabi olup, turistik amaçlı seyahatlerinde vizelerini www.eta.gov.lk (http://www.eta.gov.lk/slvisa/) internet adresinden veya ülkeye girişte sınır kapılarında alabilmektedirler. Vatandaşlarımız 25 Mayıs 2026 tarihi itibarıyla 30 gün süreli turistik amaçlı vizelerini Sri Lanka’ya varıştan önce https://eta.gov.lk (https://eta.gov.lk/) internet adresinden ücretsiz olarak alabilmektedirler."},"Nepal":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, vizelerini sınır kapılarında alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Pakistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Bangladeş":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Maldivler":{"b":"tabi","y":"?","t":"Umuma Mahsus Pasaport hamili vatandaşlarımız vizeye tabi olup, 30 gün süreli vizelerini sınır kapılarından harçsız olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri de 30 güne kadar seyahatlerinde vizelerini sınır kapılarından harçsız olarak alabilmektedirler."},"Kazakistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamili vatandaşlarımız her 180 günde 90 günü aşmamak kaydıyla vizeden muaftır."},"Özbekistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport Hamilleri 30 gün süreyle vizeden muaftır. Hususi ve Hizmet Pasaportu Hamilleri 30 gün süreyle vizeden muaftır. Diplomatik Pasaport hamilleri vizeden muaftır. ''3 günden fazla bir süre için Özbekistan’da kalacak yabancıların yerleşik uygulamalar çerçevesinde 3 gün içerisinde kaldıkları otelden geçici ikamet belgesi almaları, meskende konaklanacaksa 3 gün içerisinde geçici ikamet kaydı yaptırmaları ve sözkonusu belgeleri Özbekistan’dan ayrılırken ibraz etmeleri gerekmektedir. Aksi takdirde kural ihlali yapanlara para cezası uygulanmaktadır.''"},"Kırgızistan":{"b":"muaf","y":"?","t":"Umuma mahsus ve resmi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Tacikistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. Hususî ve hizmet pasaportu hamili vatandaşlarımız 60 gün, diplomatik pasaport hamili vatandaşlarımız ise 90 gün süreyle vizeden muaftır."},"Türkmenistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, resmi ziyaretler için pasaport örnekleri ile birlikte, geliş amacına ilişkin Büyükelçiliğimizce bildirim yapılması kaydıyla Türkmenistan'a kabul edilmektedirler. Ülkede 3 günden fazla kalınması durumunda, Türkmenistan makamlarına ikamet kaydı yaptırılması zorunludur. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, özel ziyaretleri için, Türkmenistan'da bulunan yakınları/tanıdıkları tar"},"Azerbaycan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 güne kadar vizeden muaftır. Vatandaşlarımız turistik amaçlı seyahatlerinde, doğrudan ülkemizden Azerbaycan’a seyahat etmek koşuluyla, kimlik kartlarıyla da giriş yapabilmektedirler."},"Gürcistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, diplomatik, hizmet ve hususî pasaport hamili vatandaşlarımız bir yıla kadar seyahatlerinde vizeden muaftırlar. Vatandaşlarımızın geçerli yeni tip kimlik kartıyla da Gürcistan’a vizesiz olarak seyahat edebilmeleri mümkündür. 1 Ocak 2026 tarihi itibariyle Gürcistan’a umuma mahsus pasaportla veya kimlik kartıyla seyahat edecek vatandaşlarımızın zorunlu seyahat (sağlık ve kaza) sigortası yaptırmaları gerekmektedir. Gürcistan’da bulunan veya yabancı bir sigorta şirketi tarafından düzenlenebilecek, Gürcistan'daki kalış süresinin tamamını (hem giriş hem çıkış tarihlerini) kapsayan ve en"},"Ermenistan":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili vatandaşlarımızın Ermenistan’a seyahatleri öncesinde vize veya elektronik vize almaları gerekmektedir. Diplomatik, hususî ve hizmet pasaportu hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 1 Ocak 2026 tarihi itibariyle 21 gün ikamet süreli elektronik vizeyle Ermenistan’a seyahat edebilmektedirler."},"Amerika Birleşik Devletleri":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Kanada":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeye tabidir."},"Meksika":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hususî ve hizmet pasaportu hamili vatandaşlarımız vizeye tabidir. Diplomatik pasaport hamili vatandaşlarımız ise vizeden muaftır. Turizm, iş, eğitim, gazetecilik veya transit geçiş gibi nedenlerle Meksika'ya seyahat edecek umuma mahsus pasaport hamili Türk vatandaşları, havayoluyla seyahat etmek kaydıyla 30 gün geçerli tek girişli e-vizelerini https://www.inm.gob.mx/sae/publico/tr/solicitud.html (https://www.inm.gob.mx/sae/publico/tr/solicitud.html) adresi üzerinden alabilmektedir. E-vize imkânından sadece umuma mahsus pasaport hamili vatandaşlarımız yararlanabilmekte olup, buna "},"Brezilya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Arjantin":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Şili":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Peru":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Kolombiya":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Küba":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları 90 güne kadar olan seyahatlerinde vizeden muaftır. Küba’ya seyahat etmeden en fazla 48 saat önce https://dviajeros.mitrans.gob.cu/inicio (https://dviajeros.mitrans.gob.cu/inicio) internet adresinde yer alan formun doldurulması ve otomatik olarak oluşturulacak QR kodunun ilgili havayolu ve sınır kapısındaki görevlilere basılı halde veya elektronik formatta gösterilmesi gerekmektedir."},"Panama":{"b":"muaf","y":"muaf","t":"Diplomatik, Hizmet ve Hususi ve Umuma Mahsus Pasaport hamilleri 3 aylık bir süre için vizeden muaf bulunmaktadırlar."},"Fas":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tunus":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Cezayir":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Güney Afrika":{"b":"?","y":"muaf","t":"Diplomatik Pasaport, Hususi Pasaport ve Hizmet Pasaportu hamili vatandaşlarımız 30 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamili vatandaşlarımız 30 güne kadar süreli vizelerini sınır kapılarından kaşe tatbiki şeklinde ve harçsız olarak alabilmektedir."},"Kenya":{"b":"?","y":"muaf","t":"Kenya’nın 2024 yılında getirdiği Elektronik Seyahat Yetkilendirme Sistemi kapsamında, Umuma Mahsus Pasaport hamili vatandaşlarımızın Kenya’yı ziyaretleri öncesinde \"www.etakenya.go.ke (http://www.etakenya.go.ke/) \" adresinden başvuru yapmaları gerekmekte olup bu başvurular ücrete tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamili vatandaşlarımız ise Kenya'yı ziyaretlerinde 90 gün süreyle ETA sisteminden muaftır."},"Tanzanya":{"b":"tabi","y":"muaf","t":"Diplomatik, hususi ve hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Umuma mahsus pasaport hamili Türk vatandaşları ise vizeye tabidir. Tanzanya'ya seyahat edecek olan umuma mahsus pasaport hamili vatandaşlarımız \"visa.immigration.go.tz (http://www.immigration.go.tz) \" internet adresinden elektronik vize veya sınır kapılarında vize alabilmektedirler."},"Etiyopya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Nijerya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi ve Hizmet Pasaportu Hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Senegal":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları, 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Avustralya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Yeni Zelanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Fiji":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."}};
+
 const tourCountries = [
   'Türkiye',
   'KKTC',
@@ -6554,6 +6674,33 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
   const [flightBusy, setFlightBusy] = useState(false);
   const [flightWarn, setFlightWarn] = useState([]);
   const [offerId, setOfferId] = useState(null); // düzenlenen tur teklifi (null = yeni)
+  // ===== SÖZLEŞME =====
+  const emptyContract = {
+    tuketici: { name: '', tc: '', address: '', phone: '', email: '' },
+    katilimcilar: [],
+    passports: [],
+    // 3.1 süre
+    startDate: '', endDate: '', baslangicYeri: '',
+    // 3.2 tablo
+    guzergah: '', konaklama: '', yemekPlani: 'Oda + Kahvaltı', ulasim: '',
+    yerTahsisi: 'Ekonomi Sınıfı Koltuklar. Şehir içinde otobüs ile ulaşım ve transfer hizmetleri olacaktır.',
+    araKonaklama: 'Ara konaklama yoktur.',
+    vizeUlke: '', vizeSarti: '',
+    yasSarti: 'Yaş şartı bulunmamaktadır.', asiSarti: 'Aşı şartı bulunmamaktadır.', iklimNot: '',
+    // 4 fiyat
+    fiyatDouble: '', fiyatSingle: '', paraBirimi: 'USD',
+    // 6 sigorta
+    sigortaBedeli: '15€',
+    // 7 ödeme
+    onOdeme: '', sonOdeme: '',
+    ozelTalepler: true,
+    programDays: []
+  };
+  const [showContract, setShowContract] = useState(false);
+  const [contract, setContract] = useState(emptyContract);
+  const [contractId, setContractId] = useState(null);
+  const [custSearchC, setCustSearchC] = useState('');
+  const [iklimBusy, setIklimBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [formStep, setFormStep] = useState('type'); // type, customer, details
   const [formData, setFormData] = useState({
@@ -7480,8 +7627,13 @@ ${flightRaw}`;
       const img = canvas.toDataURL('image/jpeg', 0.92);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pw = 210, ph = 297;
-      const iw = pw, ih = (canvas.height * pw) / canvas.width;
-      if (ih <= ph) {
+      let iw = pw, ih = (canvas.height * pw) / canvas.width;
+      if (ih > ph && ih <= ph * 1.35) {
+        // Bir sayfayı az aşıyor -> küçültüp tek sayfaya sığdır (ortala)
+        const k = ph / ih;
+        ih = ph; iw = pw * k;
+        pdf.addImage(img, 'JPEG', (pw - iw) / 2, 0, iw, ih);
+      } else if (ih <= ph) {
         pdf.addImage(img, 'JPEG', 0, 0, iw, ih);
       } else {
         // uzun içerik -> sayfalara böl
@@ -7507,7 +7659,397 @@ ${flightRaw}`;
     }
   };
 
+  // ===== SÖZLEŞME: yardımcılar =====
+  const trTarih = (iso) => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
+  const contractSure = (c) => {
+    if (!c.startDate || !c.endDate) return '';
+    const a = new Date(c.startDate + 'T00:00:00'), b = new Date(c.endDate + 'T00:00:00');
+    const gece = Math.round((b - a) / 86400000);
+    if (isNaN(gece) || gece < 0) return '';
+    return `${gece} Gece ${gece + 1} Gündür`;
+  };
+  // Müşteriyi tüketici olarak aktar
+  const pickCustomer = (cust) => {
+    const pps = safeParseJSON(cust.passports).filter(p => p.passportNo).map(p => ({
+      name: `${cust.firstName} ${cust.lastName}`.trim(), no: p.passportNo,
+      issueDate: p.issueDate, expiryDate: p.expiryDate, birthPlace: cust.birthPlace || ''
+    }));
+    setContract(c => ({ ...c,
+      tuketici: { name: `${cust.firstName} ${cust.lastName}`.trim(), tc: cust.tcKimlik || '', address: cust.city || '', phone: cust.phone || '', email: cust.email || '' },
+      passports: pps.length ? pps : c.passports
+    }));
+    setCustSearchC('');
+    showToast?.('Müşteri bilgileri aktarıldı', 'success');
+  };
+  // Vize şartını ülkeye göre belirle
+  const vizeSartiBul = (ulke) => {
+    const d = VIZE_DURUM[ulke];
+    if (!d) return { metin: '', bilinmiyor: true, detay: '' };
+    if (d.b === 'yurtici') return { metin: 'Vize şartı bulunmamaktadır.', bilinmiyor: false, detay: d.t };
+    if (d.b === 'tabi') return { metin: `${ulke} Vizesi Şartı bulunmaktadır.`, bilinmiyor: false, detay: d.t };
+    if (d.b === 'muaf') return { metin: 'Vize şartı bulunmamaktadır.', bilinmiyor: false, detay: d.t };
+    return { metin: '', bilinmiyor: true, detay: d.t };
+  };
+  // Tur teklifinden aktar
+  const importFromOffer = (q, hotelIdx = 0) => {
+    const o = q.offer || {};
+    const h = (o.hotels || [])[hotelIdx] || {};
+    const dest = (o.destinations || []).filter(d => d.country || d.city);
+    const guzergah = dest.map(d => [d.city, d.country].filter(Boolean).join(' / ')).join(' — ');
+    const anaUlke = dest[0]?.country || '';
+    const vz = vizeSartiBul(anaUlke);
+    const legTxt = (f, lab) => {
+      const legs = (f?.legs || []).filter(l => l.airline || l.dep || l.arr);
+      if (!legs.length) return '';
+      return `${lab} (${f.date || ''}): ` + legs.map(l => `${l.airline || ''} ${l.dep || ''} → ${l.arr || ''}`.trim()).join(' | ');
+    };
+    const ulasim = [legTxt(o.flightOut, 'Gidiş'), legTxt(o.flightRet, 'Dönüş')].filter(Boolean).join('  ///  ');
+    const konak = h.name ? `${h.name} (${h.stars || ''}) — ${offerDateRange(o)}` : '';
+    setContract(c => ({ ...c,
+      startDate: o.startDate || c.startDate, endDate: o.endDate || c.endDate,
+      guzergah: guzergah || c.guzergah, konaklama: konak || c.konaklama, ulasim: ulasim || c.ulasim,
+      vizeUlke: anaUlke || c.vizeUlke, vizeSarti: vz.metin || c.vizeSarti,
+      fiyatDouble: h.priceDouble || c.fiyatDouble, fiyatSingle: h.priceSingle || c.fiyatSingle,
+      paraBirimi: h.currency || c.paraBirimi,
+      programDays: o.days || c.programDays
+    }));
+    showToast?.(vz.bilinmiyor && anaUlke ? `Aktarıldı — ${anaUlke} vize durumu belirsiz, elle kontrol edin` : 'Tur teklifinden aktarıldı', vz.bilinmiyor ? 'warning' : 'success');
+  };
+  // İklim/giyim tavsiyesi (AI)
+  const iklimOlustur = async () => {
+    if (!contract.vizeUlke && !contract.guzergah) { showToast?.('Önce tur teklifinden aktarın veya güzergah girin', 'warning'); return; }
+    if (!contract.startDate) { showToast?.('Önce tarih girin', 'warning'); return; }
+    setIklimBusy(true);
+    try {
+      const ay = TR_AYLAR[+contract.startDate.slice(5,7) - 1];
+      const yer = contract.guzergah || contract.vizeUlke;
+      const prompt = `${yer} bölgesinin ${ay} ayındaki TİPİK MEVSİM NORMALLERİNE göre, bir tur sözleşmesine yazılacak kısa bir iklim ve giyim tavsiyesi yaz.
+KURALLAR:
+- Bu bir TAHMİN DEĞİL, mevsim normali. "olacaktır" deme, "hâkimdir / beklenir / tavsiye edilir" gibi ifadeler kullan.
+- 2 cümleyi geçme. Ortalama sıcaklık aralığı ver.
+- Giyim tavsiyesi ekle (mont, yağmurluk, şemsiye vb.).
+- Sağlık/aşı konusuna GİRME.
+- Sadece metni döndür, başlık/açıklama yazma.`;
+      const r = await fetch('/.netlify/functions/claude-proxy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (!r.ok) throw new Error('API ' + r.status);
+      const data = await r.json();
+      const txt = (data.content?.[0]?.text || '').trim();
+      if (!txt) throw new Error('boş yanıt');
+      setContract(c => ({ ...c, iklimNot: txt }));
+      showToast?.('İklim tavsiyesi oluşturuldu — kontrol edin', 'success');
+    } catch (e) { showToast?.('Oluşturulamadı: ' + e.message, 'error'); }
+    finally { setIklimBusy(false); }
+  };
+
+  // ===== SÖZLEŞME: HTML üretici =====
+  const genContractHTML = (c) => {
+    const e = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const P = (arr) => arr.map(x => `<p>${e(x)}</p>`).join('');
+    const S = SOZLESME_SABIT;
+    const secTitle = (t) => `<h2>${e(t)}</h2>`;
+    const body = (arr) => P(arr.slice(1));
+    const progHTML = (c.programDays || []).filter(d => (d.items||[]).some(i => (i.time||'').trim() || (i.text||'').trim()))
+      .map(d => `<div class="pd"><b>${e(d.title)}</b> ${e(d.date)}<br>${(d.items||[]).filter(i => (i.time||'').trim() || (i.text||'').trim()).map(i => `${i.time ? `<b>${e(i.time)}</b> — ` : ''}${e(i.text)}`).join('<br>')}</div>`).join('');
+    const ppRows = (c.passports || []).filter(p => p.name || p.no).map(p =>
+      `<tr><td>${e(p.name)}</td><td>${e(p.no)}</td><td>${e(trTarih(p.issueDate) || p.issueDate)}</td><td>${e(trTarih(p.expiryDate) || p.expiryDate)}</td><td>${e(p.birthPlace)}</td></tr>`).join('');
+    const katRows = (c.katilimcilar || []).filter(k => k.name).map((k, i) =>
+      `<p><b>KATILIMCI ${i+1}</b><br>- AD/SOYAD: ${e(k.name)}<br>- T.C. KİMLİK NO: ${e(k.tc)}<br>- ADRES: ${e(k.address)}<br>- İLETİŞİM: ${e(k.phone)}</p>`).join('');
+    return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>Paket Tur Sözleşmesi</title><style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:9.5px;line-height:1.45;color:#1a1a1a;padding:16px;max-width:820px;margin:0 auto;background:#fff}
+h1{text-align:center;font-size:16px;color:#0c2340;margin-bottom:2px}
+.sub{text-align:center;font-size:9px;color:#666;margin-bottom:10px}
+h2{background:#0c2340;color:#fff;font-size:11px;padding:5px 9px;margin:12px 0 6px;border-left:4px solid #e8912a;border-radius:2px}
+p{margin:0 0 4px;text-align:justify}
+table{width:100%;border-collapse:collapse;margin:6px 0}
+th,td{border:1px solid #bbb;padding:4px 6px;font-size:9px;text-align:left;vertical-align:top}
+th{background:#eef3f8;font-weight:700;color:#0c2340}
+.info th{width:32%;background:#f4f7fa}
+.pd{margin:3px 0;padding-left:6px;border-left:2px solid #e8912a}
+.sig{margin-top:18px;display:flex;gap:30px}
+.sig div{flex:1;border-top:1px solid #666;padding-top:4px;font-size:9px}
+.hl{background:#fffbe6}
+</style></head><body>
+<h1>PAKET TUR SÖZLEŞMESİ</h1>
+<div class="sub">6502 Sayılı Tüketicinin Korunması Hakkında Kanun ve Paket Tur Sözleşmeleri Yönetmeliği kapsamında düzenlenmiştir.</div>
+
+<h2>1) TARAFLAR</h2>
+<p><b>1.1. DÜZENLEYİCİ:</b> PAYDOS TURİZM SEYAHAT ACENTALIĞI SANAYİ VE TİCARET LİMİTED ŞİRKETİ<br>
+Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / DENİZLİ · Tel: 0 258 263 71 76 · info@paydostur.com</p>
+<p><b>1.2. TÜKETİCİ:</b><br>- AD/SOYAD: ${e(c.tuketici.name)}<br>- T.C. KİMLİK NO: ${e(c.tuketici.tc)}<br>- ADRES: ${e(c.tuketici.address)}<br>- İLETİŞİM BİLGİLERİ (Telefon–Faks–E-mail): ${e(c.tuketici.phone)}${c.tuketici.email ? ' · ' + e(c.tuketici.email) : ''}</p>
+${katRows}
+<p>Tüketici, yukarıda belirtilen katılımcılar adına işbu sözleşmeye taraf olduğunu, ön bilgilendirme formu ve broşürün kendisine verildiğini kabul ve beyan eder. Kimlik ve iletişim bilgilerinin hatalı bildirilmesinden doğan neticelerden (havayolu cezası, vize sorunu vb.) Düzenleyici sorumlu değildir.</p>
+${ppRows ? `<p><b>1.3. PASAPORT BİLGİLERİ</b></p><table><tr><th>Ad Soyad</th><th>Pasaport No</th><th>Veriliş</th><th>Geçerlilik</th><th>Doğum Yeri</th></tr>${ppRows}</table>` : ''}
+
+${secTitle(S.m2[0])}${body(S.m2)}
+
+<h2>3) PAKET TUR NİTELİKLERİ ve SÜRESİ</h2>
+<p><b>3.1.</b> Paket tur <b>${e(trTarih(c.startDate))}</b> hareket tarihi <b>${e(trTarih(c.endDate))}</b> dönüş tarihi olmak üzere toplam <b>${e(contractSure(c))}</b>. Paket turun başlangıç ve bitiş yeri <b>${e(c.baslangicYeri)}</b>'dir. (24 saat dilimi olarak belirtilmiştir.)</p>
+<table class="info">
+<tr><th>DURAKLAMA YERLERİ ve GÜZERGAH</th><td>${e(c.guzergah)}</td></tr>
+<tr><th>KONAKLAMA TARİHLERİ, TÜRÜ, YERİ, NİTELİĞİ, SINIFI, SÜRESİ</th><td>${e(c.konaklama)}</td></tr>
+<tr><th>YEMEK PLANI</th><td>${e(c.yemekPlani)}</td></tr>
+<tr><th>ULAŞIM ARAÇLARININ TÜRÜ, YOLCULUĞUN SINIFI, HAREKET VE DÖNÜŞ TARİHLERİ, SAATLERİ VE YERLERİ</th><td>${e(c.ulasim)}${progHTML ? `<div style="margin-top:5px">${progHTML}</div>` : ''}</td></tr>
+<tr><th>YOLCULUKLA İLGİLİ BELİRLİ YER TAHSİSİ VARSA BU YER İLE İLGİLİ BİLGİ</th><td>${e(c.yerTahsisi)}</td></tr>
+<tr><th>ARA KONAKLAMA YERİ, TARİHİ VE AKTARMA BİLGİLERİ</th><td>${e(c.araKonaklama)}</td></tr>
+<tr><th>PASAPORT GENEL BİLGİLERİ</th><td>
+• T.C. yeşil pasaportu ile seyahat edecek misafirlerimizin, eğer pasaportlarının alınış tarihi 10 yıldan eski ise; pasaportlarını yenilemeleri gereklidir. Aksi halde gidecekleri ülkeye kabul edilmeyebilirler ve/veya Türkiye'den havayolu firması tarafından uçuşları gerçekleştirilmeyebilir. Böyle bir durumda sorumluluk yolcuya aittir, Acente hiçbir şekilde sorumluluk yüklenemez.<br>
+• Yırtık, yıpranmış, ıslanmış ve/veya benzeri tahribat(lar)a uğramış pasaportlar nedeniyle ziyaret edilecek ülke sınır kapısında gümrük polisi ile sorun yaşanmaması adına; anılan pasaportların yenilenmesi ve T.C. vatandaşlarına vize uygulayan bir ülke ise ilgili vizenin yeni pasaportta olması gerekmektedir. Aksi durumda sorumluluk yolcuya aittir.<br>
+• Acente Yolcu ile konsolosluk arasında aracı konumundadır. Konsolosluk gerekli gördüğü durumlarda vize vermeme hakkına sahiptir. Yolcunun vize alamaması ile ilgili olarak Acente'nin hiçbir sorumluluğu yoktur. Acente sadece aracı kurum görevini üstlenmektedir. Şahsi vize başvurularında Acente'nin herhangi bir yaptırımı ve sorumluluğu bulunmamaktadır. Tüketiciler bu şartları kabul ederek tura kayıt yaptırmışlardır.
+</td></tr>
+<tr><th>VİZE ŞARTLARI</th><td><b>${e(c.vizeSarti)}</b><br>
+Vize gereken turlarımız için misafirlerimizin ilgili ülke konsolosluklarına şahsen başvuru ile ya da acenta vize departmanı aracılığı ile vize almaları gerekmektedir. Vize başvurusu için tur bitiş tarihi itibariyle en az 6 ay geçerli pasaport ile acentamızdan temin edebileceğiniz, vize için gerekli evraklar listesinde belirtilen belgeler gerekmektedir. Yeşil pasaport ve T.C. dışında herhangi bir ülke pasaport sahipleri için vize uygulaması olup olmadığını lütfen ilgili konsolosluk veya bakanlıklardan teyit ediniz. Vizeler seyahat başlangıcından önce Türkiye'deki ilgili konsolosluklardan alınmak zorundadır. Giriş yapılan ülkenin sınır kapılarında vize alınamaz. Vize alınmış olması o ülkeye giriş yapılabileceği anlamına gelmez. Pasaport polisi sizi ülkeye sokmama yetkisine sahiptir. Böyle bir durumda sorumluluk yolcuya aittir, Acenta hiçbir şekilde sorumluluk yüklenemez.
+</td></tr>
+<tr><th>YAŞ VE SAĞLIK ŞARTLARI</th><td>${e(c.yasSarti)} ${e(c.asiSarti)}${c.iklimNot ? '<br>' + e(c.iklimNot) : ''}</td></tr>
+</table>
+
+<h2>4) SÖZLEŞME FİYATI</h2>
+<p><b>4.1.</b> Sözleşme, vergiler ile tüketiciye verilen broşürde yer alan ve fiyata dahil olan tüm hizmetler dahil 2 kişilik odada kişi başı <b>${e(c.fiyatDouble)} ${e(c.paraBirimi)}</b>'dır. Tek kişi konaklama <b>${e(c.fiyatSingle)} ${e(c.paraBirimi)}</b>'dır. (Yurtdışı turlarda Fiyat Etiketi Yönetmeliği uyarınca fiyatların "TL" yazılması konusunda muafiyet bulunmaktadır.) Bunlar haricindeki turlar ve diğer hizmetler ekstra ücrete tabidir.</p>
+
+${secTitle(S.m5[0])}${body(S.m5)}
+
+${secTitle(S.m6[0])}${P(S.m6.slice(1).map(x => x.replace('15€', c.sigortaBedeli || '15€')))}
+
+<h2>7) ÖDEME PLANI VE ŞEKLİ</h2>
+<p>Paket Turun ödemesi nakit veya hesaba havale/EFT şeklinde yapılabilir.</p>
+<p>Vize işlemlerine ait ödemeler peşin olarak pasaport teslim edildiği tarihte yapılacaktır. Vize ücreti ödenmeden vize başvurusu yapılmayacaktır.</p>
+<p class="hl"><b>${e(trTarih(c.onOdeme))}</b> ön ödeme günüdür. <b>${e(trTarih(c.sonOdeme))}</b> son ödeme günüdür. Ödeme belirtilen tarihlere kadar yapılmaz ise tur kaydı otomatik olarak iptal edilir.</p>
+<p><b>Banka Hesap Numaraları</b></p>
+<table><tr><th>GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ — TÜRK LİRASI HESABI</th><td>Şube Kodu: 781 · SWIFT: TGBATRIS<br>IBAN: TR40 0006 2000 7810 0006 2962 46<br>Hesap No: 0006 2962 46</td></tr>
+<tr><th>GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ — EURO HESABI</th><td>Şube Kodu: 781 · SWIFT: TGBATRIS<br>IBAN: TR73 0006 2000 7810 0009 0910 95<br>Hesap No: 0009 0910 95</td></tr></table>
+
+${c.ozelTalepler ? secTitle(S.m8[0]) + body(S.m8) : ''}
+${secTitle(S.m9[0])}${body(S.m9)}
+${secTitle(S.m10[0])}${body(S.m10)}
+${secTitle(S.m12[0])}${body(S.m12)}
+${secTitle(S.m13[0])}${body(S.m13)}
+${secTitle(S.m14[0])}${body(S.m14)}
+
+<div class="sig"><div><b>TÜKETİCİ</b><br>${e(c.tuketici.name)}<br>İmza</div><div><b>PAYDOS TURİZM</b><br>Önder TAŞÇI<br>İmza / Kaşe</div></div>
+</body></html>`;
+  };
+
+  // ===== SÖZLEŞME: kaydet =====
+  const saveContract = () => {
+    if (!contract.tuketici.name) { showToast?.('Tüketici seçin veya adını girin', 'warning'); return; }
+    const now = new Date();
+    if (contractId) {
+      setQuotes(prev => prev.map(q => q.id === contractId ? { ...q, subject: `Sözleşme — ${contract.tuketici.name}`, contract, updatedAt: now.toISOString() } : q));
+      showToast?.('Sözleşme güncellendi', 'success');
+    } else {
+      const id = Date.now();
+      setQuotes(prev => [...prev, { id, type: 'sozlesme', subject: `Sözleşme — ${contract.tuketici.name}`,
+        customer: { firstName: contract.tuketici.name, lastName: '' },
+        number: `SZL-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='sozlesme').length + 1).padStart(3,'0')}`,
+        contract, createdAt: now.toISOString() }]);
+      setContractId(id);
+      showToast?.('Sözleşme kaydedildi', 'success');
+    }
+  };
+  const makeContractPDF = async (c) => {
+    const data = { ...emptyContract, ...c };
+    setPdfBusy(true);
+    let holder = null;
+    try {
+      const html2canvas = await loadHtml2Canvas();
+      holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
+      const full = genContractHTML(data);
+      const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
+      holder.innerHTML = `<style>${st ? st[1] : ''}</style><div style="padding:16px;background:#fff;font-family:'Segoe UI',Arial,sans-serif;font-size:9.5px;line-height:1.45;color:#1a1a1a">${b ? b[1] : ''}</div>`;
+      document.body.appendChild(holder);
+      await new Promise(r => setTimeout(r, 350));
+      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      const img = canvas.toDataURL('image/jpeg', 0.9);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pw = 210, ph = 297, iw = pw, ih = (canvas.height * pw) / canvas.width;
+      let left = ih, pos = 0;
+      pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
+      left -= ph;
+      while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
+      pdf.save(`Sozlesme_${(data.tuketici.name || 'Musteri').replace(/\s+/g,'_')}.pdf`);
+      showToast?.('Sözleşme PDF indirildi', 'success');
+    } catch (e) { showToast?.('PDF oluşturulamadı: ' + e.message, 'error'); }
+    finally { if (holder) document.body.removeChild(holder); setPdfBusy(false); }
+  };
+
   const printOffer = () => makeOfferPDF(offer);
+
+  if (showContract) {
+    const inS = { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
+    const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
+    const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', marginBottom: '14px' };
+    const secT = { fontSize: '13px', color: '#e8912a', fontWeight: '700', marginBottom: '10px' };
+    const addB = { padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' };
+    const delB = { padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' };
+    const custHits = custSearchC.trim().length >= 2
+      ? (customers || []).filter(c => normalizeTr(`${c.firstName} ${c.lastName} ${c.tcKimlik || ''}`).includes(normalizeTr(custSearchC))).slice(0, 6) : [];
+    const tourOffers = quotes.filter(q => q.type === 'tur-teklifi');
+    const vz = contract.vizeUlke ? vizeSartiBul(contract.vizeUlke) : null;
+    return (
+      <div style={{ padding: '16px', maxWidth: '820px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>📜 {contractId ? 'Sözleşme Düzenle' : 'Paket Tur Sözleşmesi'}</h2>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={saveContract} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>💾 Kaydet</button>
+            <button onClick={() => setShowContract(false)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>← Geri</button>
+          </div>
+        </div>
+
+        {/* Tur teklifinden aktar */}
+        <div style={{ ...card, background: 'rgba(232,145,42,0.06)', border: '1px solid rgba(232,145,42,0.25)' }}>
+          <div style={secT}>🧾 Tur Teklifinden Aktar</div>
+          {tourOffers.length === 0 ? <p style={{ fontSize: '12px', color: '#64748b' }}>Kayıtlı tur teklifi yok. Önce bir tur teklifi oluşturup kaydedin.</p> : (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {tourOffers.map(q => (
+                <div key={q.id} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '6px 8px' }}>
+                  <span style={{ fontSize: '11px', color: '#e8f1f8' }}>{q.subject}</span>
+                  {(q.offer?.hotels || []).filter(h => h.name).map((h, hi) => (
+                    <button key={hi} onClick={() => importFromOffer(q, hi)} style={{ ...addB, padding: '4px 8px' }}>↓ {h.name.slice(0, 18)}</button>
+                  ))}
+                  {!(q.offer?.hotels || []).some(h => h.name) && <button onClick={() => importFromOffer(q, 0)} style={{ ...addB, padding: '4px 8px' }}>↓ Aktar</button>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 1) Taraflar */}
+        <div style={card}>
+          <div style={secT}>1) Taraflar — Tüketici</div>
+          <div style={{ position: 'relative', marginBottom: '10px' }}>
+            <input style={inS} value={custSearchC} onChange={e => setCustSearchC(e.target.value)} placeholder="🔍 Müşteri ara (ad, soyad, TC) — seçince bilgiler dolar" />
+            {custHits.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                {custHits.map(c => (
+                  <div key={c.id} onClick={() => pickCustomer(c)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.tcKimlik || '—'} · {c.phone || ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+            <div><label style={lbl}>Ad / Soyad</label><input style={inS} value={contract.tuketici.name} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, name: e.target.value}})} /></div>
+            <div><label style={lbl}>T.C. Kimlik No</label><input style={inS} value={contract.tuketici.tc} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, tc: e.target.value}})} /></div>
+            <div><label style={lbl}>Adres</label><input style={inS} value={contract.tuketici.address} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, address: e.target.value}})} /></div>
+            <div><label style={lbl}>İletişim (tel / e-posta)</label><input style={inS} value={contract.tuketici.phone} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, phone: e.target.value}})} /></div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '12px 0 6px' }}>
+            <label style={lbl}>Katılımcılar</label>
+            <button style={addB} onClick={() => setContract(c => ({...c, katilimcilar: [...c.katilimcilar, { name: '', tc: '', address: '', phone: '' }]}))}>+ Katılımcı Ekle</button>
+          </div>
+          {contract.katilimcilar.map((k, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.5fr 1fr 1.5fr 1fr auto', gap: '6px', marginBottom: '6px' }}>
+              <input style={inS} value={k.name} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,name:e.target.value}:x)}))} placeholder={`${i+1}. Katılımcı Ad Soyad`} />
+              <input style={inS} value={k.tc} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,tc:e.target.value}:x)}))} placeholder="TC" />
+              <input style={inS} value={k.address} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,address:e.target.value}:x)}))} placeholder="Adres" />
+              <input style={inS} value={k.phone} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,phone:e.target.value}:x)}))} placeholder="Telefon" />
+              <button style={delB} onClick={() => setContract(c => ({...c, katilimcilar: c.katilimcilar.filter((_,j)=>j!==i)}))}>🗑️</button>
+            </div>
+          ))}
+          {contract.passports.length > 0 && (
+            <div style={{ marginTop: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '8px', padding: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#3b82f6', fontWeight: '600', marginBottom: '4px' }}>🛂 Pasaport bilgileri (müşteriden geldi)</div>
+              {contract.passports.map((p, i) => <div key={i} style={{ fontSize: '11px', color: '#94a3b8' }}>{p.name} · {p.no} · {trTarih(p.expiryDate)}</div>)}
+            </div>
+          )}
+        </div>
+
+        {/* 3.1 Süre */}
+        <div style={card}>
+          <div style={secT}>3.1) Süre</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
+            <div><label style={lbl}>Hareket Tarihi</label><input type="date" style={inS} value={contract.startDate} onChange={e => setContract({...contract, startDate: e.target.value})} /></div>
+            <div><label style={lbl}>Dönüş Tarihi</label><input type="date" style={inS} min={contract.startDate || undefined} value={contract.endDate} onChange={e => setContract({...contract, endDate: e.target.value})} /></div>
+            <div><label style={lbl}>Süre (otomatik)</label><div style={{...inS, color: '#e8912a', fontWeight: '600'}}>{contractSure(contract) || '—'}</div></div>
+            <div><label style={lbl}>Başlangıç/Bitiş Yeri</label><input style={inS} value={contract.baslangicYeri} onChange={e => setContract({...contract, baslangicYeri: e.target.value})} placeholder="İzmir" /></div>
+          </div>
+        </div>
+
+        {/* 3.2 Nitelikler */}
+        <div style={card}>
+          <div style={secT}>3.2) Tur Nitelikleri</div>
+          <div style={{ display: 'grid', gap: '8px' }}>
+            <div><label style={lbl}>Duraklama Yerleri / Güzergah</label><input style={inS} value={contract.guzergah} onChange={e => setContract({...contract, guzergah: e.target.value})} /></div>
+            <div><label style={lbl}>Konaklama (otel, sınıf, tarih)</label><input style={inS} value={contract.konaklama} onChange={e => setContract({...contract, konaklama: e.target.value})} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+              <div><label style={lbl}>Yemek Planı</label><input style={inS} value={contract.yemekPlani} onChange={e => setContract({...contract, yemekPlani: e.target.value})} /></div>
+              <div><label style={lbl}>Ulaşım (uçuşlar)</label><input style={inS} value={contract.ulasim} onChange={e => setContract({...contract, ulasim: e.target.value})} /></div>
+            </div>
+            <div><label style={lbl}>Yer Tahsisi</label><input style={inS} value={contract.yerTahsisi} onChange={e => setContract({...contract, yerTahsisi: e.target.value})} /></div>
+            <div><label style={lbl}>Ara Konaklama / Aktarma</label><input style={inS} value={contract.araKonaklama} onChange={e => setContract({...contract, araKonaklama: e.target.value})} /></div>
+          </div>
+          {contract.programDays.length > 0 && <p style={{ fontSize: '11px', color: '#10b981', marginTop: '6px' }}>✔ {contract.programDays.length} günlük program tekliften aktarıldı (sözleşmeye eklenecek)</p>}
+        </div>
+
+        {/* Vize */}
+        <div style={card}>
+          <div style={secT}>Vize Şartları</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: '8px' }}>
+            <div><label style={lbl}>Ülke</label>
+              <select style={inS} value={contract.vizeUlke} onChange={e => { const u = e.target.value; const v = vizeSartiBul(u); setContract(c => ({...c, vizeUlke: u, vizeSarti: v.metin || c.vizeSarti})); }}>
+                <option value="" style={{ background: '#0c1929' }}>Ülke seçin...</option>
+                {tourCountries.map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>Sözleşmeye yazılacak</label><input style={inS} value={contract.vizeSarti} onChange={e => setContract({...contract, vizeSarti: e.target.value})} placeholder="Örn. Almanya Vizesi Şartı bulunmaktadır." /></div>
+          </div>
+          {vz && vz.detay && (
+            <div style={{ marginTop: '8px', background: vz.bilinmiyor ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.06)', border: `1px solid ${vz.bilinmiyor ? 'rgba(245,158,11,0.3)' : 'rgba(59,130,246,0.2)'}`, borderRadius: '8px', padding: '8px' }}>
+              <div style={{ fontSize: '10px', color: vz.bilinmiyor ? '#f59e0b' : '#3b82f6', fontWeight: '700' }}>{vz.bilinmiyor ? '⚠️ Durum belirsiz — elle yazın' : 'ℹ️ Dışişleri Bakanlığı bilgisi'}</div>
+              <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px' }}>{vz.detay.slice(0, 260)}</div>
+              <div style={{ fontSize: '9px', color: '#64748b', marginTop: '3px' }}>Vize kuralları değişebilir — sözleşme öncesi teyit edin.</div>
+            </div>
+          )}
+        </div>
+
+        {/* Yaş / sağlık / iklim */}
+        <div style={card}>
+          <div style={secT}>Yaş ve Sağlık Şartları</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+            <div><label style={lbl}>Yaş Şartı</label><input style={inS} value={contract.yasSarti} onChange={e => setContract({...contract, yasSarti: e.target.value})} /></div>
+            <div><label style={lbl}>Aşı / Sağlık Şartı</label><input style={inS} value={contract.asiSarti} onChange={e => setContract({...contract, asiSarti: e.target.value})} /></div>
+          </div>
+          <label style={lbl}>İklim ve Giyim Tavsiyesi</label>
+          <textarea style={{...inS, minHeight: '54px', resize: 'vertical', fontFamily: 'inherit'}} value={contract.iklimNot} onChange={e => setContract({...contract, iklimNot: e.target.value})} placeholder="Mevsim normallerine göre tavsiye" />
+          <button disabled={iklimBusy} onClick={iklimOlustur} style={{ marginTop: '6px', padding: '7px 12px', background: iklimBusy ? 'rgba(139,92,246,0.3)' : 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', cursor: iklimBusy ? 'wait' : 'pointer', fontSize: '11px', fontWeight: '600' }}>{iklimBusy ? '⏳ Yazılıyor...' : '🤖 AI ile Oluştur'}</button>
+          <p style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>Mevsim normali tavsiyesi üretir — hava tahmini değildir. Kontrol edip düzenleyin.</p>
+        </div>
+
+        {/* Fiyat / sigorta / ödeme */}
+        <div style={card}>
+          <div style={secT}>4) Fiyat · 6) Sigorta · 7) Ödeme</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+            <div><label style={lbl}>2 Kişilik / Kişi Başı</label><input style={inS} value={contract.fiyatDouble} onChange={e => setContract({...contract, fiyatDouble: e.target.value})} /></div>
+            <div><label style={lbl}>Tek Kişilik</label><input style={inS} value={contract.fiyatSingle} onChange={e => setContract({...contract, fiyatSingle: e.target.value})} /></div>
+            <div><label style={lbl}>Para Birimi</label>
+              <select style={inS} value={contract.paraBirimi} onChange={e => setContract({...contract, paraBirimi: e.target.value})}>
+                {['USD','EUR','TRY','GBP'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>Sigorta Bedeli</label><input style={inS} value={contract.sigortaBedeli} onChange={e => setContract({...contract, sigortaBedeli: e.target.value})} /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+            <div><label style={lbl}>Ön Ödeme Günü</label><input type="date" style={inS} value={contract.onOdeme} onChange={e => setContract({...contract, onOdeme: e.target.value})} /></div>
+            <div><label style={lbl}>Son Ödeme Günü</label><input type="date" style={inS} value={contract.sonOdeme} onChange={e => setContract({...contract, sonOdeme: e.target.value})} /></div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+            <input type="checkbox" checked={contract.ozelTalepler} onChange={e => setContract({...contract, ozelTalepler: e.target.checked})} />
+            8) Özel Talepler maddesini ekle (fuar bileti iade şartı — fuar turlarında)
+          </label>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <button onClick={saveContract} style={{ padding: '14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>💾 Kaydet</button>
+          <button onClick={() => makeContractPDF(contract)} disabled={pdfBusy} style={{ padding: '14px', background: pdfBusy ? 'rgba(232,145,42,0.4)' : 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '15px', cursor: pdfBusy ? 'wait' : 'pointer' }}>{pdfBusy ? '⏳ Hazırlanıyor...' : '📄 Sözleşme PDF'}</button>
+        </div>
+      </div>
+    );
+  }
 
   if (showTourOffer) {
     const inS = { width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
@@ -7715,6 +8257,7 @@ ${flightRaw}`;
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>🧾 Tur Teklifi</button>
+          <button onClick={() => { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); }} style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📜 Sözleşme</button>
           <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
         </div>
       </div>
@@ -7734,6 +8277,9 @@ ${flightRaw}`;
             </button>
             <button onClick={() => setFilterType('tur-teklifi')} style={{ padding: '10px 20px', background: filterType === 'tur-teklifi' ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: filterType === 'tur-teklifi' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'tur-teklifi' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               🧾 Tur Teklifleri ({quotes.filter(q => q.type === 'tur-teklifi').length})
+            </button>
+            <button onClick={() => setFilterType('sozlesme')} style={{ padding: '10px 20px', background: filterType === 'sozlesme' ? 'linear-gradient(135deg, #6366f1, #4f46e5)' : 'rgba(255,255,255,0.05)', border: filterType === 'sozlesme' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'sozlesme' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              📜 Sözleşmeler ({quotes.filter(q => q.type === 'sozlesme').length})
             </button>
           </div>
 
@@ -7765,7 +8311,28 @@ ${flightRaw}`;
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-          {filteredQuotes.map(quote => quote.type === 'tur-teklifi' ? (
+          {filteredQuotes.map(quote => quote.type === 'sozlesme' ? (
+            <div key={quote.id} style={{ background: 'rgba(99,102,241,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(99,102,241,0.25)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '18px' }}>📜</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{quote.number}</span>
+              </div>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#ffffff' }}>{quote.contract?.tuketici?.name || quote.subject}</h3>
+              <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>{quote.contract?.guzergah || '—'}</p>
+              <div style={{ padding: '10px 12px', background: 'rgba(99,102,241,0.1)', borderRadius: '8px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', color: '#a5b4fc', fontWeight: '600' }}>{quote.contract?.startDate ? `${trTarih(quote.contract.startDate)} → ${trTarih(quote.contract.endDate)}` : 'Tarih yok'}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{contractSure(quote.contract || {})}{quote.contract?.fiyatDouble ? ` · ${quote.contract.fiyatDouble} ${quote.contract.paraBirimi}` : ''}</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={() => { setContract({ ...emptyContract, ...quote.contract }); setContractId(quote.id); setCustSearchC(''); setShowContract(true); }} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Aç / Düzenle</button>
+                <button onClick={() => { const now = new Date(); const id = Date.now();
+                  setQuotes(prev => [...prev, { ...quote, id, _docId: undefined, subject: `${quote.subject} (Kopya)`, number: `SZL-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='sozlesme').length + 1).padStart(3,'0')}`, createdAt: now.toISOString() }]);
+                  showToast?.('Sözleşme kopyalandı', 'success'); }} style={{ padding: '8px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📋 Kopyala</button>
+                <button onClick={() => makeContractPDF(quote.contract)} disabled={pdfBusy} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: pdfBusy ? 'wait' : 'pointer', fontSize: '11px', fontWeight: '600' }}>{pdfBusy ? '⏳' : '📄'}</button>
+                <button onClick={async () => { if (window.confirm('Bu sözleşmeyi silmek istediğinizden emin misiniz?')) { setQuotes(prev => prev.filter(q => q.id !== quote.id)); showToast?.('Sözleşme silindi', 'warning'); try { const docId = quote._docId || quote.id?.toString(); if (docId) await deleteDoc(doc(db, 'quotes', docId)); } catch(e) {} } }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🗑️</button>
+              </div>
+            </div>
+          ) : quote.type === 'tur-teklifi' ? (
             <div key={quote.id} style={{ background: 'rgba(232,145,42,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(232,145,42,0.25)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <span style={{ fontSize: '18px' }}>🧾</span>
