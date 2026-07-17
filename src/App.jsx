@@ -3576,7 +3576,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   // Vize başvuruları arama/filtreleme
   const filteredVisaApplications = visaApplications.filter(v => {
     const matchSearch = visaSearchQuery.length < 1 || (
-      v.customerName?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
+      normalizeTr(v.customerName).includes(normalizeTr(visaSearchQuery)) ||
       v.customerPhone?.includes(visaSearchQuery) ||
       v.country?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
       v.pnr?.toLowerCase().includes(visaSearchQuery.toLowerCase())
@@ -3750,7 +3750,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   // Arama sonuçları (form için müşteri arama)
   const searchResults = searchQuery.length >= 1 
     ? customers.filter(c => 
-        `${c.firstName} ${c.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(searchQuery)) ||
         c.phone?.includes(searchQuery)
       ).slice(0, 10)
     : [];
@@ -5077,9 +5077,9 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
   const filteredTours = tours.filter(tour => {
     const matchesSearch = !searchQuery || 
-      tour.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tour.country?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tour.city?.toLowerCase().includes(searchQuery.toLowerCase());
+      normalizeTr(tour.name).includes(normalizeTr(searchQuery)) ||
+      normalizeTr(tour.country).includes(normalizeTr(searchQuery)) ||
+      normalizeTr(tour.city).includes(normalizeTr(searchQuery));
     
     const matchesStatus = filterStatus === 'all' || tour.status === filterStatus;
     
@@ -6450,8 +6450,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                     />
                     {showCustList && custSearch.length >= 1 && (() => {
                       const filteredCusts = customers.filter(c => {
-                        const name = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
-                        return name.includes(custSearch.toLowerCase()) || (c.phone || '').includes(custSearch);
+                        const name = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`);
+                        return name.includes(normalizeTr(custSearch)) || (c.phone || '').includes(custSearch);
                       }).slice(0, 10);
                       return (
                         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '300px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
@@ -7193,7 +7193,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
 
   const searchResults = customerSearchQuery.length >= 1
     ? customers.filter(c =>
-        `${c.firstName} ${c.lastName}`.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+        normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(customerSearchQuery)) ||
         c.phone?.includes(customerSearchQuery) ||
         c.email?.toLowerCase().includes(customerSearchQuery.toLowerCase())
       ).slice(0, 10)
@@ -7203,9 +7203,9 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
     .filter(q => filterType === 'all' || q.type === filterType)
     .filter(q => 
       searchQuery.length < 1 || 
-      q.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      q.number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      `${q.customer?.firstName} ${q.customer?.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
+      normalizeTr(q.subject).includes(normalizeTr(searchQuery)) ||
+      normalizeTr(q.number).includes(normalizeTr(searchQuery)) ||
+      normalizeTr(`${q.customer?.firstName} ${q.customer?.lastName}`).includes(normalizeTr(searchQuery))
     );
 
   useEffect(() => {
