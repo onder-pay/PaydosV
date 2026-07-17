@@ -3384,7 +3384,7 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
         <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>SMTP bilgileri Netlify Environment Variables olarak saklanır.</p>
         <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '14px', fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', lineHeight: 1.8 }}>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = smtp.yandex.com</div>
+          <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = smtp.sirketemail.com</div>
           <div><span style={{ color: '#14b8a6' }}>SMTP_PORT</span> = 465</div>
           <div><span style={{ color: '#14b8a6' }}>SMTP_USER</span> = vize@paydostur.com</div>
           <div><span style={{ color: '#14b8a6' }}>SMTP_PASS</span> = ••••••••••••</div>
@@ -6404,44 +6404,6 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                 )}
               </div>
 
-              {/* Tur Sözleşmesi PDF */}
-              <div>
-                <label style={labelStyle}>📄 Tur Sözleşmesi PDF</label>
-                {formData.contractUrl ? (
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>📄</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '12px', color: '#f59e0b', fontWeight: '600' }}>Sözleşme Yüklendi</div>
-                      <div style={{ fontSize: '10px', color: '#64748b', wordBreak: 'break-all' }}>{formData.contractUrl.split('/').pop()?.split('?')[0] || 'sozlesme.pdf'}</div>
-                    </div>
-                    <button type="button" onClick={() => window.open(formData.contractUrl, '_blank')} style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>👁️</button>
-                    <button type="button" onClick={() => setFormData({...formData, contractUrl: ''})} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                  </div>
-                ) : (
-                  <div>
-                    <input type="file" accept=".pdf" id="tourContractInput" style={{ display: 'none' }} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 10 * 1024 * 1024) { showToast('PDF max 10MB olabilir', 'error'); return; }
-                      showToast('Sözleşme yükleniyor...', 'info');
-                      try {
-                        const storage = getStorage();
-                        const storageRef = ref(storage, `tour-contracts/${Date.now()}_${file.name}`);
-                        await uploadBytes(storageRef, file);
-                        const url = await getDownloadURL(storageRef);
-                        setFormData(prev => ({...prev, contractUrl: url}));
-                        showToast('Sözleşme yüklendi!', 'success');
-                      } catch(err) {
-                        console.error('Sözleşme yükleme hatası:', err);
-                        showToast('Sözleşme yüklenemedi: ' + err.message, 'error');
-                      }
-                    }} />
-                    <button type="button" onClick={() => document.getElementById('tourContractInput').click()} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>
-                      📤 Sözleşme Seç & Yükle (max 10MB)
-                    </button>
-                  </div>
-                )}
-              </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>
@@ -8037,25 +7999,26 @@ KURALLAR:
               </div>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
-            <div><label style={lbl}>Ad / Soyad</label><input style={inS} value={contract.tuketici.name} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, name: e.target.value}})} /></div>
-            <div><label style={lbl}>T.C. Kimlik No</label><input style={inS} value={contract.tuketici.tc} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, tc: e.target.value}})} /></div>
-            <div><label style={lbl}>Adres</label><input style={inS} value={contract.tuketici.address} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, address: e.target.value}})} /></div>
-            <div><label style={lbl}>İletişim (tel / e-posta)</label><input style={inS} value={contract.tuketici.phone} onChange={e => setContract({...contract, tuketici: {...contract.tuketici, phone: e.target.value}})} /></div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '12px 0 6px' }}>
-            <label style={lbl}>Katılımcılar</label>
-            <button style={addB} onClick={() => setContract(c => ({...c, katilimcilar: [...c.katilimcilar, { name: '', tc: '', address: '', phone: '' }]}))}>+ Katılımcı Ekle</button>
-          </div>
-          {contract.katilimcilar.map((k, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.5fr 1fr 1.5fr 1fr auto', gap: '6px', marginBottom: '6px' }}>
-              <input style={inS} value={k.name} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,name:e.target.value}:x)}))} placeholder={`${i+1}. Katılımcı Ad Soyad`} />
-              <input style={inS} value={k.tc} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,tc:e.target.value}:x)}))} placeholder="TC" />
-              <input style={inS} value={k.address} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,address:e.target.value}:x)}))} placeholder="Adres" />
-              <input style={inS} value={k.phone} onChange={e => setContract(c => ({...c, katilimcilar: c.katilimcilar.map((x,j)=>j===i?{...x,phone:e.target.value}:x)}))} placeholder="Telefon" />
-              <button style={delB} onClick={() => setContract(c => ({...c, katilimcilar: c.katilimcilar.filter((_,j)=>j!==i)}))}>🗑️</button>
+          {contract.tuketici.name ? (
+            <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '10px' }}>
+              <div style={{ fontSize: '13px', color: '#10b981', fontWeight: '700' }}>👤 {contract.tuketici.name}</div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>TC: {contract.tuketici.tc || '—'} · {contract.tuketici.address || '—'} · {contract.tuketici.phone || '—'}</div>
             </div>
-          ))}
+          ) : (
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Yukarıdan müşteri arayıp seçin — bilgiler otomatik dolar.</p>
+          )}
+
+          {contract.katilimcilar.length > 0 && (
+            <div style={{ marginTop: '10px' }}>
+              <label style={lbl}>Katılımcılar</label>
+              {contract.katilimcilar.map((k, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', padding: '6px 10px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{i + 1}. {k.name}{k.tc ? ` · ${k.tc}` : ''}</span>
+                  <button style={delB} onClick={() => setContract(c => ({...c, katilimcilar: c.katilimcilar.filter((_,j)=>j!==i)}))}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
           {contract.passports.length > 0 && (
             <div style={{ marginTop: '10px', background: 'rgba(59,130,246,0.06)', borderRadius: '8px', padding: '8px' }}>
               <div style={{ fontSize: '11px', color: '#3b82f6', fontWeight: '600', marginBottom: '4px' }}>🛂 Pasaport bilgileri (müşteriden geldi)</div>
