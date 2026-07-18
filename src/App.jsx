@@ -5431,8 +5431,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       passport: '',
       hasVisa: false,
       visaEndDate: '',
-      tourPrice: tour.prices?.doubleRoom?.amount || tour.prices?.singleRoom?.amount || 0,
-      currency: tour.prices?.doubleRoom?.currency || tour.prices?.singleRoom?.currency || '€',
+      tourPrice: (() => { const p = tour.prices || {}; const hit = p.doubleRoom?.amount > 0 ? p.doubleRoom : Object.values(p).find(x => x?.amount > 0); return hit?.amount || 0; })(),
+      currency: (() => { const p = tour.prices || {}; const hit = p.doubleRoom?.amount > 0 ? p.doubleRoom : Object.values(p).find(x => x?.amount > 0); return hit?.currency || '€'; })(),
       payment1: 0,
       payment2: 0,
       payment3: 0,
@@ -5504,21 +5504,32 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
 
   const handleRoomTypeChange = (e) => {
     const roomType = e.target.value;
-    // Oda tipi adını fiyat key'ine map et
-    const priceKeyMap = {
-      'Single': 'singleRoom', 'Tek': 'singleRoom', 'Tek Kişilik': 'singleRoom',
-      'Double': 'doubleRoom', 'Çift': 'doubleRoom', 'Çift Kişilik': 'doubleRoom',
-      'Twin': 'doubleRoom', 'Triple': 'tripleRoom', 'Üçlü': 'tripleRoom',
-      'Suite': 'suiteRoom', 'Süit': 'suiteRoom',
-      'Ekstra Yatak': 'extraBed', 'Bebek': 'baby', 'Çocuk 1': 'child1', 'Çocuk 2': 'child2'
+    const tourPriceFor = (rt) => {
+      const p = selectedTour?.prices || {};
+      // 1) Tur formunun kullandığı key üretimi (Türkçe ad -> key)
+      const genKey = String(rt).toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      // 2) Eski İngilizce key eşlemesi (geriye uyumluluk)
+      const priceKeyMap = {
+        'Single': 'singleRoom', 'Tek': 'singleRoom', 'Tek Kişilik': 'singleRoom',
+        'Double': 'doubleRoom', 'Çift': 'doubleRoom', 'Çift Kişilik': 'doubleRoom',
+        'Twin': 'doubleRoom', 'Triple': 'tripleRoom', 'Üçlü': 'tripleRoom',
+        'Suite': 'suiteRoom', 'Süit': 'suiteRoom',
+        'Ekstra Yatak': 'extraBed', 'İlave Yatak': 'extraBed', 'Bebek': 'baby', 'Çocuk 1': 'child1', 'Çocuk 2': 'child2'
+      };
+      const candidates = [genKey, priceKeyMap[rt], rt, rt.toLowerCase(), `${rt.toLowerCase()}Room`].filter(Boolean);
+      for (const k of candidates) {
+        if (p[k]?.amount > 0) return p[k];
+      }
+      // 3) normalizeTr ile gevşek eşleşme: kayıtlı key'lerden ada en yakın olan
+      const EQ = { single: 'tek', double: 'ift', twin: 'ift', triple: 'uc', suite: 'suit' };
+      let nrt = normalizeTr(rt).replace(/\s+/g, '_');
+      for (const [en, tr] of Object.entries(EQ)) { if (nrt.includes(en)) { nrt = tr; break; } }
+      for (const [k, v] of Object.entries(p)) {
+        if (v?.amount > 0 && (normalizeTr(k).includes(nrt) || nrt.includes(normalizeTr(k)))) return v;
+      }
+      return null;
     };
-    const priceKey = priceKeyMap[roomType] || roomType;
-    // Tüm olası key'leri sırayla dene
-    const possibleKeys = [priceKey, roomType, roomType.toLowerCase(), `${roomType.toLowerCase()}Room`];
-    let priceData = null;
-    for (const k of possibleKeys) {
-      if (selectedTour?.prices?.[k]?.amount > 0) { priceData = selectedTour.prices[k]; break; }
-    }
+    let priceData = tourPriceFor(roomType);
     // Hâlâ bulamazsa herhangi bir geçerli fiyatı kullan
     if (!priceData && selectedTour?.prices) {
       const firstNonZero = Object.values(selectedTour.prices).find(p => p?.amount > 0);
@@ -7648,7 +7659,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
         if (d !== null && a !== null && dur) {
           let diff = a - d; if (diff < 0) diff += 1440;
           const stated = (+dur[1])*60 + (dur[2] ? +dur[2] : 0);
-          if (Math.abs(diff - stated) > 90) w.push(`${tag}: yazılan süre (${dur[0]}) saatlerle uyuşmuyor (~${Math.floor(diff/60)}s ${diff%60}dk). Saat dilimi farkı olabilir.`);
+          const fark = Math.abs(diff - stated);
+          // Saat dilimi farkı tam saat olur (1-12 saat): fark tam saat katıysa uyarma
+          const tamSaat = fark % 60 <= 10 || fark % 60 >= 50;
+          if (fark > 90 && !(tamSaat && fark <= 720)) w.push(`${tag}: yazılan süre (${dur[0]}) saatlerle uyuşmuyor (~${Math.floor(diff/60)}s ${diff%60}dk) ve fark saat dilimiyle açıklanamıyor — kontrol edin.`);
         }
         if (!l.airline) w.push(`${tag}: havayolu/uçuş no boş.`);
       });
@@ -8884,8 +8898,76 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
-function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
+function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
+  // ===== GRUP UÇUŞ =====
+  const [mainTab, setMainTab] = useState('hotels'); // 'hotels' | 'flights'
+  const emptyFlight = {
+    airline: '', flightNo: '', from: '', to: '', date: '', depTime: '', arrTime: '',
+    direction: 'Gidiş', // Gidiş | Dönüş
+    capacity: 40, buyPrice: '', sellPrice: '', currency: '€',
+    notes: '', reservations: []
+  };
+  const [flightView, setFlightView] = useState('list'); // list | form | detail
+  const [editingFlight, setEditingFlight] = useState(null);
+  const [selectedFlight, setSelectedFlight] = useState(null);
+  const [showFResForm, setShowFResForm] = useState(false);
+  const [editingFRes, setEditingFRes] = useState(null);
+  const [fCustSearch, setFCustSearch] = useState('');
+  const [showFCustList, setShowFCustList] = useState(false);
+  const emptyFRes = {
+    customerId: '', customerName: '', phone: '',
+    sellPrice: '', buyPrice: '', currency: '€',
+    paid: false, notes: '',
+    extras: [], // [{type:'Ekstra Koltuk'|'Ekstra Bagaj', buy:'', sell:''}]
+    packageHotelId: '', packageHotelName: '' // otel paketi bağlantısı
+  };
+  const saveFlight = () => {
+    const f = editingFlight;
+    if (!f.airline || !f.from || !f.to || !f.date) { showToast('Havayolu, güzergah ve tarih zorunlu', 'error'); return; }
+    if (f.id) {
+      setGroupFlights(prev => prev.map(x => x.id === f.id ? { ...x, ...f } : x));
+      showToast('Uçuş güncellendi', 'success');
+    } else {
+      setGroupFlights(prev => [...prev, { ...f, id: Date.now(), reservations: [] }]);
+      showToast('Grup uçuş eklendi', 'success');
+    }
+    setFlightView('list'); setEditingFlight(null);
+  };
+  const flightResTotal = (r) => {
+    const base = parseFloat(r.sellPrice) || 0;
+    const ex = (r.extras || []).reduce((s, e) => s + (parseFloat(e.sell) || 0), 0);
+    return base + ex;
+  };
+  const flightResCost = (r) => {
+    const base = parseFloat(r.buyPrice) || 0;
+    const ex = (r.extras || []).reduce((s, e) => s + (parseFloat(e.buy) || 0), 0);
+    return base + ex;
+  };
+  const saveFRes = () => {
+    const r = editingFRes;
+    if (!r.customerName) { showToast('Müşteri seçin', 'error'); return; }
+    const fl = selectedFlight;
+    const active = (fl.reservations || []).filter(x => !x.cancelled && x.id !== r.id);
+    if (!r.id && active.length >= (parseInt(fl.capacity) || 0)) { showToast('Kontenjan dolu!', 'error'); return; }
+    let newRes;
+    if (r.id) {
+      newRes = (fl.reservations || []).map(x => x.id === r.id ? { ...x, ...r } : x);
+    } else {
+      newRes = [...(fl.reservations || []), { ...r, id: Date.now(), createdAt: new Date().toISOString() }];
+    }
+    setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: newRes } : x));
+    setSelectedFlight(s => ({ ...s, reservations: newRes }));
+    setShowFResForm(false); setEditingFRes(null); setFCustSearch('');
+    showToast(r.id ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
+  };
+  const cancelFRes = (fl, resId) => {
+    if (!window.confirm('Bu rezervasyonu iptal etmek istiyor musunuz?')) return;
+    const newRes = (fl.reservations || []).map(x => x.id === resId ? { ...x, cancelled: true } : x);
+    setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: newRes } : x));
+    setSelectedFlight(s => s && s.id === fl.id ? { ...s, reservations: newRes } : s);
+    showToast('Rezervasyon iptal edildi', 'warning');
+  };
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
   const [showResForm, setShowResForm] = useState(false);
@@ -9645,10 +9727,240 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
 
   // ====== LİSTE GÖRÜNÜMÜ ======
   if (view === 'list') {
+    // ---- SEKME: GRUP UÇUŞLAR ----
+    if (mainTab === 'flights') {
+      const inS = { ...inputStyle };
+      const fmt = (n, cur) => `${(parseFloat(n) || 0).toLocaleString('tr-TR')} ${cur || '€'}`;
+      // UÇUŞ FORMU
+      if (flightView === 'form' && editingFlight) {
+        const f = editingFlight;
+        const set = (patch) => setEditingFlight(prev => ({ ...prev, ...patch }));
+        return (
+          <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '760px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>✈️ {f.id ? 'Uçuş Düzenle' : 'Grup Uçuş Ekle'}</h2>
+              <button onClick={() => { setFlightView('list'); setEditingFlight(null); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Yön</label>
+                  <select style={selectStyle} value={f.direction} onChange={e => set({ direction: e.target.value })}>
+                    <option value="Gidiş" style={{ background: '#0c1929' }}>Gidiş</option>
+                    <option value="Dönüş" style={{ background: '#0c1929' }}>Dönüş</option>
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Havayolu *</label><input style={inS} value={f.airline} onChange={e => set({ airline: e.target.value })} placeholder="SunExpress" /></div>
+                <div><label style={labelStyle}>Uçuş No</label><input style={inS} value={f.flightNo} onChange={e => set({ flightNo: e.target.value })} placeholder="XQ 920" /></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Kalkış *</label><input style={inS} value={f.from} onChange={e => set({ from: e.target.value })} placeholder="İzmir ADB" /></div>
+                <div><label style={labelStyle}>Varış *</label><input style={inS} value={f.to} onChange={e => set({ to: e.target.value })} placeholder="Madrid MAD" /></div>
+                <div><label style={labelStyle}>Tarih *</label><input type="date" style={inS} value={f.date} onChange={e => set({ date: e.target.value })} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div><label style={labelStyle}>Kalkış Saati</label><input style={inS} value={f.depTime} onChange={e => set({ depTime: e.target.value })} placeholder="15:20" /></div>
+                  <div><label style={labelStyle}>Varış Saati</label><input style={inS} value={f.arrTime} onChange={e => set({ arrTime: e.target.value })} placeholder="18:45" /></div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Kontenjan *</label><input type="number" style={inS} value={f.capacity} onChange={e => set({ capacity: e.target.value })} placeholder="40" /></div>
+                <div><label style={labelStyle}>Alış Fiyatı (kişi)</label><input type="number" style={inS} value={f.buyPrice} onChange={e => set({ buyPrice: e.target.value })} placeholder="85" /></div>
+                <div><label style={labelStyle}>Satış Fiyatı (kişi)</label><input type="number" style={inS} value={f.sellPrice} onChange={e => set({ sellPrice: e.target.value })} placeholder="120" /></div>
+                <div><label style={labelStyle}>Para Birimi</label>
+                  <select style={selectStyle} value={f.currency} onChange={e => set({ currency: e.target.value })}>
+                    {['€','$','₺','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><label style={labelStyle}>Notlar</label><input style={inS} value={f.notes} onChange={e => set({ notes: e.target.value })} placeholder="Opsiyon tarihi, PNR, özel şartlar..." /></div>
+              <button onClick={saveFlight} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
+            </div>
+          </div>
+        );
+      }
+      // UÇUŞ DETAY + REZERVASYONLAR
+      if (flightView === 'detail' && selectedFlight) {
+        const fl = groupFlights.find(x => x.id === selectedFlight.id) || selectedFlight;
+        const active = (fl.reservations || []).filter(r => !r.cancelled);
+        const kalan = (parseInt(fl.capacity) || 0) - active.length;
+        const toplamSatis = active.reduce((s, r) => s + flightResTotal(r), 0);
+        const toplamAlis = active.reduce((s, r) => s + (flightResCost(r) || (parseFloat(fl.buyPrice) || 0)), 0);
+        const odenmemis = active.filter(r => !r.paid).reduce((s, r) => s + flightResTotal(r), 0);
+        // REZERVASYON FORMU
+        if (showFResForm && editingFRes) {
+          const r = editingFRes;
+          const setR = (patch) => setEditingFRes(prev => ({ ...prev, ...patch }));
+          const hits = fCustSearch.trim().length >= 2 ? customers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(fCustSearch)) || (c.phone || '').includes(fCustSearch)).slice(0, 8) : [];
+          return (
+            <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '700px', margin: '0 auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '17px', margin: 0 }}>➕ Rezervasyon — {fl.from} → {fl.to}</h2>
+                <button onClick={() => { setShowFResForm(false); setEditingFRes(null); setFCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
+                {r.customerName ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
+                    <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {r.customerName}</span>
+                    <button onClick={() => setR({ customerId: '', customerName: '', phone: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <label style={labelStyle}>Müşteri Seç *</label>
+                    <input style={inS} value={fCustSearch} onFocus={() => setShowFCustList(true)} onBlur={() => setTimeout(() => setShowFCustList(false), 200)} onChange={e => { setFCustSearch(e.target.value); setShowFCustList(true); }} placeholder="Ad, soyad veya telefon ile ara..." />
+                    {showFCustList && hits.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '220px', overflowY: 'auto' }}>
+                        {hits.map(c => (
+                          <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setFCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px' }}>
+                  <div><label style={labelStyle}>Satış Fiyatı</label><input type="number" style={inS} value={r.sellPrice} onChange={e => setR({ sellPrice: e.target.value })} /></div>
+                  <div><label style={labelStyle}>Alış Fiyatı</label><input type="number" style={inS} value={r.buyPrice} onChange={e => setR({ buyPrice: e.target.value })} /></div>
+                  <div><label style={labelStyle}>Ödeme</label>
+                    <select style={selectStyle} value={r.paid ? '1' : '0'} onChange={e => setR({ paid: e.target.value === '1' })}>
+                      <option value="0" style={{ background: '#0c1929' }}>Ödemedi</option>
+                      <option value="1" style={{ background: '#0c1929' }}>✓ Ödedi</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={labelStyle}>Ekstralar</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => setR({ extras: [...(r.extras || []), { type: 'Ekstra Koltuk', buy: '', sell: '' }] })} style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>+ Ekstra Koltuk</button>
+                      <button onClick={() => setR({ extras: [...(r.extras || []), { type: 'Ekstra Bagaj', buy: '', sell: '' }] })} style={{ padding: '5px 10px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>+ Ekstra Bagaj</button>
+                    </div>
+                  </div>
+                  {(r.extras || []).map((ex, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{ex.type === 'Ekstra Koltuk' ? '💺' : '🧳'} {ex.type}</span>
+                      <input type="number" style={inS} value={ex.buy} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, buy: e.target.value } : x) })} placeholder="Alış" />
+                      <input type="number" style={inS} value={ex.sell} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, sell: e.target.value } : x) })} placeholder="Satış" />
+                      <button onClick={() => setR({ extras: r.extras.filter((_, j) => j !== i) })} style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <label style={labelStyle}>📦 Otel Paketi (opsiyonel)</label>
+                  <select style={selectStyle} value={r.packageHotelId || ''} onChange={e => { const h = hotels.find(x => String(x.id) === e.target.value); setR({ packageHotelId: e.target.value, packageHotelName: h?.name || '' }); }}>
+                    <option value="" style={{ background: '#0c1929' }}>Paket yok — sadece uçuş</option>
+                    {hotels.map(h => <option key={h.id} value={h.id} style={{ background: '#0c1929' }}>🏨 {h.name}{h.city ? ` (${h.city})` : ''}</option>)}
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Not</label><input style={inS} value={r.notes} onChange={e => setR({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
+                <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
+                  Toplam Satış: {fmt(flightResTotal(r), fl.currency)}{(r.buyPrice || (r.extras || []).some(e => e.buy)) ? ` · Maliyet: ${fmt(flightResCost(r), fl.currency)} · Kâr: ${fmt(flightResTotal(r) - flightResCost(r), fl.currency)}` : ''}
+                </div>
+                <button onClick={saveFRes} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div style={{ padding: isMobile ? '12px' : '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <button onClick={() => { setFlightView('list'); setSelectedFlight(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
+                <h2 style={{ fontSize: '19px', margin: 0 }}>✈️ {fl.from} → {fl.to} <span style={{ fontSize: '13px', color: '#e8912a' }}>({fl.direction})</span></h2>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} · {fl.depTime}{fl.arrTime ? ` → ${fl.arrTime}` : ''}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => { setEditingFRes({ ...emptyFRes, sellPrice: fl.sellPrice, buyPrice: fl.buyPrice, currency: fl.currency }); setShowFResForm(true); }} disabled={kalan <= 0} style={{ padding: '9px 16px', background: kalan > 0 ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(100,116,139,0.3)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: kalan > 0 ? 'pointer' : 'not-allowed', fontSize: '13px' }}>➕ Rezervasyon</button>
+                <button onClick={() => { setEditingFlight({ ...fl }); setFlightView('form'); }} style={{ padding: '9px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px' }}>✏️</button>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '10px', marginBottom: '16px' }}>
+              {[
+                [`${active.length}/${fl.capacity}`, 'Dolu / Kontenjan', kalan <= 3 ? '#ef4444' : '#3b82f6'],
+                [kalan, 'Kalan Koltuk', kalan <= 3 ? '#ef4444' : '#10b981'],
+                [fmt(toplamSatis, fl.currency), 'Toplam Satış', '#e8912a'],
+                [fmt(toplamSatis - toplamAlis, fl.currency), 'Kâr', (toplamSatis - toplamAlis) >= 0 ? '#10b981' : '#ef4444'],
+                [fmt(odenmemis, fl.currency), 'Ödenmemiş', odenmemis > 0 ? '#ef4444' : '#10b981'],
+              ].map(([v, l, c], i) => (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: c }}>{v}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{l}</div>
+                </div>
+              ))}
+            </div>
+            {active.length === 0 ? <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz rezervasyon yok.</p> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['Ad Soyad', 'Satış', 'Ekstralar', 'Paket', 'Ödeme', ''].map((h, i) => <th key={i} style={{ padding: '8px', textAlign: 'left', color: '#94a3b8', fontSize: '11px' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {active.map(r => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{r.customerName}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
+                        <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
+                        <td style={{ padding: '8px' }}>{r.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => { setEditingFRes({ ...emptyFRes, ...r }); setShowFResForm(true); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                          <button onClick={() => cancelFRes(fl, r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="İptal">⊘</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      }
+      // UÇUŞ LİSTESİ
+      return (
+        <div style={{ padding: isMobile ? '12px' : '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button onClick={() => setMainTab('hotels')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller</button>
+              <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+            </div>
+            <button onClick={() => { setEditingFlight({ ...emptyFlight }); setFlightView('form'); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Grup Uçuş Ekle</button>
+          </div>
+          {groupFlights.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz grup uçuş yok. "➕ Grup Uçuş Ekle" ile başlayın — havayolundan aldığınız kontenjanı girin, rezervasyonlarla doldurun.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+              {groupFlights.map(fl => {
+                const active = (fl.reservations || []).filter(r => !r.cancelled);
+                const kalan = (parseInt(fl.capacity) || 0) - active.length;
+                const doluluk = fl.capacity > 0 ? Math.round((active.length / fl.capacity) * 100) : 0;
+                return (
+                  <div key={fl.id} onClick={() => { setSelectedFlight(fl); setFlightView('detail'); }} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>✈️ {fl.from} → {fl.to}</span>
+                      <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: fl.direction === 'Gidiş' ? 'rgba(59,130,246,0.2)' : 'rgba(232,145,42,0.2)', color: fl.direction === 'Gidiş' ? '#3b82f6' : '#e8912a', fontWeight: '700' }}>{fl.direction}</span>
+                    </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} {fl.depTime}</p>
+                    <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', height: '8px', marginBottom: '6px', overflow: 'hidden' }}>
+                      <div style={{ width: `${doluluk}%`, height: '100%', background: doluluk >= 90 ? '#ef4444' : doluluk >= 70 ? '#e8912a' : '#10b981', borderRadius: '8px' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                      <span style={{ color: '#94a3b8' }}>{active.length}/{fl.capacity} dolu · <b style={{ color: kalan <= 3 ? '#ef4444' : '#10b981' }}>{kalan} kalan</b></span>
+                      <span style={{ color: '#e8912a', fontWeight: '600' }}>{fl.sellPrice} {fl.currency}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-          <h2 style={{ fontSize: '20px', margin: 0 }}>🏨 Oteller ({hotels.length})</h2>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', color: '#0c1929', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller ({hotels.length})</button>
+            <button onClick={() => setMainTab('flights')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+          </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input type="text" placeholder="🔍 Otel/şehir ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{...inputStyle, width: '220px'}} />
             <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 14px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
@@ -9735,7 +10047,7 @@ function HotelsModule({ hotels, setHotels, customers, isMobile, showToast, addTo
                       ]);
                       ws['!cols'] = [{wch:25},{wch:14},{wch:14},{wch:8},{wch:18},{wch:30},{wch:18},{wch:18},{wch:25}];
                       const wb = XLSX.utils.book_new();
-                      XLSX.utils.book_append_sheet(wb, ws, 'Oteller');
+                      XLSX.utils.book_append_sheet(wb, ws, 'Oteller ve Uçuşlar');
                       XLSX.writeFile(wb, 'Otel_Sablon.xlsx');
                     }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                       📥 Şablonu İndir
@@ -12590,6 +12902,7 @@ export default function App() {
         ['ds160_applications', setDs160Applications],
         ['tours', setTours],
         ['hotels', setHotels],
+        ['group_flights', setGroupFlights],
         ['agencies', setAgencies],
         ['credit_cards', setCreditCards],
         ['quotes', setQuotes],
@@ -12619,6 +12932,7 @@ export default function App() {
   const [ds160Applications, setDs160Applications] = useState([]);
   const [tours, setTours] = useState([]);
   const [hotels, setHotels] = useState([]);
+  const [groupFlights, setGroupFlights] = useState([]);
   const [agencies, setAgencies] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [quotes, setQuotes] = useState([]);
@@ -12791,6 +13105,7 @@ export default function App() {
       { name: 'ds160_applications', setter: setDs160Applications },
       { name: 'tours', setter: setTours },
       { name: 'hotels', setter: setHotels },
+      { name: 'group_flights', setter: setGroupFlights },
       { name: 'agencies', setter: setAgencies },
       { name: 'credit_cards', setter: setCreditCards },
       { name: 'quotes', setter: setQuotes },
@@ -12994,6 +13309,7 @@ export default function App() {
   }, [visaApplications]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
+  useEffect(() => { debouncedSave('group_flights', 'group_flights', groupFlights); }, [groupFlights]);
   useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
   useEffect(() => { debouncedSave('credit_cards', 'credit_cards', creditCards); }, [creditCards]);
   useEffect(() => { debouncedSave('quotes', 'quotes', quotes); }, [quotes]);
@@ -13011,7 +13327,7 @@ export default function App() {
     { id: 'visa', icon: '🌍', label: 'Vize' },
     { id: 'ds160', icon: '🇺🇸', label: 'Amerika Vize' },
     { id: 'tours', icon: '🎫', label: 'Turlar' },
-    { id: 'hotels', icon: '🏨', label: 'Oteller' },
+    { id: 'hotels', icon: '🏨', label: 'Oteller ve Uçuşlar' },
     { id: 'quotes', icon: '📄', label: 'Teklif & Proforma' },
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
@@ -13025,7 +13341,7 @@ export default function App() {
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
