@@ -9204,6 +9204,77 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
     })();
   }, [selectedHotel?.id, view]);
 
+  // ====== UÇUŞ PROFORMA OLUŞTURUCU ======
+  const [selectedFRes, setSelectedFRes] = useState([]); // seçili rezervasyon id'leri
+  const generateFlightProforma = (fl, resList, birlesik) => {
+    if (!resList || !resList.length) { showToast?.('Rezervasyon seçin', 'error'); return; }
+    try {
+      const doc = new jsPDF();
+      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const currency = fl.currency || '€';
+      const currencyCode = currency === '€' ? 'EUR' : currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '₺' ? 'TRY' : 'EUR';
+      doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
+      doc.setFontSize(9); doc.setTextColor(100);
+      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
+      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
+      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      const now = new Date();
+      const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+      doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
+      doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
+      doc.setDrawColor(220, 220, 220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
+      doc.setFontSize(8); doc.setTextColor(120);
+      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.setFontSize(10); doc.setTextColor(40);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
+      doc.setFontSize(11); doc.setTextColor(40);
+      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Ucus Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.line(20, 92, 195, 92);
+      const firstCust = customers.find(c => String(c.id) === String(resList[0].customerId));
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('Firma / Ad Soyad', 20, 99);
+      doc.setFontSize(11); doc.setTextColor(40);
+      const baslikAd = birlesik
+        ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kisi`)
+        : tr(resList[0].customerName);
+      doc.text(baslikAd.substring(0, 55), 20, 105);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('Telefon', 20, 113);
+      doc.setFontSize(11); doc.setTextColor(40);
+      doc.text(tr(resList[0].phone || firstCust?.phone || '-'), 20, 119);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('HIZMET KALEMLERI', 20, 130);
+      doc.line(20, 132, 195, 132);
+      doc.setFillColor(245, 245, 245); doc.rect(20, 135, 175, 7, 'F');
+      doc.setFontSize(8); doc.setTextColor(80);
+      doc.text('YOLCU', 22, 140); doc.text('UCUS', 85, 140); doc.text('EKSTRA', 135, 140); doc.text('TUTAR', 193, 140, { align: 'right' });
+      let y = 148, subtotal = 0;
+      resList.forEach((r, i) => {
+        const tot = flightResTotal(r); subtotal += tot;
+        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 10, 'F'); }
+        doc.setFontSize(9); doc.setTextColor(40);
+        doc.text(tr(r.customerName).substring(0, 30), 22, y);
+        doc.setFontSize(8); doc.setTextColor(80);
+        doc.text(`${tr(fl.from)}-${tr(fl.to)} ${formatDate(fl.date)} ${fl.depTime || ''}`, 85, y);
+        doc.text(tr((r.extras || []).map(e => e.type).join(', ')).substring(0, 24) || '-', 135, y);
+        doc.setFontSize(9); doc.setTextColor(40);
+        doc.text(`${tot.toLocaleString('tr-TR')} ${currencyCode}`, 193, y, { align: 'right' });
+        y += 10;
+        if (y > 250) { doc.addPage(); y = 30; }
+      });
+      doc.setDrawColor(180); doc.line(120, y, 195, y); y += 7;
+      doc.setFontSize(11); doc.setTextColor(40);
+      doc.text('GENEL TOPLAM', 120, y);
+      doc.setFontSize(13); doc.setTextColor(220, 53, 69);
+      doc.text(`${subtotal.toLocaleString('tr-TR')} ${currencyCode}`, 193, y, { align: 'right' });
+      y += 14;
+      doc.setFontSize(8); doc.setTextColor(120);
+      doc.text('Banka: Garanti Bankasi Denizli Cinar Subesi (781) | SWIFT: TGBATRIS', 20, y);
+      doc.text('TL IBAN: TR40 0006 2000 7810 0006 2962 46 | EUR IBAN: TR73 0006 2000 7810 0009 0910 95', 20, y + 5);
+      const fname = birlesik ? `Proforma_${tr(fl.from)}_${tr(fl.to)}_toplu.pdf` : `Proforma_${tr(resList[0].customerName).replace(/\s+/g, '_')}.pdf`;
+      doc.save(fname);
+    } catch (e) { showToast?.('Proforma hatası: ' + e.message, 'error'); }
+  };
+
   // ====== PROFORMA OLUŞTURUCU ======
   // hotel: otel objesi, reservations: array (tek rezervasyon için 1 elemanlı array)
   const generateHotelProforma = (hotel, reservations) => {
@@ -9869,6 +9940,44 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
                 <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} · {fl.depTime}{fl.arrTime ? ` → ${fl.arrTime}` : ''}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => {
+                  if (selectedFRes.length > 0) {
+                    const secilen = active.filter(r => selectedFRes.includes(r.id));
+                    generateFlightProforma(fl, secilen, true);
+                    showToast(`${secilen.length} kişilik tek proforma indirildi`, 'success');
+                  } else {
+                    active.forEach((r, i) => setTimeout(() => generateFlightProforma(fl, [r], false), i * 400));
+                    showToast(`${active.length} ayrı proforma indiriliyor...`, 'success');
+                  }
+                }} disabled={!active.length} style={{ padding: '9px 14px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.35)', borderRadius: '8px', color: '#a78bfa', cursor: active.length ? 'pointer' : 'not-allowed', fontSize: '13px', fontWeight: '600' }}>{selectedFRes.length > 0 ? `📄 Seçilenlere Tek Proforma (${selectedFRes.length})` : '📄 Proformalar (Ayrı Ayrı)'}</button>
+                <button onClick={() => {
+                  if (!active.length) { showToast('Rezervasyon yok', 'warning'); return; }
+                  const rows = active.map((r, i) => {
+                    const cust = customers.find(c => String(c.id) === String(r.customerId)) || {};
+                    const pp = safeParseJSON(cust.passports).find(p => p.passportNo) || {};
+                    return {
+                      'S.No': i + 1,
+                      'Ad Soyad': r.customerName,
+                      'Doğum Tarihi': cust.birthDate || '',
+                      'Pasaport No': pp.passportNo || '',
+                      'Pasaport Bitiş': pp.expiryDate || '',
+                      'TC Kimlik': cust.tcKimlik || '',
+                      'Telefon': r.phone || cust.phone || '',
+                      'Satış': flightResTotal(r),
+                      'Para Birimi': fl.currency,
+                      'Ekstralar': (r.extras || []).map(e => e.type).join(', '),
+                      'Paket Otel': r.packageHotelName || '',
+                      'Ödeme': r.paid ? 'Ödedi' : 'Ödemedi',
+                      'Not': r.notes || ''
+                    };
+                  });
+                  const ws = XLSX.utils.json_to_sheet(rows);
+                  ws['!cols'] = [{wch:5},{wch:24},{wch:12},{wch:12},{wch:12},{wch:13},{wch:14},{wch:8},{wch:6},{wch:18},{wch:16},{wch:9},{wch:20}];
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, 'Yolcu Listesi');
+                  XLSX.writeFile(wb, `Ucus_${fl.from}_${fl.to}_${fl.date}.xlsx`.replace(/\s+/g, '_'));
+                  showToast('Excel indirildi', 'success');
+                }} style={{ padding: '9px 14px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
                 <button onClick={() => { setEditingFRes({ ...emptyFRes, sellPrice: fl.sellPrice, buyPrice: fl.buyPrice, currency: fl.currency }); setShowFResForm(true); }} disabled={kalan <= 0} style={{ padding: '9px 16px', background: kalan > 0 ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(100,116,139,0.3)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: kalan > 0 ? 'pointer' : 'not-allowed', fontSize: '13px' }}>➕ Rezervasyon</button>
                 <button onClick={() => { setEditingFlight({ ...fl }); setFlightView('form'); }} style={{ padding: '9px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px' }}>✏️</button>
               </div>
@@ -9891,11 +10000,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <th style={{ padding: '8px', width: '30px' }}><input type="checkbox" checked={active.length > 0 && selectedFRes.length === active.length} onChange={e => setSelectedFRes(e.target.checked ? active.map(r => r.id) : [])} /></th>
                     {['Ad Soyad', 'Satış', 'Ekstralar', 'Paket', 'Ödeme', ''].map((h, i) => <th key={i} style={{ padding: '8px', textAlign: 'left', color: '#94a3b8', fontSize: '11px' }}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {active.map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
                         <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{r.customerName}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
