@@ -8852,7 +8852,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 
           {dayCount > 0 && (
             <div style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', fontSize: '12px', color: '#3b82f6' }}>
-              📅 {dayCount} gün — tüm bu günler için aynı fiyat uygulanır
+              🌙 {dayCount} gece — başlangıç ve bitiş tarihi dahil, bu gecelere aynı fiyat uygulanır{dayCount === 2 ? '. Tek gece için başlangıç ve bitişe aynı tarihi girin.' : ''}
             </div>
           )}
 
