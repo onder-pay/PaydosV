@@ -12561,7 +12561,29 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                       <input type="checkbox" checked={!!b.showInDocs} onChange={e => setB({ showInDocs: e.target.checked })} />
                       Belgelerde göster
                     </label>
-                    {(appSettings.banks || []).length > 1 && <button onClick={() => { if (window.confirm('Bu bankayı silmek istiyor musunuz?')) setAppSettings(prev => ({ ...prev, banks: prev.banks.filter((_, j) => j !== bi2) })); }} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => {
+                        const txt = [
+                          `🏦 ${b.bankName || ''} ${b.branch || ''}`.trim(),
+                          b.branchCode ? `Şube Kodu: ${b.branchCode}` : '',
+                          b.swift ? `SWIFT: ${b.swift}` : '',
+                          'Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.',
+                          ...accs.filter(a => a.iban).map(a => `${a.currency} IBAN: ${a.iban}${a.accountNo ? ` (Hesap: ${a.accountNo})` : ''}`)
+                        ].filter(Boolean).join('\n');
+                        navigator.clipboard.writeText(txt).then(() => showToast('Banka bilgileri kopyalandı', 'success')).catch(() => showToast('Kopyalanamadı', 'error'));
+                      }} style={{ padding: '4px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>📋 Kopyala</button>
+                      <button onClick={() => {
+                        const txt = [
+                          `🏦 ${b.bankName || ''} ${b.branch || ''}`.trim(),
+                          b.branchCode ? `Şube Kodu: ${b.branchCode}` : '',
+                          b.swift ? `SWIFT: ${b.swift}` : '',
+                          'Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.',
+                          ...accs.filter(a => a.iban).map(a => `${a.currency} IBAN: ${a.iban}`)
+                        ].filter(Boolean).join('\n');
+                        window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
+                      }} style={{ padding: '4px 10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>💬 WhatsApp</button>
+                      {(appSettings.banks || []).length > 1 && <button onClick={() => { if (window.confirm('Bu bankayı silmek istiyor musunuz?')) setAppSettings(prev => ({ ...prev, banks: prev.banks.filter((_, j) => j !== bi2) })); }} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>}
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                     <div><label style={bl}>Banka Adı</label><input style={bi} value={b.bankName || ''} onChange={e => setB({ bankName: e.target.value })} /></div>
