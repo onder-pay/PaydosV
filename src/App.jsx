@@ -152,7 +152,20 @@ const vizeSartiBul = (ulke) => {
   if (d.b === 'muaf') return { metin: 'Vize şartı bulunmamaktadır.', bilinmiyor: false, detay: d.t };
   return { metin: '', bilinmiyor: true, detay: d.t };
 };
-const genContractHTML = (c) => {
+const getActiveBanks = (settings) => {
+  const list = Array.isArray(settings?.banks) ? settings.banks.filter(b => b.showInDocs && (b.bankName || b.ibanTL || b.ibanEUR)) : [];
+  if (list.length) return list;
+  if (settings?.bankInfo && (settings.bankInfo.bankName || settings.bankInfo.ibanTL)) return [settings.bankInfo];
+  return [DEFAULT_BANK];
+};
+const DEFAULT_BANK = {
+  bankName: 'Garanti Bankası A.Ş.', branch: 'Denizli Çınar Şubesi', branchCode: '781', swift: 'TGBATRIS',
+  ibanTL: 'TR40 0006 2000 7810 0006 2962 46', accountTL: '0006 2962 46',
+  ibanEUR: 'TR73 0006 2000 7810 0009 0910 95', accountEUR: '0009 0910 95'
+};
+const genContractHTML = (c, bankInfo) => {
+  const BKS = (Array.isArray(bankInfo) ? bankInfo : [bankInfo]).filter(Boolean).map(b => ({ ...DEFAULT_BANK, ...b }));
+  if (!BKS.length) BKS.push(DEFAULT_BANK);
   const e = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const P = (arr) => arr.map(x => `<p>${e(x)}</p>`).join('');
   const S = SOZLESME_SABIT;
@@ -225,8 +238,7 @@ ${secTitle(S.m6[0])}${P(S.m6.slice(1).map(x => x.replace('15€', c.sigortaBedel
 <p>Vize işlemlerine ait ödemeler peşin olarak pasaport teslim edildiği tarihte yapılacaktır. Vize ücreti ödenmeden vize başvurusu yapılmayacaktır.</p>
 <p class="hl"><b>${e(trTarih(c.onOdeme))}</b> ön ödeme günüdür. <b>${e(trTarih(c.sonOdeme))}</b> son ödeme günüdür. Ödeme belirtilen tarihlere kadar yapılmaz ise tur kaydı otomatik olarak iptal edilir.</p>
 <p><b>Banka Hesap Numaraları</b></p>
-<table><tr><th>GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ — TÜRK LİRASI HESABI</th><td>Şube Kodu: 781 · SWIFT: TGBATRIS<br>IBAN: TR40 0006 2000 7810 0006 2962 46<br>Hesap No: 0006 2962 46</td></tr>
-<tr><th>GARANTİ BANKASI A.Ş. DENİZLİ ÇINAR ŞUBESİ — EURO HESABI</th><td>Şube Kodu: 781 · SWIFT: TGBATRIS<br>IBAN: TR73 0006 2000 7810 0009 0910 95<br>Hesap No: 0009 0910 95</td></tr></table>
+<table>${BKS.map(BK => `${BK.ibanTL ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — TÜRK LİRASI HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanTL)}${BK.accountTL ? `<br>Hesap No: ${e(BK.accountTL)}` : ''}</td></tr>` : ''}${BK.ibanEUR ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — EURO HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanEUR)}${BK.accountEUR ? `<br>Hesap No: ${e(BK.accountEUR)}` : ''}</td></tr>` : ''}${BK.ibanUSD ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — USD HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanUSD)}</td></tr>` : ''}`).join('')}</table>
 
 ${c.ozelTalepler ? secTitle(S.m8[0]) + body(S.m8) : ''}
 ${secTitle(S.m9[0])}${body(S.m9)}
@@ -5328,7 +5340,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
       const html2canvas = await loadH2C();
       holder = document.createElement('div');
       holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
-      const full = genContractHTML(data);
+      const full = genContractHTML(data, getActiveBanks(appSettings));
       const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
       holder.innerHTML = `<style>${st ? st[1] : ''}</style><div style="padding:16px;background:#fff;font-family:'Segoe UI',Arial,sans-serif;font-size:9.5px;line-height:1.45;color:#1a1a1a">${b ? b[1] : ''}</div>`;
       document.body.appendChild(holder);
@@ -6818,7 +6830,7 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
   );
 }
 // TEKLİF & PROFORMA MODÜLÜ
-function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
+function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings }) {
   const [showForm, setShowForm] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
@@ -7071,18 +7083,19 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast }) {
       
       doc.setFontSize(9);
       doc.setTextColor(60);
-      doc.text('Garanti Bankasi A.S. - Denizli Cinar Subesi (781)', 20, bankY + 6);
+      const BKq = getActiveBanks(appSettings)[0];
+      doc.text(toTurkishChars(`${BKq.bankName} - ${BKq.branch} (${BKq.branchCode})`), 20, bankY + 6);
       doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, bankY + 11);
       
       doc.setTextColor(0);
       doc.text('IBAN (TL):', 20, bankY + 18);
-      doc.text('TR40 0006 2000 7810 0006 2962 46', 50, bankY + 18);
+      doc.text(BKq.ibanTL, 50, bankY + 18);
       
       doc.text('IBAN (EUR):', 20, bankY + 23);
-      doc.text('TR73 0006 2000 7810 0009 0910 95', 50, bankY + 23);
+      doc.text(BKq.ibanEUR, 50, bankY + 23);
       
       doc.text('IBAN (USD):', 20, bankY + 28);
-      doc.text('TR46 0006 2000 7810 0009 0910 96', 50, bankY + 28);
+      doc.text(BKq.ibanUSD || 'TR46 0006 2000 7810 0009 0910 96', 50, bankY + 28);
     }
     
     // Notlar
@@ -7938,7 +7951,7 @@ KURALLAR:
       const html2canvas = await loadHtml2Canvas();
       holder = document.createElement('div');
       holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
-      const full = genContractHTML(data);
+      const full = genContractHTML(data, getActiveBanks(appSettings));
       const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
       holder.innerHTML = `<style>${st ? st[1] : ''}</style><div style="padding:16px;background:#fff;font-family:'Segoe UI',Arial,sans-serif;font-size:9.5px;line-height:1.45;color:#1a1a1a">${b ? b[1] : ''}</div>`;
       document.body.appendChild(holder);
@@ -8898,7 +8911,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
-function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
+function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
   // ===== GRUP UÇUŞ =====
   const [mainTab, setMainTab] = useState('hotels'); // 'hotels' | 'flights'
@@ -8967,6 +8980,144 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
     setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: newRes } : x));
     setSelectedFlight(s => s && s.id === fl.id ? { ...s, reservations: newRes } : s);
     showToast('Rezervasyon iptal edildi', 'warning');
+  };
+  // ===== TRANSFER =====
+  const emptyTransfer = {
+    customerId: '', customerName: '', vehicleType: 'VIP Minivan',
+    flightInfo: '', fromLoc: '', toLoc: '', date: '', time: '',
+    buyPrice: '', sellPrice: '', currency: '€', paid: false, notes: ''
+  };
+  const [transferView, setTransferView] = useState('list'); // list | form
+  const [editingTransfer, setEditingTransfer] = useState(null);
+  const [tCustSearch, setTCustSearch] = useState('');
+  const [showTCustList, setShowTCustList] = useState(false);
+  const saveTransfer = () => {
+    const t = editingTransfer;
+    if (!t.customerName || !t.fromLoc || !t.toLoc) { showToast('Müşteri ve güzergah zorunlu', 'error'); return; }
+    if (t.id) {
+      setTransfers(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x));
+      showToast('Transfer güncellendi', 'success');
+    } else {
+      setTransfers(prev => [...prev, { ...t, id: Date.now(), createdAt: new Date().toISOString() }]);
+      showToast('Transfer eklendi', 'success');
+    }
+    setTransferView('list'); setEditingTransfer(null); setTCustSearch('');
+  };
+  const deleteTransfer = (id) => {
+    if (!window.confirm('Bu transferi silmek istiyor musunuz?')) return;
+    setTransfers(prev => prev.filter(x => x.id !== id));
+    showToast('Transfer silindi', 'warning');
+  };
+  // ===== PAKET =====
+  // Paket: müşteri + seçilen kalemler (otel rez / uçuş rez / transfer / vize) — hepsi opsiyonel, en az 1
+  const emptyPackage = {
+    customerId: '', customerName: '', title: '',
+    items: [], // [{kind:'hotel'|'flight'|'transfer'|'visa', label, amount, currency, refId}]
+    notes: ''
+  };
+  const [pkgView, setPkgView] = useState('list'); // list | form
+  const [editingPkg, setEditingPkg] = useState(null);
+  const [pCustSearch, setPCustSearch] = useState('');
+  const [showPCustList, setShowPCustList] = useState(false);
+  const pkgTotal = (pk) => (pk.items || []).reduce((sum, it) => sum + (parseFloat(it.amount) || 0), 0);
+  const pkgCurrency = (pk) => (pk.items || [])[0]?.currency || '€';
+  // Müşterinin bağlanabilir kayıtlarını topla
+  const findPkgCandidates = (custId, custName) => {
+    const nq = normalizeTr(custName || '');
+    const out = { hotel: [], flight: [], transfer: [], visa: [] };
+    hotels.forEach(h => (h.reservations || []).filter(r => !r.cancelled).forEach(r => {
+      if ((custId && String(r.customerId) === String(custId)) || (nq && normalizeTr(r.customerName || '').includes(nq))) {
+        out.hotel.push({ kind: 'hotel', refId: `${h.id}-${r.id}`, label: `🏨 ${h.name} · ${r.checkIn || ''}${r.roomType ? ` · ${r.roomType}` : ''}`, amount: r.sellPrice || r.price || 0, currency: r.currency || '€' });
+      }
+    }));
+    groupFlights.forEach(f => (f.reservations || []).filter(r => !r.cancelled).forEach(r => {
+      if ((custId && String(r.customerId) === String(custId)) || (nq && normalizeTr(r.customerName || '').includes(nq))) {
+        const tot = (parseFloat(r.sellPrice) || 0) + (r.extras || []).reduce((sx, e) => sx + (parseFloat(e.sell) || 0), 0);
+        out.flight.push({ kind: 'flight', refId: `${f.id}-${r.id}`, label: `✈️ ${f.from} → ${f.to} · ${formatDate(f.date)}`, amount: tot, currency: f.currency || '€' });
+      }
+    }));
+    transfers.forEach(t => {
+      if ((custId && String(t.customerId) === String(custId)) || (nq && normalizeTr(t.customerName || '').includes(nq))) {
+        out.transfer.push({ kind: 'transfer', refId: String(t.id), label: `🚐 ${t.fromLoc} → ${t.toLoc} · ${t.vehicleType}`, amount: t.sellPrice || 0, currency: t.currency || '€' });
+      }
+    });
+    (visaApplications || []).forEach(v => {
+      if ((custId && String(v.customerId) === String(custId)) || (nq && normalizeTr(v.customerName || '').includes(nq))) {
+        out.visa.push({ kind: 'visa', refId: String(v.id), label: `🌍 ${v.country || 'Vize'} · ${v.visaType || ''}`, amount: v.price || v.totalPrice || 0, currency: v.currency || '€' });
+      }
+    });
+    return out;
+  };
+  const savePkg = () => {
+    const pk = editingPkg;
+    if (!pk.customerName) { showToast('Müşteri seçin', 'error'); return; }
+    if (!(pk.items || []).length) { showToast('En az bir kalem ekleyin (otel/uçuş/transfer/vize)', 'error'); return; }
+    if (pk.id) {
+      setPackages(prev => prev.map(x => x.id === pk.id ? { ...x, ...pk } : x));
+      showToast('Paket güncellendi', 'success');
+    } else {
+      setPackages(prev => [...prev, { ...pk, id: Date.now(), createdAt: new Date().toISOString() }]);
+      showToast('Paket oluşturuldu', 'success');
+    }
+    setPkgView('list'); setEditingPkg(null); setPCustSearch('');
+  };
+  const deletePkg = (id) => {
+    if (!window.confirm('Bu paketi silmek istiyor musunuz?')) return;
+    setPackages(prev => prev.filter(x => x.id !== id));
+    showToast('Paket silindi', 'warning');
+  };
+  // Paket proforması (jsPDF)
+  const generatePackageProforma = (pk) => {
+    try {
+      const doc = new jsPDF();
+      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const cur = pkgCurrency(pk);
+      const curCode = cur === '€' ? 'EUR' : cur === '$' ? 'USD' : cur === '£' ? 'GBP' : cur === '₺' ? 'TRY' : 'EUR';
+      doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
+      doc.setFontSize(9); doc.setTextColor(100);
+      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
+      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
+      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      const now = new Date();
+      const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+      doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
+      doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
+      doc.setDrawColor(220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
+      doc.setFontSize(8); doc.setTextColor(120);
+      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.setFontSize(10); doc.setTextColor(40);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
+      doc.setFontSize(11); doc.setTextColor(40);
+      doc.text(tr(pk.title || 'Seyahat Paketi'), 20, 78);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI', 20, 90); doc.line(20, 92, 195, 92);
+      doc.setFontSize(11); doc.setTextColor(40); doc.text(tr(pk.customerName), 20, 99);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text('PAKET KALEMLERI', 20, 112); doc.line(20, 114, 195, 114);
+      doc.setFillColor(245, 245, 245); doc.rect(20, 117, 175, 7, 'F');
+      doc.setFontSize(8); doc.setTextColor(80);
+      doc.text('HIZMET', 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
+      let y = 130, subtotal = 0;
+      (pk.items || []).forEach((it, i) => {
+        const amt = parseFloat(it.amount) || 0; subtotal += amt;
+        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 9, 'F'); }
+        doc.setFontSize(9); doc.setTextColor(40);
+        doc.text(tr(it.label).replace(/[^ -~]/g, '').trim().substring(0, 70) || 'Hizmet', 22, y);
+        doc.text(`${amt.toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
+        y += 9;
+        if (y > 250) { doc.addPage(); y = 30; }
+      });
+      doc.setDrawColor(180); doc.line(120, y, 195, y); y += 7;
+      doc.setFontSize(11); doc.setTextColor(40); doc.text('GENEL TOPLAM', 120, y);
+      doc.setFontSize(13); doc.setTextColor(220, 53, 69);
+      doc.text(`${pkgTotal(pk).toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
+      y += 14;
+      const BKp = getActiveBanks(appSettings)[0];
+      doc.setFontSize(8); doc.setTextColor(120);
+      doc.text(tr(`Banka: ${BKp.bankName || ''} ${BKp.branch || ''} (${BKp.branchCode || ''}) | SWIFT: ${BKp.swift || ''}`), 20, y);
+      doc.text(`TL IBAN: ${BKp.ibanTL || '-'} | EUR IBAN: ${BKp.ibanEUR || '-'}`, 20, y + 5);
+      doc.save(`Paket_Proforma_${tr(pk.customerName).replace(/\s+/g, '_')}.pdf`);
+      showToast('Paket proforması indirildi', 'success');
+    } catch (e) { showToast('Proforma hatası: ' + e.message, 'error'); }
   };
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
@@ -9268,8 +9419,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
       doc.text(`${subtotal.toLocaleString('tr-TR')} ${currencyCode}`, 193, y, { align: 'right' });
       y += 14;
       doc.setFontSize(8); doc.setTextColor(120);
-      doc.text('Banka: Garanti Bankasi Denizli Cinar Subesi (781) | SWIFT: TGBATRIS', 20, y);
-      doc.text('TL IBAN: TR40 0006 2000 7810 0006 2962 46 | EUR IBAN: TR73 0006 2000 7810 0009 0910 95', 20, y + 5);
+      const BKlist = getActiveBanks(appSettings);
+      BKlist.slice(0, 2).forEach((BK, bki) => {
+        doc.text(tr(`Banka: ${BK.bankName || ''} ${BK.branch || ''} (${BK.branchCode || ''}) | SWIFT: ${BK.swift || ''}`), 20, y + bki * 11);
+        doc.text(`TL IBAN: ${BK.ibanTL || '-'} | EUR IBAN: ${BK.ibanEUR || '-'}`, 20, y + 5 + bki * 11);
+      });
       const fname = birlesik ? `Proforma_${tr(fl.from)}_${tr(fl.to)}_toplu.pdf` : `Proforma_${tr(resList[0].customerName).replace(/\s+/g, '_')}.pdf`;
       doc.save(fname);
     } catch (e) { showToast?.('Proforma hatası: ' + e.message, 'error'); }
@@ -9484,15 +9638,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
       yPos += 7;
       doc.setFontSize(9);
       doc.setTextColor(40);
-      doc.text('Garanti Bankasi A.S. - Denizli Cinar Subesi (781)', 20, yPos);
+      const BKh = getActiveBanks(appSettings)[0];
+      doc.text(tr(`${BKh.bankName} - ${BKh.branch} (${BKh.branchCode})`), 20, yPos);
       yPos += 5;
       doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, yPos);
       yPos += 5;
-      doc.text('IBAN (TL):  TR40 0006 2000 7810 0006 2962 46', 20, yPos);
+      doc.text(`IBAN (TL):  ${BKh.ibanTL}`, 20, yPos);
       yPos += 5;
-      doc.text('IBAN (EUR): TR73 0006 2000 7810 0009 0910 95', 20, yPos);
+      doc.text(`IBAN (EUR): ${BKh.ibanEUR}`, 20, yPos);
       yPos += 5;
-      doc.text('IBAN (USD): TR46 0006 2000 7810 0009 0910 96', 20, yPos);
+      doc.text(`IBAN (USD): ${BKh.ibanUSD || 'TR46 0006 2000 7810 0009 0910 96'}`, 20, yPos);
 
       // Footer
       doc.setFontSize(8);
@@ -9798,6 +9953,233 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
 
   // ====== LİSTE GÖRÜNÜMÜ ======
   if (view === 'list') {
+    // ---- SEKME: PAKETLER ----
+    if (mainTab === 'packages') {
+      const inS = { ...inputStyle };
+      const fmtP = (n, cur) => `${(parseFloat(n) || 0).toLocaleString('tr-TR')} ${cur || '€'}`;
+      // PAKET FORMU
+      if (pkgView === 'form' && editingPkg) {
+        const pk = editingPkg;
+        const setP = (patch) => setEditingPkg(prev => ({ ...prev, ...patch }));
+        const hits = pCustSearch.trim().length >= 2 ? customers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(pCustSearch)) || (c.phone || '').includes(pCustSearch)).slice(0, 8) : [];
+        const cand = pk.customerName ? findPkgCandidates(pk.customerId, pk.customerName) : { hotel: [], flight: [], transfer: [], visa: [] };
+        const isAdded = (refId) => (pk.items || []).some(it => it.refId === refId);
+        const toggleItem = (it) => setP({ items: isAdded(it.refId) ? pk.items.filter(x => x.refId !== it.refId) : [...(pk.items || []), it] });
+        const candSec = (title, list, color) => list.length > 0 && (
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color, fontWeight: '700', marginBottom: '4px' }}>{title}</div>
+            {list.map(it => (
+              <div key={it.refId} onClick={() => toggleItem(it)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: isAdded(it.refId) ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isAdded(it.refId) ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '8px', marginBottom: '4px', cursor: 'pointer' }}>
+                <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{isAdded(it.refId) ? '☑' : '☐'} {it.label}</span>
+                <span style={{ fontSize: '12px', color: '#e8912a', fontWeight: '600' }}>{fmtP(it.amount, it.currency)}</span>
+              </div>
+            ))}
+          </div>
+        );
+        return (
+          <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '720px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>📦 {pk.id ? 'Paket Düzenle' : 'Paket Oluştur'}</h2>
+              <button onClick={() => { setPkgView('list'); setEditingPkg(null); setPCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
+              {pk.customerName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
+                  <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {pk.customerName}</span>
+                  <button onClick={() => setP({ customerId: '', customerName: '', items: [] })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <label style={labelStyle}>Müşteri Seç *</label>
+                  <input style={inS} value={pCustSearch} onFocus={() => setShowPCustList(true)} onBlur={() => setTimeout(() => setShowPCustList(false), 200)} onChange={e => { setPCustSearch(e.target.value); setShowPCustList(true); }} placeholder="Ad, soyad veya telefon ile ara..." />
+                  {showPCustList && hits.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                      {hits.map(c => (
+                        <div key={c.id} onMouseDown={() => { setP({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim() }); setPCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div><label style={labelStyle}>Paket Başlığı</label><input style={inS} value={pk.title} onChange={e => setP({ title: e.target.value })} placeholder="Madrid Konser Paketi" /></div>
+              {pk.customerName && (
+                <div>
+                  <label style={labelStyle}>Kalemler — müşterinin kayıtlarından seç (tıkla ekle/çıkar)</label>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', padding: '10px' }}>
+                    {candSec('🏨 OTEL REZERVASYONLARI', cand.hotel, '#f59e0b')}
+                    {candSec('✈️ UÇUŞ REZERVASYONLARI', cand.flight, '#3b82f6')}
+                    {candSec('🚐 TRANSFERLER', cand.transfer, '#a78bfa')}
+                    {candSec('🌍 VİZE BAŞVURULARI', cand.visa, '#10b981')}
+                    {!cand.hotel.length && !cand.flight.length && !cand.transfer.length && !cand.visa.length && (
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Bu müşteriye ait otel/uçuş/transfer/vize kaydı bulunamadı. Önce ilgili bölümden rezervasyon ekleyin.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {(pk.items || []).length > 0 && (
+                <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
+                  {pk.items.length} kalem · Toplam: {fmtP(pkgTotal(pk), pkgCurrency(pk))}
+                </div>
+              )}
+              <div><label style={labelStyle}>Not</label><input style={inS} value={pk.notes} onChange={e => setP({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
+              <button onClick={savePkg} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
+            </div>
+          </div>
+        );
+      }
+      // PAKET LİSTESİ
+      return (
+        <div style={{ padding: isMobile ? '12px' : '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setMainTab('hotels')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller</button>
+              <button onClick={() => setMainTab('flights')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+              <button onClick={() => setMainTab('transfers')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🚐 Transferler ({transfers.length})</button>
+              <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📦 Paketler ({packages.length})</button>
+            </div>
+            <button onClick={() => { setEditingPkg({ ...emptyPackage }); setPkgView('form'); }} style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Paket Oluştur</button>
+          </div>
+          {packages.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz paket yok. Müşterinin otel + uçuş + transfer + vize kayıtlarından istediklerinizi birleştirip paket oluşturun — proforması tek belgede çıkar.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+              {packages.map(pk => (
+                <div key={pk.id} style={{ background: 'rgba(6,182,212,0.05)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(6,182,212,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>📦 {pk.title || 'Paket'}</span>
+                    <span style={{ fontSize: '13px', color: '#e8912a', fontWeight: '700' }}>{(pkgTotal(pk)).toLocaleString('tr-TR')} {pkgCurrency(pk)}</span>
+                  </div>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#94a3b8' }}>{pk.customerName}</p>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
+                    {(pk.items || []).map((it, i) => <div key={i} style={{ padding: '2px 0' }}>{it.label} — <b style={{ color: '#e8912a' }}>{(parseFloat(it.amount) || 0).toLocaleString('tr-TR')} {it.currency}</b></div>)}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => { setEditingPkg({ ...emptyPackage, ...pk }); setPkgView('form'); }} style={{ flex: 1, padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Düzenle</button>
+                    <button onClick={() => generatePackageProforma(pk)} style={{ padding: '8px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄 Proforma</button>
+                    <button onClick={() => deletePkg(pk.id)} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    // ---- SEKME: TRANSFERLER ----
+    if (mainTab === 'transfers') {
+      const inS = { ...inputStyle };
+      // TRANSFER FORMU
+      if (transferView === 'form' && editingTransfer) {
+        const t = editingTransfer;
+        const setT = (patch) => setEditingTransfer(prev => ({ ...prev, ...patch }));
+        const hits = tCustSearch.trim().length >= 2 ? customers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(tCustSearch)) || (c.phone || '').includes(tCustSearch)).slice(0, 8) : [];
+        return (
+          <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '700px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>🚐 {t.id ? 'Transfer Düzenle' : 'Transfer Ekle'}</h2>
+              <button onClick={() => { setTransferView('list'); setEditingTransfer(null); setTCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
+              {t.customerName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
+                  <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {t.customerName}</span>
+                  <button onClick={() => setT({ customerId: '', customerName: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <label style={labelStyle}>Ad Soyad (müşteri ara veya yaz) *</label>
+                  <input style={inS} value={tCustSearch} onFocus={() => setShowTCustList(true)} onBlur={() => setTimeout(() => setShowTCustList(false), 200)} onChange={e => { setTCustSearch(e.target.value); setT({ customerName: e.target.value }); setShowTCustList(true); }} placeholder="Müşteri ara veya ismi elle yaz..." />
+                  {showTCustList && hits.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                      {hits.map(c => (
+                        <div key={c.id} onMouseDown={() => { setT({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim() }); setTCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Araç Tipi</label>
+                  <select style={selectStyle} value={t.vehicleType} onChange={e => setT({ vehicleType: e.target.value })}>
+                    {['VIP Minivan', 'Minibüs', 'Midibüs', 'Otobüs', 'Binek Araç', 'VIP Vito'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Tarih</label><input type="date" style={inS} value={t.date} onChange={e => setT({ date: e.target.value })} /></div>
+                <div><label style={labelStyle}>Saat</label><input style={inS} value={t.time} onChange={e => setT({ time: e.target.value })} placeholder="14:30" /></div>
+              </div>
+              <div><label style={labelStyle}>Uçuş Bilgisi</label><input style={inS} value={t.flightInfo} onChange={e => setT({ flightInfo: e.target.value })} placeholder="XQ 920 · İzmir → Madrid · 15:20" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Nereden *</label><input style={inS} value={t.fromLoc} onChange={e => setT({ fromLoc: e.target.value })} placeholder="Denizli Ofis" /></div>
+                <div><label style={labelStyle}>Nereye *</label><input style={inS} value={t.toLoc} onChange={e => setT({ toLoc: e.target.value })} placeholder="İzmir ADB Havalimanı" /></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                <div><label style={labelStyle}>Alış Fiyatı</label><input type="number" style={inS} value={t.buyPrice} onChange={e => setT({ buyPrice: e.target.value })} /></div>
+                <div><label style={labelStyle}>Satış Fiyatı</label><input type="number" style={inS} value={t.sellPrice} onChange={e => setT({ sellPrice: e.target.value })} /></div>
+                <div><label style={labelStyle}>Para Birimi</label>
+                  <select style={selectStyle} value={t.currency} onChange={e => setT({ currency: e.target.value })}>
+                    {['€','$','₺','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                  </select>
+                </div>
+                <div><label style={labelStyle}>Ödeme</label>
+                  <select style={selectStyle} value={t.paid ? '1' : '0'} onChange={e => setT({ paid: e.target.value === '1' })}>
+                    <option value="0" style={{ background: '#0c1929' }}>Ödemedi</option>
+                    <option value="1" style={{ background: '#0c1929' }}>✓ Ödedi</option>
+                  </select>
+                </div>
+              </div>
+              <div><label style={labelStyle}>Not</label><input style={inS} value={t.notes} onChange={e => setT({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
+              <button onClick={saveTransfer} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
+            </div>
+          </div>
+        );
+      }
+      // TRANSFER LİSTESİ
+      return (
+        <div style={{ padding: isMobile ? '12px' : '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setMainTab('hotels')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller</button>
+              <button onClick={() => setMainTab('flights')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+              <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🚐 Transferler ({transfers.length})</button>
+              <button onClick={() => setMainTab('packages')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📦 Paketler ({packages.length})</button>
+            </div>
+            <button onClick={() => { setEditingTransfer({ ...emptyTransfer }); setTransferView('form'); }} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Transfer Ekle</button>
+          </div>
+          {transfers.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz transfer yok. "➕ Transfer Ekle" ile başlayın.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  {['Ad Soyad', 'Araç', 'Tarih/Saat', 'Güzergah', 'Uçuş', 'Satış', 'Ödeme', ''].map((h, i) => <th key={i} style={{ padding: '8px', textAlign: 'left', color: '#94a3b8', fontSize: '11px' }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {[...transfers].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{t.customerName}{t.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{t.notes}</div> : null}</td>
+                      <td style={{ padding: '8px', color: '#a78bfa' }}>{t.vehicleType}</td>
+                      <td style={{ padding: '8px', color: '#94a3b8', fontSize: '12px' }}>{t.date ? formatDate(t.date) : '—'}{t.time ? ` ${t.time}` : ''}</td>
+                      <td style={{ padding: '8px', color: '#e8f1f8', fontSize: '12px' }}>{t.fromLoc} → {t.toLoc}</td>
+                      <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{t.flightInfo || '—'}</td>
+                      <td style={{ padding: '8px', color: '#e8912a' }}>{t.sellPrice ? `${t.sellPrice} ${t.currency}` : '—'}</td>
+                      <td style={{ padding: '8px' }}>{t.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
+                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+                        <button onClick={() => { setEditingTransfer({ ...t }); setTransferView('form'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                        <button onClick={() => deleteTransfer(t.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
     // ---- SEKME: GRUP UÇUŞLAR ----
     if (mainTab === 'flights') {
       const inS = { ...inputStyle };
@@ -9915,13 +10297,6 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
                     </div>
                   ))}
                 </div>
-                <div>
-                  <label style={labelStyle}>📦 Otel Paketi (opsiyonel)</label>
-                  <select style={selectStyle} value={r.packageHotelId || ''} onChange={e => { const h = hotels.find(x => String(x.id) === e.target.value); setR({ packageHotelId: e.target.value, packageHotelName: h?.name || '' }); }}>
-                    <option value="" style={{ background: '#0c1929' }}>Paket yok — sadece uçuş</option>
-                    {hotels.map(h => <option key={h.id} value={h.id} style={{ background: '#0c1929' }}>🏨 {h.name}{h.city ? ` (${h.city})` : ''}</option>)}
-                  </select>
-                </div>
                 <div><label style={labelStyle}>Not</label><input style={inS} value={r.notes} onChange={e => setR({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
                 <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
                   Toplam Satış: {fmt(flightResTotal(r), fl.currency)}{(r.buyPrice || (r.extras || []).some(e => e.buy)) ? ` · Maliyet: ${fmt(flightResCost(r), fl.currency)} · Kâr: ${fmt(flightResTotal(r) - flightResCost(r), fl.currency)}` : ''}
@@ -10032,6 +10407,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <button onClick={() => setMainTab('hotels')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller</button>
               <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+              <button onClick={() => setMainTab('transfers')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🚐 Transferler ({transfers.length})</button>
+              <button onClick={() => setMainTab('packages')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📦 Paketler ({packages.length})</button>
             </div>
             <button onClick={() => { setEditingFlight({ ...emptyFlight }); setFlightView('form'); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Grup Uçuş Ekle</button>
           </div>
@@ -10071,6 +10448,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, custom
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button style={{ padding: '9px 16px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', color: '#0c1929', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🏨 Oteller ({hotels.length})</button>
             <button onClick={() => setMainTab('flights')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>✈️ Grup Uçuşlar ({groupFlights.length})</button>
+            <button onClick={() => setMainTab('transfers')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>🚐 Transferler ({transfers.length})</button>
+              <button onClick={() => setMainTab('packages')} style={{ padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📦 Paketler ({packages.length})</button>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input type="text" placeholder="🔍 Otel/şehir ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{...inputStyle, width: '220px'}} />
@@ -12138,6 +12517,42 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       {activeTab === 'visaSettings' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
+          {/* Banka Bilgileri */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', color: '#e8912a' }}>🏦 Banka Bilgileri</h3>
+              <button onClick={() => setAppSettings(prev => ({ ...prev, banks: [...(prev.banks || []), { id: Date.now(), bankName: '', branch: '', branchCode: '', swift: '', ibanTL: '', accountTL: '', ibanEUR: '', accountEUR: '', ibanUSD: '', showInDocs: false }] }))} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>➕ Banka Ekle</button>
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Sözleşme ve proformalarda "belgelerde göster" işaretli bankalar yer alır.</p>
+            {(appSettings?.banks || []).map((b, bi2) => {
+              const setB = (patch) => setAppSettings(prev => ({ ...prev, banks: prev.banks.map((x, j) => j === bi2 ? { ...x, ...patch } : x) }));
+              const bi = { width: '100%', padding: '9px 11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
+              const bl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
+              return (
+                <div key={b.id || bi2} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: b.showInDocs ? '#10b981' : '#64748b', cursor: 'pointer', fontWeight: '600' }}>
+                      <input type="checkbox" checked={!!b.showInDocs} onChange={e => setB({ showInDocs: e.target.checked })} />
+                      Belgelerde göster
+                    </label>
+                    {(appSettings.banks || []).length > 1 && <button onClick={() => { if (window.confirm('Bu bankayı silmek istiyor musunuz?')) setAppSettings(prev => ({ ...prev, banks: prev.banks.filter((_, j) => j !== bi2) })); }} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                    <div><label style={bl}>Banka Adı</label><input style={bi} value={b.bankName || ''} onChange={e => setB({ bankName: e.target.value })} /></div>
+                    <div><label style={bl}>Şube</label><input style={bi} value={b.branch || ''} onChange={e => setB({ branch: e.target.value })} /></div>
+                    <div><label style={bl}>Şube Kodu</label><input style={bi} value={b.branchCode || ''} onChange={e => setB({ branchCode: e.target.value })} /></div>
+                    <div><label style={bl}>SWIFT</label><input style={bi} value={b.swift || ''} onChange={e => setB({ swift: e.target.value })} /></div>
+                    <div><label style={bl}>TL IBAN</label><input style={bi} value={b.ibanTL || ''} onChange={e => setB({ ibanTL: e.target.value })} /></div>
+                    <div><label style={bl}>TL Hesap No</label><input style={bi} value={b.accountTL || ''} onChange={e => setB({ accountTL: e.target.value })} /></div>
+                    <div><label style={bl}>EUR IBAN</label><input style={bi} value={b.ibanEUR || ''} onChange={e => setB({ ibanEUR: e.target.value })} /></div>
+                    <div><label style={bl}>EUR Hesap No</label><input style={bi} value={b.accountEUR || ''} onChange={e => setB({ accountEUR: e.target.value })} /></div>
+                    <div><label style={bl}>USD IBAN</label><input style={bi} value={b.ibanUSD || ''} onChange={e => setB({ ibanUSD: e.target.value })} /></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           {/* İşlemciler */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#3b82f6' }}>👨‍💼 İşlemciler</h3>
@@ -13014,6 +13429,8 @@ export default function App() {
         ['tours', setTours],
         ['hotels', setHotels],
         ['group_flights', setGroupFlights],
+        ['transfers', setTransfers],
+        ['packages', setPackages],
         ['agencies', setAgencies],
         ['credit_cards', setCreditCards],
         ['quotes', setQuotes],
@@ -13044,6 +13461,8 @@ export default function App() {
   const [tours, setTours] = useState([]);
   const [hotels, setHotels] = useState([]);
   const [groupFlights, setGroupFlights] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [packages, setPackages] = useState([]);
   const [agencies, setAgencies] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [quotes, setQuotes] = useState([]);
@@ -13053,6 +13472,19 @@ export default function App() {
   const [undoStack, setUndoStack] = useState([]);
   const [appSettings, setAppSettings] = useState({
     processors: ['Paydos', 'İdata', 'Oğuz'],
+    banks: [{
+      id: 1,
+      bankName: 'Garanti Bankası A.Ş.',
+      branch: 'Denizli Çınar Şubesi',
+      branchCode: '781',
+      swift: 'TGBATRIS',
+      ibanTL: 'TR40 0006 2000 7810 0006 2962 46',
+      accountTL: '0006 2962 46',
+      ibanEUR: 'TR73 0006 2000 7810 0009 0910 95',
+      accountEUR: '0009 0910 95',
+      ibanUSD: 'TR46 0006 2000 7810 0009 0910 96',
+      showInDocs: true
+    }],
     whatsappTemplate: 'Sayın {isim},\n\n{ulke} vize randevunuz {tarih} tarihinde saat {saat} için alınmıştır.\n\nPNR: {pnr}\n\nLütfen randevu tarihinden 7 gün önce evraklarınızı hazırlayıp bize teslim etmeniz gerekmektedir.\n\nPaydos Turizm',
     visaPrices: {
       schengen: { cost: 0, price: 0, currency: '€' },
@@ -13217,6 +13649,8 @@ export default function App() {
       { name: 'tours', setter: setTours },
       { name: 'hotels', setter: setHotels },
       { name: 'group_flights', setter: setGroupFlights },
+      { name: 'transfers', setter: setTransfers },
+      { name: 'packages', setter: setPackages },
       { name: 'agencies', setter: setAgencies },
       { name: 'credit_cards', setter: setCreditCards },
       { name: 'quotes', setter: setQuotes },
@@ -13421,6 +13855,8 @@ export default function App() {
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('group_flights', 'group_flights', groupFlights); }, [groupFlights]);
+  useEffect(() => { debouncedSave('transfers', 'transfers', transfers); }, [transfers]);
+  useEffect(() => { debouncedSave('packages', 'packages', packages); }, [packages]);
   useEffect(() => { debouncedSave('agencies', 'agencies', agencies); }, [agencies]);
   useEffect(() => { debouncedSave('credit_cards', 'credit_cards', creditCards); }, [creditCards]);
   useEffect(() => { debouncedSave('quotes', 'quotes', quotes); }, [quotes]);
@@ -13452,8 +13888,8 @@ export default function App() {
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'quotes': return <QuotesModule quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
