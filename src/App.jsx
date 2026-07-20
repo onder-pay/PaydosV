@@ -152,11 +152,25 @@ const vizeSartiBul = (ulke) => {
   if (d.b === 'muaf') return { metin: 'Vize şartı bulunmamaktadır.', bilinmiyor: false, detay: d.t };
   return { metin: '', bilinmiyor: true, detay: d.t };
 };
+const normalizeBank = (b) => {
+  // accounts dizisi yoksa eski alanlardan üret; varsa ibanTL/EUR/USD alanlarını accounts'tan doldur (belge üreticileri için)
+  const accounts = Array.isArray(b.accounts) && b.accounts.length ? b.accounts.filter(a => a.iban) : [
+    ...(b.ibanTL ? [{ currency: 'TL', iban: b.ibanTL, accountNo: b.accountTL || '' }] : []),
+    ...(b.ibanEUR ? [{ currency: 'EUR', iban: b.ibanEUR, accountNo: b.accountEUR || '' }] : []),
+    ...(b.ibanUSD ? [{ currency: 'USD', iban: b.ibanUSD, accountNo: '' }] : []),
+  ];
+  const byC = (c) => accounts.find(a => a.currency === c);
+  return { ...b, accounts,
+    ibanTL: byC('TL')?.iban || b.ibanTL || '', accountTL: byC('TL')?.accountNo || b.accountTL || '',
+    ibanEUR: byC('EUR')?.iban || b.ibanEUR || '', accountEUR: byC('EUR')?.accountNo || b.accountEUR || '',
+    ibanUSD: byC('USD')?.iban || b.ibanUSD || '' };
+};
 const getActiveBanks = (settings) => {
-  const list = Array.isArray(settings?.banks) ? settings.banks.filter(b => b.showInDocs && (b.bankName || b.ibanTL || b.ibanEUR)) : [];
+  const hasData = (b) => b.bankName || b.ibanTL || b.ibanEUR || (Array.isArray(b.accounts) && b.accounts.some(a => a.iban));
+  const list = Array.isArray(settings?.banks) ? settings.banks.filter(b => b.showInDocs && hasData(b)).map(normalizeBank) : [];
   if (list.length) return list;
-  if (settings?.bankInfo && (settings.bankInfo.bankName || settings.bankInfo.ibanTL)) return [settings.bankInfo];
-  return [DEFAULT_BANK];
+  if (settings?.bankInfo && (settings.bankInfo.bankName || settings.bankInfo.ibanTL)) return [normalizeBank(settings.bankInfo)];
+  return [normalizeBank(DEFAULT_BANK)];
 };
 const DEFAULT_BANK = {
   bankName: 'Garanti Bankası A.Ş.', branch: 'Denizli Çınar Şubesi', branchCode: '781', swift: 'TGBATRIS',
@@ -238,7 +252,11 @@ ${secTitle(S.m6[0])}${P(S.m6.slice(1).map(x => x.replace('15€', c.sigortaBedel
 <p>Vize işlemlerine ait ödemeler peşin olarak pasaport teslim edildiği tarihte yapılacaktır. Vize ücreti ödenmeden vize başvurusu yapılmayacaktır.</p>
 <p class="hl"><b>${e(trTarih(c.onOdeme))}</b> ön ödeme günüdür. <b>${e(trTarih(c.sonOdeme))}</b> son ödeme günüdür. Ödeme belirtilen tarihlere kadar yapılmaz ise tur kaydı otomatik olarak iptal edilir.</p>
 <p><b>Banka Hesap Numaraları</b></p>
-<table>${BKS.map(BK => `${BK.ibanTL ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — TÜRK LİRASI HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanTL)}${BK.accountTL ? `<br>Hesap No: ${e(BK.accountTL)}` : ''}</td></tr>` : ''}${BK.ibanEUR ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — EURO HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanEUR)}${BK.accountEUR ? `<br>Hesap No: ${e(BK.accountEUR)}` : ''}</td></tr>` : ''}${BK.ibanUSD ? `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — USD HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(BK.ibanUSD)}</td></tr>` : ''}`).join('')}</table>
+<table>${BKS.map(BK => {
+    const CURN = { TL: 'TÜRK LİRASI', EUR: 'EURO', USD: 'USD', GBP: 'GBP', CHF: 'CHF' };
+    const accs = (Array.isArray(BK.accounts) && BK.accounts.length ? BK.accounts : []).filter(a => a.iban);
+    return accs.map(a => `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — ${CURN[a.currency] || e(a.currency)} HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(a.iban)}${a.accountNo ? `<br>Hesap No: ${e(a.accountNo)}` : ''}</td></tr>`).join('');
+  }).join('')}</table>
 
 ${c.ozelTalepler ? secTitle(S.m8[0]) + body(S.m8) : ''}
 ${secTitle(S.m9[0])}${body(S.m9)}
@@ -12509,23 +12527,31 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             <button onClick={() => setActiveTab('attachmentSettings')} style={{ padding: '12px 16px', background: activeTab === 'attachmentSettings' ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'attachmentSettings' ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'attachmentSettings' ? '#a855f7' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'attachmentSettings' ? '600' : '400' }}>
               📎 Dosya Ekleri
             </button>
+            <button onClick={() => setActiveTab('bankSettings')} style={{ padding: '12px 16px', background: activeTab === 'bankSettings' ? 'rgba(232,145,42,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'bankSettings' ? '1px solid rgba(232,145,42,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'bankSettings' ? '#e8912a' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'bankSettings' ? '600' : '400' }}>
+              🏦 Banka Bilgileri
+            </button>
           </>
         )}
       </div>
 
-      {/* VİZE AYARLARI */}
-      {activeTab === 'visaSettings' && isAdmin && (
+      {/* BANKA BİLGİLERİ */}
+      {activeTab === 'bankSettings' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
-          {/* Banka Bilgileri */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <h3 style={{ margin: 0, fontSize: '15px', color: '#e8912a' }}>🏦 Banka Bilgileri</h3>
-              <button onClick={() => setAppSettings(prev => ({ ...prev, banks: [...(prev.banks || []), { id: Date.now(), bankName: '', branch: '', branchCode: '', swift: '', ibanTL: '', accountTL: '', ibanEUR: '', accountEUR: '', ibanUSD: '', showInDocs: false }] }))} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>➕ Banka Ekle</button>
+              <button onClick={() => setAppSettings(prev => ({ ...prev, banks: [...(prev.banks || []), { id: Date.now(), bankName: '', branch: '', branchCode: '', swift: '', accounts: [{ currency: 'TL', iban: '', accountNo: '' }], showInDocs: false }] }))} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>➕ Banka Ekle</button>
             </div>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Sözleşme ve proformalarda "belgelerde göster" işaretli bankalar yer alır.</p>
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Sözleşme ve proformalarda "belgelerde göster" işaretli bankalar yer alır. Her bankaya istediğiniz para biriminde hesap ekleyin.</p>
             {(appSettings?.banks || []).map((b, bi2) => {
               const setB = (patch) => setAppSettings(prev => ({ ...prev, banks: prev.banks.map((x, j) => j === bi2 ? { ...x, ...patch } : x) }));
+              // Eski kayıtları hesap listesine çevir (geriye uyumluluk)
+              const accs = Array.isArray(b.accounts) && b.accounts.length ? b.accounts : [
+                ...(b.ibanTL ? [{ currency: 'TL', iban: b.ibanTL, accountNo: b.accountTL || '' }] : []),
+                ...(b.ibanEUR ? [{ currency: 'EUR', iban: b.ibanEUR, accountNo: b.accountEUR || '' }] : []),
+                ...(b.ibanUSD ? [{ currency: 'USD', iban: b.ibanUSD, accountNo: '' }] : []),
+              ];
+              const setAcc = (ai, patch) => setB({ accounts: accs.map((x, j) => j === ai ? { ...x, ...patch } : x) });
               const bi = { width: '100%', padding: '9px 11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
               const bl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
               return (
@@ -12537,22 +12563,37 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                     </label>
                     {(appSettings.banks || []).length > 1 && <button onClick={() => { if (window.confirm('Bu bankayı silmek istiyor musunuz?')) setAppSettings(prev => ({ ...prev, banks: prev.banks.filter((_, j) => j !== bi2) })); }} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                     <div><label style={bl}>Banka Adı</label><input style={bi} value={b.bankName || ''} onChange={e => setB({ bankName: e.target.value })} /></div>
                     <div><label style={bl}>Şube</label><input style={bi} value={b.branch || ''} onChange={e => setB({ branch: e.target.value })} /></div>
                     <div><label style={bl}>Şube Kodu</label><input style={bi} value={b.branchCode || ''} onChange={e => setB({ branchCode: e.target.value })} /></div>
                     <div><label style={bl}>SWIFT</label><input style={bi} value={b.swift || ''} onChange={e => setB({ swift: e.target.value })} /></div>
-                    <div><label style={bl}>TL IBAN</label><input style={bi} value={b.ibanTL || ''} onChange={e => setB({ ibanTL: e.target.value })} /></div>
-                    <div><label style={bl}>TL Hesap No</label><input style={bi} value={b.accountTL || ''} onChange={e => setB({ accountTL: e.target.value })} /></div>
-                    <div><label style={bl}>EUR IBAN</label><input style={bi} value={b.ibanEUR || ''} onChange={e => setB({ ibanEUR: e.target.value })} /></div>
-                    <div><label style={bl}>EUR Hesap No</label><input style={bi} value={b.accountEUR || ''} onChange={e => setB({ accountEUR: e.target.value })} /></div>
-                    <div><label style={bl}>USD IBAN</label><input style={bi} value={b.ibanUSD || ''} onChange={e => setB({ ibanUSD: e.target.value })} /></div>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ ...bl, marginBottom: 0 }}>Hesaplar (para birimi başına)</label>
+                    <button onClick={() => setB({ accounts: [...accs, { currency: 'EUR', iban: '', accountNo: '' }] })} style={{ padding: '4px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>➕ Hesap Ekle</button>
+                  </div>
+                  {accs.map((ac, ai) => (
+                    <div key={ai} style={{ display: 'grid', gridTemplateColumns: isMobile ? '80px 1fr auto' : '90px 2fr 1fr auto', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                      <select style={bi} value={ac.currency} onChange={e => setAcc(ai, { currency: e.target.value })}>
+                        {['TL','EUR','USD','GBP','CHF'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                      </select>
+                      <input style={bi} value={ac.iban || ''} onChange={e => setAcc(ai, { iban: e.target.value })} placeholder="IBAN" />
+                      {!isMobile && <input style={bi} value={ac.accountNo || ''} onChange={e => setAcc(ai, { accountNo: e.target.value })} placeholder="Hesap No" />}
+                      <button onClick={() => setB({ accounts: accs.filter((_, j) => j !== ai) })} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>×</button>
+                    </div>
+                  ))}
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
 
+      {/* VİZE AYARLARI */}
+      {activeTab === 'visaSettings' && isAdmin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
           {/* İşlemciler */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#3b82f6' }}>👨‍💼 İşlemciler</h3>
