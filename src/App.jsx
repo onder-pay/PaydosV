@@ -153,6 +153,7 @@ const vizeSartiBul = (ulke) => {
   return { metin: '', bilinmiyor: true, detay: d.t };
 };
 const normalizeBank = (b) => {
+  b = b || {};
   // accounts dizisi yoksa eski alanlardan üret; varsa ibanTL/EUR/USD alanlarını accounts'tan doldur (belge üreticileri için)
   const accounts = Array.isArray(b.accounts) && b.accounts.length ? b.accounts.filter(a => a.iban) : [
     ...(b.ibanTL ? [{ currency: 'TL', iban: b.ibanTL, accountNo: b.accountTL || '' }] : []),
@@ -161,15 +162,18 @@ const normalizeBank = (b) => {
   ];
   const byC = (c) => accounts.find(a => a.currency === c);
   return { ...b, accounts,
+    bankName: b.bankName || '', branch: b.branch || '', branchCode: b.branchCode || '', swift: b.swift || '',
     ibanTL: byC('TL')?.iban || b.ibanTL || '', accountTL: byC('TL')?.accountNo || b.accountTL || '',
     ibanEUR: byC('EUR')?.iban || b.ibanEUR || '', accountEUR: byC('EUR')?.accountNo || b.accountEUR || '',
     ibanUSD: byC('USD')?.iban || b.ibanUSD || '' };
 };
 const getActiveBanks = (settings) => {
   const hasData = (b) => b.bankName || b.ibanTL || b.ibanEUR || (Array.isArray(b.accounts) && b.accounts.some(a => a.iban));
-  const list = Array.isArray(settings?.banks) ? settings.banks.filter(b => b.showInDocs && hasData(b)).map(normalizeBank) : [];
-  if (list.length) return list;
-  if (settings?.bankInfo && (settings.bankInfo.bankName || settings.bankInfo.ibanTL)) return [normalizeBank(settings.bankInfo)];
+  const banks = Array.isArray(settings?.banks) ? settings.banks.filter(hasData) : [];
+  // Önce "belgelerde göster" işaretliler; hiç işaretli yoksa ilk dolu bankayı kullan
+  const flagged = banks.filter(b => b.showInDocs);
+  const use = flagged.length ? flagged : banks;
+  if (use.length) return use.map(normalizeBank);
   return [normalizeBank(DEFAULT_BANK)];
 };
 const DEFAULT_BANK = {
@@ -13851,6 +13855,13 @@ export default function App() {
   const saveTimers = useRef({});
   const initialLoadDone = useRef(false);
   useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
+
+  // Eski tek-banka alanını (bankInfo) temizle — artık banks[] dizisi kullanılıyor
+  useEffect(() => {
+    if (appSettings?.bankInfo) {
+      setAppSettings(prev => { const { bankInfo, ...rest } = prev; return rest; });
+    }
+  }, [appSettings?.bankInfo]);
 
   // Tüm dropdown option'ları için koyu zemin (beyaz üstüne beyaz sorununu çözer)
   useEffect(() => {
