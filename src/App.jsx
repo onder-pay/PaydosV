@@ -3608,8 +3608,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const matchSearch = visaSearchQuery.length < 1 || (
       normalizeTr(v.customerName).includes(normalizeTr(visaSearchQuery)) ||
       v.customerPhone?.includes(visaSearchQuery) ||
-      v.country?.toLowerCase().includes(visaSearchQuery.toLowerCase()) ||
-      v.pnr?.toLowerCase().includes(visaSearchQuery.toLowerCase())
+      normalizeTr(v.country).includes(normalizeTr(visaSearchQuery)) ||
+      normalizeTr(v.pnr).includes(normalizeTr(visaSearchQuery))
     );
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
@@ -7113,7 +7113,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       doc.text(BKq.ibanEUR, 50, bankY + 23);
       
       doc.text('IBAN (USD):', 20, bankY + 28);
-      doc.text(BKq.ibanUSD || 'TR46 0006 2000 7810 0009 0910 96', 50, bankY + 28);
+      doc.text(BKq.ibanUSD || '-', 50, bankY + 28);
     }
     
     // Notlar
@@ -7237,7 +7237,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     ? customers.filter(c =>
         normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(customerSearchQuery)) ||
         c.phone?.includes(customerSearchQuery) ||
-        c.email?.toLowerCase().includes(customerSearchQuery.toLowerCase())
+        normalizeTr(c.email).includes(normalizeTr(customerSearchQuery))
       ).slice(0, 10)
     : [];
 
@@ -8555,10 +8555,10 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
 
   const filteredCards = searchQuery.length >= 1
     ? creditCards.filter(c =>
-        c.cardName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        normalizeTr(c.cardName).includes(normalizeTr(searchQuery)) ||
         c.cardNumber?.includes(searchQuery) ||
-        c.cardHolder?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.bank?.toLowerCase().includes(searchQuery.toLowerCase())
+        normalizeTr(c.cardHolder).includes(normalizeTr(searchQuery)) ||
+        normalizeTr(c.bank).includes(normalizeTr(searchQuery))
       )
     : creditCards;
 
@@ -9665,7 +9665,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       yPos += 5;
       doc.text(`IBAN (EUR): ${BKh.ibanEUR}`, 20, yPos);
       yPos += 5;
-      doc.text(`IBAN (USD): ${BKh.ibanUSD || 'TR46 0006 2000 7810 0009 0910 96'}`, 20, yPos);
+      doc.text(`IBAN (USD): ${BKh.ibanUSD || '-'}`, 20, yPos);
 
       // Footer
       doc.setFontSize(8);
@@ -9966,7 +9966,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const filteredHotels = hotels.filter(h => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return h.name?.toLowerCase().includes(q) || h.city?.toLowerCase().includes(q) || h.country?.toLowerCase().includes(q);
+    return normalizeTr(h.name).includes(normalizeTr(q)) || normalizeTr(h.city).includes(normalizeTr(q)) || normalizeTr(h.country).includes(normalizeTr(q));
   });
 
   // ====== LİSTE GÖRÜNÜMÜ ======
@@ -11362,8 +11362,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <input type="text" value={custSearch} onChange={e => { setCustSearch(e.target.value); setShowCustList(true); }} onFocus={() => setShowCustList(true)} placeholder="Müşteri ara (ad, soyad, telefon)..." style={inputStyle} />
                       {showCustList && custSearch.length >= 1 && (() => {
                         const filtered = customers.filter(c => {
-                          const full = `${c.firstName || ''} ${c.lastName || ''} ${c.phone || ''}`.toLowerCase();
-                          return full.includes(custSearch.toLowerCase());
+                          const full = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) + ' ' + (c.phone || '');
+                          return full.includes(normalizeTr(custSearch)) || (c.phone || '').includes(custSearch);
                         }).slice(0, 10);
                         return (
                           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '300px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
@@ -11649,7 +11649,7 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
 
   const filteredAgencies = searchQuery.length >= 1
     ? agencies.filter(a =>
-        a.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        normalizeTr(a.name).includes(normalizeTr(searchQuery)) ||
         a.link?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.institutionCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.userCode?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -13820,6 +13820,17 @@ export default function App() {
   const saveTimers = useRef({});
   const initialLoadDone = useRef(false);
   useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
+
+  // Tüm dropdown option'ları için koyu zemin (beyaz üstüne beyaz sorununu çözer)
+  useEffect(() => {
+    const id = 'paydos-select-fix';
+    if (document.getElementById(id)) return;
+    const st = document.createElement('style');
+    st.id = id;
+    st.textContent = `select option { background-color: #0f2744 !important; color: #e8f1f8 !important; }
+select option:checked { background-color: #2563eb !important; color: #ffffff !important; }`;
+    document.head.appendChild(st);
+  }, []);
 
   const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
     if (!initialLoadDone.current) return;
