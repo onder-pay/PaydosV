@@ -7104,16 +7104,14 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       const BKq = getActiveBanks(appSettings)[0];
       doc.text(toTurkishChars(`${BKq.bankName} - ${BKq.branch} (${BKq.branchCode})`), 20, bankY + 6);
       doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, bankY + 11);
-      
       doc.setTextColor(0);
-      doc.text('IBAN (TL):', 20, bankY + 18);
-      doc.text(BKq.ibanTL, 50, bankY + 18);
-      
-      doc.text('IBAN (EUR):', 20, bankY + 23);
-      doc.text(BKq.ibanEUR, 50, bankY + 23);
-      
-      doc.text('IBAN (USD):', 20, bankY + 28);
-      doc.text(BKq.ibanUSD || '-', 50, bankY + 28);
+      const qAccs = (Array.isArray(BKq.accounts) ? BKq.accounts : []).filter(a => a.iban);
+      let qby = bankY + 18;
+      (qAccs.length ? qAccs : [{ currency: 'TL', iban: BKq.ibanTL }, { currency: 'EUR', iban: BKq.ibanEUR }].filter(a => a.iban)).forEach(a => {
+        doc.text(`IBAN (${a.currency}):`, 20, qby);
+        doc.text(a.iban, 50, qby);
+        qby += 5;
+      });
     }
     
     // Notlar
@@ -9660,12 +9658,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(tr(`${BKh.bankName} - ${BKh.branch} (${BKh.branchCode})`), 20, yPos);
       yPos += 5;
       doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, yPos);
-      yPos += 5;
-      doc.text(`IBAN (TL):  ${BKh.ibanTL}`, 20, yPos);
-      yPos += 5;
-      doc.text(`IBAN (EUR): ${BKh.ibanEUR}`, 20, yPos);
-      yPos += 5;
-      doc.text(`IBAN (USD): ${BKh.ibanUSD || '-'}`, 20, yPos);
+      const hAccs = (Array.isArray(BKh.accounts) ? BKh.accounts : []).filter(a => a.iban);
+      (hAccs.length ? hAccs : [{ currency: 'TL', iban: BKh.ibanTL }, { currency: 'EUR', iban: BKh.ibanEUR }].filter(a => a.iban)).forEach(a => {
+        yPos += 5;
+        doc.text(`IBAN (${a.currency}): ${a.iban}`, 20, yPos);
+      });
 
       // Footer
       doc.setFontSize(8);
