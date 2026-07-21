@@ -10829,6 +10829,17 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         byHotel[g.hotelId].push({ id: generateUniqueId(), ...g, rates: g.rates });
                       });
 
+                      // Etkilenen otellerde zaten fiyat dönemi varsa: değiştir mi, ekle mi?
+                      const etkilenen = hotels.filter(h => byHotel[h.id] && (h.priceList || []).length > 0);
+                      let replaceMode = false;
+                      if (etkilenen.length > 0) {
+                        replaceMode = window.confirm(
+                          `${etkilenen.length} otelde zaten fiyat dönemi var.\n\n` +
+                          `TAMAM = Eski dönemleri SİL, yenilerini yükle (önerilen — tekrar/karışıklık olmaz)\n` +
+                          `İPTAL = Eskilerin üstüne EKLE`
+                        );
+                      }
+
                       // Her otele yaz
                       try {
                         let updatedCount = 0;
@@ -10844,7 +10855,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                           });
                           const updated = {
                             ...h,
-                            priceList: [...(h.priceList || []), ...newPeriods],
+                            priceList: replaceMode ? newPeriods : [...(h.priceList || []), ...newPeriods],
                             enabledConcepts: [...enabledConcepts],
                             updatedAt: new Date().toISOString()
                           };
@@ -11200,10 +11211,28 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
-          <div onClick={() => setPricesCollapsed(!pricesCollapsed)} style={{ fontSize: '13px', color: '#94a3b8', marginBottom: pricesCollapsed ? 0 : '10px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', userSelect: 'none' }}>
-            <span style={{ fontSize: '11px', color: '#f59e0b' }}>{pricesCollapsed ? '▶' : '▼'}</span>
-            💰 Anlaşma Fiyatları
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({(h.priceList || []).length} dönem)</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: pricesCollapsed ? 0 : '10px' }}>
+            <div onClick={() => setPricesCollapsed(!pricesCollapsed)} style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', userSelect: 'none' }}>
+              <span style={{ fontSize: '11px', color: '#f59e0b' }}>{pricesCollapsed ? '▶' : '▼'}</span>
+              💰 Anlaşma Fiyatları
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({(h.priceList || []).length} dönem)</span>
+            </div>
+            {(h.priceList || []).length > 1 && (
+              <button onClick={(e) => {
+                e.stopPropagation();
+                const list = h.priceList || [];
+                const seen = new Map(); const unique = []; let dup = 0;
+                list.forEach(p => {
+                  const key = `${p.startDate}|${p.endDate}|${p.currency}|${JSON.stringify(p.rates || {})}`;
+                  if (seen.has(key)) { dup++; } else { seen.set(key, true); unique.push(p); }
+                });
+                if (dup === 0) { showToast('Tekrar eden dönem yok', 'info'); return; }
+                if (!window.confirm(`${dup} tekrar eden dönem bulundu. Silinsin mi?`)) return;
+                setHotels(prev => prev.map(x => x.id === h.id ? { ...x, priceList: unique } : x));
+                setSelectedHotel(s => s && s.id === h.id ? { ...s, priceList: unique } : s);
+                showToast(`${dup} tekrar silindi`, 'success');
+              }} style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🧹 Tekrarları Temizle</button>
+            )}
           </div>
           {!pricesCollapsed && (() => {
             const list = h.priceList || [];
