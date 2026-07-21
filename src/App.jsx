@@ -9002,31 +9002,64 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     showToast('Rezervasyon iptal edildi', 'warning');
   };
   // ===== TRANSFER =====
+  // Transfer = güzergah/araç tanımı + rezervasyonlar (grup uçuş gibi iki katmanlı)
   const emptyTransfer = {
-    customerId: '', customerName: '', vehicleType: 'VIP Minivan',
-    flightInfo: '', fromLoc: '', toLoc: '', date: '', time: '',
-    buyPrice: '', sellPrice: '', currency: '€', paid: false, notes: ''
+    vehicleType: 'VIP Minivan', fromLoc: '', toLoc: '', date: '', time: '',
+    flightInfo: '', capacity: '', buyPrice: '', sellPrice: '', currency: '€',
+    notes: '', reservations: []
   };
-  const [transferView, setTransferView] = useState('list'); // list | form
+  const emptyTRes = {
+    customerId: '', customerName: '', phone: '',
+    pax: 1, sellPrice: '', buyPrice: '', currency: '€', paid: false, notes: ''
+  };
+  const [transferView, setTransferView] = useState('list'); // list | form | detail
   const [editingTransfer, setEditingTransfer] = useState(null);
+  const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [showTResForm, setShowTResForm] = useState(false);
+  const [editingTRes, setEditingTRes] = useState(null);
   const [tCustSearch, setTCustSearch] = useState('');
   const [showTCustList, setShowTCustList] = useState(false);
   const saveTransfer = () => {
     const t = editingTransfer;
-    if (!t.customerName || !t.fromLoc || !t.toLoc) { showToast('Müşteri ve güzergah zorunlu', 'error'); return; }
+    if (!t.fromLoc || !t.toLoc) { showToast('Güzergah (nereden/nereye) zorunlu', 'error'); return; }
     if (t.id) {
       setTransfers(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x));
       showToast('Transfer güncellendi', 'success');
     } else {
-      setTransfers(prev => [...prev, { ...t, id: Date.now(), createdAt: new Date().toISOString() }]);
-      showToast('Transfer eklendi', 'success');
+      setTransfers(prev => [...prev, { ...t, id: Date.now(), reservations: [], createdAt: new Date().toISOString() }]);
+      showToast('Transfer seçeneği eklendi', 'success');
     }
-    setTransferView('list'); setEditingTransfer(null); setTCustSearch('');
+    setTransferView('list'); setEditingTransfer(null);
   };
   const deleteTransfer = (id) => {
-    if (!window.confirm('Bu transferi silmek istiyor musunuz?')) return;
+    if (!window.confirm('Bu transferi ve tüm rezervasyonlarını silmek istiyor musunuz?')) return;
     setTransfers(prev => prev.filter(x => x.id !== id));
     showToast('Transfer silindi', 'warning');
+  };
+  const tResTotal = (r) => (parseFloat(r.sellPrice) || 0) * (parseInt(r.pax) || 1);
+  const tResCost = (r) => (parseFloat(r.buyPrice) || 0) * (parseInt(r.pax) || 1);
+  const saveTRes = () => {
+    const r = editingTRes;
+    if (!r.customerName) { showToast('Müşteri seçin veya isim yazın', 'error'); return; }
+    const tr2 = selectedTransfer;
+    const active = (tr2.reservations || []).filter(x => !x.cancelled && x.id !== r.id);
+    const usedPax = active.reduce((s, x) => s + (parseInt(x.pax) || 1), 0);
+    const cap = parseInt(tr2.capacity) || 0;
+    if (cap > 0 && usedPax + (parseInt(r.pax) || 1) > cap) { showToast(`Kapasite aşılıyor! (${cap} kişilik, ${usedPax} dolu)`, 'error'); return; }
+    let newRes;
+    if (r.id) newRes = (tr2.reservations || []).map(x => x.id === r.id ? { ...x, ...r } : x);
+    else newRes = [...(tr2.reservations || []), { ...r, id: Date.now(), createdAt: new Date().toISOString() }];
+    setTransfers(prev => prev.map(x => x.id === tr2.id ? { ...x, reservations: newRes } : x));
+    setSelectedTransfer(s => ({ ...s, reservations: newRes }));
+    setShowTResForm(false); setEditingTRes(null); setTCustSearch('');
+    showToast(r.id ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
+  };
+  const cancelTRes = (tr2, resId) => {
+    if (!window.confirm('Bu rezervasyonu iptal etmek istiyor musunuz?')) return;
+    const newRes = (tr2.reservations || []).map(x => x.id === resId ? { ...x, cancelled: true } : x);
+    setTransfers(prev => prev.map(x => x.id === tr2.id ? { ...x, reservations: newRes } : x));
+    setSelectedTransfer(s => s && s.id === tr2.id ? { ...s, reservations: newRes } : s);
+    showToast('Rezervasyon iptal edildi', 'warning');
   };
   // ===== PAKET =====
   // Paket: müşteri + seçilen kalemler (otel rez / uçuş rez / transfer / vize) — hepsi opsiyonel, en az 1
@@ -9056,11 +9089,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         out.flight.push({ kind: 'flight', refId: `${f.id}-${r.id}`, label: `✈️ ${f.from} → ${f.to} · ${formatDate(f.date)}`, amount: tot, currency: f.currency || '€' });
       }
     }));
-    transfers.forEach(t => {
-      if ((custId && String(t.customerId) === String(custId)) || (nq && normalizeTr(t.customerName || '').includes(nq))) {
-        out.transfer.push({ kind: 'transfer', refId: String(t.id), label: `🚐 ${t.fromLoc} → ${t.toLoc} · ${t.vehicleType}`, amount: t.sellPrice || 0, currency: t.currency || '€' });
+    transfers.forEach(t => (t.reservations || []).filter(r => !r.cancelled).forEach(r => {
+      if ((custId && String(r.customerId) === String(custId)) || (nq && normalizeTr(r.customerName || '').includes(nq))) {
+        const tot = (parseFloat(r.sellPrice) || 0) * (parseInt(r.pax) || 1);
+        out.transfer.push({ kind: 'transfer', refId: `${t.id}-${r.id}`, label: `🚐 ${t.fromLoc} → ${t.toLoc} · ${t.vehicleType}`, amount: tot, currency: t.currency || '€' });
       }
-    });
+    }));
     (visaApplications || []).forEach(v => {
       if ((custId && String(v.customerId) === String(custId)) || (nq && normalizeTr(v.customerName || '').includes(nq))) {
         out.visa.push({ kind: 'visa', refId: String(v.id), label: `🌍 ${v.country || 'Vize'} · ${v.visaType || ''}`, amount: v.price || v.totalPrice || 0, currency: v.currency || '€' });
@@ -10089,38 +10123,18 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     // ---- SEKME: TRANSFERLER ----
     if (mainTab === 'transfers') {
       const inS = { ...inputStyle };
-      // TRANSFER FORMU
+      const fmtT = (n, cur) => `${(parseFloat(n) || 0).toLocaleString('tr-TR')} ${cur || '€'}`;
+      // TRANSFER SEÇENEĞİ FORMU
       if (transferView === 'form' && editingTransfer) {
         const t = editingTransfer;
         const setT = (patch) => setEditingTransfer(prev => ({ ...prev, ...patch }));
-        const hits = tCustSearch.trim().length >= 2 ? customers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(tCustSearch)) || (c.phone || '').includes(tCustSearch)).slice(0, 8) : [];
         return (
           <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '700px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '18px', margin: 0 }}>🚐 {t.id ? 'Transfer Düzenle' : 'Transfer Ekle'}</h2>
-              <button onClick={() => { setTransferView('list'); setEditingTransfer(null); setTCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>🚐 {t.id ? 'Transfer Düzenle' : 'Transfer Seçeneği Ekle'}</h2>
+              <button onClick={() => { setTransferView('list'); setEditingTransfer(null); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
-              {t.customerName ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
-                  <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {t.customerName}</span>
-                  <button onClick={() => setT({ customerId: '', customerName: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
-                </div>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  <label style={labelStyle}>Ad Soyad (müşteri ara veya yaz) *</label>
-                  <input style={inS} value={tCustSearch} onFocus={() => setShowTCustList(true)} onBlur={() => setTimeout(() => setShowTCustList(false), 200)} onChange={e => { setTCustSearch(e.target.value); setT({ customerName: e.target.value }); setShowTCustList(true); }} placeholder="Müşteri ara veya ismi elle yaz..." />
-                  {showTCustList && hits.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
-                      {hits.map(c => (
-                        <div key={c.id} onMouseDown={() => { setT({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim() }); setTCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px' }}>
                 <div><label style={labelStyle}>Araç Tipi</label>
                   <select style={selectStyle} value={t.vehicleType} onChange={e => setT({ vehicleType: e.target.value })}>
@@ -10130,23 +10144,18 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 <div><label style={labelStyle}>Tarih</label><input type="date" style={inS} value={t.date} onChange={e => setT({ date: e.target.value })} /></div>
                 <div><label style={labelStyle}>Saat</label><input style={inS} value={t.time} onChange={e => setT({ time: e.target.value })} placeholder="14:30" /></div>
               </div>
-              <div><label style={labelStyle}>Uçuş Bilgisi</label><input style={inS} value={t.flightInfo} onChange={e => setT({ flightInfo: e.target.value })} placeholder="XQ 920 · İzmir → Madrid · 15:20" /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div><label style={labelStyle}>Nereden *</label><input style={inS} value={t.fromLoc} onChange={e => setT({ fromLoc: e.target.value })} placeholder="Denizli Ofis" /></div>
-                <div><label style={labelStyle}>Nereye *</label><input style={inS} value={t.toLoc} onChange={e => setT({ toLoc: e.target.value })} placeholder="İzmir ADB Havalimanı" /></div>
+                <div><label style={labelStyle}>Nereden *</label><input style={inS} value={t.fromLoc} onChange={e => setT({ fromLoc: e.target.value })} placeholder="İzmir ADB Havalimanı" /></div>
+                <div><label style={labelStyle}>Nereye *</label><input style={inS} value={t.toLoc} onChange={e => setT({ toLoc: e.target.value })} placeholder="Otel" /></div>
               </div>
+              <div><label style={labelStyle}>Uçuş Bilgisi (opsiyonel)</label><input style={inS} value={t.flightInfo} onChange={e => setT({ flightInfo: e.target.value })} placeholder="XQ 920 · İzmir → Madrid · 15:20" /></div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
-                <div><label style={labelStyle}>Alış Fiyatı</label><input type="number" style={inS} value={t.buyPrice} onChange={e => setT({ buyPrice: e.target.value })} /></div>
-                <div><label style={labelStyle}>Satış Fiyatı</label><input type="number" style={inS} value={t.sellPrice} onChange={e => setT({ sellPrice: e.target.value })} /></div>
+                <div><label style={labelStyle}>Kapasite (kişi)</label><input type="number" style={inS} value={t.capacity} onChange={e => setT({ capacity: e.target.value })} placeholder="boş=sınırsız" /></div>
+                <div><label style={labelStyle}>Alış (kişi başı)</label><input type="number" style={inS} value={t.buyPrice} onChange={e => setT({ buyPrice: e.target.value })} /></div>
+                <div><label style={labelStyle}>Satış (kişi başı)</label><input type="number" style={inS} value={t.sellPrice} onChange={e => setT({ sellPrice: e.target.value })} /></div>
                 <div><label style={labelStyle}>Para Birimi</label>
                   <select style={selectStyle} value={t.currency} onChange={e => setT({ currency: e.target.value })}>
                     {['€','$','₺','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
-                  </select>
-                </div>
-                <div><label style={labelStyle}>Ödeme</label>
-                  <select style={selectStyle} value={t.paid ? '1' : '0'} onChange={e => setT({ paid: e.target.value === '1' })}>
-                    <option value="0" style={{ background: '#0c1929' }}>Ödemedi</option>
-                    <option value="1" style={{ background: '#0c1929' }}>✓ Ödedi</option>
                   </select>
                 </div>
               </div>
@@ -10156,7 +10165,122 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           </div>
         );
       }
-      // TRANSFER LİSTESİ
+      // TRANSFER DETAY + REZERVASYONLAR
+      if (transferView === 'detail' && selectedTransfer) {
+        const tr2 = transfers.find(x => x.id === selectedTransfer.id) || selectedTransfer;
+        const active = (tr2.reservations || []).filter(r => !r.cancelled);
+        const usedPax = active.reduce((s, r) => s + (parseInt(r.pax) || 1), 0);
+        const cap = parseInt(tr2.capacity) || 0;
+        const kalan = cap > 0 ? cap - usedPax : null;
+        const toplamSatis = active.reduce((s, r) => s + tResTotal(r), 0);
+        const toplamAlis = active.reduce((s, r) => s + tResCost(r), 0);
+        const odenmemis = active.filter(r => !r.paid).reduce((s, r) => s + tResTotal(r), 0);
+        // REZERVASYON FORMU
+        if (showTResForm && editingTRes) {
+          const r = editingTRes;
+          const setR = (patch) => setEditingTRes(prev => ({ ...prev, ...patch }));
+          const hits = tCustSearch.trim().length >= 2 ? customers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`).includes(normalizeTr(tCustSearch)) || (c.phone || '').includes(tCustSearch)).slice(0, 8) : [];
+          return (
+            <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '680px', margin: '0 auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '17px', margin: 0 }}>➕ Rezervasyon — {tr2.fromLoc} → {tr2.toLoc}</h2>
+                <button onClick={() => { setShowTResForm(false); setEditingTRes(null); setTCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
+                {r.customerName ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
+                    <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {r.customerName}</span>
+                    <button onClick={() => setR({ customerId: '', customerName: '', phone: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <label style={labelStyle}>Müşteri (ara veya elle yaz) *</label>
+                    <input style={inS} value={tCustSearch} onFocus={() => setShowTCustList(true)} onBlur={() => setTimeout(() => setShowTCustList(false), 200)} onChange={e => { setTCustSearch(e.target.value); setR({ customerName: e.target.value }); setShowTCustList(true); }} placeholder="Müşteri ara veya ismi elle yaz..." />
+                    {showTCustList && hits.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                        {hits.map(c => (
+                          <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setTCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                  <div><label style={labelStyle}>Kişi Sayısı</label><input type="number" style={inS} value={r.pax} onChange={e => setR({ pax: e.target.value })} min="1" /></div>
+                  <div><label style={labelStyle}>Satış (kişi başı)</label><input type="number" style={inS} value={r.sellPrice} onChange={e => setR({ sellPrice: e.target.value })} /></div>
+                  <div><label style={labelStyle}>Alış (kişi başı)</label><input type="number" style={inS} value={r.buyPrice} onChange={e => setR({ buyPrice: e.target.value })} /></div>
+                  <div><label style={labelStyle}>Ödeme</label>
+                    <select style={selectStyle} value={r.paid ? '1' : '0'} onChange={e => setR({ paid: e.target.value === '1' })}>
+                      <option value="0" style={{ background: '#0c1929' }}>Ödemedi</option>
+                      <option value="1" style={{ background: '#0c1929' }}>✓ Ödedi</option>
+                    </select>
+                  </div>
+                </div>
+                <div><label style={labelStyle}>Not</label><input style={inS} value={r.notes} onChange={e => setR({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
+                <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
+                  Toplam Satış: {fmtT(tResTotal(r), tr2.currency)}{r.buyPrice ? ` · Maliyet: ${fmtT(tResCost(r), tr2.currency)} · Kâr: ${fmtT(tResTotal(r) - tResCost(r), tr2.currency)}` : ''}
+                </div>
+                <button onClick={saveTRes} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div style={{ padding: isMobile ? '12px' : '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <button onClick={() => { setTransferView('list'); setSelectedTransfer(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
+                <h2 style={{ fontSize: '19px', margin: 0 }}>🚐 {tr2.fromLoc} → {tr2.toLoc}</h2>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{tr2.vehicleType}{tr2.date ? ` · ${formatDate(tr2.date)}` : ''}{tr2.time ? ` ${tr2.time}` : ''}{tr2.flightInfo ? ` · ${tr2.flightInfo}` : ''}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => { setEditingTRes({ ...emptyTRes, sellPrice: tr2.sellPrice, buyPrice: tr2.buyPrice, currency: tr2.currency }); setShowTResForm(true); }} disabled={kalan !== null && kalan <= 0} style={{ padding: '9px 16px', background: (kalan === null || kalan > 0) ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : 'rgba(100,116,139,0.3)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: (kalan === null || kalan > 0) ? 'pointer' : 'not-allowed', fontSize: '13px' }}>➕ Rezervasyon</button>
+                <button onClick={() => { setEditingTransfer({ ...tr2 }); setTransferView('form'); }} style={{ padding: '9px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px' }}>✏️</button>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '10px', marginBottom: '16px' }}>
+              {[
+                [cap > 0 ? `${usedPax}/${cap}` : usedPax, cap > 0 ? 'Dolu / Kapasite' : 'Toplam Kişi', '#8b5cf6'],
+                [kalan !== null ? kalan : '∞', 'Kalan', kalan !== null && kalan <= 2 ? '#ef4444' : '#10b981'],
+                [fmtT(toplamSatis, tr2.currency), 'Toplam Satış', '#e8912a'],
+                [fmtT(toplamSatis - toplamAlis, tr2.currency), 'Kâr', (toplamSatis - toplamAlis) >= 0 ? '#10b981' : '#ef4444'],
+                [fmtT(odenmemis, tr2.currency), 'Ödenmemiş', odenmemis > 0 ? '#ef4444' : '#10b981'],
+              ].map(([v, l, c], i) => (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: c }}>{v}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{l}</div>
+                </div>
+              ))}
+            </div>
+            {active.length === 0 ? <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz rezervasyon yok. "➕ Rezervasyon" ile ekleyin.</p> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['Müşteri', 'Kişi', 'Satış', 'Ödeme', ''].map((h, i) => <th key={i} style={{ padding: '8px', textAlign: 'left', color: '#94a3b8', fontSize: '11px' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {active.map(r => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{r.customerName}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8' }}>{r.pax || 1}</td>
+                        <td style={{ padding: '8px', color: '#e8912a' }}>{fmtT(tResTotal(r), tr2.currency)}</td>
+                        <td style={{ padding: '8px' }}>{r.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => { setEditingTRes({ ...emptyTRes, ...r }); setShowTResForm(true); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
+                          <button onClick={() => cancelTRes(tr2, r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="İptal">⊘</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      }
+      // TRANSFER SEÇENEĞİ LİSTESİ
       return (
         <div style={{ padding: isMobile ? '12px' : '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
@@ -10169,36 +10293,40 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <button onClick={() => { setEditingTransfer({ ...emptyTransfer }); setTransferView('form'); }} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Transfer Ekle</button>
           </div>
           {transfers.length === 0 ? (
-            <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz transfer yok. "➕ Transfer Ekle" ile başlayın.</p>
+            <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz transfer yok. Önce "➕ Transfer Ekle" ile güzergah/araç tanımlayın, sonra içine rezervasyon ekleyin.</p>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  {['Ad Soyad', 'Araç', 'Tarih/Saat', 'Güzergah', 'Uçuş', 'Satış', 'Ödeme', ''].map((h, i) => <th key={i} style={{ padding: '8px', textAlign: 'left', color: '#94a3b8', fontSize: '11px' }}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {[...transfers].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(t => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{t.customerName}{t.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{t.notes}</div> : null}</td>
-                      <td style={{ padding: '8px', color: '#a78bfa' }}>{t.vehicleType}</td>
-                      <td style={{ padding: '8px', color: '#94a3b8', fontSize: '12px' }}>{t.date ? formatDate(t.date) : '—'}{t.time ? ` ${t.time}` : ''}</td>
-                      <td style={{ padding: '8px', color: '#e8f1f8', fontSize: '12px' }}>{t.fromLoc} → {t.toLoc}</td>
-                      <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{t.flightInfo || '—'}</td>
-                      <td style={{ padding: '8px', color: '#e8912a' }}>{t.sellPrice ? `${t.sellPrice} ${t.currency}` : '—'}</td>
-                      <td style={{ padding: '8px' }}>{t.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
-                        <button onClick={() => { setEditingTransfer({ ...t }); setTransferView('form'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
-                        <button onClick={() => deleteTransfer(t.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+              {transfers.map(tr2 => {
+                const active = (tr2.reservations || []).filter(r => !r.cancelled);
+                const usedPax = active.reduce((s, r) => s + (parseInt(r.pax) || 1), 0);
+                const cap = parseInt(tr2.capacity) || 0;
+                const kalan = cap > 0 ? cap - usedPax : null;
+                const doluluk = cap > 0 ? Math.round((usedPax / cap) * 100) : 0;
+                return (
+                  <div key={tr2.id} onClick={() => { setSelectedTransfer(tr2); setTransferView('detail'); }} style={{ background: 'rgba(139,92,246,0.05)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(139,92,246,0.2)', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>🚐 {tr2.fromLoc} → {tr2.toLoc}</span>
+                      <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', fontWeight: '700' }}>{tr2.vehicleType}</span>
+                    </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tr2.date ? formatDate(tr2.date) : 'Tarih yok'}{tr2.time ? ` · ${tr2.time}` : ''}</p>
+                    {cap > 0 && (
+                      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', height: '8px', marginBottom: '6px', overflow: 'hidden' }}>
+                        <div style={{ width: `${doluluk}%`, height: '100%', background: doluluk >= 90 ? '#ef4444' : doluluk >= 70 ? '#e8912a' : '#10b981', borderRadius: '8px' }} />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                      <span style={{ color: '#94a3b8' }}>{cap > 0 ? `${usedPax}/${cap} · ` : `${usedPax} kişi · `}<b style={{ color: '#10b981' }}>{active.length} rez.</b></span>
+                      <span style={{ color: '#e8912a', fontWeight: '600' }}>{tr2.sellPrice ? `${tr2.sellPrice} ${tr2.currency}` : ''}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       );
     }
+
     // ---- SEKME: GRUP UÇUŞLAR ----
     if (mainTab === 'flights') {
       const inS = { ...inputStyle };
@@ -13862,6 +13990,17 @@ export default function App() {
       setAppSettings(prev => { const { bankInfo, ...rest } = prev; return rest; });
     }
   }, [appSettings?.bankInfo]);
+
+  // Sayı input'larında mouse tekerleği ile değer değişmesini engelle (fiyat kayması sorunu)
+  useEffect(() => {
+    const stopWheel = (e) => {
+      if (document.activeElement === e.target && e.target.type === 'number') {
+        e.target.blur();
+      }
+    };
+    document.addEventListener('wheel', stopWheel, { passive: true });
+    return () => document.removeEventListener('wheel', stopWheel);
+  }, []);
 
   // Tüm dropdown option'ları için koyu zemin (beyaz üstüne beyaz sorununu çözer)
   useEffect(() => {
