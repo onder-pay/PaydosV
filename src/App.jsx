@@ -8812,7 +8812,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
     if (!period.startDate || !period.endDate) return 0;
     const d1 = new Date(period.startDate), d2 = new Date(period.endDate);
     if (isNaN(d1) || isNaN(d2)) return 0;
-    return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+    return Math.max(1, Math.round((d2 - d1) / 86400000));
   })();
 
   const handleSave = () => {
@@ -8850,7 +8850,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 
           {dayCount > 0 && (
             <div style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', fontSize: '12px', color: '#3b82f6' }}>
-              🌙 {dayCount} gece — başlangıç ve bitiş tarihi dahil, bu gecelere aynı fiyat uygulanır{dayCount === 2 ? '. Tek gece için başlangıç ve bitişe aynı tarihi girin.' : ''}
+              🌙 {dayCount} gece — başlangıç tarihinden bitiş (çıkış) tarihine kadar. Örn. 13 → 14 Ekim = 13 Ekim gecesi.
             </div>
           )}
 
@@ -9316,7 +9316,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     for (let i = 0; i < result.nights; i++) {
       const day = new Date(d1.getTime() + i * 86400000);
       const dayStr = day.toISOString().split('T')[0];
-      const period = periods.find(p => p.startDate <= dayStr && p.endDate >= dayStr);
+      const period = periods.find(p => p.startDate <= dayStr && p.endDate > dayStr);
       if (!period) {
         result.gaps.push(dayStr);
         continue;
@@ -10696,18 +10696,23 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         // Tarih normalleştirme (GG.AA.YYYY, YYYY-AA-GG, Date object, Excel serial)
                         const normalizeDate = (val) => {
                           if (!val && val !== 0) return '';
-                          if (val instanceof Date) return val.toISOString().split('T')[0];
+                          // Yerel tarih bileşenlerinden YYYY-MM-DD üret (timezone kaymasını önler)
+                          const ymd = (d) => isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                          if (val instanceof Date) {
+                            // SheetJS UTC gece yarısı olarak parse eder; UTC bileşenlerini kullan
+                            return `${val.getUTCFullYear()}-${String(val.getUTCMonth()+1).padStart(2,'0')}-${String(val.getUTCDate()).padStart(2,'0')}`;
+                          }
                           if (typeof val === 'number') {
-                            // Excel serial date
-                            const d = new Date((val - 25569) * 86400 * 1000);
-                            return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+                            // Excel serial date — UTC olarak çöz, UTC bileşenlerini al
+                            const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+                            return isNaN(d.getTime()) ? '' : `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
                           }
                           const s = String(val).trim();
                           // GG.AA.YYYY veya GG/AA/YYYY
                           let m = s.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{4})$/);
                           if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-                          // YYYY-AA-GG
-                          m = s.match(/^(\d{4})[.\/\-](\d{1,2})[.\/\-](\d{1,2})$/);
+                          // YYYY-AA-GG (varsa saat kısmını at)
+                          m = s.match(/^(\d{4})[.\/\-](\d{1,2})[.\/\-](\d{1,2})/);
                           if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
                           return s;
                         };
