@@ -346,6 +346,14 @@ const formatPassportNo = (value) => {
 };
 
 // Türkçe + büyük/küçük harf duyarsız normalize (arama için): Önder=Onder=ÖNDER
+// Tarih alanı "gg.aa.yyyy" native input'unda yıl anormal (1900 öncesi / 2100 sonrası) girilirse yakalar
+const isSaneDate = (iso) => {
+  if (!iso) return true; // boş tarih ayrı yerde zorunlu kontrolü yapılıyor
+  const m = String(iso).match(/^(\d{4})-\d{2}-\d{2}$/);
+  if (!m) return false;
+  const y = parseInt(m[1], 10);
+  return y >= 1900 && y <= 2100;
+};
 const normalizeTr = (s) => (s == null ? '' : String(s))
   .replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u')
   .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
@@ -8821,6 +8829,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 
   const handleSave = () => {
     if (!period.startDate || !period.endDate) { showToast?.('Tarih aralığı zorunlu', 'error'); return; }
+    if (!isSaneDate(period.startDate) || !isSaneDate(period.endDate)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     if (new Date(period.endDate) < new Date(period.startDate)) { showToast?.('Bitiş tarihi başlangıçtan önce olamaz', 'error'); return; }
     onSave(period);
   };
@@ -8931,7 +8940,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
-function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
+function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, setCustomers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
   // ===== GRUP UÇUŞ =====
   const [mainTab, setMainTab] = useState('hotels'); // 'hotels' | 'flights'
@@ -9177,6 +9186,36 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       showToast('Paket proforması indirildi', 'success');
     } catch (e) { showToast('Proforma hatası: ' + e.message, 'error'); }
   };
+  // Hızlı müşteri ekleme (rezervasyon formunda "bulunamadı" durumunda)
+  const [showQuickCust, setShowQuickCust] = useState(false);
+  const [quickCustName, setQuickCustName] = useState('');
+  const [quickCustPhone, setQuickCustPhone] = useState('');
+  const [quickCustBusy, setQuickCustBusy] = useState(false);
+  const quickAddCustomer = async (onDone) => {
+    const parts = quickCustName.trim().split(/\s+/);
+    if (parts.length < 1 || !quickCustName.trim()) { showToast?.('Ad soyad girin', 'error'); return; }
+    setQuickCustBusy(true);
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(' ') || '';
+    const newId = generateUniqueId();
+    const now = new Date().toISOString();
+    const newCustomer = {
+      id: newId, _docId: newId, firstName, lastName, phone: quickCustPhone.trim(),
+      createdAt: now.split('T')[0], updatedAt: now, verified: false,
+      passports: '[]', schengenVisas: '[]', usaVisa: '{}'
+    };
+    try {
+      await setDoc(doc(db, 'customers', newId), newCustomer);
+      setCustomers(prev => [...prev, newCustomer]);
+      showToast?.('Müşteri eklendi', 'success');
+      onDone(newCustomer);
+      setShowQuickCust(false); setQuickCustName(''); setQuickCustPhone('');
+    } catch (e) {
+      showToast?.('Müşteri eklenemedi: ' + e.message, 'error');
+    } finally {
+      setQuickCustBusy(false);
+    }
+  };
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [editingHotel, setEditingHotel] = useState(null);
   const [showResForm, setShowResForm] = useState(false);
@@ -9289,6 +9328,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
     if (!resData.checkIn || !resData.checkOut) { showToast?.('Giriş/çıkış tarihleri zorunlu', 'error'); return; }
+    if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     let updatedHotel;
     if (editingRes) {
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? {...resData, id: r.id} : r) };
@@ -11578,7 +11618,21 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         return (
                           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e3a5f', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', zIndex: 1000, maxHeight: '300px', overflowY: 'auto', marginTop: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                             {filtered.length === 0 ? (
-                              <div style={{ padding: '14px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>Müşteri bulunamadı</div>
+                              showQuickCust ? (
+                                <div style={{ padding: '12px' }}>
+                                  <input autoFocus style={{ ...inputStyle, marginBottom: '6px', fontSize: '13px' }} value={quickCustName} onChange={e => setQuickCustName(e.target.value)} placeholder="Ad Soyad *" />
+                                  <input style={{ ...inputStyle, marginBottom: '8px', fontSize: '13px' }} value={quickCustPhone} onChange={e => setQuickCustPhone(e.target.value)} placeholder="Telefon (opsiyonel)" />
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => quickAddCustomer((c) => handleCustSelect(c))} disabled={quickCustBusy} style={{ flex: 1, padding: '8px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>{quickCustBusy ? '⏳...' : '✅ Ekle ve Seç'}</button>
+                                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => { setShowQuickCust(false); setQuickCustName(''); setQuickCustPhone(''); }} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ padding: '14px', textAlign: 'center' }}>
+                                  <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>Müşteri bulunamadı</div>
+                                  <button onMouseDown={(e) => { e.preventDefault(); setQuickCustName(custSearch); setShowQuickCust(true); }} style={{ padding: '7px 14px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Yeni Müşteri Ekle</button>
+                                </div>
+                              )
                             ) : filtered.map(c => (
                               <div key={c.id} onMouseDown={() => handleCustSelect(c)} style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
@@ -14190,7 +14244,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
