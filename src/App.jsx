@@ -10306,7 +10306,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <div key={tr2.id} onClick={() => { setSelectedTransfer(tr2); setTransferView('detail'); }} style={{ background: 'rgba(139,92,246,0.05)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(139,92,246,0.2)', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>🚐 {tr2.fromLoc} → {tr2.toLoc}</span>
-                      <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', fontWeight: '700' }}>{tr2.vehicleType}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', fontWeight: '700' }}>{tr2.vehicleType}</span>
+                        <button onClick={(e) => { e.stopPropagation(); deleteTransfer(tr2.id); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
+                      </div>
                     </div>
                     <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tr2.date ? formatDate(tr2.date) : 'Tarih yok'}{tr2.time ? ` · ${tr2.time}` : ''}</p>
                     {cap > 0 && (
@@ -10571,7 +10574,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <div key={fl.id} onClick={() => { setSelectedFlight(fl); setFlightView('detail'); }} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>✈️ {fl.from} → {fl.to}</span>
-                      <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: fl.direction === 'Gidiş' ? 'rgba(59,130,246,0.2)' : 'rgba(232,145,42,0.2)', color: fl.direction === 'Gidiş' ? '#3b82f6' : '#e8912a', fontWeight: '700' }}>{fl.direction}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: fl.direction === 'Gidiş' ? 'rgba(59,130,246,0.2)' : 'rgba(232,145,42,0.2)', color: fl.direction === 'Gidiş' ? '#3b82f6' : '#e8912a', fontWeight: '700' }}>{fl.direction}</span>
+                        <button onClick={(e) => { e.stopPropagation(); const rezSayisi = (fl.reservations || []).filter(r => !r.cancelled).length; if (window.confirm(`"${fl.from} → ${fl.to}" uçuşunu${rezSayisi > 0 ? ` ve ${rezSayisi} rezervasyonunu` : ''} silmek istiyor musunuz?`)) { setGroupFlights(prev => prev.filter(x => x.id !== fl.id)); showToast('Uçuş silindi', 'warning'); } }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
+                      </div>
                     </div>
                     <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} {fl.depTime}</p>
                     <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', height: '8px', marginBottom: '6px', overflow: 'hidden' }}>
