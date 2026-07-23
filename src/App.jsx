@@ -9072,6 +9072,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const [editingPkg, setEditingPkg] = useState(null);
   const [pCustSearch, setPCustSearch] = useState('');
   const [showPCustList, setShowPCustList] = useState(false);
+  const [manualItemKind, setManualItemKind] = useState('');
+  const [manualItemLabel, setManualItemLabel] = useState('');
+  const [manualItemAmount, setManualItemAmount] = useState('');
+  const [manualItemCurrency, setManualItemCurrency] = useState('€');
   const pkgTotal = (pk) => (pk.items || []).reduce((sum, it) => sum + (parseFloat(it.amount) || 0), 0);
   const pkgCurrency = (pk) => (pk.items || [])[0]?.currency || '€';
   // Müşterinin bağlanabilir kayıtlarını topla
@@ -9113,7 +9117,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       setPackages(prev => [...prev, { ...pk, id: Date.now(), createdAt: new Date().toISOString() }]);
       showToast('Paket oluşturuldu', 'success');
     }
-    setPkgView('list'); setEditingPkg(null); setPCustSearch('');
+    setPkgView('list'); setEditingPkg(null); setPCustSearch(''); setManualItemKind(''); setManualItemLabel(''); setManualItemAmount('');
   };
   const deletePkg = (id) => {
     if (!window.confirm('Bu paketi silmek istiyor musunuz?')) return;
@@ -10033,7 +10037,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '720px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '18px', margin: 0 }}>📦 {pk.id ? 'Paket Düzenle' : 'Paket Oluştur'}</h2>
-              <button onClick={() => { setPkgView('list'); setEditingPkg(null); setPCustSearch(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
+              <button onClick={() => { setPkgView('list'); setEditingPkg(null); setPCustSearch(''); setManualItemKind(''); setManualItemLabel(''); setManualItemAmount(''); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
               {pk.customerName ? (
@@ -10043,8 +10047,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 </div>
               ) : (
                 <div style={{ position: 'relative' }}>
-                  <label style={labelStyle}>Müşteri Seç *</label>
-                  <input style={inS} value={pCustSearch} onFocus={() => setShowPCustList(true)} onBlur={() => setTimeout(() => setShowPCustList(false), 200)} onChange={e => { setPCustSearch(e.target.value); setShowPCustList(true); }} placeholder="Ad, soyad veya telefon ile ara..." />
+                  <label style={labelStyle}>Müşteri (ara veya elle yaz) *</label>
+                  <input style={inS} value={pCustSearch} onFocus={() => setShowPCustList(true)} onBlur={() => setTimeout(() => setShowPCustList(false), 200)} onChange={e => { setPCustSearch(e.target.value); setP({ customerName: e.target.value, customerId: '' }); setShowPCustList(true); }} placeholder="Kayıtlı müşteri ara veya ismi elle yazıp Enter'a basın..." />
                   {showPCustList && hits.length > 0 && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                       {hits.map(c => (
@@ -10053,6 +10057,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         </div>
                       ))}
                     </div>
+                  )}
+                  {pCustSearch.trim().length >= 2 && (
+                    <button onMouseDown={() => { setP({ customerName: pCustSearch.trim(), customerId: '' }); setPCustSearch(''); }} style={{ marginTop: '6px', padding: '7px 12px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px' }}>
+                      + "{pCustSearch.trim()}" olarak kayıtsız müşteri kullan
+                    </button>
                   )}
                 </div>
               )}
@@ -10066,11 +10075,43 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     {candSec('🚐 TRANSFERLER', cand.transfer, '#a78bfa')}
                     {candSec('🌍 VİZE BAŞVURULARI', cand.visa, '#10b981')}
                     {!cand.hotel.length && !cand.flight.length && !cand.transfer.length && !cand.visa.length && (
-                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Bu müşteriye ait otel/uçuş/transfer/vize kaydı bulunamadı. Önce ilgili bölümden rezervasyon ekleyin.</p>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Bu müşteriye ait sistemde kayıtlı otel/uçuş/transfer/vize kaydı yok. Aşağıdan elle kalem ekleyebilirsiniz.</p>
                     )}
                   </div>
                 </div>
               )}
+              {pk.customerName && (() => {
+                const icons = { hotel: '🏨', flight: '✈️', transfer: '🚐', other: '📌' };
+                const labels = { hotel: 'Otel', flight: 'Uçuş', transfer: 'Transfer', other: 'Diğer' };
+                const colors = { hotel: '#f59e0b', flight: '#3b82f6', transfer: '#a78bfa', other: '#94a3b8' };
+                return (
+                  <div>
+                    <label style={labelStyle}>Elle Kalem Ekle</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: manualItemKind ? '8px' : 0, flexWrap: 'wrap' }}>
+                      {['hotel', 'flight', 'transfer', 'other'].map(k => (
+                        <button key={k} onClick={() => setManualItemKind(manualItemKind === k ? '' : k)} style={{ padding: '6px 12px', background: manualItemKind === k ? `${colors[k]}30` : 'rgba(255,255,255,0.05)', border: `1px solid ${manualItemKind === k ? colors[k] : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', color: manualItemKind === k ? colors[k] : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>{icons[k]} + {labels[k]} Ekle</button>
+                      ))}
+                    </div>
+                    {manualItemKind && (
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 80px auto', gap: '6px', alignItems: 'end', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px' }}>
+                        <div><label style={{ ...labelStyle, fontSize: '10px' }}>Açıklama</label><input style={inS} value={manualItemLabel} onChange={e => setManualItemLabel(e.target.value)} placeholder={`örn: ${labels[manualItemKind]} — detay`} /></div>
+                        <div><label style={{ ...labelStyle, fontSize: '10px' }}>Tutar</label><input type="number" style={inS} value={manualItemAmount} onChange={e => setManualItemAmount(e.target.value)} /></div>
+                        <div><label style={{ ...labelStyle, fontSize: '10px' }}>Para</label>
+                          <select style={selectStyle} value={manualItemCurrency} onChange={e => setManualItemCurrency(e.target.value)}>
+                            {['€','$','₺','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+                          </select>
+                        </div>
+                        <button onClick={() => {
+                          if (!manualItemLabel.trim()) { showToast?.('Açıklama girin', 'error'); return; }
+                          const it = { kind: manualItemKind, refId: `manual-${Date.now()}`, label: `${icons[manualItemKind]} ${manualItemLabel.trim()}`, amount: parseFloat(manualItemAmount) || 0, currency: manualItemCurrency };
+                          setP({ items: [...(pk.items || []), it] });
+                          setManualItemKind(''); setManualItemLabel(''); setManualItemAmount('');
+                        }} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>Ekle</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {(pk.items || []).length > 0 && (
                 <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
                   {pk.items.length} kalem · Toplam: {fmtP(pkgTotal(pk), pkgCurrency(pk))}
