@@ -1622,7 +1622,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                       );
                     })()}
                   </div>
-                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="ornek@email.com" />
+                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value.toLowerCase()})} placeholder="ornek@email.com" />
                 </div>
               </div>
             </div>
@@ -2036,7 +2036,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                         <span style={{ fontSize: '20px' }}>✉️</span>
                         <div>
                           <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>E-posta</p>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>{c.email}</p>
+                          <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>{(c.email || '').toLowerCase()}</p>
                         </div>
                       </a>
                     ) : (
@@ -2075,7 +2075,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <InfoBox label="Sektör" value={c.sector} />
-                  <InfoBox label="Firma" value={c.companyName} />
+                  <InfoBox label="Firma" value={titleCaseTr(c.companyName)} />
                 </div>
                 {c.notes && (
                   <div style={{ marginTop: '10px' }}>
@@ -7521,7 +7521,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{titleCaseTr(customer.firstName)} {titleCaseTr(customer.lastName)}</p>
-                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {customer.email}</p>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {(customer.email || '').toLowerCase()}</p>
                         </div>
                         <span style={{ fontSize: '20px' }}>→</span>
                       </div>
