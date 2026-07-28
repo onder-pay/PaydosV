@@ -5060,7 +5060,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 }
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
+function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -5458,6 +5458,71 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
     }
   };
 
+  // ===== Excel ile toplu rezervasyon yükleme =====
+  const [bulkResBusy, setBulkResBusy] = useState(false);
+  const roomTypeKeyFromLabel = (label, tourPrices) => {
+    const genKey = String(label || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const map = { 'single': 'singleRoom', 'tek': 'singleRoom', 'tek_kiilik': 'singleRoom', 'double': 'doubleRoom', 'çift': 'doubleRoom', 'twin': 'doubleRoom', 'triple': 'tripleRoom', 'üçlü': 'tripleRoom', 'suite': 'suiteRoom' };
+    const candidates = [genKey, map[String(label || '').toLowerCase()], label].filter(Boolean);
+    for (const k of candidates) if (tourPrices?.[k]?.amount > 0) return k;
+    const nrt = normalizeTr(label).replace(/\s+/g, '_');
+    for (const k of Object.keys(tourPrices || {})) if (normalizeTr(k).includes(nrt) || nrt.includes(normalizeTr(k))) return k;
+    return genKey || 'doubleRoom';
+  };
+  const handleBulkResUpload = async (tour, file) => {
+    if (!file) return;
+    setBulkResBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { showToast('Excel boş görünüyor', 'error'); return; }
+      let newCustomers = [...customers];
+      const newReservations = [];
+      let created = 0, matched = 0;
+      for (const row of rows) {
+        const name = String(row['Ad Soyad'] || row['Ad Soyad*'] || '').trim();
+        if (!name) continue;
+        const phone = String(row['Telefon'] || '').trim();
+        const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
+        const priceRaw = row['Tur Bedeli'] ?? row['Fiyat'] ?? 0;
+        const currency = String(row['Para Birimi'] || row['Para'] || '€').trim() || '€';
+        const paid = parseFloat(row['Ödenen'] ?? row['1. Ödeme'] ?? 0) || 0;
+        const passport = String(row['Pasaport No'] || '').trim();
+        // Müşteri eşleştir veya oluştur
+        let cust = newCustomers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(name));
+        if (!cust) {
+          const parts = name.split(/\s+/);
+          const newId = generateUniqueId();
+          cust = { id: newId, _docId: newId, firstName: parts[0], lastName: parts.slice(1).join(' '), phone, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
+          newCustomers.push(cust);
+          try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
+          created++;
+        } else matched++;
+        const roomKey = roomTypeKeyFromLabel(roomLabel, tour.prices);
+        const tourPrice = parseFloat(priceRaw) || tour.prices?.[roomKey]?.amount || 0;
+        newReservations.push({
+          id: Date.now() + Math.random(), sNo: (tour.reservations?.length || 0) + newReservations.length + 1,
+          customerId: cust.id, customerName: `${cust.firstName} ${cust.lastName}`.trim(),
+          customerPhone: phone || cust.phone || '', customerEmail: '', company: '',
+          roomType: roomKey, roommate: '', roommate3: '', hasChild: false,
+          passport, hasVisa: false, visaEndDate: '',
+          tourPrice, currency: tour.prices?.[roomKey]?.currency || currency,
+          payment1: paid, payment2: 0, payment3: 0, notes: '', label: ''
+        });
+      }
+      if (!newReservations.length) { showToast('Geçerli satır bulunamadı (Ad Soyad sütunu boş)', 'error'); return; }
+      setCustomers(newCustomers);
+      setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: [...(t.reservations || []), ...newReservations] } : t));
+      showToast(`${newReservations.length} rezervasyon eklendi (${created} yeni müşteri, ${matched} eşleşen)`, 'success');
+    } catch (e) {
+      showToast('Excel okunamadı: ' + e.message, 'error');
+    } finally {
+      setBulkResBusy(false);
+    }
+  };
+
   const openReservationForm = (tour) => {
     setSelectedTour(tour);
     setReservationData({
@@ -5796,6 +5861,8 @@ function ToursModule({ tours, setTours, customers, isMobile, showToast, addToUnd
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
+                <input type="file" accept=".xlsx,.xls" id={`bulkres-${tour.id}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkResUpload(tour, f); e.target.value = ''; }} />
+                <button onClick={() => document.getElementById(`bulkres-${tour.id}`).click()} disabled={bulkResBusy} style={{ padding: '8px 14px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: bulkResBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{bulkResBusy ? '⏳ Yükleniyor...' : '📤 Excel ile Liste Ekle'}</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
                 {cancelledRes.length > 0 && (
@@ -14243,7 +14310,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
