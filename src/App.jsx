@@ -5523,6 +5523,33 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     }
   };
 
+  const downloadBulkResTemplate = () => {
+    const headers = ['Ad Soyad*', 'Telefon', 'Oda Tipi', 'Tur Bedeli', 'Para Birimi', 'Ödenen', 'Pasaport No'];
+    const examples = [
+      ['Ahmet Yılmaz', '5551234567', 'Double', 1300, '€', 500, 'U12345678'],
+      ['Ayşe Yılmaz', '5551234567', 'Double', 1300, '€', 500, 'U12345679'],
+      ['Mehmet Kaya', '5559876543', 'Single', 1550, '€', 0, ''],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...examples]);
+    ws['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
+    const notes = [
+      ['Sütun', 'Açıklama'],
+      ['Ad Soyad*', 'ZORUNLU. Sistemde bu isimde müşteri varsa eşleştirilir; yoksa otomatik yeni müşteri oluşturulur.'],
+      ['Telefon', 'Opsiyonel. Yeni müşteri oluşturulursa buraya kaydedilir.'],
+      ['Oda Tipi', 'Örn: Single, Double, Twin, Triple. Turun kayıtlı fiyat listesiyle otomatik eşleştirilir.'],
+      ['Tur Bedeli', "Boş bırakılırsa, Oda Tipi'ne göre turun kayıtlı fiyatı otomatik kullanılır. Özel fiyat için buraya yazın."],
+      ['Para Birimi', 'Boşsa turun para birimi kullanılır.'],
+      ['Ödenen', 'Şimdiye kadar alınan toplam ödeme (1. Ödeme olarak işlenir). Boşsa 0 kabul edilir.'],
+      ['Pasaport No', 'Opsiyonel.'],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(notes);
+    ws2['!cols'] = [{ wch: 16 }, { wch: 75 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rezervasyon Listesi');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Açıklama');
+    XLSX.writeFile(wb, 'Tur_Rezervasyon_Sablonu.xlsx');
+  };
+
   const openReservationForm = (tour) => {
     setSelectedTour(tour);
     setReservationData({
@@ -5863,6 +5890,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
                 <input type="file" accept=".xlsx,.xls" id={`bulkres-${tour.id}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkResUpload(tour, f); e.target.value = ''; }} />
                 <button onClick={() => document.getElementById(`bulkres-${tour.id}`).click()} disabled={bulkResBusy} style={{ padding: '8px 14px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: bulkResBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{bulkResBusy ? '⏳ Yükleniyor...' : '📤 Excel ile Liste Ekle'}</button>
+                <button onClick={() => downloadBulkResTemplate()} style={{ padding: '8px 14px', background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>📋 Örnek İndir</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
                 {cancelledRes.length > 0 && (
