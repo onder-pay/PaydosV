@@ -359,6 +359,13 @@ const normalizeTr = (s) => (s == null ? '' : String(s))
   .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
   .toLowerCase().trim();
 
+// Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
+const titleCaseTr = (s) => {
+  if (!s) return '';
+  const lower = String(s).replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
+  return lower.replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+};
+
 const validatePassportNo = (passportNo) => {
   if (!passportNo) return null;
   const regex = /^[A-Z][0-9]{7,8}$/;
@@ -915,7 +922,7 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
                 todayBirthdays.map(c => (
                   <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                     <div>
-                      <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {c.firstName} {c.lastName}</div>
+                      <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>{c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                     </div>
                     {c.phone && (
@@ -938,7 +945,7 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
                   return (
                     <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{c.firstName} {c.lastName}</div>
+                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{bday} · {c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                       </div>
                       {c.phone && (
@@ -1948,7 +1955,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
             <div>
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{c.firstName} {c.lastName}</h2>
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone}</p>
             </div>
           </div>
@@ -2055,7 +2062,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <InfoBox label="TC Kimlik No" value={c.tcKimlik} />
                   <InfoBox label="TK Üyelik No" value={c.tkMemberNo} />
                   <InfoBox label="Doğum Tarihi" value={formatDate(c.birthDate)} />
-                  <InfoBox label="Doğum Yeri" value={c.birthPlace} />
+                  <InfoBox label="Doğum Yeri" value={titleCaseTr(c.birthPlace)} />
                   <InfoBox label="İkametgah İli" value={c.city} />
                 </div>
               </div>
@@ -2304,7 +2311,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
       <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{c.firstName} {c.lastName}</h3>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} {c.city && `• ${c.city}`}</p>
             {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
           </div>
@@ -2435,7 +2442,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                     <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(6,182,212,0.2)', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                           <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                         </div>
                         <div style={{ textAlign: 'right', fontSize: '10px' }}>
@@ -2527,7 +2534,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div onClick={() => setSelectedCustomer(c)} style={{ cursor: 'pointer' }}>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2558,7 +2565,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
               <div key={c.id} style={{ background: 'rgba(245,158,11,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(245,158,11,0.2)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div onClick={() => setSelectedCustomer(c)} style={{ cursor: 'pointer' }}>
-                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>🎂 {c.firstName} {c.lastName}</h3>
+                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>🎂 {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                     <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -2590,7 +2597,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(16,185,129,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2628,7 +2635,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(234,179,8,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(234,179,8,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} • {expVisa?.country}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2661,7 +2668,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(139,92,246,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2694,7 +2701,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2728,7 +2735,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(5,150,105,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(5,150,105,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.firstName} {c.lastName}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -4244,7 +4251,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {searchResults.map(c => (
                   <div key={c.id} onClick={() => selectCustomer(c)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px' }}>{c.firstName} {c.lastName}</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h4>
                     <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone} • {c.city || '-'}</p>
                   </div>
                 ))}
@@ -5850,7 +5857,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#ffffff', lineHeight: '1.3', flex: 1, paddingRight: '8px' }}>{tour.name}</h3>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#ffffff', lineHeight: '1.3', flex: 1, paddingRight: '8px' }}>{titleCaseTr(tour.name)}</h3>
                   <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', flexShrink: 0, fontWeight: '600',
                     background: tour.status === 'Aktif' ? 'rgba(34,197,94,0.2)' : tour.status === 'Tamamlandı' ? 'rgba(59,130,246,0.2)' : 'rgba(239,68,68,0.2)',
                     color: tour.status === 'Aktif' ? '#22c55e' : tour.status === 'Tamamlandı' ? '#3b82f6' : '#ef4444'
@@ -5881,7 +5888,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
               <button onClick={() => setSelectedTour(null)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
               <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{tour.name}</h3>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{titleCaseTr(tour.name)}</h3>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} &nbsp;|&nbsp; 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -5976,7 +5983,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 const email = customer?.email || res.customerEmail || '—';
                 return (
                   <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: res.cancelled ? 0.5 : 1 }}>
-                    <td style={{ padding: '10px 12px', fontWeight: '600', color: '#e2e8f0' }}>{res.customerName}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: '600', color: '#e2e8f0' }}>{titleCaseTr(res.customerName)}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{birthDate}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{tcKimlik}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{passportNo}</td>
@@ -6287,7 +6294,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', zIndex: 2000, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
                   <button onClick={() => setRoomingTour(null)} style={{ marginBottom: '16px', padding: '10px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>← Tura Dön</button>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h4 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🏨 {tour.name} — Odalama ({totalRooms} oda)</h4>
+                    <h4 style={{ margin: 0, fontSize: '16px', color: '#8b5cf6' }}>🏨 {titleCaseTr(tour.name)} — Odalama ({totalRooms} oda)</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={async () => {
                       const hi = tour.voucherHotel || {};
@@ -6744,7 +6751,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                         <option value="">Oda arkadaşı seçin...</option>
                         {(selectedTour?.reservations || [])
                           .filter(r => !r.cancelled && r.customerName && r.customerName !== reservationData.customerName)
-                          .map(r => <option key={r.id} value={r.customerName}>{r.customerName}</option>)}
+                          .map(r => <option key={r.id} value={r.customerName}>{titleCaseTr(r.customerName)}</option>)}
                       </select>
                     </div>
                     <div>
@@ -6757,7 +6764,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                         <option value="">3. kişi seçin...</option>
                         {(selectedTour?.reservations || [])
                           .filter(r => !r.cancelled && r.customerName && r.customerName !== reservationData.customerName && r.customerName !== reservationData.roommate)
-                          .map(r => <option key={r.id} value={r.customerName}>{r.customerName}</option>)}
+                          .map(r => <option key={r.id} value={r.customerName}>{titleCaseTr(r.customerName)}</option>)}
                       </select>
                     </div>
                   </div>
@@ -7513,7 +7520,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
                     <div key={customer.id} onClick={() => { setFormData({ ...formData, customer }); setFormStep('details'); }} style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{customer.firstName} {customer.lastName}</p>
+                          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{titleCaseTr(customer.firstName)} {titleCaseTr(customer.lastName)}</p>
                           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {customer.email}</p>
                         </div>
                         <span style={{ fontSize: '20px' }}>→</span>
@@ -8145,7 +8152,7 @@ KURALLAR:
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                 {custHits.map(c => (
                   <div key={c.id} onClick={() => pickCustomer(c)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.tcKimlik || '—'} · {c.phone || ''}</span>
+                    {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.tcKimlik || '—'} · {c.phone || ''}</span>
                   </div>
                 ))}
               </div>
@@ -10179,7 +10186,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
               {pk.customerName ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px' }}>
-                  <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {pk.customerName}</span>
+                  <span style={{ flex: 1, fontSize: '14px', color: '#22c55e', fontWeight: '600' }}>✓ {titleCaseTr(pk.customerName)}</span>
                   <button onClick={() => setP({ customerId: '', customerName: '', items: [] })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px' }}>×</button>
                 </div>
               ) : (
@@ -10190,7 +10197,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                       {hits.map(c => (
                         <div key={c.id} onMouseDown={() => { setP({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim() }); setPCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                          {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                         </div>
                       ))}
                     </div>
@@ -10282,7 +10289,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>📦 {pk.title || 'Paket'}</span>
                     <span style={{ fontSize: '13px', color: '#e8912a', fontWeight: '700' }}>{(pkgTotal(pk)).toLocaleString('tr-TR')} {pkgCurrency(pk)}</span>
                   </div>
-                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#94a3b8' }}>{pk.customerName}</p>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(pk.customerName)}</p>
                   <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
                     {(pk.items || []).map((it, i) => <div key={i} style={{ padding: '2px 0' }}>{it.label} — <b style={{ color: '#e8912a' }}>{(parseFloat(it.amount) || 0).toLocaleString('tr-TR')} {it.currency}</b></div>)}
                   </div>
@@ -10378,7 +10385,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                         {hits.map(c => (
                           <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setTCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                            {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                           </div>
                         ))}
                       </div>
@@ -10441,7 +10448,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <tbody>
                     {active.map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{r.customerName}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#94a3b8' }}>{r.pax || 1}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmtT(tResTotal(r), tr2.currency)}</td>
                         <td style={{ padding: '8px' }}>{r.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
@@ -10591,7 +10598,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '220px', overflowY: 'auto' }}>
                         {hits.map(c => (
                           <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setFCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            {c.firstName} {c.lastName} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                            {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                           </div>
                         ))}
                       </div>
@@ -10710,7 +10717,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     {active.map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
-                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{r.customerName}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
                         <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
@@ -10803,10 +10810,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <h3 style={{ margin: 0, fontSize: '15px', color: '#fff' }}>{h.name}</h3>
+                    <h3 style={{ margin: 0, fontSize: '15px', color: '#fff' }}>{titleCaseTr(h.name)}</h3>
                     <span style={{ fontSize: '11px', color: '#f59e0b' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span>
                   </div>
-                  <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
+                  <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {titleCaseTr(h.city)}{h.country ? `, ${titleCaseTr(h.country)}` : ''}</p>
                   {h.phone && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>📞 {h.phone}</p>}
                   {h.bookingCode && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>🎫 {h.bookingCode}</p>}
                   <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
@@ -10923,7 +10930,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         {excelPreview.map((h, i) => (
                           <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ padding: '6px 8px', color: '#64748b' }}>{i+1}</td>
-                            <td style={{ padding: '6px 8px', color: '#fff', fontWeight: '600' }}>{h.name}</td>
+                            <td style={{ padding: '6px 8px', color: '#fff', fontWeight: '600' }}>{titleCaseTr(h.name)}</td>
                             <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.city}</td>
                             <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{h.country}</td>
                             <td style={{ padding: '6px 8px', color: '#f59e0b' }}>{h.stars}★</td>
@@ -11433,8 +11440,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
           <div>
             <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Otel Listesi</button>
-            <h2 style={{ margin: 0, fontSize: '22px' }}>{h.name} <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span></h2>
-            <p style={{ margin: '4px 0', color: '#94a3b8', fontSize: '13px' }}>🌍 {h.city}{h.country ? `, ${h.country}` : ''}</p>
+            <h2 style={{ margin: 0, fontSize: '22px' }}>{titleCaseTr(h.name)} <span style={{ color: '#f59e0b', fontSize: '14px' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span></h2>
+            <p style={{ margin: '4px 0', color: '#94a3b8', fontSize: '13px' }}>🌍 {titleCaseTr(h.city)}{h.country ? `, ${titleCaseTr(h.country)}` : ''}</p>
             {h.address && <p style={{ margin: '4px 0', color: '#64748b', fontSize: '12px' }}>📍 {h.address}</p>}
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '4px' }}>
               {h.phone && <span style={{ fontSize: '12px', color: '#64748b' }}>📞 {h.phone}</span>}
@@ -11693,7 +11700,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           <div onClick={() => { setShowResForm(false); setEditingRes(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }}>
             <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
             <div onClick={e => e.stopPropagation()} className="hide-scrollbar" style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
-              <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>{editingRes ? '✏️ Rezervasyon Düzenle' : '➕ Yeni Rezervasyon'} — {h.name}</h3>
+              <h3 style={{ margin: '0 0 20px', fontSize: '18px' }}>{editingRes ? '✏️ Rezervasyon Düzenle' : '➕ Yeni Rezervasyon'} — {titleCaseTr(h.name)}</h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {/* Müşteri seçimi */}
@@ -11734,7 +11741,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                               <div key={c.id} onMouseDown={() => handleCustSelect(c)} style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                <div style={{ color: '#fff', fontWeight: '600' }}>{c.firstName} {c.lastName}</div>
+                                <div style={{ color: '#fff', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
                                 {c.phone && <div style={{ fontSize: '11px', color: '#64748b' }}>{c.phone}</div>}
                               </div>
                             ))}
@@ -12146,10 +12153,10 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
                   {isMobile && <span style={{ fontSize: '11px', color: '#64748b' }}>Acente Adı</span>}
                   {agency.link ? (
                     <a href={agency.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {agency.name} <span style={{ fontSize: '11px', opacity: 0.6 }}>↗</span>
+                      {titleCaseTr(agency.name)} <span style={{ fontSize: '11px', opacity: 0.6 }}>↗</span>
                     </a>
                   ) : (
-                    <span style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700' }}>{agency.name}</span>
+                    <span style={{ fontSize: '14px', color: '#f59e0b', fontWeight: '700' }}>{titleCaseTr(agency.name)}</span>
                   )}
                 </div>
 
