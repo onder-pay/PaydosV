@@ -5467,6 +5467,54 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
   // ===== Excel ile toplu rezervasyon yükleme =====
   const [bulkResBusy, setBulkResBusy] = useState(false);
+  // ===== Toplu Mail =====
+  const [showBulkMail, setShowBulkMail] = useState(false);
+  const [bulkMailTour, setBulkMailTour] = useState(null);
+  const [bulkMailSubject, setBulkMailSubject] = useState('');
+  const [bulkMailBody, setBulkMailBody] = useState('');
+  const [bulkMailSending, setBulkMailSending] = useState(false);
+  const [bulkMailResult, setBulkMailResult] = useState(null);
+  const openBulkMail = (tour) => {
+    setBulkMailTour(tour);
+    setBulkMailSubject(`${tour.name} - Bilgilendirme`);
+    setBulkMailBody(`Sayın {isim},\n\n{tur} turumuz ({tarih}) ile ilgili bilgilendirme:\n\n\n\nSaygılarımızla,\nPaydos Turizm`);
+    setBulkMailResult(null);
+    setShowBulkMail(true);
+  };
+  const sendBulkMail = async () => {
+    const tour = bulkMailTour;
+    const active = (tour.reservations || []).filter(r => !r.cancelled);
+    // Her katılımcının e-postasını bul
+    const recipients = [];
+    const noEmail = [];
+    active.forEach(res => {
+      const cust = customers.find(c => String(c.id) === String(res.customerId)) ||
+        customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
+      const email = (cust?.email || res.customerEmail || '').trim();
+      if (email) recipients.push({ name: res.customerName, email });
+      else noEmail.push(res.customerName);
+    });
+    if (!recipients.length) { showToast('Hiçbir katılımcının e-postası yok', 'error'); return; }
+    if (!bulkMailSubject.trim() || !bulkMailBody.trim()) { showToast('Konu ve mesaj zorunlu', 'error'); return; }
+    setBulkMailSending(true);
+    let sent = 0, failed = 0;
+    const tarih = `${formatDate(tour.startDate)} - ${formatDate(tour.endDate)}`;
+    for (const r of recipients) {
+      const subject = bulkMailSubject.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
+      const bodyText = bulkMailBody.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
+      const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+      try {
+        const resp = await fetch('/.netlify/functions/send-mail', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: r.email, from: 'tur@paydostur.com', subject, html, text: bodyText })
+        });
+        if (resp.ok) sent++; else failed++;
+      } catch (e) { failed++; }
+    }
+    setBulkMailSending(false);
+    setBulkMailResult({ sent, failed, noEmail });
+    showToast(`${sent} mail gönderildi${failed ? `, ${failed} başarısız` : ''}${noEmail.length ? `, ${noEmail.length} e-postasız` : ''}`, failed ? 'warning' : 'success');
+  };
   const [selectedRes, setSelectedRes] = useState([]); // seçili rezervasyon id'leri
   const bulkDeleteReservations = async (tour) => {
     if (!selectedRes.length) return;
@@ -5979,6 +6027,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                   XLSX.utils.book_append_sheet(wb, ws, isDetail ? 'Detaylı Liste' : 'Genel Liste');
                   XLSX.writeFile(wb, `${tour.name}_${isDetail ? 'Detayli' : 'Genel'}_Liste.xlsx`);
                 }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.18)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Liste Excel</button>
+                <button onClick={() => openBulkMail(tour)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Toplu Mail</button>
                 <span style={{ width: '1px', alignSelf: 'stretch', background: 'rgba(255,255,255,0.12)', margin: '0 2px' }} />
                 <button onClick={() => { openEditForm(tour); setSelectedTour(null); }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
                 <button onClick={() => { deleteTour(tour); setSelectedTour(null); }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
@@ -6631,6 +6680,42 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                   💾 Kaydet
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toplu Mail Modal */}
+      {showBulkMail && bulkMailTour && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }} onClick={() => !bulkMailSending && setShowBulkMail(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', borderRadius: '16px', padding: '24px', maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <h2 style={{ fontSize: '18px', margin: 0, color: '#e8f1f8' }}>📧 Toplu Mail — {titleCaseTr(bulkMailTour.name)}</h2>
+              <button onClick={() => !bulkMailSending && setShowBulkMail(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '20px' }}>×</button>
+            </div>
+            {(() => {
+              const active = (bulkMailTour.reservations || []).filter(r => !r.cancelled);
+              const withEmail = active.filter(res => {
+                const cust = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
+                return (cust?.email || res.customerEmail || '').trim();
+              }).length;
+              return <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>{active.length} katılımcıdan <b style={{ color: '#10b981' }}>{withEmail}</b> tanesinin e-postası var. Gönderen: <b>tur@paydostur.com</b></p>;
+            })()}
+            <div style={{ marginBottom: '10px', padding: '8px 12px', background: 'rgba(59,130,246,0.08)', borderRadius: '8px', fontSize: '11px', color: '#94a3b8' }}>
+              Kişiselleştirme: <code style={{ color: '#3b82f6' }}>{'{isim}'}</code> <code style={{ color: '#3b82f6' }}>{'{tur}'}</code> <code style={{ color: '#3b82f6' }}>{'{tarih}'}</code> — her katılımcıya kendi bilgisiyle gider
+            </div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>Konu</label>
+            <input value={bulkMailSubject} onChange={e => setBulkMailSubject(e.target.value)} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '12px' }} />
+            <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>Mesaj</label>
+            <textarea value={bulkMailBody} onChange={e => setBulkMailBody(e.target.value)} rows={9} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '14px', resize: 'vertical', fontFamily: 'inherit' }} />
+            {bulkMailResult && (
+              <div style={{ marginBottom: '12px', padding: '10px 14px', background: 'rgba(16,185,129,0.1)', borderRadius: '8px', fontSize: '12px', color: '#10b981' }}>
+                ✓ {bulkMailResult.sent} gönderildi{bulkMailResult.failed ? ` · ${bulkMailResult.failed} başarısız` : ''}{bulkMailResult.noEmail.length ? ` · E-postasız: ${bulkMailResult.noEmail.slice(0, 5).join(', ')}${bulkMailResult.noEmail.length > 5 ? '...' : ''}` : ''}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowBulkMail(false)} disabled={bulkMailSending} style={{ padding: '10px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>Kapat</button>
+              <button onClick={sendBulkMail} disabled={bulkMailSending} style={{ padding: '10px 20px', background: bulkMailSending ? 'rgba(100,116,139,0.3)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: bulkMailSending ? 'wait' : 'pointer', fontSize: '13px' }}>{bulkMailSending ? '⏳ Gönderiliyor...' : '📧 Gönder'}</button>
             </div>
           </div>
         </div>
