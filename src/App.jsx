@@ -861,7 +861,7 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
         {todayActivities.length === 0 ? (
           <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Bugün henüz bir kayıt eklenmedi</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {todayActivities.map((a, i) => {
               const t = a.time ? new Date(a.time) : null;
               const timeStr = t && !isNaN(t.getTime()) ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
@@ -5467,6 +5467,23 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
   // ===== Excel ile toplu rezervasyon yükleme =====
   const [bulkResBusy, setBulkResBusy] = useState(false);
+  const [selectedRes, setSelectedRes] = useState([]); // seçili rezervasyon id'leri
+  const bulkDeleteReservations = async (tour) => {
+    if (!selectedRes.length) return;
+    if (!window.confirm(`${selectedRes.length} rezervasyonu KALICI olarak silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz.`)) return;
+    const targetTour = tours.find(t => t.id === tour.id);
+    if (!targetTour) return;
+    const updatedTour = { ...targetTour, reservations: targetTour.reservations.filter(r => !selectedRes.includes(r.id)) };
+    const u = tours.map(t => t.id === tour.id ? updatedTour : t);
+    setTours(u); setSelectedTour(updatedTour);
+    try {
+      const docId = targetTour._docId || String(targetTour.id);
+      const sd = { ...updatedTour }; delete sd._docId;
+      await setDoc(doc(db, 'tours', docId), sd, { merge: true });
+    } catch (e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+    showToast(`${selectedRes.length} rezervasyon silindi`, 'info');
+    setSelectedRes([]);
+  };
   const roomTypeKeyFromLabel = (label, tourPrices) => {
     const genKey = String(label || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     const map = { 'single': 'singleRoom', 'tek': 'singleRoom', 'tek_kiilik': 'singleRoom', 'double': 'doubleRoom', 'çift': 'doubleRoom', 'twin': 'doubleRoom', 'triple': 'tripleRoom', 'üçlü': 'tripleRoom', 'suite': 'suiteRoom' };
@@ -5487,10 +5504,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       if (!rows.length) { showToast('Excel boş görünüyor', 'error'); return; }
       let newCustomers = [...customers];
       const newReservations = [];
-      let created = 0, matched = 0;
+      let created = 0, matched = 0, skipped = 0;
+      // Turda zaten var olan isimler (mükerrer yüklemeyi önle)
+      const existingNames = new Set((tour.reservations || []).filter(r => !r.cancelled).map(r => normalizeTr(r.customerName || '')));
       for (const row of rows) {
         const name = String(row['Ad Soyad'] || row['Ad Soyad*'] || '').trim();
         if (!name) continue;
+        // Bu turda zaten varsa atla
+        if (existingNames.has(normalizeTr(name))) { skipped++; continue; }
+        existingNames.add(normalizeTr(name)); // aynı dosyada da tekrar varsa engelle
         const phone = String(row['Telefon'] || '').trim();
         const email = String(row['E-posta'] || row['Email'] || '').trim();
         const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
@@ -5523,7 +5545,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       if (!newReservations.length) { showToast('Geçerli satır bulunamadı (Ad Soyad sütunu boş)', 'error'); return; }
       setCustomers(newCustomers);
       setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: [...(t.reservations || []), ...newReservations] } : t));
-      showToast(`${newReservations.length} rezervasyon eklendi (${created} yeni müşteri, ${matched} eşleşen)`, 'success');
+      showToast(`${newReservations.length} rezervasyon eklendi (${created} yeni müşteri, ${matched} eşleşen)${skipped > 0 ? ` · ${skipped} mükerrer atlandı` : ''}`, 'success');
     } catch (e) {
       showToast('Excel okunamadı: ' + e.message, 'error');
     } finally {
@@ -5900,6 +5922,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <input type="file" accept=".xlsx,.xls" id={`bulkres-${tour.id}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkResUpload(tour, f); e.target.value = ''; }} />
                 <button onClick={() => document.getElementById(`bulkres-${tour.id}`).click()} disabled={bulkResBusy} style={{ padding: '8px 14px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: bulkResBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{bulkResBusy ? '⏳ Yükleniyor...' : '📤 Excel ile Liste Ekle'}</button>
                 <button onClick={() => downloadBulkResTemplate()} style={{ padding: '8px 14px', background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>📋 Örnek İndir</button>
+                <button onClick={() => {
+                  const list = tour.reservations || [];
+                  const seen = new Set(); const unique = []; let dup = 0;
+                  list.forEach(r => {
+                    if (r.cancelled) { unique.push(r); return; }
+                    const key = `${normalizeTr(r.customerName || '')}|${r.roomType || ''}`;
+                    if (seen.has(key)) { dup++; } else { seen.add(key); unique.push(r); }
+                  });
+                  if (dup === 0) { showToast('Mükerrer rezervasyon yok', 'info'); return; }
+                  if (!window.confirm(`${dup} mükerrer rezervasyon (aynı isim + oda tipi) bulundu. Silinsin mi?`)) return;
+                  setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: unique } : t));
+                  showToast(`${dup} mükerrer rezervasyon silindi`, 'success');
+                }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
                 {cancelledRes.length > 0 && (
@@ -5983,6 +6018,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 const email = customer?.email || res.customerEmail || '—';
                 return (
                   <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: res.cancelled ? 0.5 : 1 }}>
+                    <td style={{ padding: '10px 12px', width: '30px' }}><input type="checkbox" checked={selectedRes.includes(res.id)} onChange={e => setSelectedRes(prev => e.target.checked ? [...prev, res.id] : prev.filter(x => x !== res.id))} /></td>
                     <td style={{ padding: '10px 12px', fontWeight: '600', color: '#e2e8f0' }}>{titleCaseTr(res.customerName)}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{birthDate}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px', fontFamily: 'monospace' }}>{tcKimlik}</td>
@@ -6073,6 +6109,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
                         return (
                           <tr key={res.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: res.cancelled ? 0.45 : 1, background: res.cancelled ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
+                            <td style={{ padding: '10px 12px', width: '30px' }}><input type="checkbox" checked={selectedRes.includes(res.id)} onChange={e => setSelectedRes(prev => e.target.checked ? [...prev, res.id] : prev.filter(x => x !== res.id))} /></td>
                             <td style={{ padding: '10px 12px', fontWeight: '600', textDecoration: res.cancelled ? 'line-through' : 'none' }}>
                               <span
                                 onClick={() => {
@@ -6084,7 +6121,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                                 style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}
                                 title="Profili aç"
                               >
-                                {res.customerName}
+                                {titleCaseTr(res.customerName)}
                               </span>
                               {res.cancelled && (
                                 <>
@@ -6196,10 +6233,20 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                   {/* AKTİF REZERVASYONLAR */}
                   {!(showCancelled[tour.id] && iptalRes.length > 0) && aktifRes.length > 0 && (
                     <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '12px' }}>
+                      {selectedRes.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.2)' }}>
+                          <span style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: '600' }}>{selectedRes.length} rezervasyon seçili</span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={() => setSelectedRes([])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>Seçimi Temizle</button>
+                            <button onClick={() => bulkDeleteReservations(tour)} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Seçilenleri Sil ({selectedRes.length})</button>
+                          </div>
+                        </div>
+                      )}
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', minWidth: '500px' }}>
                           <thead>
                             <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                              <th style={{ padding: '10px 12px', width: '30px' }}><input type="checkbox" checked={aktifRes.length > 0 && aktifRes.every(r => selectedRes.includes(r.id))} onChange={e => setSelectedRes(e.target.checked ? aktifRes.map(r => r.id) : [])} /></th>
                               {(detailedView[tour.id]
                                 ? ['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', '']
                                 : ['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', '']
