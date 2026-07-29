@@ -3371,6 +3371,43 @@ function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   );
 }
 
+function SmtpConfigCard({ appSettings, setAppSettings, showToast }) {
+  const smtp = appSettings?.smtp || {};
+  const set = (patch) => setAppSettings({ ...appSettings, smtp: { ...smtp, ...patch } });
+  const [showPass, setShowPass] = useState(false);
+  const field = (label, key, opts = {}) => (
+    <div style={{ marginBottom: '10px' }}>
+      <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>{label}</label>
+      <input
+        type={opts.pass && !showPass ? 'password' : 'text'}
+        value={smtp[key] || ''}
+        onChange={e => set({ [key]: opts.lower ? e.target.value.toLowerCase() : e.target.value })}
+        placeholder={opts.placeholder || ''}
+        style={{ width: '100%', maxWidth: '380px', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+      />
+    </div>
+  );
+  return (
+    <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Buradan girilen bilgiler mail gönderiminde kullanılır. Boş bırakılan alanlar için sunucu varsayılanı (Netlify env) kullanılır.</p>
+      {field('SMTP Sunucu (host)', 'host', { placeholder: 'smtp.sirketemail.com' })}
+      {field('Port', 'port', { placeholder: '465' })}
+      {field('Kullanıcı (user)', 'user', { placeholder: 'vize@paydostur.com', lower: true })}
+      <div style={{ marginBottom: '10px' }}>
+        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Şifre (pass)</label>
+        <div style={{ display: 'flex', gap: '6px', maxWidth: '380px' }}>
+          <input type={showPass ? 'text' : 'password'} value={smtp.pass || ''} onChange={e => set({ pass: e.target.value })} placeholder="••••••••" style={{ flex: 1, padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
+          <button type="button" onClick={() => setShowPass(!showPass)} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>{showPass ? '🙈' : '👁️'}</button>
+        </div>
+      </div>
+      {field('Gönderen Adresi (from)', 'from', { placeholder: 'vize@paydostur.com', lower: true })}
+      <button onClick={() => showToast?.('SMTP ayarları kaydedildi', 'success')} style={{ marginTop: '6px', padding: '10px 20px', background: 'linear-gradient(135deg, #14b8a6, #0d9488)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
+      <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ Şifre veritabanında saklanır. Sadece yetkili kullanıcıların CRM'e eriştiğinden emin olun.</p>
+    </div>
+  );
+}
+
 function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToast }) {
   const allVisaTypes = useMemo(() => {
     const durations = appSettings?.visaDurations || {};
@@ -3430,20 +3467,12 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {mode === 'visa' && (
-      <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
-        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>SMTP bilgileri Netlify Environment Variables olarak saklanır.</p>
-        <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '14px', fontFamily: 'monospace', fontSize: '12px', color: '#94a3b8', lineHeight: 1.8 }}>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_HOST</span> = smtp.sirketemail.com</div>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_PORT</span> = 465</div>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_USER</span> = vize@paydostur.com</div>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_PASS</span> = ••••••••••••</div>
-          <div><span style={{ color: '#14b8a6' }}>SMTP_FROM</span> = vize@paydostur.com</div>
-        </div>
-      </div>
+      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
       )}
 
-      {mode === 'tour' && (
+      {mode === 'tour' && (<>
+      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+
       <div style={{ background: 'rgba(59,130,246,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.2)' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>📧 Tur Maili Gönderen Adresi</h3>
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>Turlardan yapılan toplu mail gönderimlerinde kullanılacak gönderen adresi. Boş bırakılırsa varsayılan SMTP adresi kullanılır.</p>
@@ -3456,7 +3485,62 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
         />
         <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ Bu adresin çalışması için SMTP sunucunun bu adresten gönderime izin vermesi gerekir (alias veya yetkili hesap).</p>
       </div>
-      )}
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Tur Maili Şablonu</h3>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+          Toplu mail gönderirken bu şablon varsayılan olarak yüklenir.<br/>
+          Değişkenler: <code style={{ color: '#3b82f6' }}>{'{isim}'}</code> <code style={{ color: '#3b82f6' }}>{'{tur}'}</code> <code style={{ color: '#3b82f6' }}>{'{tarih}'}</code>
+        </p>
+        <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>📌 Mail Konusu</label>
+        <input
+          value={appSettings?.tourMailTemplate?.subject || ''}
+          onChange={e => setAppSettings({ ...appSettings, tourMailTemplate: { ...(appSettings?.tourMailTemplate || {}), subject: e.target.value } })}
+          placeholder="{tur} - Bilgilendirme"
+          style={{ width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '12px' }}
+        />
+        <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>📝 Mail İçeriği</label>
+        <textarea
+          value={appSettings?.tourMailTemplate?.body || ''}
+          onChange={e => setAppSettings({ ...appSettings, tourMailTemplate: { ...(appSettings?.tourMailTemplate || {}), body: e.target.value } })}
+          rows={9}
+          placeholder={"Sayın {isim},\n\n{tur} turumuz ({tarih}) ile ilgili bilgilendirme:\n\n\n\nSaygılarımızla,\nPaydos Turizm"}
+          style={{ width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
+        />
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>🧪 Test Maili Gönder</h3>
+        <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Tur mail şablonunu örnek bilgilerle bir adrese gönder</p>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="test@ornek.com"
+            style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
+          <button onClick={async () => {
+            if (!testEmail.trim()) return;
+            const tpl = appSettings?.tourMailTemplate || {};
+            if (!tpl.subject && !tpl.body) { showToast?.('Önce şablon doldurun', 'error'); return; }
+            setTestSending(true);
+            const rep = (s) => (s || '').replace(/{isim}/g, 'Örnek Katılımcı').replace(/{tur}/g, 'Örnek Turu').replace(/{tarih}/g, new Date().toLocaleDateString('tr-TR'));
+            const subject = rep(tpl.subject) || 'Tur Bilgilendirme';
+            const bodyText = rep(tpl.body);
+            const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+            try {
+              const resp = await fetch('/.netlify/functions/send-mail', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.tourMailFrom || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtp })
+              });
+              if (resp.ok) showToast?.(`✅ Test maili gönderildi: ${testEmail}`, 'success');
+              else { const d = await resp.json(); showToast?.(`❌ ${d.error || 'Gönderilemedi'}`, 'error'); }
+            } catch (err) { showToast?.(`❌ ${err.message}`, 'error'); }
+            finally { setTestSending(false); }
+          }} disabled={testSending || !testEmail.trim()}
+            style={{ padding: '10px 18px', background: testSending ? 'rgba(59,130,246,0.3)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: 'white', cursor: testSending ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
+            {testSending ? '⏳ Gönderiliyor...' : '📤 Test Gönder'}
+          </button>
+        </div>
+      </div>
+      </>)}
+
 
       {mode === 'visa' && (<>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -3581,7 +3665,8 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
         subject,
         html,
         text: bodyText,
-        attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url }))
+        attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url })),
+        smtp: appSettings?.smtp
       })
     });
     const data = await resp.json();
@@ -5496,8 +5581,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [bulkMailAttach, setBulkMailAttach] = useState([]); // seçili ek id'leri
   const openBulkMail = (tour) => {
     setBulkMailTour(tour);
-    setBulkMailSubject(`${tour.name} - Bilgilendirme`);
-    setBulkMailBody(`Sayın {isim},\n\n{tur} turumuz ({tarih}) ile ilgili bilgilendirme:\n\n\n\nSaygılarımızla,\nPaydos Turizm`);
+    const tpl = appSettings?.tourMailTemplate || {};
+    // Ayarlardaki şablon varsa onu kullan, yoksa varsayılan
+    setBulkMailSubject(tpl.subject || `${tour.name} - Bilgilendirme`);
+    setBulkMailBody(tpl.body || `Sayın {isim},\n\n{tur} turumuz ({tarih}) ile ilgili bilgilendirme:\n\n\n\nSaygılarımızla,\nPaydos Turizm`);
     setBulkMailResult(null);
     setBulkMailAttach([]);
     setShowBulkMail(true);
@@ -5536,7 +5623,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       try {
         const resp = await fetch('/.netlify/functions/send-mail', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments })
+          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments, smtp: appSettings?.smtp })
         });
         if (resp.ok) sent++; else failed++;
       } catch (e) { failed++; }
