@@ -5483,7 +5483,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   };
   const sendBulkMail = async () => {
     const tour = bulkMailTour;
-    const active = (tour.reservations || []).filter(r => !r.cancelled);
+    // Seçili rezervasyon varsa sadece onlara, yoksa tüm aktiflere
+    const activeAll = (tour.reservations || []).filter(r => !r.cancelled);
+    const active = selectedRes.length > 0 ? activeAll.filter(r => selectedRes.includes(r.id)) : activeAll;
     // Her katılımcının e-postasını bul
     const recipients = [];
     const noEmail = [];
@@ -6301,6 +6303,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                           <span style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: '600' }}>{selectedRes.length} rezervasyon seçili</span>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button onClick={() => setSelectedRes([])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>Seçimi Temizle</button>
+                            <button onClick={() => openBulkMail(tour)} style={{ padding: '6px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Seçilenlere Mail ({selectedRes.length})</button>
                             <button onClick={() => bulkDeleteReservations(tour)} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Seçilenleri Sil ({selectedRes.length})</button>
                           </div>
                         </div>
@@ -6694,12 +6697,13 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               <button onClick={() => !bulkMailSending && setShowBulkMail(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '20px' }}>×</button>
             </div>
             {(() => {
-              const active = (bulkMailTour.reservations || []).filter(r => !r.cancelled);
+              const activeAll = (bulkMailTour.reservations || []).filter(r => !r.cancelled);
+              const active = selectedRes.length > 0 ? activeAll.filter(r => selectedRes.includes(r.id)) : activeAll;
               const withEmail = active.filter(res => {
                 const cust = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
                 return (cust?.email || res.customerEmail || '').trim();
               }).length;
-              return <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>{active.length} katılımcıdan <b style={{ color: '#10b981' }}>{withEmail}</b> tanesinin e-postası var. Gönderen: <b>tur@paydostur.com</b></p>;
+              return <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>{selectedRes.length > 0 ? <><b style={{ color: '#3b82f6' }}>{active.length} seçili</b> katılımcıdan</> : <>{active.length} katılımcıdan</>} <b style={{ color: '#10b981' }}>{withEmail}</b> tanesinin e-postası var. Gönderen: <b>tur@paydostur.com</b></p>;
             })()}
             <div style={{ marginBottom: '10px', padding: '8px 12px', background: 'rgba(59,130,246,0.08)', borderRadius: '8px', fontSize: '11px', color: '#94a3b8' }}>
               Kişiselleştirme: <code style={{ color: '#3b82f6' }}>{'{isim}'}</code> <code style={{ color: '#3b82f6' }}>{'{tur}'}</code> <code style={{ color: '#3b82f6' }}>{'{tarih}'}</code> — her katılımcıya kendi bilgisiyle gider
