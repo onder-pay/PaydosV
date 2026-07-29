@@ -3445,11 +3445,11 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
         <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>📧 Tur Maili Gönderen Adresi</h3>
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>Turlardan yapılan toplu mail gönderimlerinde kullanılacak gönderen adresi. Boş bırakılırsa varsayılan SMTP adresi kullanılır.</p>
         <input
-          type="email"
+          type="text"
           value={appSettings?.tourMailFrom || ''}
-          onChange={e => setAppSettings({ ...appSettings, tourMailFrom: e.target.value.toLowerCase().trim() })}
+          onChange={e => setAppSettings({ ...appSettings, tourMailFrom: e.target.value.toLowerCase() })}
           placeholder="tur@paydostur.com"
-          style={{ width: '100%', maxWidth: '360px', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }}
+          style={{ display: 'block', width: '100%', maxWidth: '360px', padding: '11px 14px', background: '#0a1626', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
         />
         <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ Bu adresin çalışması için SMTP sunucunun bu adresten gönderime izin vermesi gerekir (alias veya yetkili hesap).</p>
       </div>
@@ -5487,11 +5487,13 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [bulkMailBody, setBulkMailBody] = useState('');
   const [bulkMailSending, setBulkMailSending] = useState(false);
   const [bulkMailResult, setBulkMailResult] = useState(null);
+  const [bulkMailAttach, setBulkMailAttach] = useState([]); // seçili ek id'leri
   const openBulkMail = (tour) => {
     setBulkMailTour(tour);
     setBulkMailSubject(`${tour.name} - Bilgilendirme`);
     setBulkMailBody(`Sayın {isim},\n\n{tur} turumuz ({tarih}) ile ilgili bilgilendirme:\n\n\n\nSaygılarımızla,\nPaydos Turizm`);
     setBulkMailResult(null);
+    setBulkMailAttach([]);
     setShowBulkMail(true);
   };
   const sendBulkMail = async () => {
@@ -5515,6 +5517,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     let sent = 0, failed = 0;
     const tourFrom = (appSettings?.tourMailFrom || '').trim() || undefined; // boşsa function SMTP_FROM'a düşer
     const tarih = `${formatDate(tour.startDate)} - ${formatDate(tour.endDate)}`;
+    // Seçili ekleri hazırla
+    const allAtt = appSettings?.attachments || [];
+    const mailAttachments = allAtt.filter(a => bulkMailAttach.includes(a.id)).map(a => ({ filename: a.name, url: a.url }));
     for (const r of recipients) {
       const subject = bulkMailSubject.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
       const bodyText = bulkMailBody.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
@@ -5522,7 +5527,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       try {
         const resp = await fetch('/.netlify/functions/send-mail', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText })
+          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments })
         });
         if (resp.ok) sent++; else failed++;
       } catch (e) { failed++; }
@@ -6726,6 +6731,23 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             <input value={bulkMailSubject} onChange={e => setBulkMailSubject(e.target.value)} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '12px' }} />
             <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>Mesaj</label>
             <textarea value={bulkMailBody} onChange={e => setBulkMailBody(e.target.value)} rows={9} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '14px', resize: 'vertical', fontFamily: 'inherit' }} />
+            {(() => {
+              const allAtt = appSettings?.attachments || [];
+              if (!allAtt.length) return <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>📎 Ek eklemek için önce Ayarlar → Dosya Ekleri'nden dosya yükleyin.</p>;
+              return (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📎 Ekler (isteğe bağlı)</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto' }}>
+                    {allAtt.map(a => (
+                      <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', background: bulkMailAttach.includes(a.id) ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${bulkMailAttach.includes(a.id) ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8' }}>
+                        <input type="checkbox" checked={bulkMailAttach.includes(a.id)} onChange={e => setBulkMailAttach(prev => e.target.checked ? [...prev, a.id] : prev.filter(x => x !== a.id))} />
+                        📄 {a.name}{a.size ? <span style={{ color: '#64748b', fontSize: '10px' }}> · {(a.size / 1024).toFixed(0)} KB</span> : null}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {bulkMailResult && (
               <div style={{ marginBottom: '12px', padding: '10px 14px', background: 'rgba(16,185,129,0.1)', borderRadius: '8px', fontSize: '12px', color: '#10b981' }}>
                 ✓ {bulkMailResult.sent} gönderildi{bulkMailResult.failed ? ` · ${bulkMailResult.failed} başarısız` : ''}{bulkMailResult.noEmail.length ? ` · E-postasız: ${bulkMailResult.noEmail.slice(0, 5).join(', ')}${bulkMailResult.noEmail.length > 5 ? '...' : ''}` : ''}
