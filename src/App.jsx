@@ -5530,7 +5530,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
           newCustomers.push(cust);
           try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
           created++;
-        } else matched++;
+        } else {
+          matched++;
+          // Eşleşen müşteride boş olan alanları Excel'den doldur (TC, telefon, e-posta)
+          const patch = {};
+          if (tcKimlik && !cust.tcKimlik) patch.tcKimlik = tcKimlik;
+          if (phone && !cust.phone) patch.phone = phone;
+          if (email && !cust.email) patch.email = email;
+          if (Object.keys(patch).length) {
+            cust = { ...cust, ...patch, updatedAt: new Date().toISOString() };
+            newCustomers = newCustomers.map(c => c.id === cust.id ? cust : c);
+            try { await setDoc(doc(db, 'customers', cust._docId || String(cust.id)), patch, { merge: true }); } catch (e) {}
+          }
+        }
         const roomKey = roomTypeKeyFromLabel(roomLabel, tour.prices);
         const tourPrice = parseFloat(priceRaw) || tour.prices?.[roomKey]?.amount || 0;
         newReservations.push({
