@@ -50,12 +50,21 @@ exports.handler = async (event) => {
       auth: { user, pass },
     });
 
-    // Ekleri (varsa) URL üzerinden ilet
-    let mailAttachments;
+    // Ekleri sunucuda indir, indirilemeyenleri atla (mail yine gitsin)
+    let mailAttachments = [];
+    const attachWarnings = [];
     if (Array.isArray(attachments) && attachments.length) {
-      mailAttachments = attachments
-        .filter(a => a && a.url)
-        .map(a => ({ filename: a.filename || 'ek', path: a.url }));
+      for (const a of attachments) {
+        if (!a || !a.url) continue;
+        try {
+          const resp = await fetch(a.url);
+          if (!resp.ok) { attachWarnings.push(`${a.filename || 'ek'}: indirilemedi (${resp.status})`); continue; }
+          const buf = Buffer.from(await resp.arrayBuffer());
+          mailAttachments.push({ filename: a.filename || 'ek', content: buf });
+        } catch (e) {
+          attachWarnings.push(`${a.filename || 'ek'}: ${e.message}`);
+        }
+      }
     }
 
     const info = await transporter.sendMail({
@@ -65,13 +74,13 @@ exports.handler = async (event) => {
       subject,
       text: text || '',
       html: html || undefined,
-      attachments: mailAttachments,
+      attachments: mailAttachments.length ? mailAttachments : undefined,
     });
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ ok: true, messageId: info.messageId }),
+      body: JSON.stringify({ ok: true, messageId: info.messageId, attachmentWarnings: attachWarnings.length ? attachWarnings : undefined }),
     };
   } catch (err) {
     return {
