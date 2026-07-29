@@ -5515,6 +5515,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         existingNames.add(normalizeTr(name)); // aynı dosyada da tekrar varsa engelle
         const phone = String(row['Telefon'] || '').trim();
         const email = String(row['E-posta'] || row['Email'] || '').trim();
+        const tcKimlik = String(row['TC Kimlik No'] || row['TC'] || '').trim().replace(/\D/g, '');
         const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
         const priceRaw = row['Tur Bedeli'] ?? row['Fiyat'] ?? 0;
         const currency = String(row['Para Birimi'] || row['Para'] || '€').trim() || '€';
@@ -5525,7 +5526,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         if (!cust) {
           const parts = name.split(/\s+/);
           const newId = generateUniqueId();
-          cust = { id: newId, _docId: newId, firstName: parts[0], lastName: parts.slice(1).join(' '), phone, email, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
+          cust = { id: newId, _docId: newId, firstName: parts[0], lastName: parts.slice(1).join(' '), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
           newCustomers.push(cust);
           try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
           created++;
@@ -5554,17 +5555,18 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   };
 
   const downloadBulkResTemplate = () => {
-    const headers = ['Ad Soyad*', 'Telefon', 'E-posta', 'Oda Tipi', 'Tur Bedeli', 'Para Birimi', 'Ödenen', 'Pasaport No'];
+    const headers = ['Ad Soyad*', 'TC Kimlik No', 'Telefon', 'E-posta', 'Oda Tipi', 'Tur Bedeli', 'Para Birimi', 'Ödenen', 'Pasaport No'];
     const examples = [
-      ['Ahmet Yılmaz', '5551234567', 'ahmet@example.com', 'Double', 1300, '€', 500, 'U12345678'],
-      ['Ayşe Yılmaz', '5551234567', 'ayse@example.com', 'Double', 1300, '€', 500, 'U12345679'],
-      ['Mehmet Kaya', '5559876543', '', 'Single', 1550, '€', 0, ''],
+      ['Ahmet Yılmaz', '12345678901', '5551234567', 'ahmet@example.com', 'Double', 1300, '€', 500, 'U12345678'],
+      ['Ayşe Yılmaz', '12345678902', '5551234567', 'ayse@example.com', 'Double', 1300, '€', 500, 'U12345679'],
+      ['Mehmet Kaya', '', '5559876543', '', 'Single', 1550, '€', 0, ''],
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, ...examples]);
-    ws['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
     const notes = [
       ['Sütun', 'Açıklama'],
       ['Ad Soyad*', 'ZORUNLU. Sistemde bu isimde müşteri varsa eşleştirilir; yoksa otomatik yeni müşteri oluşturulur.'],
+      ['TC Kimlik No', 'Opsiyonel. Yeni müşteri oluşturulursa buraya kaydedilir. 11 haneli.'],
       ['Telefon', 'Opsiyonel. Yeni müşteri oluşturulursa buraya kaydedilir.'],
       ['E-posta', 'Opsiyonel. Yeni müşteri oluşturulursa buraya kaydedilir.'],
       ['Oda Tipi', 'Örn: Single, Double, Twin, Triple. Turun kayıtlı fiyat listesiyle otomatik eşleştirilir.'],
