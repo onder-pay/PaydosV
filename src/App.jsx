@@ -3371,9 +3371,9 @@ function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   );
 }
 
-function SmtpConfigCard({ appSettings, setAppSettings, showToast }) {
-  const smtp = appSettings?.smtp || {};
-  const set = (patch) => setAppSettings({ ...appSettings, smtp: { ...smtp, ...patch } });
+function SmtpConfigCard({ appSettings, setAppSettings, showToast, settingsKey = 'smtp', title = '⚙️ SMTP Yapılandırması' }) {
+  const smtp = appSettings?.[settingsKey] || {};
+  const set = (patch) => setAppSettings({ ...appSettings, [settingsKey]: { ...smtp, ...patch } });
   const [showPass, setShowPass] = useState(false);
   const field = (label, key, opts = {}) => (
     <div style={{ marginBottom: '10px' }}>
@@ -3389,7 +3389,7 @@ function SmtpConfigCard({ appSettings, setAppSettings, showToast }) {
   );
   return (
     <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
-      <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
+      <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#14b8a6' }}>{title}</h3>
       <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Buradan girilen bilgiler mail gönderiminde kullanılır. Boş bırakılan alanlar için sunucu varsayılanı (Netlify env) kullanılır.</p>
       {field('SMTP Sunucu (host)', 'host', { placeholder: 'smtp.sirketemail.com' })}
       {field('Port', 'port', { placeholder: '465' })}
@@ -3467,11 +3467,11 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {mode === 'visa' && (
-      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} settingsKey="smtpVisa" title="⚙️ Vize SMTP Yapılandırması" />
       )}
 
       {mode === 'tour' && (<>
-      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} settingsKey="smtpTour" title="⚙️ Tur SMTP Yapılandırması" />
 
       <div style={{ background: 'rgba(59,130,246,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.2)' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>📧 Tur Maili Gönderen Adresi</h3>
@@ -3527,7 +3527,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             try {
               const resp = await fetch('/.netlify/functions/send-mail', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.tourMailFrom || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtp })
+                body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.tourMailFrom || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtpTour })
               });
               if (resp.ok) showToast?.(`✅ Test maili gönderildi: ${testEmail}`, 'success');
               else { const d = await resp.json(); showToast?.(`❌ ${d.error || 'Gönderilemedi'}`, 'error'); }
@@ -3666,7 +3666,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
         html,
         text: bodyText,
         attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url })),
-        smtp: appSettings?.smtp
+        smtp: appSettings?.smtpVisa
       })
     });
     const data = await resp.json();
@@ -5623,7 +5623,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       try {
         const resp = await fetch('/.netlify/functions/send-mail', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments, smtp: appSettings?.smtp })
+          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments, smtp: appSettings?.smtpTour })
         });
         if (resp.ok) sent++; else failed++;
       } catch (e) { failed++; }
