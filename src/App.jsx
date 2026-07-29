@@ -3371,7 +3371,7 @@ function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   );
 }
 
-function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
+function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToast }) {
   const allVisaTypes = useMemo(() => {
     const durations = appSettings?.visaDurations || {};
     const types = [];
@@ -3429,6 +3429,7 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {mode === 'visa' && (
       <div style={{ background: 'rgba(20,184,166,0.08)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(20,184,166,0.2)' }}>
         <h3 style={{ margin: '0 0 8px', fontSize: '15px', color: '#14b8a6' }}>⚙️ SMTP Yapılandırması</h3>
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>SMTP bilgileri Netlify Environment Variables olarak saklanır.</p>
@@ -3440,7 +3441,9 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
           <div><span style={{ color: '#14b8a6' }}>SMTP_FROM</span> = vize@paydostur.com</div>
         </div>
       </div>
+      )}
 
+      {mode === 'tour' && (
       <div style={{ background: 'rgba(59,130,246,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.2)' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>📧 Tur Maili Gönderen Adresi</h3>
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>Turlardan yapılan toplu mail gönderimlerinde kullanılacak gönderen adresi. Boş bırakılırsa varsayılan SMTP adresi kullanılır.</p>
@@ -3453,7 +3456,9 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
         />
         <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ Bu adresin çalışması için SMTP sunucunun bu adresten gönderime izin vermesi gerekir (alias veya yetkili hesap).</p>
       </div>
+      )}
 
+      {mode === 'visa' && (<>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -3531,6 +3536,7 @@ function MailSettingsPanel({ appSettings, setAppSettings, showToast }) {
           </button>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
@@ -13124,7 +13130,10 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               🎫 Turlar
             </button>
             <button onClick={() => setActiveTab('mailSettings')} style={{ padding: '12px 16px', background: activeTab === 'mailSettings' ? 'rgba(20,184,166,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'mailSettings' ? '1px solid rgba(20,184,166,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'mailSettings' ? '#14b8a6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'mailSettings' ? '600' : '400' }}>
-              📧 Mail Ayarları
+              📧 Vize Mail Ayarları
+            </button>
+            <button onClick={() => setActiveTab('tourMailSettings')} style={{ padding: '12px 16px', background: activeTab === 'tourMailSettings' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'tourMailSettings' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'tourMailSettings' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'tourMailSettings' ? '600' : '400' }}>
+              🎫 Tur Mail Ayarları
             </button>
             <button onClick={() => setActiveTab('attachmentSettings')} style={{ padding: '12px 16px', background: activeTab === 'attachmentSettings' ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'attachmentSettings' ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'attachmentSettings' ? '#a855f7' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'attachmentSettings' ? '600' : '400' }}>
               📎 Dosya Ekleri
@@ -14062,7 +14071,12 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
 
       {/* MAIL AYARLARI */}
       {activeTab === 'mailSettings' && isAdmin && (
-        <MailSettingsPanel appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+        <MailSettingsPanel mode="visa" appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      )}
+
+      {/* TUR MAIL AYARLARI */}
+      {activeTab === 'tourMailSettings' && isAdmin && (
+        <MailSettingsPanel mode="tour" appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
       )}
 
       {/* DOSYA EKLERİ */}
