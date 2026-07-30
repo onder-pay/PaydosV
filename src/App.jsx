@@ -3473,19 +3473,6 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
       {mode === 'tour' && (<>
       <SmtpConfigCard appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} settingsKey="smtpTour" title="⚙️ Tur SMTP Yapılandırması" />
 
-      <div style={{ background: 'rgba(59,130,246,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.2)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>📧 Tur Maili Gönderen Adresi</h3>
-        <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>Turlardan yapılan toplu mail gönderimlerinde kullanılacak gönderen adresi. Boş bırakılırsa varsayılan SMTP adresi kullanılır.</p>
-        <input
-          type="text"
-          value={appSettings?.tourMailFrom || ''}
-          onChange={e => setAppSettings({ ...appSettings, tourMailFrom: e.target.value.toLowerCase() })}
-          placeholder="tur@paydostur.com"
-          style={{ display: 'block', width: '100%', maxWidth: '360px', padding: '11px 14px', background: '#0a1626', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }}
-        />
-        <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ Bu adresin çalışması için SMTP sunucunun bu adresten gönderime izin vermesi gerekir (alias veya yetkili hesap).</p>
-      </div>
-
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Tur Maili Şablonu</h3>
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
@@ -3527,7 +3514,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             try {
               const resp = await fetch('/.netlify/functions/send-mail', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.tourMailFrom || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtpTour })
+                body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.smtpTour?.from || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtpTour })
               });
               if (resp.ok) showToast?.(`✅ Test maili gönderildi: ${testEmail}`, 'success');
               else { const d = await resp.json(); showToast?.(`❌ ${d.error || 'Gönderilemedi'}`, 'error'); }
@@ -5608,7 +5595,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     if (!bulkMailSubject.trim() || !bulkMailBody.trim()) { showToast('Konu ve mesaj zorunlu', 'error'); return; }
     setBulkMailSending(true);
     let sent = 0, failed = 0;
-    const tourFrom = (appSettings?.tourMailFrom || '').trim() || undefined; // boşsa function SMTP_FROM'a düşer
+    const tourFrom = (appSettings?.smtpTour?.from || '').trim() || undefined; // boşsa function SMTP_FROM'a düşer
     const tarih = `${formatDate(tour.startDate)} - ${formatDate(tour.endDate)}`;
     // Seçili ekleri hazırla
     const allAtt = appSettings?.attachments || [];
@@ -6856,7 +6843,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 const cust = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
                 return (cust?.email || res.customerEmail || '').trim();
               }).length;
-              return <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>{selectedRes.length > 0 ? <><b style={{ color: '#3b82f6' }}>{active.length} seçili</b> katılımcıdan</> : <>{active.length} katılımcıdan</>} <b style={{ color: '#10b981' }}>{withEmail}</b> tanesinin e-postası var. Gönderen: <b>{appSettings?.tourMailFrom || 'varsayılan SMTP adresi'}</b></p>;
+              return <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>{selectedRes.length > 0 ? <><b style={{ color: '#3b82f6' }}>{active.length} seçili</b> katılımcıdan</> : <>{active.length} katılımcıdan</>} <b style={{ color: '#10b981' }}>{withEmail}</b> tanesinin e-postası var. Gönderen: <b>{appSettings?.smtpTour?.from || 'varsayılan SMTP adresi'}</b></p>;
             })()}
             <div style={{ marginBottom: '10px', padding: '8px 12px', background: 'rgba(59,130,246,0.08)', borderRadius: '8px', fontSize: '11px', color: '#94a3b8' }}>
               Kişiselleştirme: <code style={{ color: '#3b82f6' }}>{'{isim}'}</code> <code style={{ color: '#3b82f6' }}>{'{tur}'}</code> <code style={{ color: '#3b82f6' }}>{'{tarih}'}</code> — her katılımcıya kendi bilgisiyle gider
