@@ -67,9 +67,12 @@ exports.handler = async (event) => {
       }
     }
 
+    // Gelen from geçerli bir e-posta mı? Değilse (örn. ".com" eksik) defaultFrom kullan
+    const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+    const finalFrom = validEmail(from) ? from.trim() : defaultFrom;
+
     const info = await transporter.sendMail({
-      // İstekte from varsa (örn. tur@paydostur.com) onu kullan, yoksa varsayılan
-      from: from || defaultFrom,
+      from: finalFrom,
       to,
       subject,
       text: text || '',
