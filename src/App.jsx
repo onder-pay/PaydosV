@@ -5620,6 +5620,41 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     showToast(`${sent} mail gönderildi${failed ? `, ${failed} başarısız` : ''}${noEmail.length ? `, ${noEmail.length} e-postasız` : ''}`, failed ? 'warning' : 'success');
   };
   const [selectedRes, setSelectedRes] = useState([]); // seçili rezervasyon id'leri
+  // ===== Giderler (sadece muhasebe + admin) =====
+  const canSeeExpenses = currentUser?.role === 'muhasebe' || currentUser?.role === 'admin';
+  const emptyExpense = { type: 'Otel', description: '', amount: '', currency: '€', paid: false, date: '' };
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const saveExpense = async (tour) => {
+    const ex = editingExpense;
+    if (!ex.amount || parseFloat(ex.amount) <= 0) { showToast?.('Tutar girin', 'error'); return; }
+    let newExpenses;
+    if (ex.id) newExpenses = (tour.expenses || []).map(x => x.id === ex.id ? { ...ex, amount: parseFloat(ex.amount) } : x);
+    else newExpenses = [...(tour.expenses || []), { ...ex, amount: parseFloat(ex.amount), id: Date.now(), addedBy: currentUser?.name || currentUser?.email || '', createdAt: new Date().toISOString() }];
+    const updatedTour = { ...tour, expenses: newExpenses };
+    setTours(prev => prev.map(t => t.id === tour.id ? updatedTour : t));
+    setSelectedTour(updatedTour);
+    try {
+      const docId = tour._docId || String(tour.id);
+      const sd = { ...updatedTour }; delete sd._docId;
+      await setDoc(doc(db, 'tours', docId), sd, { merge: true });
+      showToast?.(ex.id ? 'Gider güncellendi' : 'Gider eklendi', 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    setShowExpenseForm(false); setEditingExpense(null);
+  };
+  const deleteExpense = async (tour, expId) => {
+    if (!window.confirm('Bu gideri silmek istiyor musunuz?')) return;
+    const newExpenses = (tour.expenses || []).filter(x => x.id !== expId);
+    const updatedTour = { ...tour, expenses: newExpenses };
+    setTours(prev => prev.map(t => t.id === tour.id ? updatedTour : t));
+    setSelectedTour(updatedTour);
+    try {
+      const docId = tour._docId || String(tour.id);
+      const sd = { ...updatedTour }; delete sd._docId;
+      await setDoc(doc(db, 'tours', docId), sd, { merge: true });
+      showToast?.('Gider silindi', 'info');
+    } catch (e) { showToast?.('Silinemedi: ' + e.message, 'error'); }
+  };
   const bulkDeleteReservations = async (tour) => {
     if (!selectedRes.length) return;
     if (!window.confirm(`${selectedRes.length} rezervasyonu KALICI olarak silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz.`)) return;
@@ -6161,7 +6196,95 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               ))}
             </div>
 
-            {/* Rezervasyon Tablosu */}
+            {/* GİDERLER + KÂR/ZARAR (sadece muhasebe + yönetici) */}
+            {canSeeExpenses && (() => {
+              const activeR = tour.reservations?.filter(r => !r.cancelled) || [];
+              const cur = activeR[0]?.currency || '€';
+              const gelir = activeR.reduce((s, r) => s + (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0), 0);
+              const expenses = tour.expenses || [];
+              const toplamGider = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const odenenGider = expenses.filter(e => e.paid).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const karZarar = gelir - toplamGider;
+              const typeIcons = { 'Otel': '🏨', 'Uçak Bileti': '✈️', 'Otobüs': '🚌', 'Transfer': '🚐', 'Rehber': '🧑‍🏫', 'Vize': '🌍', 'Diğer': '📌' };
+              return (
+                <div style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '12px', padding: '14px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '14px', color: '#a78bfa' }}>💸 Giderler <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>(sadece muhasebe/yönetici görür)</span></h3>
+                    <button onClick={() => { setEditingExpense({ ...emptyExpense, currency: cur }); setShowExpenseForm(true); }} style={{ padding: '7px 14px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>➕ Gider Ekle</button>
+                  </div>
+
+                  {showExpenseForm && editingExpense && (
+                    <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '12px', display: 'grid', gap: '8px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 2fr 1fr 90px auto', gap: '8px', alignItems: 'end' }}>
+                        <div><label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>Tür</label>
+                          <select value={editingExpense.type} onChange={e => setEditingExpense({ ...editingExpense, type: e.target.value })} style={{ width: '100%', padding: '8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
+                            {['Otel','Uçak Bileti','Otobüs','Transfer','Rehber','Vize','Diğer'].map(t => <option key={t} value={t} style={{ background: '#0c1929' }}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div><label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>Açıklama</label><input value={editingExpense.description} onChange={e => setEditingExpense({ ...editingExpense, description: e.target.value })} placeholder="örn: Erse Hotel 40 oda 3 gece" style={{ width: '100%', padding: '8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} /></div>
+                        <div><label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>Tutar</label><input type="number" value={editingExpense.amount} onChange={e => setEditingExpense({ ...editingExpense, amount: e.target.value })} style={{ width: '100%', padding: '8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} /></div>
+                        <div><label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>Para</label>
+                          <select value={editingExpense.currency} onChange={e => setEditingExpense({ ...editingExpense, currency: e.target.value })} style={{ width: '100%', padding: '8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
+                            {['€','$','₺','£'].map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+                          </select>
+                        </div>
+                        <button onClick={() => saveExpense(tour)} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>Kaydet</button>
+                      </div>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><label style={{ fontSize: '11px', color: '#94a3b8' }}>Ödeme:</label>
+                          <select value={editingExpense.paid ? '1' : '0'} onChange={e => setEditingExpense({ ...editingExpense, paid: e.target.value === '1' })} style={{ padding: '6px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
+                            <option value="0" style={{ background: '#0c1929' }}>Ödenecek</option>
+                            <option value="1" style={{ background: '#0c1929' }}>✓ Ödendi</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><label style={{ fontSize: '11px', color: '#94a3b8' }}>Tarih:</label><input type="date" value={editingExpense.date} onChange={e => setEditingExpense({ ...editingExpense, date: e.target.value })} style={{ padding: '6px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} /></div>
+                        <button onClick={() => { setShowExpenseForm(false); setEditingExpense(null); }} style={{ marginLeft: 'auto', padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>İptal</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {expenses.length > 0 && (
+                    <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          {['Tür', 'Açıklama', 'Tutar', 'Durum', 'Tarih', ''].map((h, i) => <th key={i} style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: '10px' }}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {expenses.map(ex => (
+                            <tr key={ex.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <td style={{ padding: '6px 8px', color: '#e8f1f8' }}>{typeIcons[ex.type] || '📌'} {ex.type}</td>
+                              <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{ex.description || '—'}</td>
+                              <td style={{ padding: '6px 8px', color: '#ef4444', fontWeight: '600' }}>{(parseFloat(ex.amount) || 0).toLocaleString('tr')} {ex.currency}</td>
+                              <td style={{ padding: '6px 8px' }}>{ex.paid ? <span style={{ color: '#10b981' }}>✓ Ödendi</span> : <span style={{ color: '#f59e0b' }}>Ödenecek</span>}</td>
+                              <td style={{ padding: '6px 8px', color: '#64748b' }}>{ex.date ? formatDate(ex.date) : '—'}</td>
+                              <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                <button onClick={() => { setEditingExpense({ ...ex, amount: String(ex.amount) }); setShowExpenseForm(true); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '13px' }}>✏️</button>
+                                <button onClick={() => deleteExpense(tour, ex.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}>🗑️</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Kâr/Zarar özeti */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '8px', paddingTop: '10px', borderTop: '1px solid rgba(139,92,246,0.2)' }}>
+                    {[
+                      ['Gelir (Tahsilat)', `${gelir.toLocaleString('tr')} ${cur}`, '#10b981'],
+                      ['Toplam Gider', `${toplamGider.toLocaleString('tr')} ${cur}`, '#ef4444'],
+                      ['Ödenen Gider', `${odenenGider.toLocaleString('tr')} ${cur}`, '#f59e0b'],
+                      [karZarar >= 0 ? '📈 KÂR' : '📉 ZARAR', `${karZarar.toLocaleString('tr')} ${cur}`, karZarar >= 0 ? '#10b981' : '#ef4444'],
+                    ].map(([l, v, c], i) => (
+                      <div key={i} style={{ background: i === 3 ? `${c}15` : 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '8px', textAlign: 'center', border: i === 3 ? `1px solid ${c}40` : 'none' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: c }}>{v}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {(tour.reservations?.length || 0) === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
                 <p style={{ fontSize: '32px', margin: '0 0 10px' }}>📋</p>
@@ -14179,6 +14302,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Rol</label>
                     <select value={userFormData.role || 'user'} onChange={e => setUserFormData({...userFormData, role: e.target.value})} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px' }}>
                       <option value="user">Kullanıcı</option>
+                      <option value="muhasebe">Muhasebe</option>
                       <option value="admin">Yönetici</option>
                     </select>
                   </div>
