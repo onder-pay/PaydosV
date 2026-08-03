@@ -9643,6 +9643,72 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const [custSearch, setCustSearch] = useState('');
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [editingPricePeriod, setEditingPricePeriod] = useState(null);
+  const [hotelPriceUploadBusy, setHotelPriceUploadBusy] = useState(false);
+  // Otel Düzenle ekranında, açık olan otele Excel'den fiyat dönemi yükleme
+  const handleHotelPriceExcel = async (hotel, file, replaceMode) => {
+    if (!file) return;
+    setHotelPriceUploadBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const num = (v) => { if (v === '' || v == null) return 0; const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+      const normDate = (val) => {
+        if (!val) return '';
+        if (val instanceof Date) { const y = val.getUTCFullYear(), m = String(val.getUTCMonth()+1).padStart(2,'0'), d = String(val.getUTCDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+        const m = s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/);
+        if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+        return s;
+      };
+      // Sadece bu otele ait satırları al (otel adı eşleşmese de hepsini bu otele yükle — kullanıcı bu otelin ekranında)
+      const groups = {};
+      for (const r of rows) {
+        const startDate = normDate(r['Başlangıç'] || r['Baslangic'] || r['Start']);
+        const endDate = normDate(r['Bitiş'] || r['Bitis'] || r['End']);
+        const roomType = String(r['Oda Tipi'] || r['Oda'] || r['Room'] || '').trim();
+        if (!startDate || !endDate || !roomType) continue;
+        const currency = String(r['Para'] || r['Currency'] || '€').trim() || '€';
+        const key = `${startDate}__${endDate}__${currency}`;
+        if (!groups[key]) groups[key] = { id: generateUniqueId(), startDate, endDate, currency, rates: {} };
+        if (!groups[key].rates[roomType]) groups[key].rates[roomType] = {};
+        [['ro','RO'],['bb','BB'],['hb','HB'],['fb','FB']].forEach(([c, C]) => {
+          const buy = num(r[`${C} Alış`] || r[`${C} Alis`]);
+          const sell = num(r[`${C} Satış`] || r[`${C} Satis`]);
+          if (buy > 0 || sell > 0) groups[key].rates[roomType][c] = { buy, sell };
+        });
+      }
+      const newPeriods = Object.values(groups).filter(g => Object.keys(g.rates).length > 0);
+      if (!newPeriods.length) { showToast?.('Geçerli fiyat satırı bulunamadı. Sütun başlıklarını kontrol edin.', 'error'); return; }
+      // Aktif konseptleri otomatik aç
+      const enabled = new Set(hotel.enabledConcepts || []);
+      newPeriods.forEach(p => Object.values(p.rates).forEach(rr => Object.keys(rr).forEach(c => enabled.add(c))));
+      const merged = replaceMode ? newPeriods : [...(hotel.priceList || []), ...newPeriods];
+      const updatedHotel = { ...hotel, priceList: merged, enabledConcepts: [...enabled] };
+      setHotelForm(f => ({ ...f, priceList: merged, enabledConcepts: [...enabled] }));
+      showToast?.(`${newPeriods.length} fiyat dönemi ${replaceMode ? 'yüklendi (eski silindi)' : 'eklendi'} — kaydetmeyi unutmayın`, 'success');
+    } catch (err) {
+      showToast?.('Excel okunamadı: ' + err.message, 'error');
+    } finally {
+      setHotelPriceUploadBusy(false);
+    }
+  };
+  const downloadHotelPriceTemplate = (hotelName) => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+      [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Single', '', '', 80, 100, '', '', '', ''],
+      [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Double', '', '', 100, 130, '', '', '', ''],
+      [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Twin', '', '', 100, 130, '', '', '', ''],
+      [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Single', '', '', 85, 105, '', '', '', ''],
+      [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Double', '', '', 105, 135, '', '', '', ''],
+    ]);
+    ws['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:6},{wch:11},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Fiyatlar');
+    XLSX.writeFile(wb, 'Otel_Fiyat_Sablonu.xlsx');
+  };
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [excelPreview, setExcelPreview] = useState(null);
   const [excelTab, setExcelTab] = useState('hotels'); // 'hotels' veya 'prices'
@@ -11592,9 +11658,23 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#f59e0b' }}>💰 Anlaşma Fiyatları (oda başı, gecelik)</h3>
                 <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Tarih dönemleri ekleyin. Her dönem için oda tipi × yemek konsepti fiyatları girin.</p>
               </div>
-              <button type="button" onClick={() => { setEditingPricePeriod(null); setShowPriceModal(true); }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
-                ➕ Fiyat Dönemi Ekle
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <input type="file" accept=".xlsx,.xls" id="hotelPriceExcelInput" style={{ display: 'none' }} onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  let replaceMode = false;
+                  if ((hotelForm.priceList || []).length > 0) {
+                    replaceMode = window.confirm('Bu otelde zaten fiyat dönemi var.\n\nTAMAM = Eskileri SİL, yenilerini yükle\nİPTAL = Üstüne EKLE');
+                  }
+                  await handleHotelPriceExcel(hotelForm, f, replaceMode);
+                  e.target.value = '';
+                }} />
+                <button type="button" onClick={() => downloadHotelPriceTemplate(hotelForm.name)} style={{ padding: '8px 12px', background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>📥 Örnek</button>
+                <button type="button" onClick={() => document.getElementById('hotelPriceExcelInput').click()} disabled={hotelPriceUploadBusy} style={{ padding: '8px 12px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: hotelPriceUploadBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{hotelPriceUploadBusy ? '⏳...' : '📤 Excel ile Yükle'}</button>
+                <button type="button" onClick={() => { setEditingPricePeriod(null); setShowPriceModal(true); }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
+                  ➕ Fiyat Dönemi Ekle
+                </button>
+              </div>
             </div>
 
             {/* Konsept seçimi */}
