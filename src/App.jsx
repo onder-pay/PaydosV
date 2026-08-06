@@ -5435,7 +5435,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     })) : [];
     const vz = vizeSartiBul(tour.country);
     const kat = [];
-    [res.roommate, res.roommate3].filter(x => x && x.trim()).forEach(n => kat.push({ name: n.trim(), tc: '', address: '', phone: '' }));
+    // Oda arkadaşları (roommate) sözleşmeye katılımcı olarak EKLENMEZ — her kişinin kendi ayrı kaydı/sözleşmesi var.
+    // Sadece açıkça eklenmiş ek misafirler (guestNames, örn. çocuk) katılımcı olur.
     (res.guestNames || []).filter(x => x && x.trim()).forEach(n => {
       if (!kat.some(k => normalizeTr(k.name) === normalizeTr(n))) kat.push({ name: n.trim(), tc: '', address: '', phone: '' });
     });
