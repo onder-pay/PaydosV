@@ -8585,25 +8585,13 @@ KURALLAR:
         {/* 1) Taraflar */}
         <div style={card}>
           <div style={secT}>1) Taraflar — Tüketici</div>
-          <div style={{ position: 'relative', marginBottom: '10px' }}>
-            <input style={inS} value={custSearchC} onChange={e => setCustSearchC(e.target.value)} placeholder="🔍 Müşteri ara (ad, soyad, TC) — seçince bilgiler dolar" />
-            {custHits.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
-                {custHits.map(c => (
-                  <div key={c.id} onClick={() => pickCustomer(c)} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.tcKimlik || '—'} · {c.phone || ''}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
           {contract.tuketici.name ? (
             <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', padding: '10px' }}>
               <div style={{ fontSize: '13px', color: '#10b981', fontWeight: '700' }}>👤 {contract.tuketici.name}</div>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>TC: {contract.tuketici.tc || '—'} · {contract.tuketici.address || '—'} · {contract.tuketici.phone || '—'}</div>
             </div>
           ) : (
-            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Yukarıdan müşteri arayıp seçin — bilgiler otomatik dolar.</p>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Yukarıdan "🧾 Tur Teklifinden Aktar" ile tur seçin — müşteri bilgileri otomatik dolar.</p>
           )}
 
           {contract.katilimcilar.length > 0 && (
