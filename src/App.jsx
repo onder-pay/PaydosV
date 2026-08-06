@@ -217,7 +217,7 @@ th{background:#eef3f8;font-weight:700;color:#0c2340}
 <h2>1) TARAFLAR</h2>
 <p><b>1.1. DÜZENLEYİCİ:</b> PAYDOS TURİZM SEYAHAT ACENTALIĞI SANAYİ VE TİCARET LİMİTED ŞİRKETİ<br>
 Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / DENİZLİ · Tel: 0 258 263 71 76 · info@paydostur.com</p>
-<p><b>1.2. TÜKETİCİ:</b><br>- AD/SOYAD: ${e(c.tuketici.name)}<br>- T.C. KİMLİK NO: ${e(c.tuketici.tc)}<br>- ADRES: ${e(c.tuketici.address)}<br>- İLETİŞİM BİLGİLERİ (Telefon–Faks–E-mail): ${e(c.tuketici.phone)}${c.tuketici.email ? ' · ' + e(c.tuketici.email) : ''}</p>
+<p><b>1.2. TÜKETİCİ:</b><br>- AD/SOYAD: ${e(c.tuketici.name)}${c.tuketici.company ? `<br>- FİRMA: ${e(c.tuketici.company)}` : ''}<br>- T.C. KİMLİK NO: ${e(c.tuketici.tc)}<br>- ADRES: ${e(c.tuketici.address)}<br>- İLETİŞİM BİLGİLERİ (Telefon–Faks–E-mail): ${e(c.tuketici.phone)}${c.tuketici.email ? ' · ' + e(c.tuketici.email) : ''}</p>
 ${katRows}
 <p>Tüketici, yukarıda belirtilen katılımcılar adına işbu sözleşmeye taraf olduğunu, ön bilgilendirme formu ve broşürün kendisine verildiğini kabul ve beyan eder. Kimlik ve iletişim bilgilerinin hatalı bildirilmesinden doğan neticelerden (havayolu cezası, vize sorunu vb.) Düzenleyici sorumlu değildir.</p>
 ${ppRows ? `<p><b>1.3. PASAPORT BİLGİLERİ</b></p><table><tr><th>Ad Soyad</th><th>Pasaport No</th><th>Veriliş</th><th>Geçerlilik</th><th>Doğum Yeri</th></tr>${ppRows}</table>` : ''}
@@ -5443,6 +5443,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     return {
       tuketici: {
         name: res.customerName || (cust ? `${cust.firstName} ${cust.lastName}` : ''),
+        company: cust?.companyName || cust?.company || res.company || '',
         tc: cust?.tcKimlik || '', address: cust?.city || '',
         phone: res.customerPhone || cust?.phone || '', email: res.customerEmail || cust?.email || ''
       },
@@ -6215,7 +6216,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
                   {showExpenseForm && editingExpense && (
                     <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '10px', padding: '12px', marginBottom: '12px', display: 'grid', gap: '8px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 2fr 1fr 90px auto', gap: '8px', alignItems: 'end' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr 1fr 90px auto', gap: '8px', alignItems: 'end' }}>
                         <div><label style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginBottom: '3px' }}>Tür</label>
                           <select value={editingExpense.type} onChange={e => setEditingExpense({ ...editingExpense, type: e.target.value })} style={{ width: '100%', padding: '8px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
                             {['Otel','Uçak Bileti','Otobüs','Transfer','Rehber','Vize','Diğer'].map(t => <option key={t} value={t} style={{ background: '#0c1929' }}>{t}</option>)}
@@ -6230,7 +6231,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                         </div>
                         <button onClick={() => saveExpense(tour)} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>Kaydet</button>
                       </div>
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><label style={{ fontSize: '11px', color: '#94a3b8' }}>Ödeme:</label>
                           <select value={editingExpense.paid ? '1' : '0'} onChange={e => setEditingExpense({ ...editingExpense, paid: e.target.value === '1' })} style={{ padding: '6px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
                             <option value="0" style={{ background: '#0c1929' }}>Ödenecek</option>
