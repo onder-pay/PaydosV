@@ -13934,7 +13934,21 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       {/* 📊 DURUM YÖNETİMİ */}
       {activeTab === 'statusManagement' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
+
+          {/* Bildirim Ayarı */}
+          <div style={{ background: 'rgba(59,130,246,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#3b82f6' }}>🔔 Canlı Bildirimler</h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Başka bir cihazdan yeni kayıt (müşteri, tur, vize...) eklendiğinde sağ altta bildirim gösterir.</p>
+              </div>
+              <button onClick={() => { const yeni = appSettings?.notificationsEnabled === false; setAppSettings({ ...appSettings, notificationsEnabled: yeni }); showToast?.(yeni ? '🔔 Bildirimler açıldı' : '🔕 Bildirimler kapatıldı', 'info'); }}
+                style={{ position: 'relative', width: '52px', height: '28px', borderRadius: '14px', border: 'none', cursor: 'pointer', background: appSettings?.notificationsEnabled === false ? 'rgba(255,255,255,0.15)' : '#3b82f6', transition: 'background 0.2s', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: '3px', left: appSettings?.notificationsEnabled === false ? '3px' : '27px', width: '22px', height: '22px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+              </button>
+            </div>
+          </div>
+
           {/* Kişisel Alan Bilgileri */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: '15px', color: '#8b5cf6' }}>📝 Kişisel Alan Bilgileri</h3>
@@ -14591,21 +14605,21 @@ export default function App() {
 
     // Küçük koleksiyonlar: tam gerçek zamanlı dinleme
     const smallCollections = [
-      { name: 'visa_applications', setter: setVisaApplications },
-      { name: 'ds160_applications', setter: setDs160Applications },
-      { name: 'tours', setter: setTours },
-      { name: 'hotels', setter: setHotels },
-      { name: 'group_flights', setter: setGroupFlights },
-      { name: 'transfers', setter: setTransfers },
-      { name: 'packages', setter: setPackages },
-      { name: 'agencies', setter: setAgencies },
-      { name: 'credit_cards', setter: setCreditCards },
-      { name: 'quotes', setter: setQuotes },
-      { name: 'users', setter: setUsers }
+      { name: 'visa_applications', setter: setVisaApplications, label: 'vize başvurusu', icon: '🌍' },
+      { name: 'ds160_applications', setter: setDs160Applications, label: 'Amerika vize başvurusu', icon: '🇺🇸' },
+      { name: 'tours', setter: setTours, label: 'tur', icon: '🎫' },
+      { name: 'hotels', setter: setHotels, label: 'otel', icon: '🏨' },
+      { name: 'group_flights', setter: setGroupFlights, label: 'grup uçuşu', icon: '✈️' },
+      { name: 'transfers', setter: setTransfers, label: 'transfer', icon: '🚐' },
+      { name: 'packages', setter: setPackages, label: 'paket', icon: '📦' },
+      { name: 'agencies', setter: setAgencies, label: 'acente', icon: '🏢' },
+      { name: 'credit_cards', setter: setCreditCards, label: 'kredi kartı', icon: '💳' },
+      { name: 'quotes', setter: setQuotes, label: 'teklif', icon: '📄' },
+      { name: 'users', setter: setUsers, label: 'kullanıcı', icon: '👤' }
     ];
 
-    // Performans: sürekli onSnapshot yerine tek seferlik getDocs (telefonda çok daha hızlı).
-    // localStorage cache zaten anında render ediyor; bu arka planda bir kez tazeliyor.
+    // Performans: ilk yükleme tek seferlik getDocs (hızlı), SONRA her koleksiyon için
+    // sadece DEĞİŞENLERİ dinle (onSnapshot docChanges) — tüm veriyi tekrar çekmez ama gerçek zamanlı olur.
     (async () => {
       await Promise.all(smallCollections.map(async (col) => {
         try {
@@ -14629,6 +14643,42 @@ export default function App() {
         } catch (e) { console.warn(`${col.name} yükleme hatası:`, e.message); }
       }));
     })();
+
+    // Her küçük koleksiyon için gerçek zamanlı dinleyici (ilk snapshot atlanır, sonra sadece değişenler)
+    smallCollections.forEach((col) => {
+      let initialized = false;
+      const unsub = onSnapshot(collection(db, col.name), (snapshot) => {
+        if (!initialized) { initialized = true; return; } // ilk yükleme getDocs ile yapıldı
+        const changes = snapshot.docChanges();
+        if (changes.length === 0) return;
+        // Sadece BAŞKA cihazdan gelen YENİ eklemeleri bildir (kendi yazdığın hariç)
+        // Bildirim ayarı kapalıysa gösterme (Ayarlar'dan açılıp kapanır). localStorage'dan anlık okunur.
+        let notifOn = true;
+        try { const s = JSON.parse(localStorage.getItem('paydos_app_settings') || '{}'); if (s.notificationsEnabled === false) notifOn = false; } catch(e) {}
+        if (notifOn && !snapshot.metadata.hasPendingWrites) {
+          changes.filter(ch => ch.type === 'added').forEach(ch => {
+            const d = ch.doc.data();
+            const isim = d.name || (d.firstName ? `${d.firstName} ${d.lastName || ''}`.trim() : '') || d.customerName || d.title || d.hotelName || d.agencyName || '';
+            showToast?.(`${col.icon} Yeni ${col.label} eklendi${isim ? ': ' + isim : ''}`, 'info');
+          });
+        }
+        col.setter(prev => {
+          let updated = Array.isArray(prev) ? [...prev] : [];
+          changes.forEach(change => {
+            const data = { ...change.doc.data(), _docId: change.doc.id };
+            if (change.type === 'added' || change.type === 'modified') {
+              const idx = updated.findIndex(x => x._docId === data._docId || (x.id != null && String(x.id) === String(data.id)));
+              if (idx >= 0) updated[idx] = data;
+              else updated = [...updated, data];
+            } else if (change.type === 'removed') {
+              updated = updated.filter(x => x._docId !== data._docId && !(x.id != null && String(x.id) === String(data.id)));
+            }
+          });
+          return updated;
+        });
+      }, (e) => console.warn(`${col.name} realtime hatası:`, e.message));
+      unsubs.push(unsub);
+    });
 
     // Customers: ilk yükleme getDocs, sonra değişen kayıtları onSnapshot ile yakala
     const loadCustomers = async () => {
