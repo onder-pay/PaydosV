@@ -6907,45 +6907,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 )}
               </div>
 
-              {/* Sözleşme PDF */}
-              <div>
-                <label style={labelStyle}>📜 Tur Sözleşmesi PDF</label>
-                {formData.contractUrl ? (
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>📜</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '12px', color: '#a78bfa', fontWeight: '600' }}>Sözleşme Yüklendi</div>
-                      <div style={{ fontSize: '10px', color: '#64748b', wordBreak: 'break-all' }}>{formData.contractUrl.split('/').pop()?.split('?')[0] || 'sozlesme.pdf'}</div>
-                    </div>
-                    <button type="button" onClick={() => window.open(formData.contractUrl, '_blank')} style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>👁️</button>
-                    <button type="button" onClick={() => setFormData({...formData, contractUrl: ''})} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                  </div>
-                ) : (
-                  <div>
-                    <input type="file" accept=".pdf" id="tourContractInput" style={{ display: 'none' }} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 10 * 1024 * 1024) { showToast('PDF max 10MB olabilir', 'error'); return; }
-                      showToast('Sözleşme yükleniyor...', 'info');
-                      try {
-                        const storage = getStorage();
-                        const storageRef = ref(storage, `tour-contracts/${Date.now()}_${file.name}`);
-                        await uploadBytes(storageRef, file);
-                        const url = await getDownloadURL(storageRef);
-                        setFormData(prev => ({...prev, contractUrl: url}));
-                        showToast('Sözleşme yüklendi!', 'success');
-                      } catch(err) {
-                        showToast('Sözleşme yüklenemedi: ' + err.message, 'error');
-                      }
-                    }} />
-                    <button type="button" onClick={() => document.getElementById('tourContractInput').click()} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.03)', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>
-                      📤 Sözleşme PDF Seç & Yükle (max 10MB)
-                    </button>
-                  </div>
-                )}
-              </div>
-
-
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>
                   İptal
