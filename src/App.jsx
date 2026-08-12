@@ -249,7 +249,7 @@ Vize gereken turlarımız için misafirlerimizin ilgili ülke konsolosluklarına
 
 ${secTitle(S.m5[0])}${body(S.m5)}
 
-${secTitle(S.m6[0])}${P(S.m6.slice(1).map(x => x.replace('15€', c.sigortaBedeli || '15€')))}
+${secTitle(S.m6[0])}${P(S.m6.slice(1))}
 
 <h2>7) ÖDEME PLANI VE ŞEKLİ</h2>
 <p>Paket Turun ödemesi nakit veya hesaba havale/EFT şeklinde yapılabilir.</p>
@@ -8882,7 +8882,7 @@ KURALLAR:
         {/* Fiyat / sigorta / ödeme */}
         <div style={card}>
           <div style={secT}>4) Fiyat · 6) Sigorta · 7) Ödeme</div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
             <div><label style={lbl}>2 Kişilik / Kişi Başı</label><input style={inS} value={contract.fiyatDouble} onChange={e => setContract({...contract, fiyatDouble: e.target.value})} /></div>
             <div><label style={lbl}>Tek Kişilik</label><input style={inS} value={contract.fiyatSingle} onChange={e => setContract({...contract, fiyatSingle: e.target.value})} /></div>
             <div><label style={lbl}>Para Birimi</label>
@@ -8890,7 +8890,6 @@ KURALLAR:
                 {['USD','EUR','TRY','GBP'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
               </select>
             </div>
-            <div><label style={lbl}>Sigorta Bedeli</label><input style={inS} value={contract.sigortaBedeli} onChange={e => setContract({...contract, sigortaBedeli: e.target.value})} /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
             <div><label style={lbl}>Ön Ödeme Günü</label><input type="date" style={inS} value={contract.onOdeme} onChange={e => setContract({...contract, onOdeme: e.target.value})} /></div>
@@ -14918,6 +14917,8 @@ export default function App() {
             showToast?.(`${col.icon} Yeni ${col.label} eklendi${isim ? ': ' + isim : ''}`, 'info');
           });
         }
+        // debouncedSave bu güncellemeyi tekrar yazmasın (döngü önleme)
+        applyingRemote.current[col.name] = true;
         col.setter(prev => {
           let updated = Array.isArray(prev) ? [...prev] : [];
           changes.forEach(change => {
@@ -14994,6 +14995,7 @@ export default function App() {
       if (!snapshot.empty) {
         const settingsDoc = snapshot.docs[0].data();
         if (settingsDoc) {
+          applyingRemote.current['app_settings'] = true;
           setAppSettings(prev => ({ ...prev, ...settingsDoc }));
           try { localStorage.setItem('paydos_app_settings', JSON.stringify(settingsDoc)); } catch(e) {}
         }
@@ -15009,6 +15011,8 @@ export default function App() {
   // 🔥 FIRESTORE'A KAYDET — debounced
   const saveTimers = useRef({});
   const initialLoadDone = useRef(false);
+  // Gerçek zamanlı dinleyiciden gelen güncellemeleri işaretle — debouncedSave bunları TEKRAR YAZMASIN (sonsuz döngü önlenir)
+  const applyingRemote = useRef({});
   useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
 
   // Eski tek-banka alanını (bankInfo) temizle — artık banks[] dizisi kullanılıyor
@@ -15042,6 +15046,8 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
     if (!initialLoadDone.current) return;
+    // Bu güncelleme gerçek zamanlı dinleyiciden geldiyse tekrar yazma (döngü önleme)
+    if (applyingRemote.current[collectionName]) { applyingRemote.current[collectionName] = false; return; }
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
       try {
