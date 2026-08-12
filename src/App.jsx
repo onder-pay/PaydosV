@@ -13309,17 +13309,26 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
     if (editingUser) {
       const updateData = { name: userFormData.name, email: userFormData.email, role: userFormData.role };
       if (userFormData.password) updateData.password = userFormData.password;
-      
+
       const updated = users.map(u => u.id === editingUser.id ? { ...u, ...updateData } : u);
       setUsers(updated);
-      
+
+      // Firestore'a gerçekten yaz
+      try {
+        const docId = editingUser._docId || String(editingUser.id);
+        await setDoc(doc(db, 'users', docId), { ...updateData, id: editingUser.id, updatedAt: new Date().toISOString() }, { merge: true });
+        showToast?.('Kullanıcı güncellendi', 'success');
+      } catch (err) {
+        showToast?.('Güncellenemedi: ' + err.message, 'error');
+      }
+
       // Eğer kendi profilini güncelliyorsa currentUser'ı da güncelle
       if (currentUser.id === editingUser.id) {
         const updatedCurrentUser = { ...currentUser, ...updateData };
         setCurrentUser(updatedCurrentUser);
         localStorage.setItem('paydos_current_user', JSON.stringify(updatedCurrentUser));
       }
-      
+
     } else {
       if (!userFormData.password) {
         alert('Yeni kullanıcı için şifre zorunlu');
@@ -13327,6 +13336,13 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       }
       const newUser = { ...userFormData, id: generateUniqueId(), createdAt: new Date().toISOString() };
       setUsers([...users, newUser]);
+      // Firestore'a gerçekten yaz
+      try {
+        await setDoc(doc(db, 'users', String(newUser.id)), newUser, { merge: true });
+        showToast?.('Kullanıcı eklendi', 'success');
+      } catch (err) {
+        showToast?.('Eklenemedi: ' + err.message, 'error');
+      }
     }
     
     setShowUserForm(false);
@@ -13339,7 +13355,17 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       return;
     }
     if (!confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')) return;
+    const user = users.find(u => u.id === id);
+    // Ekranda hemen kaldır
     setUsers(users.filter(u => u.id !== id));
+    // Firestore'dan gerçekten sil
+    try {
+      const docId = user?._docId || String(id);
+      await deleteDoc(doc(db, 'users', docId));
+      showToast?.('Kullanıcı silindi', 'info');
+    } catch (err) {
+      showToast?.('Silinemedi: ' + err.message, 'error');
+    }
   };
 
   const handlePasswordChange = async (e) => {
