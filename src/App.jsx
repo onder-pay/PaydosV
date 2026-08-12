@@ -14193,24 +14193,24 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             <div>
               <h3 style={{ margin: 0, fontSize: '18px' }}>{currentUser?.name}</h3>
               <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{currentUser?.email}</p>
-              <span style={{ display: 'inline-block', marginTop: '8px', fontSize: '11px', padding: '4px 12px', borderRadius: '20px', background: currentUser?.role === 'admin' ? 'rgba(139,92,246,0.2)' : 'rgba(59,130,246,0.2)', color: currentUser?.role === 'admin' ? '#8b5cf6' : '#3b82f6' }}>
-                {currentUser?.role === 'admin' ? '👑 Yönetici' : '👤 Kullanıcı'}
+              <span style={{ display: 'inline-block', marginTop: '8px', fontSize: '11px', padding: '4px 12px', borderRadius: '20px', background: currentUser?.role === 'admin' ? 'rgba(139,92,246,0.2)' : currentUser?.role === 'muhasebe' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)', color: currentUser?.role === 'admin' ? '#8b5cf6' : currentUser?.role === 'muhasebe' ? '#10b981' : '#3b82f6' }}>
+                {currentUser?.role === 'admin' ? '👑 Yönetici' : currentUser?.role === 'muhasebe' ? '🧮 Muhasebe' : '👤 Kullanıcı'}
               </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '14px', borderRadius: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px' }}>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>Ad Soyad</p>
-              <p style={{ margin: '4px 0 0', fontSize: '15px' }}>{currentUser?.name}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{currentUser?.name}</p>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '14px', borderRadius: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>E-posta</p>
-              <p style={{ margin: '4px 0 0', fontSize: '15px' }}>{currentUser?.email}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</p>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '14px', borderRadius: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px' }}>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>Rol</p>
-              <p style={{ margin: '4px 0 0', fontSize: '15px' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{currentUser?.role === 'admin' ? 'Yönetici' : currentUser?.role === 'muhasebe' ? 'Muhasebe' : 'Kullanıcı'}</p>
             </div>
           </div>
 
