@@ -14275,34 +14275,36 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {users.map(user => (
-              <div key={user.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: user.id === currentUser.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: user.role === 'admin' ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '16px' }}>
-                      {user.name?.[0] || 'U'}
-                    </div>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '14px' }}>
-                        {user.name}
-                        {user.id === currentUser.id && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#f59e0b' }}>(Sen)</span>}
-                      </h4>
-                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{user.email}</p>
-                    </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+            {users.map(user => {
+              const roleInfo = user.role === 'admin' ? { label: 'Yönetici', color: '#8b5cf6', bg: 'rgba(139,92,246,0.2)', grad: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }
+                : user.role === 'muhasebe' ? { label: 'Muhasebe', color: '#10b981', bg: 'rgba(16,185,129,0.2)', grad: 'linear-gradient(135deg, #10b981, #059669)' }
+                : { label: 'Kullanıcı', color: '#3b82f6', bg: 'rgba(59,130,246,0.2)', grad: 'linear-gradient(135deg, #3b82f6, #2563eb)' };
+              return (
+              <div key={user.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '10px', border: user.id === currentUser.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: roleInfo.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
+                    {user.name?.[0] || 'U'}
                   </div>
-                  <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '20px', background: user.role === 'admin' ? 'rgba(139,92,246,0.2)' : 'rgba(59,130,246,0.2)', color: user.role === 'admin' ? '#8b5cf6' : '#3b82f6' }}>
-                    {user.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h4 style={{ margin: 0, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user.name}
+                      {user.id === currentUser.id && <span style={{ marginLeft: '6px', fontSize: '9px', color: '#f59e0b' }}>(Sen)</span>}
+                    </h4>
+                    <p style={{ margin: '1px 0 0', fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</p>
+                  </div>
+                  <span style={{ fontSize: '9px', padding: '3px 8px', borderRadius: '20px', background: roleInfo.bg, color: roleInfo.color, flexShrink: 0 }}>
+                    {roleInfo.label}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                  <button onClick={() => openEditUser(user)} style={{ flex: 1, padding: '8px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={() => openEditUser(user)} style={{ flex: 1, padding: '6px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '7px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>✏️ Düzenle</button>
                   {user.id !== currentUser.id && (
-                    <button onClick={() => deleteUser(user.id)} style={{ flex: 1, padding: '8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️ Sil</button>
+                    <button onClick={() => deleteUser(user.id)} style={{ flex: 1, padding: '6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>
                   )}
                 </div>
               </div>
-            ))}
+            );})}
           </div>
         </div>
       )}
