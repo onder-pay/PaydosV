@@ -7603,7 +7603,47 @@ function CostCalculator({ initial, onSave, onClose, showToast, isMobile }) {
   );
 }
 
-function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser }) {
+function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours }) {
+  // Teklifi tura dönüştür (fiyat + tarih + destinasyon aktarılır)
+  const convertOfferToTour = async (quote) => {
+    const o = quote.offer || {};
+    // Zaten dönüştürülmüş mü?
+    if (tours?.some(t => t.fromQuoteId === quote.id)) {
+      if (!window.confirm('Bu teklif zaten bir tura dönüştürülmüş. Yine de yeni bir tur oluşturulsun mu?')) return;
+    }
+    const dest = (o.destinations || []).filter(d => d.country || d.city)[0] || {};
+    // Fiyatı dolu olan otelden al
+    const ph = (o.hotels || []).find(h => h.priceDouble || h.priceSingle) || (o.hotels || [])[0] || {};
+    const curMap = { USD: '$', EUR: '€', TRY: '₺', GBP: '£' };
+    const cur = curMap[ph.currency] || ph.currency || '€';
+    const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
+    const newTour = {
+      id: Date.now(),
+      name: quote.subject || o.title || 'Yeni Tur',
+      country: dest.country || '',
+      city: dest.city || '',
+      startDate: o.startDate || '',
+      endDate: o.endDate || '',
+      prices: {
+        doubleRoom: { amount: num(ph.priceDouble), currency: cur },
+        singleRoom: { amount: num(ph.priceSingle), currency: cur },
+        extraBed: { amount: num(ph.priceExtraBed), currency: cur },
+        baby: { amount: num(ph.priceBaby), currency: cur },
+        child1: { amount: num(ph.priceChild1), currency: cur },
+        child2: { amount: num(ph.priceChild2), currency: cur },
+      },
+      pdfUrl: o.pdfUrl || '',
+      status: 'Aktif',
+      reservations: [],
+      fromQuoteId: quote.id, // hangi tekliften geldi
+      createdAt: new Date().toISOString(),
+    };
+    setTours(prev => [...prev, newTour]);
+    try {
+      await setDoc(doc(db, 'tours', String(newTour.id)), newTour, { merge: true });
+      showToast?.(`"${newTour.name}" turu oluşturuldu — Turlar bölümünden düzenleyebilirsiniz`, 'success');
+    } catch (e) { showToast?.('Tur oluşturuldu ama kaydedilemedi: ' + e.message, 'error'); }
+  };
   const canSeeCost = currentUser?.role === 'muhasebe' || currentUser?.role === 'admin';
   const [showCostCalc, setShowCostCalc] = useState(false);
   const [costQuote, setCostQuote] = useState(null); // hangi teklifin maliyeti
@@ -9207,6 +9247,7 @@ KURALLAR:
                 {canSeeCost && (
                   <button onClick={() => { setCostQuote(quote); setShowCostCalc(true); }} style={{ padding: '8px 12px', background: quote.cost ? 'rgba(16,185,129,0.2)' : 'rgba(232,145,42,0.2)', border: 'none', borderRadius: '6px', color: quote.cost ? '#10b981' : '#e8912a', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }} title="Maliyet Hesaplama (tahmini)">💰 Maliyet{quote.cost ? ' ✓' : ''}</button>
                 )}
+                <button onClick={() => convertOfferToTour(quote)} style={{ padding: '8px 12px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }} title="Bu teklifi tura dönüştür (fiyat + tarih aktarılır)">🎫 Tura Dönüştür</button>
                 <button onClick={() => {
                   const now = new Date(); const id = Date.now();
                   const copy = { ...quote, id, _docId: undefined, subject: `${quote.subject} (Kopya)`, number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`, createdAt: now.toISOString() };
@@ -15177,7 +15218,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
+      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
@@ -15210,3 +15251,4 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     </div>
   );
 }
+        
