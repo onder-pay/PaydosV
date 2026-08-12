@@ -7403,7 +7403,210 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   );
 }
 // TEKLİF & PROFORMA MODÜLÜ
-function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings }) {
+// ===== MALİYET HESAPLAMA (tahmini planlama — sadece muhasebe/yönetici) =====
+function CostCalculator({ initial, onSave, onClose, showToast, isMobile }) {
+  const emptyCost = {
+    tourName: '', peopleCount: 30, currency: 'TL',
+    hotels: [{ name: '', nights: 1, single: '', twin: '' }],
+    perPerson: [
+      { name: 'Uçak Bileti', qty: 1, unit: '' },
+      { name: 'Fuar Giriş Bileti', qty: 0, unit: '' },
+      { name: 'Yemek', qty: 1, unit: '' },
+      { name: 'Transfer/Taksi', qty: 1, unit: '' },
+      { name: 'Sigorta', qty: 1, unit: '' },
+      { name: 'Kahvaltı', qty: 1, unit: '' },
+    ],
+    shared: [
+      { name: 'Otobüs', qty: 1, unit: '' },
+      { name: 'Rehber', qty: 1, unit: '' },
+      { name: 'Free Pax (Ücretsiz Misafir)', qty: 0, unit: '' },
+      { name: 'Yol Parası/Otoban', qty: 0, unit: '' },
+    ],
+    sellTwin: '', sellSingle: '',
+    estTwin: 20, estSingle: 5,
+  };
+  const [c, setC] = useState(initial?.cost ? { ...emptyCost, ...initial.cost } : { ...emptyCost, tourName: initial?.title || initial?.subject || '' });
+  const n = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
+  const cur = c.currency || 'TL';
+
+  // Otel toplamları
+  const hotelSingle = c.hotels.reduce((s, h) => s + n(h.single) * n(h.nights || 1), 0);
+  const hotelTwin = c.hotels.reduce((s, h) => s + n(h.twin) * n(h.nights || 1), 0);
+  // Kişi başı gider toplamı
+  const perPersonTotal = c.perPerson.reduce((s, r) => s + n(r.qty) * n(r.unit), 0);
+  // Free pax birim maliyeti = otel(single) + uçak birim + fuar birim  (Excel: E16 + C21 + C22)
+  const ucakUnit = n(c.perPerson.find(r => /uçak|ucak/i.test(r.name))?.unit);
+  const fuarUnit = n(c.perPerson.find(r => /fuar/i.test(r.name))?.unit);
+  const freePaxUnit = hotelSingle + ucakUnit + fuarUnit;
+  // Ortak gider toplamı (free pax satırının birim fiyatı otomatik)
+  const sharedTotal = c.shared.reduce((s, r) => {
+    const unit = /free pax/i.test(r.name) ? freePaxUnit : n(r.unit);
+    return s + n(r.qty) * unit;
+  }, 0);
+  const perPersonShared = n(c.peopleCount) > 0 ? sharedTotal / n(c.peopleCount) : 0;
+  // Toplam maliyet (kişi başı)
+  const costTwin = perPersonShared + perPersonTotal + hotelTwin / 2;
+  const costSingle = perPersonShared + perPersonTotal + hotelSingle;
+  // Kâr
+  const profitTwin = n(c.sellTwin) - costTwin;
+  const profitSingle = n(c.sellSingle) - costSingle;
+  const marginTwin = n(c.sellTwin) > 0 ? (profitTwin / n(c.sellTwin)) * 100 : 0;
+  const marginSingle = n(c.sellSingle) > 0 ? (profitSingle / n(c.sellSingle)) * 100 : 0;
+  // Toplam gelir/kâr
+  const totalRevenue = n(c.estTwin) * n(c.sellTwin) + n(c.estSingle) * n(c.sellSingle);
+  const totalCost = n(c.estTwin) * costTwin + n(c.estSingle) * costSingle;
+  const totalNetProfit = totalRevenue - totalCost;
+
+  const fmt = (v) => (Math.round(v * 100) / 100).toLocaleString('tr') + ' ' + cur;
+  const inp = { width: '100%', padding: '7px 9px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' };
+  const th = { padding: '6px 8px', textAlign: 'left', color: '#94a3b8', fontSize: '10px', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.1)' };
+  const td = { padding: '4px 6px' };
+  const sectionTitle = { fontSize: '13px', fontWeight: '700', color: '#e8912a', margin: '0 0 8px' };
+  const card = { background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '14px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.06)' };
+
+  const setHotel = (i, k, v) => setC({ ...c, hotels: c.hotels.map((h, j) => j === i ? { ...h, [k]: v } : h) });
+  const setPP = (i, k, v) => setC({ ...c, perPerson: c.perPerson.map((r, j) => j === i ? { ...r, [k]: v } : r) });
+  const setSH = (i, k, v) => setC({ ...c, shared: c.shared.map((r, j) => j === i ? { ...r, [k]: v } : r) });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 500, overflow: 'auto', padding: isMobile ? '10px' : '30px' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto', background: 'linear-gradient(135deg, #0c1929, #14263d)', borderRadius: '16px', padding: isMobile ? '16px' : '24px', border: '1px solid rgba(232,145,42,0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0, fontSize: '18px', color: '#e8912a' }}>💰 Maliyet Hesaplama <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>(tahmini planlama)</span></h2>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: '#fff', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px' }}>×</button>
+        </div>
+
+        {/* Tur bilgileri */}
+        <div style={card}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '2fr 1fr 1fr', gap: '10px' }}>
+            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tur Adı</label><input value={c.tourName} onChange={e => setC({ ...c, tourName: e.target.value })} style={inp} /></div>
+            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Kişi Sayısı</label><input type="number" value={c.peopleCount} onChange={e => setC({ ...c, peopleCount: e.target.value })} style={inp} /></div>
+            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Para Birimi</label>
+              <select value={c.currency} onChange={e => setC({ ...c, currency: e.target.value })} style={inp}>{['TL','€','$','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}</select>
+            </div>
+          </div>
+        </div>
+
+        {/* Otel */}
+        <div style={card}>
+          <p style={sectionTitle}>🏨 Otel Bilgileri</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
+              <thead><tr><th style={th}>Otel Adı</th><th style={th}>Gece</th><th style={th}>Single (kişi)</th><th style={th}>Twin (kişi)</th><th style={th}></th></tr></thead>
+              <tbody>
+                {c.hotels.map((h, i) => (
+                  <tr key={i}>
+                    <td style={td}><input value={h.name} onChange={e => setHotel(i, 'name', e.target.value)} style={inp} placeholder="Otel adı" /></td>
+                    <td style={{ ...td, width: '70px' }}><input type="number" value={h.nights} onChange={e => setHotel(i, 'nights', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '100px' }}><input type="number" value={h.single} onChange={e => setHotel(i, 'single', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '100px' }}><input type="number" value={h.twin} onChange={e => setHotel(i, 'twin', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '30px' }}>{c.hotels.length > 1 && <button onClick={() => setC({ ...c, hotels: c.hotels.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={() => setC({ ...c, hotels: [...c.hotels, { name: '', nights: 1, single: '', twin: '' }] })} style={{ marginTop: '8px', padding: '5px 12px', background: 'rgba(232,145,42,0.15)', border: '1px solid rgba(232,145,42,0.3)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '11px' }}>➕ Otel Satırı</button>
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8' }}>Toplam otel (kişi başı): Single <b style={{ color: '#e8f1f8' }}>{fmt(hotelSingle)}</b> · Twin <b style={{ color: '#e8f1f8' }}>{fmt(hotelTwin)}</b></div>
+        </div>
+
+        {/* Kişi başı giderler */}
+        <div style={card}>
+          <p style={sectionTitle}>👤 Kişi Başı Giderler</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '420px' }}>
+              <thead><tr><th style={th}>Gider Kalemi</th><th style={th}>Adet</th><th style={th}>Birim Fiyat</th><th style={th}>Toplam</th><th style={th}></th></tr></thead>
+              <tbody>
+                {c.perPerson.map((r, i) => (
+                  <tr key={i}>
+                    <td style={td}><input value={r.name} onChange={e => setPP(i, 'name', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '70px' }}><input type="number" value={r.qty} onChange={e => setPP(i, 'qty', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '100px' }}><input type="number" value={r.unit} onChange={e => setPP(i, 'unit', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: '90px', color: '#e8f1f8' }}>{fmt(n(r.qty) * n(r.unit))}</td>
+                    <td style={{ ...td, width: '30px' }}><button onClick={() => setC({ ...c, perPerson: c.perPerson.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={() => setC({ ...c, perPerson: [...c.perPerson, { name: '', qty: 1, unit: '' }] })} style={{ marginTop: '8px', padding: '5px 12px', background: 'rgba(232,145,42,0.15)', border: '1px solid rgba(232,145,42,0.3)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '11px' }}>➕ Satır</button>
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8' }}>Toplam kişi başı gider: <b style={{ color: '#e8f1f8' }}>{fmt(perPersonTotal)}</b></div>
+        </div>
+
+        {/* Ortak giderler */}
+        <div style={card}>
+          <p style={sectionTitle}>👥 Ortak Giderler (Grup)</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '420px' }}>
+              <thead><tr><th style={th}>Gider Kalemi</th><th style={th}>Adet/Gün</th><th style={th}>Birim Fiyat</th><th style={th}>Toplam</th><th style={th}></th></tr></thead>
+              <tbody>
+                {c.shared.map((r, i) => {
+                  const isFreePax = /free pax/i.test(r.name);
+                  const unit = isFreePax ? freePaxUnit : n(r.unit);
+                  return (
+                    <tr key={i}>
+                      <td style={td}><input value={r.name} onChange={e => setSH(i, 'name', e.target.value)} style={inp} /></td>
+                      <td style={{ ...td, width: '70px' }}><input type="number" value={r.qty} onChange={e => setSH(i, 'qty', e.target.value)} style={inp} /></td>
+                      <td style={{ ...td, width: '100px' }}>{isFreePax ? <span style={{ fontSize: '11px', color: '#64748b' }} title="Otomatik: otel+uçak+fuar">{fmt(freePaxUnit)} (oto)</span> : <input type="number" value={r.unit} onChange={e => setSH(i, 'unit', e.target.value)} style={inp} />}</td>
+                      <td style={{ ...td, width: '90px', color: '#e8f1f8' }}>{fmt(n(r.qty) * unit)}</td>
+                      <td style={{ ...td, width: '30px' }}><button onClick={() => setC({ ...c, shared: c.shared.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={() => setC({ ...c, shared: [...c.shared, { name: '', qty: 1, unit: '' }] })} style={{ marginTop: '8px', padding: '5px 12px', background: 'rgba(232,145,42,0.15)', border: '1px solid rgba(232,145,42,0.3)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '11px' }}>➕ Satır</button>
+          <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8' }}>Toplam ortak gider: <b style={{ color: '#e8f1f8' }}>{fmt(sharedTotal)}</b> · Kişi başı: <b style={{ color: '#e8f1f8' }}>{fmt(perPersonShared)}</b></div>
+        </div>
+
+        {/* Maliyet & Kâr */}
+        <div style={{ ...card, background: 'rgba(232,145,42,0.06)', border: '1px solid rgba(232,145,42,0.25)' }}>
+          <p style={sectionTitle}>📊 Maliyet & Kâr Özeti (kişi başı)</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '380px' }}>
+              <thead><tr><th style={th}></th><th style={th}>Twin</th><th style={th}>Single</th></tr></thead>
+              <tbody>
+                <tr><td style={{ ...td, color: '#94a3b8' }}>Toplam Maliyet</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costTwin)}</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costSingle)}</td></tr>
+                <tr><td style={{ ...td, color: '#94a3b8' }}>Satış Fiyatı</td>
+                  <td style={td}><input type="number" value={c.sellTwin} onChange={e => setC({ ...c, sellTwin: e.target.value })} style={{ ...inp, width: '110px' }} /></td>
+                  <td style={td}><input type="number" value={c.sellSingle} onChange={e => setC({ ...c, sellSingle: e.target.value })} style={{ ...inp, width: '110px' }} /></td>
+                </tr>
+                <tr><td style={{ ...td, color: '#94a3b8' }}>Kişi Başı Kâr</td><td style={{ ...td, color: profitTwin >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{fmt(profitTwin)}</td><td style={{ ...td, color: profitSingle >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{fmt(profitSingle)}</td></tr>
+                <tr><td style={{ ...td, color: '#94a3b8' }}>Kâr Marjı</td><td style={{ ...td, color: '#3b82f6' }}>%{marginTwin.toFixed(1)}</td><td style={{ ...td, color: '#3b82f6' }}>%{marginSingle.toFixed(1)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Toplam gelir/kâr */}
+        <div style={{ ...card, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)' }}>
+          <p style={{ ...sectionTitle, color: '#10b981' }}>💵 Tahmini Toplam Gelir & Kâr</p>
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tahmini Twin kişi</label><input type="number" value={c.estTwin} onChange={e => setC({ ...c, estTwin: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
+            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tahmini Single kişi</label><input type="number" value={c.estSingle} onChange={e => setC({ ...c, estSingle: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', alignSelf: 'end' }}>Toplam: <b style={{ color: '#e8f1f8' }}>{n(c.estTwin) + n(c.estSingle)} kişi</b></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}><div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{fmt(totalRevenue)}</div><div style={{ fontSize: '10px', color: '#64748b' }}>Toplam Gelir</div></div>
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}><div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>{fmt(totalCost)}</div><div style={{ fontSize: '10px', color: '#64748b' }}>Toplam Maliyet</div></div>
+            <div style={{ background: totalNetProfit >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', padding: '10px', borderRadius: '8px', textAlign: 'center', border: `1px solid ${totalNetProfit >= 0 ? '#10b98140' : '#ef444440'}` }}><div style={{ fontSize: '16px', fontWeight: '800', color: totalNetProfit >= 0 ? '#10b981' : '#ef4444' }}>{fmt(totalNetProfit)}</div><div style={{ fontSize: '10px', color: '#64748b' }}>{totalNetProfit >= 0 ? '📈 NET KÂR' : '📉 NET ZARAR'}</div></div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>Kapat</button>
+          <button onClick={() => onSave(c)} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser }) {
+  const canSeeCost = currentUser?.role === 'muhasebe' || currentUser?.role === 'admin';
+  const [showCostCalc, setShowCostCalc] = useState(false);
+  const [costQuote, setCostQuote] = useState(null); // hangi teklifin maliyeti
   const [showForm, setShowForm] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
@@ -9000,6 +9203,9 @@ KURALLAR:
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={() => { setOffer({ ...emptyOffer, ...quote.offer }); setOfferId(quote.id); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Aç / Düzenle</button>
+                {canSeeCost && (
+                  <button onClick={() => { setCostQuote(quote); setShowCostCalc(true); }} style={{ padding: '8px 12px', background: quote.cost ? 'rgba(16,185,129,0.2)' : 'rgba(232,145,42,0.2)', border: 'none', borderRadius: '6px', color: quote.cost ? '#10b981' : '#e8912a', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }} title="Maliyet Hesaplama (tahmini)">💰 Maliyet{quote.cost ? ' ✓' : ''}</button>
+                )}
                 <button onClick={() => {
                   const now = new Date(); const id = Date.now();
                   const copy = { ...quote, id, _docId: undefined, subject: `${quote.subject} (Kopya)`, number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`, createdAt: now.toISOString() };
@@ -9032,6 +9238,26 @@ KURALLAR:
             </div>
           ))}
         </div>
+      )}
+
+      {showCostCalc && costQuote && (
+        <CostCalculator
+          initial={costQuote}
+          isMobile={isMobile}
+          showToast={showToast}
+          onClose={() => { setShowCostCalc(false); setCostQuote(null); }}
+          onSave={async (cost) => {
+            const updated = { ...costQuote, cost };
+            setQuotes(prev => prev.map(q => q.id === costQuote.id ? updated : q));
+            try {
+              const docId = costQuote._docId || String(costQuote.id);
+              const sd = { ...updated }; delete sd._docId;
+              await setDoc(doc(db, 'quotes', docId), sd, { merge: true });
+              showToast?.('Maliyet hesabı kaydedildi', 'success');
+            } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+            setShowCostCalc(false); setCostQuote(null);
+          }}
+        />
       )}
     </div>
   );
@@ -14943,7 +15169,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} />;
+      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
