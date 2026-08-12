@@ -5442,12 +5442,18 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     });
     const cur = res.currency || tour.prices?.doubleRoom?.currency || '€';
     return {
-      tuketici: {
-        name: res.customerName || (cust ? `${cust.firstName} ${cust.lastName}` : ''),
-        company: cust?.companyName || cust?.company || res.company || '',
-        tc: cust?.tcKimlik || '', address: cust?.city || '',
-        phone: res.customerPhone || cust?.phone || '', email: res.customerEmail || cust?.email || ''
-      },
+      tuketici: (() => {
+        const tc = cust?.tcKimlik || '';
+        let phone = res.customerPhone || cust?.phone || '';
+        // Telefon yanlışlıkla TC ile aynı girilmişse gösterme (veri hatası koruması)
+        if (phone && tc && phone.replace(/\D/g, '') === tc.replace(/\D/g, '')) phone = '';
+        return {
+          name: res.customerName || (cust ? `${cust.firstName} ${cust.lastName}` : ''),
+          company: cust?.companyName || cust?.company || res.company || '',
+          tc, address: cust?.city || '',
+          phone, email: res.customerEmail || cust?.email || ''
+        };
+      })(),
       katilimcilar: kat, passports: pps,
       startDate: tour.startDate || '', endDate: tour.endDate || '',
       baslangicYeri: appSettings?.city || 'Denizli',
@@ -15251,4 +15257,3 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     </div>
   );
 }
-        
