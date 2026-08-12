@@ -8648,6 +8648,8 @@ ${flightRaw}`;
   const importFromOffer = (q, hotelIdx = 0) => {
     const o = q.offer || {};
     const h = (o.hotels || [])[hotelIdx] || {};
+    // Fiyat: seçili otelde varsa onu, yoksa teklifte fiyatı dolu olan ilk otelden al
+    const priceHotel = (h.priceDouble || h.priceSingle) ? h : ((o.hotels || []).find(x => x.priceDouble || x.priceSingle) || h);
     const dest = (o.destinations || []).filter(d => d.country || d.city);
     const guzergah = dest.map(d => [d.city, d.country].filter(Boolean).join(' / ')).join(' — ');
     const anaUlke = dest[0]?.country || '';
@@ -8663,8 +8665,8 @@ ${flightRaw}`;
       startDate: o.startDate || c.startDate, endDate: o.endDate || c.endDate,
       guzergah: guzergah || c.guzergah, konaklama: konak || c.konaklama, ulasim: ulasim || c.ulasim,
       vizeUlke: anaUlke || c.vizeUlke, vizeSarti: vz.metin || c.vizeSarti,
-      fiyatDouble: h.priceDouble || c.fiyatDouble, fiyatSingle: h.priceSingle || c.fiyatSingle,
-      paraBirimi: h.currency || c.paraBirimi,
+      fiyatDouble: priceHotel.priceDouble || h.priceDouble || c.fiyatDouble, fiyatSingle: priceHotel.priceSingle || h.priceSingle || c.fiyatSingle,
+      paraBirimi: priceHotel.currency || h.currency || c.paraBirimi,
       programDays: o.days || c.programDays
     }));
     showToast?.(vz.bilinmiyor && anaUlke ? `Aktarıldı — ${anaUlke} vize durumu belirsiz, elle kontrol edin` : 'Tur teklifinden aktarıldı', vz.bilinmiyor ? 'warning' : 'success');
@@ -8702,15 +8704,15 @@ KURALLAR:
 
   // ===== SÖZLEŞME: kaydet =====
   const saveContract = () => {
-    if (!contract.tuketici.name) { showToast?.('Tüketici seçin veya adını girin', 'warning'); return; }
+    const tketiciAdi = contract.tuketici.name || 'İsimsiz (örnek)';
     const now = new Date();
     if (contractId) {
-      setQuotes(prev => prev.map(q => q.id === contractId ? { ...q, subject: `Sözleşme — ${contract.tuketici.name}`, contract, updatedAt: now.toISOString() } : q));
+      setQuotes(prev => prev.map(q => q.id === contractId ? { ...q, subject: `Sözleşme — ${tketiciAdi}`, contract, updatedAt: now.toISOString() } : q));
       showToast?.('Sözleşme güncellendi', 'success');
     } else {
       const id = Date.now();
-      setQuotes(prev => [...prev, { id, type: 'sozlesme', subject: `Sözleşme — ${contract.tuketici.name}`,
-        customer: { firstName: contract.tuketici.name, lastName: '' },
+      setQuotes(prev => [...prev, { id, type: 'sozlesme', subject: `Sözleşme — ${tketiciAdi}`,
+        customer: { firstName: contract.tuketici.name || '', lastName: '' },
         number: `SZL-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='sozlesme').length + 1).padStart(3,'0')}`,
         contract, createdAt: now.toISOString() }]);
       setContractId(id);
