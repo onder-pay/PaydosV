@@ -7575,6 +7575,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
   const canSeeCost = currentUser?.role === 'muhasebe' || currentUser?.role === 'admin';
   const [showCostCalc, setShowCostCalc] = useState(false);
   const [costQuote, setCostQuote] = useState(null); // hangi teklifin maliyeti
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
@@ -8544,7 +8545,6 @@ ${flightRaw}`;
     document.head.appendChild(s);
   });
 
-  const [pdfBusy, setPdfBusy] = useState(false);
   const makeOfferPDF = async (o) => {
     const data = { ...emptyOffer, ...o };
     setPdfBusy(true);
