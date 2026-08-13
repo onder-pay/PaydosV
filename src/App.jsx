@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component } from 'react';
 import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
@@ -14594,7 +14594,31 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   );
 }
 
-export default function App() {
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null, info: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { this.setState({ info }); console.error('YAKALANAN HATA:', error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '24px', margin: '20px', background: '#1a0e0e', border: '2px solid #ef4444', borderRadius: '12px', color: '#fca5a5', fontFamily: 'monospace', fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <h2 style={{ color: '#ef4444', margin: '0 0 12px' }}>⚠️ Hata Yakalandı (Debug)</h2>
+          <div style={{ marginBottom: '12px', color: '#fff' }}><b>Mesaj:</b> {String(this.state.error?.message || this.state.error)}</div>
+          <div style={{ marginBottom: '12px' }}><b>Bileşen izi (hangi bileşende patladı):</b>
+            <div style={{ background: '#000', padding: '10px', borderRadius: '6px', marginTop: '6px', maxHeight: '300px', overflow: 'auto' }}>{this.state.info?.componentStack || '(yok)'}</div>
+          </div>
+          <div><b>Hata yığını:</b>
+            <div style={{ background: '#000', padding: '10px', borderRadius: '6px', marginTop: '6px', maxHeight: '200px', overflow: 'auto' }}>{this.state.error?.stack || '(yok)'}</div>
+          </div>
+          <button onClick={() => window.location.reload()} style={{ marginTop: '14px', padding: '10px 20px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>🔄 Sayfayı Yenile</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AppInner() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeModule, setActiveModule] = useState('dashboard');
@@ -15177,5 +15201,13 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
         {renderModule()}
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   );
 }
