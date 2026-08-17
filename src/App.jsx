@@ -3671,6 +3671,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
+  const [visaCountryFilter, setVisaCountryFilter] = useState('all');
   const [showIdataModal, setShowIdataModal] = useState(false);
   const [idataText, setIdataText] = useState('');
   const [idataParsed, setIdataParsed] = useState([]);
@@ -3724,7 +3725,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
       : v.status === visaStatusFilter;
-    return matchSearch && matchStatus;
+    const matchCountry = visaCountryFilter === 'all' ? true : (v.country || '') === visaCountryFilter;
+    return matchSearch && matchStatus && matchCountry;
   });
 
   // Excel export fonksiyonu
@@ -4883,6 +4885,21 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               <option value="__odenmedi__" style={{ background: '#0c1929', color: '#fff' }}>
                 💸 Ödenmedi ({unpaidCount})
               </option>
+            </select>
+          );
+        })()}
+        {/* Ülke filtresi */}
+        {(activeTab === 'all' || !['calendar','reminders'].includes(activeTab)) && (() => {
+          const countries = [...new Set(visaApplications.map(v => v.country).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
+          if (countries.length === 0) return null;
+          return (
+            <select value={visaCountryFilter} onChange={e => setVisaCountryFilter(e.target.value)}
+              style={{ padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', outline: 'none', minWidth: '150px', appearance: 'auto' }}>
+              <option value="all" style={{ background: '#0c1929', color: '#fff' }}>🌍 Tüm Ülkeler</option>
+              {countries.map(c => {
+                const count = visaApplications.filter(v => v.country === c).length;
+                return <option key={c} value={c} style={{ background: '#0c1929', color: '#fff' }}>{c} ({count})</option>;
+              })}
             </select>
           );
         })()}
