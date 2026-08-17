@@ -3725,7 +3725,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
       : v.status === visaStatusFilter;
-    const matchCountry = visaCountryFilter === 'all' ? true : (v.country || '') === visaCountryFilter;
+    const matchCountry = visaCountryFilter === 'all' ? true : (() => {
+      if (v.country && v.country.trim() === visaCountryFilter) return true;
+      const txt = `${v.visaDuration || ''} ${v.visaType || ''}`;
+      return normalizeTr(txt).includes(normalizeTr(visaCountryFilter));
+    })();
     return matchSearch && matchStatus && matchCountry;
   });
 
@@ -4888,15 +4892,23 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </select>
           );
         })()}
-        {/* Ülke filtresi — her görünümde */}
+        {/* Ülke filtresi — her görünümde. Ülke, visaDuration/visaType metninden çıkarılır ("Almanya Ticari" → "Almanya") */}
         {(() => {
-          const countries = [...new Set(visaApplications.map(v => v.country).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
+          const knownCountries = Object.keys(VIZE_DURUM);
+          const extractCountry = (v) => {
+            if (v.country && v.country.trim()) return v.country.trim();
+            const txt = `${v.visaDuration || ''} ${v.visaType || ''}`;
+            // Bilinen ülke adlarından metinde geçeni bul (uzun isimler önce, "Çin Halk Cumhuriyeti" gibi)
+            const match = knownCountries.slice().sort((a,b) => b.length - a.length).find(c => normalizeTr(txt).includes(normalizeTr(c)));
+            return match || '';
+          };
+          const countries = [...new Set(visaApplications.map(extractCountry).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
           return (
             <select value={visaCountryFilter} onChange={e => setVisaCountryFilter(e.target.value)}
               style={{ padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', outline: 'none', minWidth: '150px', appearance: 'auto' }}>
               <option value="all" style={{ background: '#0c1929', color: '#fff' }}>🌍 Tüm Ülkeler</option>
               {countries.map(c => {
-                const count = visaApplications.filter(v => v.country === c).length;
+                const count = visaApplications.filter(v => extractCountry(v) === c).length;
                 return <option key={c} value={c} style={{ background: '#0c1929', color: '#fff' }}>{c} ({count})</option>;
               })}
             </select>
