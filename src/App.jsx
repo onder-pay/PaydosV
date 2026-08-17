@@ -4888,10 +4888,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </select>
           );
         })()}
-        {/* Ülke filtresi — her görünümde (takvim/hatırlatıcı dahil, hepsi filteredVisaApplications kullanıyor) */}
+        {/* Ülke filtresi — her görünümde */}
         {(() => {
           const countries = [...new Set(visaApplications.map(v => v.country).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
-          if (countries.length === 0) return null;
           return (
             <select value={visaCountryFilter} onChange={e => setVisaCountryFilter(e.target.value)}
               style={{ padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', outline: 'none', minWidth: '150px', appearance: 'auto' }}>
