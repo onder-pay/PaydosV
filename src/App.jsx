@@ -4888,8 +4888,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </select>
           );
         })()}
-        {/* Ülke filtresi */}
-        {(activeTab === 'all' || !['calendar','reminders'].includes(activeTab)) && (() => {
+        {/* Ülke filtresi — her görünümde (takvim/hatırlatıcı dahil, hepsi filteredVisaApplications kullanıyor) */}
+        {(() => {
           const countries = [...new Set(visaApplications.map(v => v.country).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
           if (countries.length === 0) return null;
           return (
