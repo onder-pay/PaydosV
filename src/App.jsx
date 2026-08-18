@@ -11062,13 +11062,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
               <button onClick={() => { setTransferView('list'); setEditingTransfer(null); }} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>← Geri</button>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '16px', display: 'grid', gap: '10px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr', gap: '8px' }}>
                 <div><label style={labelStyle}>Araç Tipi</label>
                   <select style={selectStyle} value={t.vehicleType} onChange={e => setT({ vehicleType: e.target.value })}>
                     {['VIP Minivan', 'Minibüs', 'Midibüs', 'Otobüs', 'Binek Araç', 'VIP Vito'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
                   </select>
                 </div>
-                <div><label style={labelStyle}>Tarih</label><input type="date" style={inS} value={t.date} onChange={e => setT({ date: e.target.value })} /></div>
                 <div><label style={labelStyle}>Saat</label><input style={inS} value={t.time} onChange={e => setT({ time: e.target.value })} placeholder="14:30" /></div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
