@@ -55,7 +55,19 @@ exports.handler = async (event) => {
     const attachWarnings = [];
     if (Array.isArray(attachments) && attachments.length) {
       for (const a of attachments) {
-        if (!a || !a.url) continue;
+        if (!a) continue;
+        // 1) base64 içerik doğrudan gelmişse (client-side üretilen PDF) → indirmeye gerek yok
+        if (a.contentBase64) {
+          try {
+            const buf = Buffer.from(a.contentBase64, 'base64');
+            mailAttachments.push({ filename: a.filename || 'ek.pdf', content: buf });
+          } catch (e) {
+            attachWarnings.push(`${a.filename || 'ek'}: base64 çözülemedi (${e.message})`);
+          }
+          continue;
+        }
+        // 2) URL'den indir (yüklü dosyalar)
+        if (!a.url) continue;
         try {
           const resp = await fetch(a.url);
           if (!resp.ok) { attachWarnings.push(`${a.filename || 'ek'}: indirilemedi (${resp.status})`); continue; }
