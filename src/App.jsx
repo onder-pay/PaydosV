@@ -5185,27 +5185,139 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   );
 }
 
+// ===== GLOBAL: TUR TEKLİFİ/PROGRAM HTML ÜRETİCİ (Quotes + Tours ortak) =====
+// ===== TUR TEKLİFİ: yazdırılabilir şık HTML üretici =====
+const TR_AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const offerDateRange = (o) => {
+  if (!o.startDate) return '';
+  const [y1,m1,d1] = o.startDate.split('-').map(Number);
+  if (!o.endDate) return `${d1} ${TR_AYLAR[m1-1]} ${y1}`;
+  const [y2,m2,d2] = o.endDate.split('-').map(Number);
+  if (y1 === y2 && m1 === m2) return `${d1} – ${d2} ${TR_AYLAR[m1-1]} ${y1}`;
+  if (y1 === y2) return `${d1} ${TR_AYLAR[m1-1]} – ${d2} ${TR_AYLAR[m2-1]} ${y1}`;
+  return `${d1} ${TR_AYLAR[m1-1]} ${y1} – ${d2} ${TR_AYLAR[m2-1]} ${y2}`;
+};
+const offerDuration = (o) => {
+  if (!o.startDate || !o.endDate) return '';
+  const a = new Date(o.startDate + 'T00:00:00'), b = new Date(o.endDate + 'T00:00:00');
+  const nights = Math.round((b - a) / 86400000);
+  if (isNaN(nights) || nights < 0) return '';
+  return `${nights + 1} Gün${nights > 0 ? ` / ${nights} Gece` : ''}`;
+};
+const offerLocation = (o) => (o.destinations || []).filter(d => d.country || d.city)
+  .map(d => [d.city, d.country].filter(Boolean).join(', ')).join(' · ');
+const genOfferHTML = (o) => {
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const flightCard = (f, label) => {
+    const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
+    if (!legs.length) return '';
+    return `
+    <div class="fcard">
+      <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span>${legs.length > 1 ? '<span class="conn">Aktarmalı</span>' : ''}</div>
+      ${legs.map((l, i) => `
+        <div class="fleg">
+          ${legs.length > 1 ? `<div class="flegno">${i + 1}. Bacak</div>` : ''}
+          ${l.airline ? `<div class="frow"><span>Havayolu</span> <b>${esc(l.airline)}</b></div>` : ''}
+          ${l.dep ? `<div class="frow"><span>Kalkış</span> <b>${esc(l.dep)}</b></div>` : ''}
+          ${l.arr ? `<div class="frow"><span>Varış</span> <b>${esc(l.arr)}</b></div>` : ''}
+          ${l.plane ? `<div class="frow"><span>Uçak</span> <b>${esc(l.plane)}</b></div>` : ''}
+        </div>`).join('')}
+    </div>`;
+  };
+  const daysHTML = o.days.map((d,i) => `
+    <div class="drow">
+      <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
+      <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>(x.time||'').trim()||(x.text||'').trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${x.time?`<b class="tm">${esc(x.time)}</b> — `:''}${esc(x.text)}</div>`).join('')}</div>
+    </div>`).join('');
+  const priceCell = (v, cur) => v ? `<b>${esc(v)}</b> <s>${esc(cur)}</s>` : '<span class="dash">—</span>';
+  const hotelsHTML = o.hotels.map(h => `
+    <div class="hcard">
+      <div class="hhead">${esc(h.name)} <span class="stars">${esc(h.stars)}</span>${h.note?`<div class="hnote">${esc(h.note)}</div>`:''}</div>
+      <table class="ptable">
+        <tr>
+          <th>İki Kişilik Oda<br><small>Kişi Başı</small></th>
+          <th>Tek Kişilik Oda</th>
+          <th>İlave Yatak</th>
+          <th class="kid">Bebek<br><small>0 – 1,99 Yaş</small></th>
+          <th class="kid">1.Çocuk<br><small>7,00 – 11,99 Yaş</small></th>
+          <th class="kid">2.Çocuk<br><small>2,00 – 6,99 Yaş</small></th>
+        </tr>
+        <tr>
+          <td>${priceCell(h.priceDouble, h.currency)}</td>
+          <td>${priceCell(h.priceSingle, h.currency)}</td>
+          <td>${priceCell(h.priceExtraBed, h.currency)}</td>
+          <td>${priceCell(h.priceBaby, h.currency)}</td>
+          <td>${priceCell(h.priceChild1, h.currency)}</td>
+          <td>${priceCell(h.priceChild2, h.currency)}</td>
+        </tr>
+      </table>
+    </div>`).join('');
+  const incHTML = o.included.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="ok">✔</span> ${esc(x)}</div>`).join('');
+  const excHTML = o.excluded.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="no">✘</span> ${esc(x)}</div>`).join('');
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(o.title)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2b3a;font-size:12px;padding:14px;max-width:820px;margin:0 auto}
+.band{background:#14508c;color:#fff;font-weight:700;font-size:13px;padding:7px 12px;border-radius:4px;border-left:5px solid #e8912a;margin:14px 0 8px}
+.band.navy{background:#0c2340}
+.header{background:#0c2340;color:#fff;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;border-top:5px solid #e8912a}
+.header .brand{font-size:11px;color:#bcd0e6;font-weight:700;letter-spacing:1px}
+.header h1{font-size:22px;margin:4px 0}
+.header .sub{font-size:12px;color:#bcd0e6}
+.header .r{text-align:right}
+.header .date{color:#e8912a;font-weight:700;font-size:15px}
+.header .meta{color:#bcd0e6;font-size:11px}
+.two{display:flex;gap:12px}
+.two>*{flex:1}
+.fcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+.fhead{background:#14508c;color:#fff;font-weight:700;padding:6px 10px}.fhead .fdate{color:#bcd0e6;font-weight:400;font-size:11px}
+.frow{padding:4px 10px;border-bottom:1px solid #dbe4ee}.frow span{color:#5a6b7b}
+.conn{background:#e8912a;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:700}
+.fleg{border-bottom:2px solid #d5e0ec}.fleg:last-child{border-bottom:none}
+.flegno{background:#dce7f2;color:#14508c;font-size:9px;font-weight:700;padding:2px 10px}
+.drow{display:flex;border:1px solid #d5e0ec;border-bottom:none}
+.drow:last-child{border-bottom:1px solid #d5e0ec}
+.dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
+.dright{padding:8px 12px;flex:1;background:#fff}.dright.alt{background:#eef3f8}
+.ditem{padding:2px 0}.dot{color:#e8912a}.tm{color:#0c2340}
+.hcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+.hhead{background:#14508c;color:#fff;font-weight:700;padding:7px 10px}.stars{color:#f0d9b8}.hnote{font-size:10px;color:#bcd0e6;font-weight:400}
+.ptable{width:100%;border-collapse:collapse;background:#fff}
+.ptable th{background:#eef3f8;color:#0c2340;font-size:10px;font-weight:700;padding:5px 4px;border:1px solid #d5e0ec;text-align:center;line-height:1.25}
+.ptable th small{font-weight:400;color:#5a6b7b;font-size:9px}
+.ptable th.kid{background:#e3f0fb;color:#14508c}
+.ptable td{text-align:center;padding:8px 4px;border:1px solid #d5e0ec}
+.ptable td b{font-size:15px;color:#0c2340}.ptable td s{color:#5a6b7b;text-decoration:none;font-size:9px}
+.dash{color:#b8c4d0}
+.hstack{display:flex;flex-direction:column;gap:10px}
+.scol{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
+.shead{color:#fff;font-weight:700;padding:6px 10px}.shead.g{background:#1f9d63}.shead.r{background:#c0392b}
+.sitem{padding:4px 10px;border-bottom:1px solid #dbe4ee}.ok{color:#1f9d63;font-weight:700}.no{color:#c0392b;font-weight:700}
+.foot{background:#0c2340;color:#fff;border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #e8912a;margin-top:16px}
+.foot .r{text-align:right}.foot .ph{color:#e8912a;font-weight:700}.foot small{color:#bcd0e6}
+.note{color:#5a6b7b;font-size:11px;margin-top:6px}
+@media print{body{padding:0}}
+</style></head><body>
+<div class="header">
+  <div><div class="brand">✈ PAYDOS TURİZM</div><h1>${esc(o.title)}</h1><div class="sub">${esc(o.subtitle)}</div></div>
+  <div class="r"><div class="date">${esc(offerDateRange(o))}</div><div class="meta">${esc(offerDuration(o))}${offerLocation(o)?' · '+esc(offerLocation(o)):''}</div></div>
+</div>
+${(flightCard(o.flightOut,'GİDİŞ')||flightCard(o.flightRet,'DÖNÜŞ'))?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
+${o.days.some(d=>d.items.some(x=>(x.time||'').trim()||(x.text||'').trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
+${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="hstack">${hotelsHTML}</div>`:''}
+${o.extraNote?`<div class="note">${esc(o.extraNote)}</div>`:''}
+${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band navy">◆ HİZMET KAPSAMI</div><div class="two"><div class="scol"><div class="shead g">FİYATA DAHİL</div>${incHTML}</div><div class="scol"><div class="shead r">DAHİL DEĞİL</div>${excHTML}</div></div>`:''}
+<div class="foot"><div><b>Paydos Turizm Seyahat Acentalığı</b><br><small>Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / Denizli</small></div><div class="r"><div class="ph">0 258 263 71 76</div><small>info@paydostur.com · www.paydostur.com</small></div></div>
+</body></html>`;
+};
+
 // TUR MODÜLÜ - TAM VERSİYON
 function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
-  // Tur programını PDF olarak aç: tekliften gelen günlük programdan (offerData.days) HTML üret
+  // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
-    if (!o || !o.days || !o.days.length) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
-    const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const daysHTML = o.days.map(d => {
-      const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim())
-        .map(x => `<tr><td style="padding:7px 12px;color:#e8912a;font-weight:600;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0">${esc(x.time)}</td><td style="padding:7px 12px;border-bottom:1px solid #f0f0f0">${esc(x.text)}</td></tr>`).join('');
-      return `<div style="margin-bottom:20px"><h3 style="background:#14263d;color:#fff;padding:9px 14px;border-radius:6px;margin:0 0 8px;font-size:15px">${esc(d.title)}${d.date ? ` — ${esc(d.date)}` : ''}</h3><table style="width:100%;border-collapse:collapse;font-size:13px">${items}</table></div>`;
-    }).join('');
-    const html = `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(tour.name)} — Tur Programı</title></head>
-    <body style="font-family:Arial,sans-serif;max-width:800px;margin:20px auto;padding:20px;color:#1a1a1a">
-    <h1 style="color:#14263d;border-bottom:3px solid #e8912a;padding-bottom:10px;font-size:22px">${esc(tour.name)}</h1>
-    <p style="color:#666;font-size:14px">${esc(tour.country)}${tour.city ? ` — ${esc(tour.city)}` : ''} · ${esc(tour.startDate)} → ${esc(tour.endDate)}</p>
-    <h2 style="color:#e8912a;margin-top:24px;font-size:17px">◆ Günlük Program</h2>
-    ${daysHTML}
-    <div style="margin-top:30px;text-align:center" class="no-print"><button onclick="window.print()" style="padding:11px 26px;background:#e8912a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">🖨️ Yazdır / PDF Kaydet</button></div>
-    <style>@media print{.no-print{display:none}}</style>
-    </body></html>`;
+    if (!o) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
+    const html = genOfferHTML(o);
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
     else showToast?.('Açılır pencere engellendi — izin verin', 'error');
@@ -6176,7 +6288,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
-                {tour.offerData?.days?.length > 0 && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
+                {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
@@ -8328,130 +8440,6 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     );
   }
 
-  // ===== TUR TEKLİFİ: yazdırılabilir şık HTML üretici =====
-  const TR_AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const offerDateRange = (o) => {
-    if (!o.startDate) return '';
-    const [y1,m1,d1] = o.startDate.split('-').map(Number);
-    if (!o.endDate) return `${d1} ${TR_AYLAR[m1-1]} ${y1}`;
-    const [y2,m2,d2] = o.endDate.split('-').map(Number);
-    if (y1 === y2 && m1 === m2) return `${d1} – ${d2} ${TR_AYLAR[m1-1]} ${y1}`;
-    if (y1 === y2) return `${d1} ${TR_AYLAR[m1-1]} – ${d2} ${TR_AYLAR[m2-1]} ${y1}`;
-    return `${d1} ${TR_AYLAR[m1-1]} ${y1} – ${d2} ${TR_AYLAR[m2-1]} ${y2}`;
-  };
-  const offerDuration = (o) => {
-    if (!o.startDate || !o.endDate) return '';
-    const a = new Date(o.startDate + 'T00:00:00'), b = new Date(o.endDate + 'T00:00:00');
-    const nights = Math.round((b - a) / 86400000);
-    if (isNaN(nights) || nights < 0) return '';
-    return `${nights + 1} Gün${nights > 0 ? ` / ${nights} Gece` : ''}`;
-  };
-  const offerLocation = (o) => (o.destinations || []).filter(d => d.country || d.city)
-    .map(d => [d.city, d.country].filter(Boolean).join(', ')).join(' · ');
-  const genOfferHTML = (o) => {
-    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const flightCard = (f, label) => {
-      const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
-      if (!legs.length) return '';
-      return `
-      <div class="fcard">
-        <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span>${legs.length > 1 ? '<span class="conn">Aktarmalı</span>' : ''}</div>
-        ${legs.map((l, i) => `
-          <div class="fleg">
-            ${legs.length > 1 ? `<div class="flegno">${i + 1}. Bacak</div>` : ''}
-            ${l.airline ? `<div class="frow"><span>Havayolu</span> <b>${esc(l.airline)}</b></div>` : ''}
-            ${l.dep ? `<div class="frow"><span>Kalkış</span> <b>${esc(l.dep)}</b></div>` : ''}
-            ${l.arr ? `<div class="frow"><span>Varış</span> <b>${esc(l.arr)}</b></div>` : ''}
-            ${l.plane ? `<div class="frow"><span>Uçak</span> <b>${esc(l.plane)}</b></div>` : ''}
-          </div>`).join('')}
-      </div>`;
-    };
-    const daysHTML = o.days.map((d,i) => `
-      <div class="drow">
-        <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
-        <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>(x.time||'').trim()||(x.text||'').trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${x.time?`<b class="tm">${esc(x.time)}</b> — `:''}${esc(x.text)}</div>`).join('')}</div>
-      </div>`).join('');
-    const priceCell = (v, cur) => v ? `<b>${esc(v)}</b> <s>${esc(cur)}</s>` : '<span class="dash">—</span>';
-    const hotelsHTML = o.hotels.map(h => `
-      <div class="hcard">
-        <div class="hhead">${esc(h.name)} <span class="stars">${esc(h.stars)}</span>${h.note?`<div class="hnote">${esc(h.note)}</div>`:''}</div>
-        <table class="ptable">
-          <tr>
-            <th>İki Kişilik Oda<br><small>Kişi Başı</small></th>
-            <th>Tek Kişilik Oda</th>
-            <th>İlave Yatak</th>
-            <th class="kid">Bebek<br><small>0 – 1,99 Yaş</small></th>
-            <th class="kid">1.Çocuk<br><small>7,00 – 11,99 Yaş</small></th>
-            <th class="kid">2.Çocuk<br><small>2,00 – 6,99 Yaş</small></th>
-          </tr>
-          <tr>
-            <td>${priceCell(h.priceDouble, h.currency)}</td>
-            <td>${priceCell(h.priceSingle, h.currency)}</td>
-            <td>${priceCell(h.priceExtraBed, h.currency)}</td>
-            <td>${priceCell(h.priceBaby, h.currency)}</td>
-            <td>${priceCell(h.priceChild1, h.currency)}</td>
-            <td>${priceCell(h.priceChild2, h.currency)}</td>
-          </tr>
-        </table>
-      </div>`).join('');
-    const incHTML = o.included.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="ok">✔</span> ${esc(x)}</div>`).join('');
-    const excHTML = o.excluded.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="no">✘</span> ${esc(x)}</div>`).join('');
-    return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(o.title)}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2b3a;font-size:12px;padding:14px;max-width:820px;margin:0 auto}
-  .band{background:#14508c;color:#fff;font-weight:700;font-size:13px;padding:7px 12px;border-radius:4px;border-left:5px solid #e8912a;margin:14px 0 8px}
-  .band.navy{background:#0c2340}
-  .header{background:#0c2340;color:#fff;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;border-top:5px solid #e8912a}
-  .header .brand{font-size:11px;color:#bcd0e6;font-weight:700;letter-spacing:1px}
-  .header h1{font-size:22px;margin:4px 0}
-  .header .sub{font-size:12px;color:#bcd0e6}
-  .header .r{text-align:right}
-  .header .date{color:#e8912a;font-weight:700;font-size:15px}
-  .header .meta{color:#bcd0e6;font-size:11px}
-  .two{display:flex;gap:12px}
-  .two>*{flex:1}
-  .fcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
-  .fhead{background:#14508c;color:#fff;font-weight:700;padding:6px 10px}.fhead .fdate{color:#bcd0e6;font-weight:400;font-size:11px}
-  .frow{padding:4px 10px;border-bottom:1px solid #dbe4ee}.frow span{color:#5a6b7b}
-  .conn{background:#e8912a;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:700}
-  .fleg{border-bottom:2px solid #d5e0ec}.fleg:last-child{border-bottom:none}
-  .flegno{background:#dce7f2;color:#14508c;font-size:9px;font-weight:700;padding:2px 10px}
-  .drow{display:flex;border:1px solid #d5e0ec;border-bottom:none}
-  .drow:last-child{border-bottom:1px solid #d5e0ec}
-  .dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
-  .dright{padding:8px 12px;flex:1;background:#fff}.dright.alt{background:#eef3f8}
-  .ditem{padding:2px 0}.dot{color:#e8912a}.tm{color:#0c2340}
-  .hcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
-  .hhead{background:#14508c;color:#fff;font-weight:700;padding:7px 10px}.stars{color:#f0d9b8}.hnote{font-size:10px;color:#bcd0e6;font-weight:400}
-  .ptable{width:100%;border-collapse:collapse;background:#fff}
-  .ptable th{background:#eef3f8;color:#0c2340;font-size:10px;font-weight:700;padding:5px 4px;border:1px solid #d5e0ec;text-align:center;line-height:1.25}
-  .ptable th small{font-weight:400;color:#5a6b7b;font-size:9px}
-  .ptable th.kid{background:#e3f0fb;color:#14508c}
-  .ptable td{text-align:center;padding:8px 4px;border:1px solid #d5e0ec}
-  .ptable td b{font-size:15px;color:#0c2340}.ptable td s{color:#5a6b7b;text-decoration:none;font-size:9px}
-  .dash{color:#b8c4d0}
-  .hstack{display:flex;flex-direction:column;gap:10px}
-  .scol{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
-  .shead{color:#fff;font-weight:700;padding:6px 10px}.shead.g{background:#1f9d63}.shead.r{background:#c0392b}
-  .sitem{padding:4px 10px;border-bottom:1px solid #dbe4ee}.ok{color:#1f9d63;font-weight:700}.no{color:#c0392b;font-weight:700}
-  .foot{background:#0c2340;color:#fff;border-radius:6px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #e8912a;margin-top:16px}
-  .foot .r{text-align:right}.foot .ph{color:#e8912a;font-weight:700}.foot small{color:#bcd0e6}
-  .note{color:#5a6b7b;font-size:11px;margin-top:6px}
-  @media print{body{padding:0}}
-</style></head><body>
-  <div class="header">
-    <div><div class="brand">✈ PAYDOS TURİZM</div><h1>${esc(o.title)}</h1><div class="sub">${esc(o.subtitle)}</div></div>
-    <div class="r"><div class="date">${esc(offerDateRange(o))}</div><div class="meta">${esc(offerDuration(o))}${offerLocation(o)?' · '+esc(offerLocation(o)):''}</div></div>
-  </div>
-  ${(flightCard(o.flightOut,'GİDİŞ')||flightCard(o.flightRet,'DÖNÜŞ'))?`<div class="band">✈ UÇUŞ BİLGİLERİ</div><div class="two">${flightCard(o.flightOut,'GİDİŞ')}${flightCard(o.flightRet,'DÖNÜŞ')}</div>`:''}
-  ${o.days.some(d=>d.items.some(x=>(x.time||'').trim()||(x.text||'').trim()))?`<div class="band navy">◆ GÜNLÜK PROGRAM</div>${daysHTML}`:''}
-  ${o.hotels.some(h=>h.name)?`<div class="band">★ OTEL SEÇENEKLERİ</div><div class="hstack">${hotelsHTML}</div>`:''}
-  ${o.extraNote?`<div class="note">${esc(o.extraNote)}</div>`:''}
-  ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band navy">◆ HİZMET KAPSAMI</div><div class="two"><div class="scol"><div class="shead g">FİYATA DAHİL</div>${incHTML}</div><div class="scol"><div class="shead r">DAHİL DEĞİL</div>${excHTML}</div></div>`:''}
-  <div class="foot"><div><b>Paydos Turizm Seyahat Acentalığı</b><br><small>Mehmetçik Mah. Ulus Cad. No:124/1 Pamukkale / Denizli</small></div><div class="r"><div class="ph">0 258 263 71 76</div><small>info@paydostur.com · www.paydostur.com</small></div></div>
-</body></html>`;
-  };
   // ===== Uçuşları AI ile düzenle + tutarlılık kontrolü =====
   const checkFlights = (fo, fr, o) => {
     const w = [];
