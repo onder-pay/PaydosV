@@ -5322,12 +5322,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     if (w) { w.document.write(html); w.document.close(); }
     else showToast?.('Açılır pencere engellendi — izin verin', 'error');
   };
-  // Tur programını doğrudan PDF dosyası olarak indir (html2canvas + jsPDF)
+  // Tur programı PDF'ini üret (returnBlob=true → blob döner, false → indirir)
   const [progBusy, setProgBusy] = useState('');
-  const downloadTourProgram = async (tour) => {
+  const tourProgramPdf = async (tour, returnBlob = false) => {
     const o = tour.offerData;
-    if (!o) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
-    setProgBusy(tour.id);
+    if (!o) throw new Error('Bu turda program bilgisi yok (tekliften aktarılmadı)');
     let holder = null;
     try {
       const html2canvas = await loadH2C();
@@ -5347,15 +5346,25 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       left -= ph;
       while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
       const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
+      if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
       pdf.save(`${ad}.pdf`);
-      showToast?.('Tur programı indirildi', 'success');
-    } catch (e) {
-      showToast?.('PDF oluşturulamadı: ' + e.message, 'error');
-    } finally {
-      if (holder) document.body.removeChild(holder);
-      setProgBusy('');
-    }
+      return null;
+    } finally { if (holder) document.body.removeChild(holder); }
   };
+  const downloadTourProgram = async (tour) => {
+    if (!tour.offerData) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
+    setProgBusy(tour.id);
+    try { await tourProgramPdf(tour); showToast?.('Tur programı indirildi', 'success'); }
+    catch (e) { showToast?.('PDF oluşturulamadı: ' + e.message, 'error'); }
+    finally { setProgBusy(''); }
+  };
+  // Blob → base64 (data: prefix'siz saf base64)
+  const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('base64 dönüşüm hatası'));
+    r.readAsDataURL(blob);
+  });
 
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
@@ -5772,6 +5781,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [bulkMailSending, setBulkMailSending] = useState(false);
   const [bulkMailResult, setBulkMailResult] = useState(null);
   const [bulkMailAttach, setBulkMailAttach] = useState([]); // seçili ek id'leri
+  const [autoAttachProgram, setAutoAttachProgram] = useState(true); // Tur Programı otomatik ekle
+  const [autoAttachContract, setAutoAttachContract] = useState(true); // kişiye özel Sözleşme otomatik ekle
   const openBulkMail = (tour) => {
     setBulkMailTour(tour);
     const tpl = appSettings?.tourMailTemplate || {};
@@ -5787,14 +5798,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     // Seçili rezervasyon varsa sadece onlara, yoksa tüm aktiflere
     const activeAll = (tour.reservations || []).filter(r => !r.cancelled);
     const active = selectedRes.length > 0 ? activeAll.filter(r => selectedRes.includes(r.id)) : activeAll;
-    // Her katılımcının e-postasını bul
+    // Her katılımcının e-postasını + rezervasyon kaydını bul
     const recipients = [];
     const noEmail = [];
     active.forEach(res => {
       const cust = customers.find(c => String(c.id) === String(res.customerId)) ||
         customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
       const email = (cust?.email || res.customerEmail || '').trim();
-      if (email) recipients.push({ name: res.customerName, email });
+      if (email) recipients.push({ name: res.customerName, email, res });
       else noEmail.push(res.customerName);
     });
     if (!recipients.length) { showToast('Hiçbir katılımcının e-postası yok', 'error'); return; }
@@ -5803,20 +5814,44 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     let sent = 0, failed = 0;
     const tourFrom = (appSettings?.smtpTour?.from || '').trim() || undefined; // boşsa function SMTP_FROM'a düşer
     const tarih = `${formatDate(tour.startDate)} - ${formatDate(tour.endDate)}`;
-    // Seçili ekleri hazırla
+    // Seçili (elle) ekleri hazırla — URL bazlı
     const allAtt = appSettings?.attachments || [];
-    const mailAttachments = allAtt.filter(a => bulkMailAttach.includes(a.id)).map(a => ({ filename: a.name, url: a.url }));
-    // Tura yüklü tur programı + sözleşme otomatik eklensin
-    if (tour.pdfUrl) mailAttachments.push({ filename: `${tour.name} - Tur Programi.pdf`, url: tour.pdfUrl });
-    if (tour.contractUrl) mailAttachments.push({ filename: `${tour.name} - Sozlesme.pdf`, url: tour.contractUrl });
-    for (const r of recipients) {
+    const baseAttachments = allAtt.filter(a => bulkMailAttach.includes(a.id)).map(a => ({ filename: a.name, url: a.url }));
+    // Tura yüklü tur programı + sözleşme (varsa, URL bazlı) — eski davranış korunur
+    if (tour.pdfUrl) baseAttachments.push({ filename: `${tour.name} - Tur Programi.pdf`, url: tour.pdfUrl });
+    if (tour.contractUrl) baseAttachments.push({ filename: `${tour.name} - Sozlesme.pdf`, url: tour.contractUrl });
+
+    // OTOMATIK: Tur Programı (herkese aynı) — tekliften üret, base64 (bir kez üret, tekrar kullan)
+    let programAttach = null;
+    if (autoAttachProgram && tour.offerData) {
+      try {
+        showToast('Tur programı hazırlanıyor...', 'info');
+        const p = await tourProgramPdf(tour, true);
+        const b64 = await blobToBase64(p.blob);
+        programAttach = { filename: `${tour.name} - Tur Programi.pdf`.replace(/[^\wğüşıöçĞÜŞİÖÇ .\-]/g, '_'), contentBase64: b64 };
+      } catch (e) { showToast('Program eklenemedi: ' + e.message, 'warning'); }
+    }
+
+    for (let i = 0; i < recipients.length; i++) {
+      const r = recipients[i];
       const subject = bulkMailSubject.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
       const bodyText = bulkMailBody.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
       const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+      // Bu kişiye gidecek ekler = ortak elle ekler + ortak program + KİŞİYE ÖZEL sözleşme
+      const perAttachments = [...baseAttachments];
+      if (programAttach) perAttachments.push(programAttach);
+      if (autoAttachContract) {
+        try {
+          showToast(`Sözleşme ${i + 1}/${recipients.length} hazırlanıyor...`, 'info');
+          const c = await contractPdfFor(tour, r.res, true); // { name, blob }
+          const cb64 = await blobToBase64(c.blob);
+          perAttachments.push({ filename: c.name.replace(/[^\wğüşıöçĞÜŞİÖÇ .\-]/g, '_'), contentBase64: cb64 });
+        } catch (e) { /* sözleşme üretilemezse mail yine gitsin */ }
+      }
       try {
         const resp = await fetch('/.netlify/functions/send-mail', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: mailAttachments, smtp: appSettings?.smtpTour })
+          body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: perAttachments, smtp: appSettings?.smtpTour })
         });
         if (resp.ok) sent++; else failed++;
       } catch (e) { failed++; }
@@ -7104,12 +7139,25 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             <input value={bulkMailSubject} onChange={e => setBulkMailSubject(e.target.value)} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '12px' }} />
             <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>Mesaj</label>
             <textarea value={bulkMailBody} onChange={e => setBulkMailBody(e.target.value)} rows={9} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '14px', resize: 'vertical', fontFamily: 'inherit' }} />
-            {(() => {
-              const autoDocs = [];
-              if (bulkMailTour.contractUrl) autoDocs.push('📜 Sözleşme');
-              if (!autoDocs.length) return null;
-              return <div style={{ margin: '0 0 12px', padding: '8px 12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', fontSize: '12px', color: '#10b981' }}>✓ Otomatik eklenecek: {autoDocs.join(' + ')}</div>;
-            })()}
+            <div style={{ margin: '0 0 12px', padding: '10px 12px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#10b981', fontWeight: '600', marginBottom: '8px' }}>✓ Otomatik Ekler</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {bulkMailTour.offerData && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#e8f1f8', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={autoAttachProgram} onChange={e => setAutoAttachProgram(e.target.checked)} />
+                    📄 Tur Programı <span style={{ color: '#64748b', fontSize: '10px' }}>(herkese aynı)</span>
+                  </label>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#e8f1f8', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={autoAttachContract} onChange={e => setAutoAttachContract(e.target.checked)} />
+                  📜 Sözleşme <span style={{ color: '#64748b', fontSize: '10px' }}>(her katılımcıya kendi TC/pasaportuyla)</span>
+                </label>
+                {bulkMailTour.contractUrl && (
+                  <div style={{ fontSize: '10px', color: '#64748b', paddingLeft: '22px' }}>+ Tura yüklü sözleşme PDF'i de eklenir</div>
+                )}
+              </div>
+              {autoAttachContract && <div style={{ marginTop: '6px', fontSize: '10px', color: '#e8912a' }}>⚠️ Sözleşmeler kişiye özel üretilir — çok katılımcıda gönderim biraz sürebilir.</div>}
+            </div>
             {(() => {
               const allAtt = appSettings?.attachments || [];
               if (!allAtt.length) return <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>📎 Ek eklemek için önce Ayarlar → Dosya Ekleri'nden dosya yükleyin.</p>;
