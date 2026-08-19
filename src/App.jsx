@@ -5188,29 +5188,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 // TUR MODÜLÜ - TAM VERSİYON
 function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
   // Tur programını aç: yüklü PDF varsa onu, yoksa tekliften gelen günlük programdan HTML üret
-  const openTourProgram = (tour) => {
-    if (tour.pdfUrl) { window.open(tour.pdfUrl, '_blank'); return; }
-    const o = tour.offerData;
-    if (!o || !o.days || !o.days.length) { showToast?.('Bu turda program bilgisi yok', 'warning'); return; }
-    const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const daysHTML = o.days.map(d => {
-      const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim())
-        .map(x => `<tr><td style="padding:6px 10px;color:#e8912a;font-weight:600;white-space:nowrap;vertical-align:top">${esc(x.time)}</td><td style="padding:6px 10px">${esc(x.text)}</td></tr>`).join('');
-      return `<div style="margin-bottom:18px"><h3 style="background:#14263d;color:#fff;padding:8px 12px;border-radius:6px;margin:0 0 6px;font-size:15px">${esc(d.title)}${d.date ? ` — ${esc(d.date)}` : ''}</h3><table style="width:100%;border-collapse:collapse;font-size:13px">${items}</table></div>`;
-    }).join('');
-    const html = `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(tour.name)} — Tur Programı</title></head>
-    <body style="font-family:Arial,sans-serif;max-width:800px;margin:20px auto;padding:20px;color:#1a1a1a">
-    <h1 style="color:#14263d;border-bottom:3px solid #e8912a;padding-bottom:10px">${esc(tour.name)}</h1>
-    <p style="color:#666">${esc(tour.country)} — ${esc(tour.city)} · ${esc(tour.startDate)} → ${esc(tour.endDate)}</p>
-    <h2 style="color:#e8912a;margin-top:24px">◆ Günlük Program</h2>
-    ${daysHTML}
-    <div style="margin-top:30px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#e8912a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">🖨️ Yazdır / PDF Kaydet</button></div>
-    </body></html>`;
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
-    else showToast?.('Açılır pencere engellendi — izin verin', 'error');
-  };
-
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -5222,7 +5199,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [roomingTour, setRoomingTour] = useState(null);
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
-  const [showProgDetail, setShowProgDetail] = useState({}); // {tourId: bool} — günlük program aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -6176,7 +6152,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} &nbsp;|&nbsp; 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {(tour.pdfUrl || tour.offerData?.days?.length) && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
@@ -6233,49 +6208,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <button onClick={() => { deleteTour(tour); setSelectedTour(null); }} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
               </div>
             </div>
-
-            {/* GÜNLÜK PROGRAM BÖLÜMÜ */}
-            {(() => {
-              const o = tour.offerData;
-              const programExists = o && o.days && o.days.length > 0;
-              if (!programExists) return null;
-              const isShow = showProgDetail[tour.id];
-              const daysHTML = o.days.map((d, idx) => {
-                const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim());
-                return (
-                  <div key={idx} style={{ marginBottom: '16px' }}>
-                    <h3 style={{ background: '#14263d', color: '#fff', padding: '8px 12px', borderRadius: '6px', margin: '0 0 6px', fontSize: '14px', fontWeight: '600' }}>
-                      {d.title}{d.date ? ` — ${d.date}` : ''}
-                    </h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', lineHeight: '1.5' }}>
-                      <tbody>
-                        {items.map((x, i) => (
-                          <tr key={i}>
-                            <td style={{ padding: '6px 10px', color: '#e8912a', fontWeight: '600', whiteSpace: 'nowrap', verticalAlign: 'top', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{x.time || ''}</td>
-                            <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{x.text || ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              });
-              return (
-                <div style={{ background: 'rgba(232,145,42,0.08)', border: '1px solid rgba(232,145,42,0.2)', borderRadius: '12px', padding: '14px', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-                    <h3 style={{ margin: 0, fontSize: '14px', color: '#e8912a' }}>◆ Günlük Program</h3>
-                    <button onClick={() => setShowProgDetail(prev => ({...prev, [tour.id]: !isShow}))} style={{ padding: '6px 12px', background: 'rgba(232,145,42,0.3)', border: '1px solid rgba(232,145,42,0.5)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                      {isShow ? '⬆️ Gizle' : '⬇️ Göster'}
-                    </button>
-                  </div>
-                  {isShow && (
-                    <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
-                      {daysHTML}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
 
             {/* Rezervasyon İstatistikleri */}
 
@@ -7003,7 +6935,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             <textarea value={bulkMailBody} onChange={e => setBulkMailBody(e.target.value)} rows={9} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box', marginBottom: '14px', resize: 'vertical', fontFamily: 'inherit' }} />
             {(() => {
               const autoDocs = [];
-              if (bulkMailTour.pdfUrl) autoDocs.push('📄 Tur Programı');
               if (bulkMailTour.contractUrl) autoDocs.push('📜 Sözleşme');
               if (!autoDocs.length) return null;
               return <div style={{ margin: '0 0 12px', padding: '8px 12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', fontSize: '12px', color: '#10b981' }}>✓ Otomatik eklenecek: {autoDocs.join(' + ')}</div>;
