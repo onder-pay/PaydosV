@@ -5222,6 +5222,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [roomingTour, setRoomingTour] = useState(null);
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
+  const [showProgDetail, setShowProgDetail] = useState({}); // {tourId: bool} — günlük program aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -6237,8 +6238,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             {(() => {
               const o = tour.offerData;
               const programExists = o && o.days && o.days.length > 0;
-              const [showProgDetail, setShowProgDetail] = useState(false);
               if (!programExists) return null;
+              const isShow = showProgDetail[tour.id];
               const daysHTML = o.days.map((d, idx) => {
                 const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim());
                 return (
@@ -6263,11 +6264,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <div style={{ background: 'rgba(232,145,42,0.08)', border: '1px solid rgba(232,145,42,0.2)', borderRadius: '12px', padding: '14px', marginBottom: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                     <h3 style={{ margin: 0, fontSize: '14px', color: '#e8912a' }}>◆ Günlük Program</h3>
-                    <button onClick={() => setShowProgDetail(!showProgDetail)} style={{ padding: '6px 12px', background: 'rgba(232,145,42,0.3)', border: '1px solid rgba(232,145,42,0.5)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                      {showProgDetail ? '⬆️ Gizle' : '⬇️ Göster'}
+                    <button onClick={() => setShowProgDetail(prev => ({...prev, [tour.id]: !isShow}))} style={{ padding: '6px 12px', background: 'rgba(232,145,42,0.3)', border: '1px solid rgba(232,145,42,0.5)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                      {isShow ? '⬆️ Gizle' : '⬇️ Göster'}
                     </button>
                   </div>
-                  {showProgDetail && (
+                  {isShow && (
                     <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
                       {daysHTML}
                     </div>
