@@ -6233,6 +6233,49 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               </div>
             </div>
 
+            {/* GÜNLÜK PROGRAM BÖLÜMÜ */}
+            {(() => {
+              const o = tour.offerData;
+              const programExists = o && o.days && o.days.length > 0;
+              const [showProgDetail, setShowProgDetail] = useState(false);
+              if (!programExists) return null;
+              const daysHTML = o.days.map((d, idx) => {
+                const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim());
+                return (
+                  <div key={idx} style={{ marginBottom: '16px' }}>
+                    <h3 style={{ background: '#14263d', color: '#fff', padding: '8px 12px', borderRadius: '6px', margin: '0 0 6px', fontSize: '14px', fontWeight: '600' }}>
+                      {d.title}{d.date ? ` — ${d.date}` : ''}
+                    </h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', lineHeight: '1.5' }}>
+                      <tbody>
+                        {items.map((x, i) => (
+                          <tr key={i}>
+                            <td style={{ padding: '6px 10px', color: '#e8912a', fontWeight: '600', whiteSpace: 'nowrap', verticalAlign: 'top', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{x.time || ''}</td>
+                            <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{x.text || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              });
+              return (
+                <div style={{ background: 'rgba(232,145,42,0.08)', border: '1px solid rgba(232,145,42,0.2)', borderRadius: '12px', padding: '14px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '14px', color: '#e8912a' }}>◆ Günlük Program</h3>
+                    <button onClick={() => setShowProgDetail(!showProgDetail)} style={{ padding: '6px 12px', background: 'rgba(232,145,42,0.3)', border: '1px solid rgba(232,145,42,0.5)', borderRadius: '6px', color: '#e8912a', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                      {showProgDetail ? '⬆️ Gizle' : '⬇️ Göster'}
+                    </button>
+                  </div>
+                  {showProgDetail && (
+                    <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
+                      {daysHTML}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Rezervasyon İstatistikleri */}
 
             {/* Özet */}
