@@ -5187,7 +5187,30 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
 // TUR MODÜLÜ - TAM VERSİYON
 function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
-  // Tur programını aç: yüklü PDF varsa onu, yoksa tekliften gelen günlük programdan HTML üret
+  // Tur programını PDF olarak aç: tekliften gelen günlük programdan (offerData.days) HTML üret
+  const openTourProgram = (tour) => {
+    const o = tour.offerData;
+    if (!o || !o.days || !o.days.length) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
+    const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const daysHTML = o.days.map(d => {
+      const items = (d.items || []).filter(x => (x.time || '').trim() || (x.text || '').trim())
+        .map(x => `<tr><td style="padding:7px 12px;color:#e8912a;font-weight:600;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0">${esc(x.time)}</td><td style="padding:7px 12px;border-bottom:1px solid #f0f0f0">${esc(x.text)}</td></tr>`).join('');
+      return `<div style="margin-bottom:20px"><h3 style="background:#14263d;color:#fff;padding:9px 14px;border-radius:6px;margin:0 0 8px;font-size:15px">${esc(d.title)}${d.date ? ` — ${esc(d.date)}` : ''}</h3><table style="width:100%;border-collapse:collapse;font-size:13px">${items}</table></div>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>${esc(tour.name)} — Tur Programı</title></head>
+    <body style="font-family:Arial,sans-serif;max-width:800px;margin:20px auto;padding:20px;color:#1a1a1a">
+    <h1 style="color:#14263d;border-bottom:3px solid #e8912a;padding-bottom:10px;font-size:22px">${esc(tour.name)}</h1>
+    <p style="color:#666;font-size:14px">${esc(tour.country)}${tour.city ? ` — ${esc(tour.city)}` : ''} · ${esc(tour.startDate)} → ${esc(tour.endDate)}</p>
+    <h2 style="color:#e8912a;margin-top:24px;font-size:17px">◆ Günlük Program</h2>
+    ${daysHTML}
+    <div style="margin-top:30px;text-align:center" class="no-print"><button onclick="window.print()" style="padding:11px 26px;background:#e8912a;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">🖨️ Yazdır / PDF Kaydet</button></div>
+    <style>@media print{.no-print{display:none}}</style>
+    </body></html>`;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+    else showToast?.('Açılır pencere engellendi — izin verin', 'error');
+  };
+
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -6153,6 +6176,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
+                {tour.offerData?.days?.length > 0 && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
