@@ -5322,6 +5322,40 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     if (w) { w.document.write(html); w.document.close(); }
     else showToast?.('Açılır pencere engellendi — izin verin', 'error');
   };
+  // Tur programını doğrudan PDF dosyası olarak indir (html2canvas + jsPDF)
+  const [progBusy, setProgBusy] = useState('');
+  const downloadTourProgram = async (tour) => {
+    const o = tour.offerData;
+    if (!o) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
+    setProgBusy(tour.id);
+    let holder = null;
+    try {
+      const html2canvas = await loadH2C();
+      const full = genOfferHTML(o);
+      const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
+      holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
+      holder.innerHTML = `<style>${st ? st[1] : ''}</style>${b ? b[1] : ''}`;
+      document.body.appendChild(holder);
+      await new Promise(r => setTimeout(r, 320));
+      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      const img = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pw = 210, ph = 297, iw = pw, ih = (canvas.height * pw) / canvas.width;
+      let left = ih, pos = 0;
+      pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
+      left -= ph;
+      while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
+      const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
+      pdf.save(`${ad}.pdf`);
+      showToast?.('Tur programı indirildi', 'success');
+    } catch (e) {
+      showToast?.('PDF oluşturulamadı: ' + e.message, 'error');
+    } finally {
+      if (holder) document.body.removeChild(holder);
+      setProgBusy('');
+    }
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [showReservationForm, setShowReservationForm] = useState(false);
@@ -6289,6 +6323,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
+                {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
