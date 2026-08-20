@@ -3672,6 +3672,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [visaCountryFilter, setVisaCountryFilter] = useState('all');
+  const [idataInfoModal, setIdataInfoModal] = useState(null); // {visa, customer} — iDATA hazır bilgi paneli
   // Bir vize başvurusundan görünen ülke etiketini çöz (filtre + dropdown ortak kullanır)
   const extractVisaCountry = (v) => {
     const catLabel = { schengen: 'Schengen', usa: 'Amerika', russia: 'Rusya', uk: 'İngiltere', uae: 'BAE', china: 'Çin', other: 'Diğer' };
@@ -4270,6 +4271,46 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setShowForm(true);
   };
 
+  // iDATA formu için müşteri bilgilerini hazırla (doğum tarihi gün/ay/yıl'a ayrılır)
+  const openIdataInfo = (visa) => {
+    const customer = customers.find(c => c.id === visa.customerId);
+    setIdataInfoModal({ visa, customer: customer || null });
+  };
+  const TR_AYLAR_IDATA = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const buildIdataFields = (visa, customer) => {
+    // İsim/soyisim: müşteriden, yoksa başvurudaki customerName'den böl
+    let firstName = customer?.firstName || '';
+    let lastName = customer?.lastName || '';
+    if (!firstName && !lastName && visa?.customerName) {
+      const parts = visa.customerName.trim().split(' ');
+      lastName = parts.length > 1 ? parts.pop() : '';
+      firstName = parts.join(' ');
+    }
+    // Doğum tarihi: YYYY-MM-DD → gün/ay/yıl
+    const bd = customer?.birthDate || '';
+    let gun = '', ay = '', yil = '';
+    const m = bd.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) { yil = m[1]; ay = TR_AYLAR_IDATA[parseInt(m[2], 10) - 1] || m[2]; gun = String(parseInt(m[3], 10)); }
+    // Pasaport no: müşterinin ilk pasaportu
+    let pasaportNo = '';
+    try { const ps = safeParseJSON(customer?.passports); if (Array.isArray(ps) && ps.length) pasaportNo = ps[0].passportNo || ''; } catch {}
+    // Telefon: başında 0 ve boşluk temizle (iDATA 5xxxxxxxxx ister)
+    let tel = (customer?.phone || visa?.customerPhone || '').replace(/\D/g, '');
+    if (tel.startsWith('90')) tel = tel.slice(2);
+    if (tel.startsWith('0')) tel = tel.slice(1);
+    const email = customer?.email || visa?.customerEmail || '';
+    return [
+      { label: 'İsim', value: firstName },
+      { label: 'Soyisim', value: lastName },
+      { label: 'Doğum Günü', value: gun },
+      { label: 'Doğum Ayı', value: ay },
+      { label: 'Doğum Yılı', value: yil },
+      { label: 'Pasaport No', value: pasaportNo },
+      { label: 'Telefon', value: tel },
+      { label: 'Email', value: email }
+    ];
+  };
+
   const getStatusColor = (status) => ({
     'Evrak Topluyor': '#f59e0b', 'Evrak Tamamlandı': '#3b82f6', 'Randevu Alındı': '#8b5cf6',
     'Atama Bekliyor': '#a855f7', 'Randevu Bekliyor': '#c084fc',
@@ -4694,6 +4735,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
               {/* İletişim Butonları */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {editingVisa && <button type="button" onClick={() => openIdataInfo(editingVisa)} style={{ gridColumn: '1 / -1', padding: '12px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
+                  📋 iDATA Bilgileri (kopyala)
+                </button>}
                 <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/${formatWhatsAppPhone(phone)}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
                   💬 WhatsApp
                 </button>
@@ -4999,6 +5043,44 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {showForm && renderForm()}
 
       {/* GÜN DETAY MODAL */}
+      {/* iDATA HAZIR BİLGİ MODAL (kopyala) */}
+      {idataInfoModal && (() => {
+        const fields = buildIdataFields(idataInfoModal.visa, idataInfoModal.customer);
+        const eksik = fields.filter(f => !f.value).map(f => f.label);
+        const copyVal = (val, label) => {
+          if (!val) { showToast?.(`${label} boş`, 'warning'); return; }
+          navigator.clipboard?.writeText(val).then(() => showToast?.(`${label} kopyalandı`, 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+        };
+        const copyAll = () => {
+          const txt = fields.map(f => `${f.label}: ${f.value || '-'}`).join('\n');
+          navigator.clipboard?.writeText(txt).then(() => showToast?.('Tümü kopyalandı', 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+        };
+        return (
+          <div onClick={() => setIdataInfoModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 450, padding: '20px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', borderRadius: '16px', padding: '24px', maxWidth: '480px', width: '100%', maxHeight: '88vh', overflow: 'auto', border: '1px solid rgba(139,92,246,0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '17px', color: '#a78bfa' }}>📋 iDATA Bilgileri</h3>
+                <button onClick={() => setIdataInfoModal(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>{idataInfoModal.visa?.customerName} — her alanı kopyalayıp iDATA formuna yapıştırın</p>
+              {eksik.length > 0 && <div style={{ margin: '0 0 12px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', fontSize: '11px', color: '#f59e0b' }}>⚠️ Eksik: {eksik.join(', ')} — müşteri kartından tamamlayın</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {fields.map((f, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '2px' }}>{f.label}</div>
+                      <div style={{ fontSize: '14px', color: f.value ? '#e8f1f8' : '#475569', fontWeight: '600', wordBreak: 'break-all' }}>{f.value || '(boş)'}</div>
+                    </div>
+                    <button onClick={() => copyVal(f.value, f.label)} style={{ flexShrink: 0, padding: '8px 14px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📋 Kopyala</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={copyAll} style={{ width: '100%', marginTop: '14px', padding: '12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '10px', color: '#10b981', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>📋 Tümünü Kopyala</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* iDATA RANDEVU İŞLE MODAL */}
       {showIdataModal && (
         <div onClick={() => setShowIdataModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: '20px' }}>
