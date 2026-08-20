@@ -3672,6 +3672,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [visaCountryFilter, setVisaCountryFilter] = useState('all');
+  // Bir vize başvurusundan görünen ülke etiketini çöz (filtre + dropdown ortak kullanır)
+  const extractVisaCountry = (v) => {
+    const catLabel = { schengen: 'Schengen', usa: 'Amerika', russia: 'Rusya', uk: 'İngiltere', uae: 'BAE', china: 'Çin', other: 'Diğer' };
+    if (v.country && v.country.trim()) {
+      const c = v.country.trim();
+      if (/amerika|birleşik devlet|abd|usa/i.test(c)) return 'Amerika';
+      if (/birleşik krallık|ingiltere|i̇ngiltere|united kingdom/i.test(c)) return 'İngiltere';
+      if (/birleşik arap|b\.?a\.?e\.?|uae/i.test(c)) return 'BAE';
+      return c;
+    }
+    const cid = v.categoryId || v.category;
+    if (cid && cid !== 'schengen' && cid !== 'other' && catLabel[cid]) return catLabel[cid];
+    const txt = `${v.visaDuration || ''} ${v.visaType || ''}`;
+    const known = Object.keys(VIZE_DURUM).slice().sort((a, b) => b.length - a.length);
+    const match = known.find(c => normalizeTr(txt).includes(normalizeTr(c)));
+    if (match) return /amerika|birleşik devlet/i.test(match) ? 'Amerika' : match;
+    if (cid && catLabel[cid]) return catLabel[cid];
+    return '';
+  };
   const [showIdataModal, setShowIdataModal] = useState(false);
   const [idataText, setIdataText] = useState('');
   const [idataParsed, setIdataParsed] = useState([]);
@@ -3725,11 +3744,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
       : v.status === visaStatusFilter;
-    const matchCountry = visaCountryFilter === 'all' ? true : (() => {
-      if (v.country && v.country.trim() === visaCountryFilter) return true;
-      const txt = `${v.visaDuration || ''} ${v.visaType || ''}`;
-      return normalizeTr(txt).includes(normalizeTr(visaCountryFilter));
-    })();
+    const matchCountry = visaCountryFilter === 'all' ? true : extractVisaCountry(v) === visaCountryFilter;
     return matchSearch && matchStatus && matchCountry;
   });
 
@@ -4193,7 +4208,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); }
         showToast?.('Vize başvurusu güncellendi', 'success');
       } else {
-        const newVisa = { ...formData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+        const autoCountry = formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : '');
+        const newVisa = { ...formData, country: autoCountry, categoryId: selectedCategory?.id || formData.category || 'schengen', id: generateUniqueId(), createdAt: new Date().toISOString() };
         setVisaApplications([...visaApplications, newVisa]);
         addToUndo?.({ type: 'create', undo: () => setVisaApplications(prev => prev.filter(v => v.id !== newVisa.id)) });
         // ⚡ Anında Firestore'a yaz
@@ -4689,7 +4705,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   const visa = {
                     id: editingVisa?.id || Date.now().toString(),
                     categoryId: selectedCategory?.id || 'schengen',
-                    country: formData.country || '',
+                    country: formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : ''),
                     visaDuration: formData.visaDuration || formData.visaType || '',
                     customerEmail: formData.customerEmail
                   };
@@ -4892,23 +4908,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </select>
           );
         })()}
-        {/* Ülke filtresi — her görünümde. Ülke, visaDuration/visaType metninden çıkarılır ("Almanya Ticari" → "Almanya") */}
+        {/* Ülke filtresi — her görünümde. Önce categoryId, sonra country, sonra visaDuration metninden çözülür */}
         {(() => {
-          const knownCountries = Object.keys(VIZE_DURUM);
-          const extractCountry = (v) => {
-            if (v.country && v.country.trim()) return v.country.trim();
-            const txt = `${v.visaDuration || ''} ${v.visaType || ''}`;
-            // Bilinen ülke adlarından metinde geçeni bul (uzun isimler önce, "Çin Halk Cumhuriyeti" gibi)
-            const match = knownCountries.slice().sort((a,b) => b.length - a.length).find(c => normalizeTr(txt).includes(normalizeTr(c)));
-            return match || '';
-          };
-          const countries = [...new Set(visaApplications.map(extractCountry).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
+          const countries = [...new Set(visaApplications.map(extractVisaCountry).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
           return (
             <select value={visaCountryFilter} onChange={e => setVisaCountryFilter(e.target.value)}
               style={{ padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', outline: 'none', minWidth: '150px', appearance: 'auto' }}>
               <option value="all" style={{ background: '#0c1929', color: '#fff' }}>🌍 Tüm Ülkeler</option>
               {countries.map(c => {
-                const count = visaApplications.filter(v => extractCountry(v) === c).length;
+                const count = visaApplications.filter(v => extractVisaCountry(v) === c).length;
                 return <option key={c} value={c} style={{ background: '#0c1929', color: '#fff' }}>{c} ({count})</option>;
               })}
             </select>
