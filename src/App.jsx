@@ -1055,6 +1055,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
+  const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
@@ -1983,7 +1984,8 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
               { id: 'info', icon: '📋', label: 'Bilgiler', color: '#f59e0b' },
               { id: 'passport', icon: '🛂', label: 'Pasaport', color: '#3b82f6', count: cPassports.length },
               { id: 'schengen', icon: '🇪🇺', label: hasGreenPassport ? 'Muaf ✓' : 'Schengen', color: '#10b981', count: hasGreenPassport ? null : cSchengen.length },
-              { id: 'usa', icon: '🇺🇸', label: 'ABD', color: '#8b5cf6', count: cUsa.endDate ? 1 : 0 }
+              { id: 'usa', icon: '🇺🇸', label: 'ABD', color: '#8b5cf6', count: cUsa.endDate ? 1 : 0 },
+              { id: 'timeline', icon: '📅', label: 'Geçmiş', color: '#a78bfa' }
             ].map((tab) => (
               <button 
                 key={tab.id}
@@ -2005,7 +2007,7 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                 }}
               >
                 <span style={{ fontSize: '18px' }}>{tab.icon}</span>
-                <span>{tab.label} {tab.count !== undefined && `(${tab.count})`}</span>
+                <span>{tab.label} {tab.count != null && `(${tab.count})`}</span>
               </button>
             ))}
           </div>
@@ -2023,26 +2025,26 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
                   <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>İletişim Bilgileri</h3>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(37,211,102,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(37,211,102,0.3)' }}>
-                      <span style={{ fontSize: '20px' }}>📱</span>
-                      <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                    <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(37,211,102,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(37,211,102,0.3)', minWidth: 0 }}>
+                      <span style={{ fontSize: '20px', flexShrink: 0 }}>📱</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
                         <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>WhatsApp</p>
-                        <p style={{ margin: 0, fontSize: '13px', color: '#25d366', fontWeight: '600' }}>{c.phone || '-'}</p>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#25d366', fontWeight: '600', wordBreak: 'break-all' }}>{c.phone || '-'}</p>
                       </div>
                     </a>
                     {c.email ? (
-                      <a href={`mailto:${c.email}`} style={{ background: 'rgba(59,130,246,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(59,130,246,0.3)' }}>
-                        <span style={{ fontSize: '20px' }}>✉️</span>
-                        <div>
+                      <a href={`mailto:${c.email}`} style={{ background: 'rgba(59,130,246,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(59,130,246,0.3)', minWidth: 0 }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>✉️</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>E-posta</p>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>{(c.email || '').toLowerCase()}</p>
+                          <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600', wordBreak: 'break-all' }}>{(c.email || '').toLowerCase()}</p>
                         </div>
                       </a>
                     ) : (
-                      <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '20px' }}>✉️</span>
-                        <div>
+                      <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>✉️</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>E-posta</p>
                           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>-</p>
                         </div>
@@ -2092,8 +2094,8 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
               </div>
 
               {/* Dinamik Alanlar */}
-              {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli'].includes(f)).length > 0 && (() => {
-                const extraFields = appSettings.personalDetailsFields.filter(f => !['Doğum Tarihi', 'İkametgah İli'].includes(f));
+              {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f)).length > 0 && (() => {
+                const extraFields = appSettings.personalDetailsFields.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f));
                 const hasValues = extraFields.some(f => {
                   const k = f.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
                   return c[k];
@@ -2283,6 +2285,88 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
               )}
             </div>
           )}
+          {detailTab === 'timeline' && (() => {
+            // Otomatik olayları topla
+            const events = [];
+            if (c.createdAt) events.push({ icon: '👤', color: '#3b82f6', title: 'Müşteri kaydı oluşturuldu', time: c.createdAt });
+            // Pasaportlar
+            safeParseJSON(c.passports).forEach(p => {
+              if (p.addedAt || p.createdAt) events.push({ icon: '📘', color: '#3b82f6', title: `Pasaport eklendi${p.passportNo ? ` (${p.passportNo})` : ''}`, time: p.addedAt || p.createdAt });
+            });
+            // Schengen vizeleri
+            safeParseJSON(c.schengenVisas).filter(v => v.country).forEach(v => {
+              if (v.createdAt || v.addedAt) events.push({ icon: '🇪🇺', color: '#10b981', title: `Schengen vizesi eklendi${v.country ? ` — ${v.country}` : ''}`, time: v.createdAt || v.addedAt });
+            });
+            // ABD vizesi
+            const usa = c.usaVisa ? (typeof c.usaVisa === 'string' ? (() => { try { return JSON.parse(c.usaVisa || '{}'); } catch { return {}; } })() : c.usaVisa) : {};
+            if (usa && (usa.createdAt || usa.addedAt)) events.push({ icon: '🇺🇸', color: '#8b5cf6', title: 'ABD vizesi eklendi', time: usa.createdAt || usa.addedAt });
+            // Elle eklenen notlar (activities)
+            const manualActs = safeParseJSON(c.activities);
+            manualActs.forEach(a => {
+              if (a && a.text) events.push({ icon: a.icon || '📌', color: '#a78bfa', title: a.text, time: a.time || a.createdAt, manual: true, id: a.id });
+            });
+            // Tarihe göre sırala (yeni → eski)
+            events.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+            const addNote = async () => {
+              const txt = (timelineNote || '').trim();
+              if (!txt) { showToast('Not boş olamaz', 'warning'); return; }
+              const acts = safeParseJSON(c.activities);
+              const newAct = { id: generateUniqueId(), icon: '📌', text: txt, time: new Date().toISOString() };
+              const updated = [...acts, newAct];
+              const nc = { ...c, activities: JSON.stringify(updated) };
+              setCustomers(prev => prev.map(x => x.id === c.id ? nc : x));
+              setSelectedCustomer(nc);
+              setTimelineNote('');
+              try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { activities: JSON.stringify(updated) }, { merge: true }); } catch (e) {}
+              showToast('Not eklendi', 'success');
+            };
+            const delNote = async (noteId) => {
+              const acts = safeParseJSON(c.activities).filter(a => a.id !== noteId);
+              const nc = { ...c, activities: JSON.stringify(acts) };
+              setCustomers(prev => prev.map(x => x.id === c.id ? nc : x));
+              setSelectedCustomer(nc);
+              try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { activities: JSON.stringify(acts) }, { merge: true }); } catch (e) {}
+              showToast('Not silindi', 'warning');
+            };
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Not ekleme */}
+                <div style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '14px', padding: '14px' }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#a78bfa', fontWeight: '600' }}>➕ Not / Aktivite Ekle</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input value={timelineNote} onChange={e => setTimelineNote(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addNote(); }} placeholder="Örn: Tarkan konser turuna katıldı" style={{ ...inputStyle, flex: 1 }} />
+                    <button onClick={addNote} style={{ padding: '0 18px', background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)', border: 'none', borderRadius: '10px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '700', flexShrink: 0 }}>Ekle</button>
+                  </div>
+                </div>
+                {/* Timeline */}
+                {events.length === 0 ? (
+                  <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '48px' }}>📅</span>
+                    <p style={{ color: '#64748b', marginTop: '12px' }}>Henüz kayıtlı işlem yok</p>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative', paddingLeft: '28px' }}>
+                    {/* Dikey çizgi */}
+                    <div style={{ position: 'absolute', left: '10px', top: '8px', bottom: '8px', width: '2px', background: 'rgba(255,255,255,0.1)' }} />
+                    {events.map((ev, i) => (
+                      <div key={i} style={{ position: 'relative', marginBottom: '14px' }}>
+                        <div style={{ position: 'absolute', left: '-24px', top: '2px', width: '22px', height: '22px', borderRadius: '50%', background: `${ev.color}22`, border: `2px solid ${ev.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px' }}>{ev.icon}</div>
+                        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#e8f1f8', fontWeight: '500' }}>{ev.title}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{ev.time ? new Date(ev.time).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}</p>
+                          </div>
+                          {ev.manual && <button onClick={() => delNote(ev.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }} title="Notu sil">🗑️</button>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Bottom Action Buttons */}
@@ -9985,6 +10069,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     setTransfers(prev => prev.filter(x => x.id !== id));
     showToast('Transfer silindi', 'warning');
   };
+  // Transferi çoğalt — aynı bilgilerle yeni transfer (rezervasyonlar kopyalanmaz, tarih boşaltılır)
+  const duplicateTransfer = (tr2) => {
+    const copy = { ...tr2, id: Date.now(), reservations: [], date: '', createdAt: new Date().toISOString() };
+    setTransfers(prev => [...prev, copy]);
+    showToast('Transfer kopyalandı', 'success');
+  };
   const tResTotal = (r) => (parseFloat(r.sellPrice) || 0) * (parseInt(r.pax) || 1);
   const tResCost = (r) => (parseFloat(r.buyPrice) || 0) * (parseInt(r.pax) || 1);
   const saveTRes = () => {
@@ -11394,6 +11484,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>🚐 {tr2.fromLoc} → {tr2.toLoc}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', fontWeight: '700' }}>{tr2.vehicleType}</span>
+                        <button onClick={(e) => { e.stopPropagation(); duplicateTransfer(tr2); }} style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Kopyala (aynısından yeni transfer)">📋</button>
                         <button onClick={(e) => { e.stopPropagation(); deleteTransfer(tr2.id); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
                       </div>
                     </div>
