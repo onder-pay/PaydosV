@@ -7,6 +7,19 @@ import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnap
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
+import { DEJAVU_TR_B64 } from './dejavuFont';
+
+// jsPDF'e Türkçe destekli font (DejaVu Sans subset) ekler ve aktif eder.
+// Türkçe karakter (ş/ğ/İ/ı/ç/ö/ü) içeren text PDF'lerde çağrılmalı.
+let _dejavuLoaded = false;
+const enableTurkishFont = (doc) => {
+  try {
+    doc.addFileToVFS('DejaVuSans-TR.ttf', DEJAVU_TR_B64);
+    doc.addFont('DejaVuSans-TR.ttf', 'DejaVuTR', 'normal');
+    doc.setFont('DejaVuTR', 'normal');
+    return true;
+  } catch (e) { console.warn('Türkçe font yüklenemedi:', e.message); return false; }
+};
 
 const defaultCustomers = [];
 const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name: 'Önder', role: 'admin' }];
@@ -4144,6 +4157,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const generateProforma = async (visa) => {
     try {
       const doc = new jsPDF();
+      enableTurkishFont(doc);
       
       // Logo ve Header
       doc.setFontSize(20);
