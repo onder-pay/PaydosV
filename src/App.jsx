@@ -1035,7 +1035,7 @@ function CompanyPicker({ value, onChange }) {
   );
 }
 
-function CustomerModule({ customers, setCustomers, isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack }) {
+function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
   const [dateRangeTo, setDateRangeTo] = useState('');
@@ -2300,6 +2300,19 @@ function CustomerModule({ customers, setCustomers, isMobile, appSettings, showTo
             // ABD vizesi
             const usa = c.usaVisa ? (typeof c.usaVisa === 'string' ? (() => { try { return JSON.parse(c.usaVisa || '{}'); } catch { return {}; } })() : c.usaVisa) : {};
             if (usa && (usa.createdAt || usa.addedAt)) events.push({ icon: '🇺🇸', color: '#8b5cf6', title: 'ABD vizesi eklendi', time: usa.createdAt || usa.addedAt });
+            // Vize başvuruları (visa_applications) — bu müşteriye ait olanlar
+            (visaApplications || []).filter(v => String(v.customerId) === String(c.id)).forEach(v => {
+              const yer = v.country ? ` — ${v.country}` : '';
+              const tur = v.visaDuration ? ` (${v.visaDuration})` : '';
+              events.push({ icon: '🛂', color: '#f59e0b', title: `Vize başvurusu${yer}${tur}${v.status ? ` · ${v.status}` : ''}`, time: v.createdAt || v.applicationDate });
+            });
+            // Turlar — bu müşterinin rezervasyonu olan turlar
+            (tours || []).forEach(t => {
+              const rez = (t.reservations || []).filter(r => String(r.customerId) === String(c.id) && !r.cancelled);
+              if (rez.length > 0) {
+                events.push({ icon: '🎫', color: '#10b981', title: `${t.name || 'Tur'} turuna katıldı`, time: t.startDate || t.createdAt });
+              }
+            });
             // Elle eklenen notlar (activities)
             const manualActs = safeParseJSON(c.activities);
             manualActs.forEach(a => {
@@ -15468,7 +15481,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   const renderModule = () => {
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
-      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
+      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
