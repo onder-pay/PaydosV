@@ -4143,7 +4143,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const generateProforma = async (visa) => {
     try {
-      const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       
       // Logo ve Header
