@@ -4194,10 +4194,23 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       const serviceName = visa.visaDuration || visa.visaType || 'Vize Hizmeti';
       const bugun = new Date().toLocaleDateString('tr-TR');
       const odendi = visa.paymentStatus === 'Ödendi';
-      const bank = appSettings?.bankInfo || {};
+      const banks = getActiveBanks(appSettings);
       const proformaNo = `PRF-${new Date().getFullYear()}-${String(visa.id || Date.now()).slice(-5)}`;
 
       const detayRow = (label, val) => val ? `<tr><td style="padding:6px 0;color:#64748b;width:150px;font-size:13px">${esc(label)}</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">${esc(val)}</td></tr>` : '';
+      // Banka bilgileri HTML — para birimine göre uygun IBAN'ı öne çıkar
+      const bankaHTML = banks.map(b => {
+        const satirlar = [];
+        if (b.ibanTL) satirlar.push(`<tr><td style="padding:4px 0;color:#64748b;font-size:12px;width:60px">TL</td><td style="padding:4px 0;color:#0f172a;font-size:12px;font-weight:600">${esc(b.ibanTL)}</td></tr>`);
+        if (b.ibanEUR) satirlar.push(`<tr><td style="padding:4px 0;color:#64748b;font-size:12px">EUR</td><td style="padding:4px 0;color:#0f172a;font-size:12px;font-weight:600">${esc(b.ibanEUR)}</td></tr>`);
+        if (b.ibanUSD) satirlar.push(`<tr><td style="padding:4px 0;color:#64748b;font-size:12px">USD</td><td style="padding:4px 0;color:#0f172a;font-size:12px;font-weight:600">${esc(b.ibanUSD)}</td></tr>`);
+        if (!satirlar.length) return '';
+        return `<div style="margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:#1e3a5c">${esc(b.bankName)}${b.branch ? ` — ${esc(b.branch)}` : ''}</div>
+          ${b.swift ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px">SWIFT: ${esc(b.swift)}</div>` : ''}
+          <table style="width:100%;border-collapse:collapse">${satirlar.join('')}</table>
+        </div>`;
+      }).join('');
 
       const html = `
         <div style="font-family:'DejaVu Sans','Segoe UI',Arial,sans-serif;color:#0f172a;padding:48px 44px;box-sizing:border-box">
@@ -4257,15 +4270,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             ${odendi ? '✓ ÖDENDİ' : '✗ ÖDENMEDİ'}
           </div>
 
-          ${bank.iban ? `
+          ${bankaHTML ? `
           <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:24px">
-            <div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Banka Bilgileri</div>
-            <table style="width:100%;border-collapse:collapse">
-              ${detayRow('Banka', bank.bankName)}
-              ${detayRow('Hesap Sahibi', bank.accountName)}
-              ${detayRow('IBAN', bank.iban)}
-              ${detayRow('SWIFT', bank.swift)}
-            </table>
+            <div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Banka Bilgileri</div>
+            ${bankaHTML}
           </div>` : ''}
 
           ${visa.notes ? `<div style="margin-bottom:24px"><div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:6px">NOTLAR</div><div style="font-size:13px;color:#475569;line-height:1.5">${esc(visa.notes)}</div></div>` : ''}
