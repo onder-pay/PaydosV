@@ -21,6 +21,37 @@ const enableTurkishFont = (doc) => {
   } catch (e) { console.warn('Türkçe font yüklenemedi:', e.message); return false; }
 };
 
+// html2canvas'ı CDN'den yükle (global — tüm modüller kullanır)
+const loadHtml2Canvas = () => new Promise((resolve, reject) => {
+  if (window.html2canvas) return resolve(window.html2canvas);
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  s.onload = () => resolve(window.html2canvas);
+  s.onerror = () => reject(new Error('html2canvas yüklenemedi'));
+  document.head.appendChild(s);
+});
+
+// Bir HTML string'ini A4 PDF'e çevirip indir (Türkçe %100 düzgün — tarayıcı render eder)
+const htmlToPdfDownload = async (innerHTML, filename, styleCSS = '') => {
+  const html2canvas = await loadHtml2Canvas();
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1';
+  holder.innerHTML = `<style>${styleCSS}</style>${innerHTML}`;
+  document.body.appendChild(holder);
+  try {
+    await new Promise(r => setTimeout(r, 260));
+    const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const img = canvas.toDataURL('image/jpeg', 0.94);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pw = 210, ph = 297, ih = (canvas.height * pw) / canvas.width;
+    let left = ih, pos = 0;
+    pdf.addImage(img, 'JPEG', 0, pos, pw, ih);
+    left -= ph;
+    while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, pw, ih); left -= ph; }
+    pdf.save(filename);
+  } finally { document.body.removeChild(holder); }
+};
+
 const defaultCustomers = [];
 const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name: 'Önder', role: 'admin' }];
 
@@ -4156,142 +4187,100 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const generateProforma = async (visa) => {
     try {
-      const doc = new jsPDF();
-      enableTurkishFont(doc);
-      
-      // Logo ve Header
-      doc.setFontSize(20);
-      doc.setTextColor(15, 23, 42);
-      doc.text('PAYDOS TURİZM', 105, 20, { align: 'center' });
-      
-      doc.setFontSize(10);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Proforma Fatura', 105, 28, { align: 'center' });
-      
-      // Müşteri Bilgileri
-      doc.setFontSize(12);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Müşteri Bilgileri', 20, 45);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`Ad Soyad: ${visa.customerName}`, 20, 55);
-      doc.text(`Telefon: ${visa.customerPhone || '-'}`, 20, 62);
-      doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 20, 69);
-      
-      // Vize Detayları
-      doc.setFontSize(12);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Vize Detayları', 20, 85);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`Ülke: ${visa.country}`, 20, 95);
-      doc.text(`Vize Türü: ${visa.visaDuration || visa.visaType}`, 20, 102);
-      
-      if (visa.applicationDate) {
-        doc.text(`Başvuru Tarihi: ${formatDate(visa.applicationDate)}`, 20, 109);
-      }
-      
-      if (visa.appointmentDate) {
-        doc.text(`Randevu Tarihi: ${formatDate(visa.appointmentDate)} ${visa.appointmentTime || ''}`, 20, 116);
-      }
-      
-      if (visa.pnr) {
-        doc.text(`PNR: ${visa.pnr}`, 20, 123);
-      }
-      
-      // Fiyat Tablosu
-      doc.setFillColor(248, 250, 252);
-      doc.rect(20, 140, 170, 10, 'F');
-      
-      doc.setFontSize(10);
-      doc.setTextColor(15, 23, 42);
-      doc.text('Hizmet', 25, 146);
-      doc.text('Fiyat', 170, 146, { align: 'right' });
-      
-      // Fiyat satırı
-      const price = visa.visaPrice || 0;
-      const currency = visa.visaCurrency || '€';
+      showToast?.('Proforma hazırlanıyor...', 'info');
+      const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const price = visa.visaPrice || visa.price || 0;
+      const currency = visa.visaCurrency || visa.currency || '€';
       const serviceName = visa.visaDuration || visa.visaType || 'Vize Hizmeti';
-      
-      doc.setTextColor(51, 65, 85);
-      doc.text(serviceName, 25, 158);
-      doc.text(`${price} ${currency}`, 170, 158, { align: 'right' });
-      
-      // Toplam
-      doc.setDrawColor(226, 232, 240);
-      doc.line(20, 165, 190, 165);
-      
-      doc.setFontSize(12);
-      doc.setTextColor(15, 23, 42);
-      doc.text('TOPLAM', 25, 175);
-      doc.text(`${price} ${currency}`, 170, 175, { align: 'right' });
-      
-      // Ödeme Durumu
-      doc.setFontSize(9);
-      if (visa.paymentStatus === 'Ödendi') {
-        doc.setTextColor(16, 185, 129);
-        doc.text('✓ ÖDENDİ', 25, 185);
-      } else {
-        doc.setTextColor(239, 68, 68);
-        doc.text('✗ ÖDENMEDİ', 25, 185);
-      }
-      
-      // Banka Bilgileri
-      const bankInfo = appSettings?.bankInfo;
-      if (bankInfo && bankInfo.iban) {
-        doc.setFontSize(11);
-        doc.setTextColor(15, 23, 42);
-        doc.text('Banka Bilgileri', 20, 205);
-        
-        doc.setFontSize(9);
-        doc.setTextColor(51, 65, 85);
-        let yPos = 213;
-        
-        if (bankInfo.bankName) {
-          doc.text(`Banka: ${bankInfo.bankName}`, 20, yPos);
-          yPos += 6;
-        }
-        
-        if (bankInfo.accountName) {
-          doc.text(`Hesap Sahibi: ${bankInfo.accountName}`, 20, yPos);
-          yPos += 6;
-        }
-        
-        doc.text(`IBAN: ${bankInfo.iban}`, 20, yPos);
-        yPos += 6;
-        
-        if (bankInfo.swift) {
-          doc.text(`SWIFT: ${bankInfo.swift}`, 20, yPos);
-        }
-      }
-      
-      // Notlar
-      if (visa.notes) {
-        doc.setFontSize(10);
-        doc.setTextColor(15, 23, 42);
-        doc.text('Notlar', 20, 250);
-        
-        doc.setFontSize(9);
-        doc.setTextColor(100, 116, 139);
-        const lines = doc.splitTextToSize(visa.notes, 170);
-        doc.text(lines, 20, 257);
-      }
-      
-      // Footer
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184);
-      doc.text('Bu proforma fatura bilgilendirme amaçlıdır.', 105, 280, { align: 'center' });
-      doc.text('Paydos Turizm - www.paydostur.com', 105, 285, { align: 'center' });
-      
-      // PDF'i indir
-      doc.save(`Proforma_${visa.customerName}_${new Date().toLocaleDateString('tr-TR')}.pdf`);
-      
-      showToast?.('Proforma başarıyla indirildi', 'success');
+      const bugun = new Date().toLocaleDateString('tr-TR');
+      const odendi = visa.paymentStatus === 'Ödendi';
+      const bank = appSettings?.bankInfo || {};
+      const proformaNo = `PRF-${new Date().getFullYear()}-${String(visa.id || Date.now()).slice(-5)}`;
+
+      const detayRow = (label, val) => val ? `<tr><td style="padding:6px 0;color:#64748b;width:150px;font-size:13px">${esc(label)}</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">${esc(val)}</td></tr>` : '';
+
+      const html = `
+        <div style="font-family:'DejaVu Sans','Segoe UI',Arial,sans-serif;color:#0f172a;padding:48px 44px;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5c;padding-bottom:18px;margin-bottom:24px">
+            <div>
+              <div style="font-size:26px;font-weight:800;color:#1e3a5c;letter-spacing:1px">PAYDOS TURİZM</div>
+              <div style="font-size:12px;color:#64748b;margin-top:4px">Seyahat Acentalığı</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:20px;font-weight:700;color:#e8912a">PROFORMA FATURA</div>
+              <div style="font-size:12px;color:#64748b;margin-top:4px">No: ${esc(proformaNo)}</div>
+              <div style="font-size:12px;color:#64748b">Tarih: ${esc(bugun)}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:24px;margin-bottom:24px">
+            <div style="flex:1;background:#f8fafc;border-radius:10px;padding:16px">
+              <div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Müşteri Bilgileri</div>
+              <table style="width:100%;border-collapse:collapse">
+                ${detayRow('Ad Soyad', visa.customerName)}
+                ${detayRow('Telefon', visa.customerPhone || '-')}
+                ${detayRow('E-posta', visa.customerEmail || '-')}
+              </table>
+            </div>
+            <div style="flex:1;background:#f8fafc;border-radius:10px;padding:16px">
+              <div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Vize Detayları</div>
+              <table style="width:100%;border-collapse:collapse">
+                ${detayRow('Ülke', visa.country)}
+                ${detayRow('Vize Türü', serviceName)}
+                ${detayRow('Başvuru Tarihi', visa.applicationDate ? formatDate(visa.applicationDate) : '')}
+                ${detayRow('Randevu', visa.appointmentDate ? `${formatDate(visa.appointmentDate)} ${visa.appointmentTime || ''}`.trim() : '')}
+                ${detayRow('PNR', visa.pnr)}
+              </table>
+            </div>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+            <thead>
+              <tr style="background:#1e3a5c;color:#fff">
+                <th style="text-align:left;padding:12px 16px;font-size:13px;border-radius:8px 0 0 0">Hizmet</th>
+                <th style="text-align:right;padding:12px 16px;font-size:13px;border-radius:0 8px 0 0">Tutar</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:14px 16px;font-size:14px;color:#0f172a">${esc(serviceName)}</td>
+                <td style="padding:14px 16px;font-size:14px;color:#0f172a;text-align:right;font-weight:600">${esc(price)} ${esc(currency)}</td>
+              </tr>
+              <tr style="background:#f8fafc">
+                <td style="padding:14px 16px;font-size:16px;font-weight:800;color:#1e3a5c">TOPLAM</td>
+                <td style="padding:14px 16px;font-size:16px;font-weight:800;color:#e8912a;text-align:right">${esc(price)} ${esc(currency)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="display:inline-block;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:24px;${odendi ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626'}">
+            ${odendi ? '✓ ÖDENDİ' : '✗ ÖDENMEDİ'}
+          </div>
+
+          ${bank.iban ? `
+          <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:24px">
+            <div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Banka Bilgileri</div>
+            <table style="width:100%;border-collapse:collapse">
+              ${detayRow('Banka', bank.bankName)}
+              ${detayRow('Hesap Sahibi', bank.accountName)}
+              ${detayRow('IBAN', bank.iban)}
+              ${detayRow('SWIFT', bank.swift)}
+            </table>
+          </div>` : ''}
+
+          ${visa.notes ? `<div style="margin-bottom:24px"><div style="font-size:12px;font-weight:700;color:#1e3a5c;margin-bottom:6px">NOTLAR</div><div style="font-size:13px;color:#475569;line-height:1.5">${esc(visa.notes)}</div></div>` : ''}
+
+          <div style="border-top:1px solid #e2e8f0;padding-top:16px;margin-top:8px;text-align:center">
+            <div style="font-size:11px;color:#94a3b8">Bu proforma fatura bilgilendirme amaçlıdır.</div>
+            <div style="font-size:12px;color:#1e3a5c;font-weight:600;margin-top:4px">Paydos Turizm · www.paydostur.com · 0 258 263 71 76</div>
+          </div>
+        </div>`;
+
+      await htmlToPdfDownload(html, `Proforma_${(visa.customerName || 'Musteri').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_')}.pdf`);
+      showToast?.('Proforma indirildi', 'success');
     } catch (error) {
       console.error('Proforma oluşturma hatası:', error);
-      showToast?.('Proforma oluşturulamadı', 'error');
+      showToast?.('Proforma oluşturulamadı: ' + error.message, 'error');
     }
   };
 
