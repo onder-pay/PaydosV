@@ -6464,12 +6464,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       ws_data.push([
         r.sNo,
         r.company || '',
-        r.customerName,
+        titleCaseTr(r.customerName || ''),
         r.customerPhone,
         r.customerEmail,
         r.roomType || "-",
-        r.roommate || '',
-        r.roommate3 || '',
+        titleCaseTr(r.roommate || ''),
+        titleCaseTr(r.roommate3 || ''),
         r.hasChild ? 'Evet' : 'Hayır',
         r.passport || '',
         r.hasVisa ? 'Var' : 'Yok',
@@ -6618,14 +6618,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                     allRes.forEach(res => {
                       const customer = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
                       const passports = safeParseJSON(customer?.passports);
-                      rows.push([res.customerName, customer?.birthDate ? formatDate(customer.birthDate) : '', customer?.tcKimlik || '', res.passport || passports[0]?.passportNo || '', customer?.company || res.company || '', customer?.phone || res.customerPhone || '', customer?.email || res.customerEmail || '', res.cancelled ? 'İptal' : 'Aktif']);
+                      rows.push([titleCaseTr(res.customerName || ''), customer?.birthDate ? formatDate(customer.birthDate) : '', customer?.tcKimlik || '', res.passport || passports[0]?.passportNo || '', customer?.company || res.company || '', customer?.phone || res.customerPhone || '', customer?.email || res.customerEmail || '', res.cancelled ? 'İptal' : 'Aktif']);
                     });
                   } else {
                     rows = [['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', 'Durum']];
                     allRes.forEach(res => {
                       const totalPaid = (parseFloat(res.payment1) || 0) + (parseFloat(res.payment2) || 0) + (parseFloat(res.payment3) || 0);
                       const fullyPaid = totalPaid >= (parseFloat(res.tourPrice) || 0) && totalPaid > 0;
-                      rows.push([res.customerName, res.roomType || '', res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok', `${res.tourPrice || 0} ${res.currency || '€'}`, fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`, res.cancelled ? 'İptal' : 'Aktif']);
+                      rows.push([titleCaseTr(res.customerName || ''), res.roomType || '', res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok', `${res.tourPrice || 0} ${res.currency || '€'}`, fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`, res.cancelled ? 'İptal' : 'Aktif']);
                     });
                   }
                   const ws = XLSX.utils.aoa_to_sheet(rows);
