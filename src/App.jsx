@@ -1397,6 +1397,27 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
 
 
+  // Toplu isim düzeltme: BÜYÜK/karışık isimleri titleCaseTr ile düzelt (bir kez çalıştırılır)
+  const fixAllNames = async () => {
+    const needsFix = customers.filter(c => {
+      const fn = titleCaseTr(c.firstName || ''), ln = titleCaseTr(c.lastName || '');
+      return (fn !== (c.firstName || '') || ln !== (c.lastName || '')) && (c.firstName || c.lastName);
+    });
+    if (needsFix.length === 0) { showToast?.('Düzeltilecek isim yok — hepsi düzgün ✓', 'success'); return; }
+    if (!window.confirm(`${needsFix.length} müşterinin adı düzeltilecek (örn: "${needsFix[0].firstName} ${needsFix[0].lastName}" → "${titleCaseTr(needsFix[0].firstName)} ${titleCaseTr(needsFix[0].lastName)}").\n\nDevam edilsin mi?`)) return;
+    const now = new Date().toISOString();
+    const idOf = (c) => c._docId || String(c.id);
+    const fixedMap = {};
+    needsFix.forEach(c => { fixedMap[idOf(c)] = { firstName: titleCaseTr(c.firstName || ''), lastName: titleCaseTr(c.lastName || '') }; });
+    setCustomers(prev => prev.map(c => fixedMap[idOf(c)] ? { ...c, ...fixedMap[idOf(c)], updatedAt: now } : c));
+    let ok = 0, fail = 0;
+    for (const c of needsFix) {
+      try { await setDoc(doc(db, 'customers', idOf(c)), { ...fixedMap[idOf(c)], updatedAt: now }, { merge: true }); ok++; }
+      catch (e) { fail++; }
+    }
+    showToast?.(`${ok} isim düzeltildi${fail ? `, ${fail} başarısız` : ''}`, fail ? 'warning' : 'success');
+  };
+
   const handleSubmit = async () => {
     if (!formData.firstName || !formData.lastName) {
       alert('Ad ve Soyad alanları zorunludur!');
@@ -1508,6 +1529,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const now = new Date().toISOString();
     const fullData = {
       ...formData,
+      firstName: titleCaseTr(formData.firstName || ''),
+      lastName: titleCaseTr(formData.lastName || ''),
       passports: JSON.stringify(Array.isArray(passports) ? passports : []),
       schengenVisas: JSON.stringify(Array.isArray(schengenVisas) ? schengenVisas : []),
       usaVisa: usaVisa
@@ -3049,6 +3072,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <div style={{ background: 'rgba(59,130,246,0.1)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.2)' }}>
               <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#3b82f6' }}>📤 Excel'e Aktar</h4>
               <button onClick={() => exportToExcel(customers, `Tum_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ width: '100%', padding: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>📥 Tüm Müşterileri İndir ({customers.length})</button>
+            </div>
+
+            <div style={{ background: 'rgba(167,139,250,0.1)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(167,139,250,0.2)' }}>
+              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: '#a78bfa' }}>🔧 İsimleri Düzelt</h4>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>BÜYÜK harfle veya karışık yazılmış ad-soyadları düzgün biçime çevirir (örn: "MEHMET AKKÖSE" → "Mehmet Akköse"). Tüm müşterilerde bir kez çalıştırın.</p>
+              <button onClick={fixAllNames} style={{ width: '100%', padding: '10px', background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔧 İsimleri Düzelt</button>
             </div>
           </div>
         </Modal>
