@@ -11236,7 +11236,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
               ) : (
                 <div style={{ position: 'relative' }}>
                   <label style={labelStyle}>Müşteri (ara veya elle yaz) *</label>
-                  <input style={inS} value={pCustSearch} onFocus={() => setShowPCustList(true)} onBlur={() => setTimeout(() => setShowPCustList(false), 200)} onChange={e => { setPCustSearch(e.target.value); setP({ customerName: e.target.value, customerId: '' }); setShowPCustList(true); }} placeholder="Kayıtlı müşteri ara veya ismi elle yazıp Enter'a basın..." />
+                  <input style={inS} value={pCustSearch} onFocus={() => setShowPCustList(true)} onBlur={() => setTimeout(() => setShowPCustList(false), 200)} onChange={e => { setPCustSearch(e.target.value); setShowPCustList(true); }} onKeyDown={e => { if (e.key === 'Enter' && pCustSearch.trim().length >= 2) { e.preventDefault(); setP({ customerName: pCustSearch.trim(), customerId: '' }); setPCustSearch(''); } }} placeholder="Kayıtlı müşteri ara veya ismi elle yazıp Enter'a basın..." />
                   {showPCustList && hits.length > 0 && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                       {hits.map(c => (
