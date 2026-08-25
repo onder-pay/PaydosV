@@ -12917,10 +12917,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const extra = cap - 1;
                   return (
                     <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: '10px', padding: '12px' }}>
-                      <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '8px' }}>👥 Odadaki diğer kişiler ({resData.roomType} — {cap} kişilik)</div>
+                      <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: '600', marginBottom: '8px' }}>👥 Odadaki diğer kişiler ({resData.roomType} — {cap} kişilik) · <span style={{ color: '#64748b', fontWeight: '400' }}>müşteri listesinden seçin veya elle yazın</span></div>
+                      <datalist id="hotel-roommate-customers">
+                        {customers.map(c => <option key={c.id} value={`${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim()} />)}
+                      </datalist>
                       <div style={{ display: 'grid', gridTemplateColumns: extra > 1 ? '1fr 1fr' : '1fr', gap: '8px' }}>
                         {Array.from({ length: extra }).map((_, idx) => (
-                          <input key={idx} type="text" placeholder={`${idx + 2}. Kişi Ad Soyad`} value={(resData.guestNames || [])[idx] || ''} onChange={e => {
+                          <input key={idx} type="text" list="hotel-roommate-customers" placeholder={`${idx + 2}. Kişi — ara / seç`} value={(resData.guestNames || [])[idx] || ''} onChange={e => {
                             const gn = [...(resData.guestNames || [])];
                             gn[idx] = e.target.value;
                             setResData({...resData, guestNames: gn});
