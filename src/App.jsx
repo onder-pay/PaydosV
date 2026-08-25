@@ -11261,9 +11261,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     {candSec('🏨 OTEL REZERVASYONLARI', cand.hotel, '#f59e0b')}
                     {candSec('✈️ UÇUŞ REZERVASYONLARI', cand.flight, '#3b82f6')}
                     {candSec('🚐 TRANSFERLER', cand.transfer, '#a78bfa')}
-                    {candSec('🌍 VİZE BAŞVURULARI', cand.visa, '#10b981')}
-                    {!cand.hotel.length && !cand.flight.length && !cand.transfer.length && !cand.visa.length && (
-                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Bu müşteriye ait sistemde kayıtlı otel/uçuş/transfer/vize kaydı yok. Aşağıdan elle kalem ekleyebilirsiniz.</p>
+                    {!cand.hotel.length && !cand.flight.length && !cand.transfer.length && (
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Bu müşteriye ait sistemde kayıtlı otel/uçuş/transfer kaydı yok. Aşağıdan elle kalem ekleyebilirsiniz.</p>
                     )}
                   </div>
                 </div>
