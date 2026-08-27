@@ -5538,7 +5538,7 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser }) {
+function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -5598,6 +5598,13 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
   const [custSearch, setCustSearch] = useState('');
   const [showCustList, setShowCustList] = useState(false);
   const [selectedTour, setSelectedTour] = useState(null);
+  // Müşteri kartından geri dönüldüğünde en son açık olan turu tekrar aç
+  useEffect(() => {
+    if (initialTourId && !selectedTour) {
+      const t = tours.find(x => String(x.id) === String(initialTourId));
+      if (t) { setSelectedTour(t); onTourOpened?.(); }
+    }
+  }, [initialTourId, tours]);
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
@@ -6416,11 +6423,42 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       return;
     }
 
+    // Yeni müşteri (customerId==='new') → önce customers'a gerçek kayıt aç, gerçek id al
+    let resData = { ...reservationData };
+    if (resData.customerId === 'new') {
+      // İsimden ad/soyad ayır + isimdeki doğum tarihini temizle
+      const cleanName = (resData.customerName || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
+      const parts = cleanName.split(' ');
+      const lastName = parts.length > 1 ? parts.pop() : '';
+      const firstName = parts.join(' ');
+      // Aynı isimde kayıt var mı? Varsa ona bağla
+      const existing = customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(cleanName));
+      if (existing) {
+        resData.customerId = existing.id;
+      } else {
+        const newId = generateUniqueId();
+        const now = new Date().toISOString();
+        const newCust = {
+          id: newId, _docId: newId,
+          firstName: titleCaseTr(firstName), lastName: titleCaseTr(lastName),
+          phone: resData.customerPhone || '', email: resData.customerEmail || '',
+          company: resData.company || '', tcKimlik: '', birthDate: '', birthPlace: '',
+          city: '', sector: '', notes: '', tkMemberNo: '',
+          passports: '[]', schengenVisas: '[]', usaVisa: '{}', tags: '[]', activities: '[]',
+          verified: false, createdBy: 'Tur Rezervasyonu', createdAt: now, updatedAt: now
+        };
+        setCustomers(prev => [...prev, newCust]);
+        try { await setDoc(doc(db, 'customers', newId), newCust, { merge: true }); } catch (e) { console.error('Müşteri kaydı hatası:', e); }
+        resData.customerId = newId;
+        resData.customerName = `${titleCaseTr(firstName)} ${titleCaseTr(lastName)}`.trim();
+      }
+    }
+
     let updatedTour;
     if (editingReservation) {
-      updatedTour = { ...selectedTour, reservations: selectedTour.reservations.map(r => r.id === editingReservation.id ? { ...reservationData, id: r.id, sNo: r.sNo } : r) };
+      updatedTour = { ...selectedTour, reservations: selectedTour.reservations.map(r => r.id === editingReservation.id ? { ...resData, id: r.id, sNo: r.sNo } : r) };
     } else {
-      const newReservation = { ...reservationData, id: Date.now(), sNo: (selectedTour.reservations?.length || 0) + 1 };
+      const newReservation = { ...resData, id: Date.now(), sNo: (selectedTour.reservations?.length || 0) + 1 };
       updatedTour = { ...selectedTour, reservations: [...(selectedTour.reservations || []), newReservation] };
     }
 
@@ -6874,7 +6912,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                                   const found = customers.find(c =>
                                     `${c.firstName} ${c.lastName}`.toLowerCase() === res.customerName?.toLowerCase()
                                   );
-                                  if (found && onNavigateToCustomer) onNavigateToCustomer(found);
+                                  if (found && onNavigateToCustomer) onNavigateToCustomer(found, selectedTour?.id);
                                 }}
                                 style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}
                                 title="Profili aç"
@@ -14979,6 +15017,7 @@ function AppInner() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeModule, setActiveModule] = useState('dashboard');
+  const [lastTourId, setLastTourId] = useState(null); // tur→müşteri→geri dönüşünde turu geri açmak için
   const [prevModule, setPrevModule] = useState(null);
   const navigateTo = (mod) => { setPrevModule(activeModule); setActiveModule(mod); };
 
@@ -15525,7 +15564,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
