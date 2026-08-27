@@ -6417,6 +6417,42 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     setShowReservationForm(true);
   };
 
+  // Rezervasyona belge yükle (fuar bileti / uçak bileti) — Firebase Storage
+  const [resDocBusy, setResDocBusy] = useState('');
+  const uploadResDoc = async (tour, res, field, file) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
+    setResDocBusy(`${res.id}-${field}`);
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const storage = getStorage();
+      const path = `tur-belgeleri/${tour.id}/${res.id}_${field}_${Date.now()}_${file.name}`;
+      const sRef = ref(storage, path);
+      await uploadBytes(sRef, file);
+      const url = await getDownloadURL(sRef);
+      const targetTour = tours.find(t => t.id === tour.id);
+      const updatedTour = { ...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? { ...r, [field]: url, [`${field}Path`]: path } : r) };
+      setTours(tours.map(t => t.id === tour.id ? updatedTour : t));
+      setSelectedTour(updatedTour);
+      try { const docId = targetTour._docId || String(targetTour.id); const sd = { ...updatedTour }; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch (e) {}
+      showToast?.('Belge yüklendi', 'success');
+    } catch (e) { showToast?.('Yükleme hatası: ' + e.message, 'error'); }
+    finally { setResDocBusy(''); }
+  };
+  const removeResDoc = async (tour, res, field) => {
+    if (!window.confirm('Bu belgeyi silmek istiyor musunuz?')) return;
+    try {
+      const p = res[`${field}Path`];
+      if (p) { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), p)).catch(() => {}); }
+    } catch (e) {}
+    const targetTour = tours.find(t => t.id === tour.id);
+    const updatedTour = { ...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? { ...r, [field]: null, [`${field}Path`]: null } : r) };
+    setTours(tours.map(t => t.id === tour.id ? updatedTour : t));
+    setSelectedTour(updatedTour);
+    try { const docId = targetTour._docId || String(targetTour.id); const sd = { ...updatedTour }; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch (e) {}
+    showToast?.('Belge silindi', 'info');
+  };
+
   const saveReservation = async () => {
     if (!reservationData.customerId || !reservationData.customerName) {
       showToast('Lütfen müşteri seçin', 'error');
@@ -6955,6 +6991,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 {!res.cancelled && <button onClick={() => singleContract(tour, res)} disabled={!!szBusy} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: szBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Sözleşme PDF">{szBusy === res.id ? '⏳' : '📜'}</button>}
+                                {!res.cancelled && (res.fuarTicketUrl
+                                  ? <button onClick={() => window.open(res.fuarTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'fuarTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Fuar bileti (indir) — sağ tık: sil">🎫</button>
+                                  : <label style={{ cursor: resDocBusy === `${res.id}-fuarTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Fuar bileti yükle">{resDocBusy === `${res.id}-fuarTicketUrl` ? '⏳' : '🎫'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'fuarTicketUrl', e.target.files[0])} /></label>
+                                )}
+                                {!res.cancelled && (res.flightTicketUrl
+                                  ? <button onClick={() => window.open(res.flightTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'flightTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Uçak bileti (indir) — sağ tık: sil">✈️</button>
+                                  : <label style={{ cursor: resDocBusy === `${res.id}-flightTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Uçak bileti yükle">{resDocBusy === `${res.id}-flightTicketUrl` ? '⏳' : '✈️'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'flightTicketUrl', e.target.files[0])} /></label>
+                                )}
                                 <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                                 {res.cancelled ? (
                                   <button onClick={async () => { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
