@@ -5649,6 +5649,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     roomType: 'doubleRoom',
     roommate: '',
     roommate3: '',
+    roommate4: '',
     hasChild: false,
     passport: '',
     hasVisa: false,
@@ -7698,26 +7699,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={reservationData.hasChild}
-                      onChange={e => setReservationData({...reservationData, hasChild: e.target.checked})}
-                      id="hasChild"
-                    />
-                    <label htmlFor="hasChild" style={{ fontSize: '13px', color: '#94a3b8', cursor: 'pointer' }}>Çocuk var</label>
-                  </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={labelStyle}>Pasaport No</label>
-                      <input
-                        type="text"
-                        value={reservationData.passport}
-                        onChange={e => setReservationData({...reservationData, passport: e.target.value})}
-                        placeholder="Pasaport numarası"
-                        style={inputStyle}
-                      />
+                      <label style={labelStyle}>4. Oda Arkadaşı</label>
+                      <select
+                        value={reservationData.roommate4}
+                        onChange={e => setReservationData({...reservationData, roommate4: e.target.value})}
+                        style={selectStyle}
+                      >
+                        <option value="">4. kişi seçin...</option>
+                        {(selectedTour?.reservations || [])
+                          .filter(r => !r.cancelled && r.customerName && r.customerName !== reservationData.customerName && r.customerName !== reservationData.roommate && r.customerName !== reservationData.roommate3)
+                          .map(r => <option key={r.id} value={r.customerName}>{titleCaseTr(r.customerName)}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label style={labelStyle}>Vize Durumu</label>
