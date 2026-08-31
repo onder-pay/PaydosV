@@ -1565,6 +1565,14 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       } catch (err) { console.error('Firestore kayıt hatası:', err); }
     }
     showToast?.('✅ Kaydedildi', 'success');
+    // Kaydet sonrası: formu kapat, düzenlenen müşterinin detayında kal (listeye düşme)
+    if (editingCustomer) {
+      const savedId = editingCustomer._docId || editingCustomer.id;
+      const savedCust = customers.find(c => (c._docId || c.id) === savedId);
+      if (savedCust) setSelectedCustomer({ ...savedCust, ...fullData });
+    }
+    setShowForm(false);
+    resetForm();
   };
 
 
