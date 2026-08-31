@@ -6507,6 +6507,26 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       updatedTour = { ...selectedTour, reservations: [...(selectedTour.reservations || []), newReservation] };
     }
 
+    // Oda arkadaşlığını çift yönlü yap: seçilen kişilere de bu kişiyi ekle (aynı odada birbirini görsün)
+    const benim = resData.customerName;
+    const odaArkadaslari = [resData.roommate, resData.roommate3, resData.roommate4].filter(Boolean);
+    if (benim && odaArkadaslari.length) {
+      updatedTour = {
+        ...updatedTour,
+        reservations: updatedTour.reservations.map(r => {
+          if (!odaArkadaslari.includes(r.customerName)) return r;
+          // Bu kişinin oda arkadaşı slotlarına "benim"i ekle (yoksa)
+          const mevcut = [r.roommate, r.roommate3, r.roommate4].filter(Boolean);
+          if (mevcut.includes(benim)) return r; // zaten var
+          // Boş ilk slota yerleştir
+          if (!r.roommate) return { ...r, roommate: benim };
+          if (!r.roommate3) return { ...r, roommate3: benim };
+          if (!r.roommate4) return { ...r, roommate4: benim };
+          return r; // 3 slot da dolu
+        })
+      };
+    }
+
     const updatedTours = tours.map(t => t.id === selectedTour.id ? updatedTour : t);
     setTours(updatedTours);
     setSelectedTour(updatedTour);
@@ -7148,16 +7168,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
               const reservations = (tour.reservations || []).filter(r => !r.cancelled);
               const roomTypes = {}; const assigned = new Set();
+              const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
 
-              // Çift yönlü eşleşme: A → roommate=B, B → roommate=A her iki yön de geçerli
-              const findPartner = (cust) => reservations.find(x =>
-                !assigned.has(x.id) &&
-                x.customerName !== cust.customerName &&
-                (
-                  x.customerName === cust.roommate ||
-                  x.customerName === cust.roommate3 ||
-                  cust.customerName === x.roommate ||
-                  cust.customerName === x.roommate3
+              // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
+              const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
+              // Çift yönlü: x, oda grubundaki HERHANGİ birinin arkadaşı mı (ya da tersi)
+              const grubaAitMi = (x, grup) => grup.some(g =>
+                x.customerName !== g.customerName && (
+                  arkadasIsimleri(g).includes(x.customerName) ||
+                  arkadasIsimleri(x).includes(g.customerName)
                 )
               );
 
@@ -7165,23 +7184,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 if (assigned.has(r.id)) return;
                 const type = r.roomType || '-';
                 if (!roomTypes[type]) roomTypes[type] = [];
+                const cap = roomCap(type);
                 const room = [r]; assigned.add(r.id);
-
-                // İlk oda arkadaşı
-                const m1 = findPartner(r);
-                if (m1) {
-                  room.push(m1);
-                  assigned.add(m1.id);
-                  // 3'lü oda — diğer eşleşmeyi de kontrol et
-                  if (type === 'Triple' || type === 'Üçlü' || type === 'Triple Room') {
-                    const m2 = reservations.find(x =>
-                      !assigned.has(x.id) &&
-                      (x.customerName === r.roommate3 ||
-                       x.customerName === m1.roommate3 ||
-                       r.customerName === x.roommate3 ||
-                       m1.customerName === x.roommate3)
-                    );
-                    if (m2) { room.push(m2); assigned.add(m2.id); }
+                // Kapasite dolana kadar, gruptan birinin arkadaşı olan kişileri ekle
+                let eklendi = true;
+                while (room.length < cap && eklendi) {
+                  eklendi = false;
+                  for (const x of reservations) {
+                    if (assigned.has(x.id)) continue;
+                    if (grubaAitMi(x, room)) { room.push(x); assigned.add(x.id); eklendi = true; if (room.length >= cap) break; }
                   }
                 }
                 roomTypes[type].push(room);
