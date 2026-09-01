@@ -1425,22 +1425,17 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       return;
     }
 
-    // TC Kimlik zorunlu
-    if (!formData.tcKimlik || !formData.tcKimlik.trim()) {
-      showToast?.('❌ TC Kimlik No zorunludur', 'error');
-      setFormTab('info');
-      return;
-    }
-
-    // TC Kimlik eşsizlik kontrolü
-    const tcDup = customers.find(c =>
-      c.tcKimlik === formData.tcKimlik.trim() &&
-      (c._docId ? c._docId !== editingCustomer?._docId : String(c.id) !== String(editingCustomer?.id))
-    );
-    if (tcDup) {
-      showToast?.(`❌ Bu TC Kimlik No zaten kayıtlı: ${tcDup.firstName} ${tcDup.lastName}`, 'error');
-      setFormTab('info');
-      return;
+    // TC Kimlik opsiyonel — ama girildiyse eşsiz olmalı (aynı TC iki müşteride olamaz)
+    if (formData.tcKimlik && formData.tcKimlik.trim()) {
+      const tcDup = customers.find(c =>
+        c.tcKimlik === formData.tcKimlik.trim() &&
+        (c._docId ? c._docId !== editingCustomer?._docId : String(c.id) !== String(editingCustomer?.id))
+      );
+      if (tcDup) {
+        showToast?.(`❌ Bu TC Kimlik No zaten kayıtlı: ${tcDup.firstName} ${tcDup.lastName}`, 'error');
+        setFormTab('info');
+        return;
+      }
     }
 
     // === TARİH VALİDASYONU ===
@@ -1667,7 +1662,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   <FormInput label="Ad *" value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} placeholder="Adı girin" />
                   <FormInput label="Soyad *" value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Soyadı girin" />
                 </div>
-                <FormInput label="TC Kimlik No *" value={formData.tcKimlik || ''} onChange={e => setFormData({...formData, tcKimlik: e.target.value})} maxLength="11" placeholder="11 haneli TC kimlik numarası" />
+                <FormInput label="TC Kimlik No" value={formData.tcKimlik || ''} onChange={e => setFormData({...formData, tcKimlik: e.target.value})} maxLength="11" placeholder="11 haneli TC kimlik numarası (opsiyonel)" />
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelStyle}>Telefon *</label>
@@ -6974,10 +6969,17 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             <td style={{ padding: '10px 12px', fontWeight: '600', textDecoration: res.cancelled ? 'line-through' : 'none' }}>
                               <span
                                 onClick={() => {
-                                  const found = customers.find(c =>
-                                    `${c.firstName} ${c.lastName}`.toLowerCase() === res.customerName?.toLowerCase()
-                                  );
+                                  // 1) customerId ile (en güvenilir)
+                                  let found = res.customerId && res.customerId !== 'new'
+                                    ? customers.find(c => String(c.id) === String(res.customerId) || String(c._docId) === String(res.customerId))
+                                    : null;
+                                  // 2) İsimle (Türkçe normalize + isimdeki doğum tarihi temizlenmiş)
+                                  if (!found) {
+                                    const temiz = (res.customerName || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
+                                    found = customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(temiz));
+                                  }
                                   if (found && onNavigateToCustomer) onNavigateToCustomer(found, selectedTour?.id);
+                                  else showToast?.('Bu katılımcının müşteri kaydı bulunamadı — rezervasyonu düzenleyip müşteriyi yeniden seçin', 'warning');
                                 }}
                                 style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}
                                 title="Profili aç"
