@@ -4891,9 +4891,24 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
                 const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
                 const delOdeme = (i) => setOdemeler(odemeler.filter((_, x) => x !== i));
-                // Para birimi bazlı toplam
+                // Para birimi bazlı tahsilat toplamı
                 const toplam = {};
                 odemeler.forEach(o => { const a = parseFloat(o.amount) || 0; if (!a) return; const c = o.currency || '€'; toplam[c] = (toplam[c] || 0) + a; });
+
+                // Maliyet toplamı (kâr/zarar için) — para birimi bazlı
+                const _costs = formData.costs || {};
+                const _costCur = formData.costCurrencies || {};
+                const _saleCur = formData.visaCurrency || '€';
+                const _costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : [
+                  { key: 'konsolosluk' }, { key: 'araci' }, { key: 'sigorta' }, { key: 'idata' }, { key: 'kargo' }, { key: 'fuar' }, { key: 'diger' }
+                ];
+                const maliyetPB = {};
+                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; const c = _costCur[f.key] || _saleCur; maliyetPB[c] = (maliyetPB[c] || 0) + a; });
+
+                // Kâr/Zarar: her para birimi için tahsilat − maliyet
+                const tumPB = [...new Set([...Object.keys(toplam), ...Object.keys(maliyetPB)])];
+                const karZarar = tumPB.map(c => ({ pb: c, deger: (toplam[c] || 0) - (maliyetPB[c] || 0) }));
+                const farkliPB = tumPB.length > 1;
 
                 return (
                   <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
@@ -4920,13 +4935,32 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       </div>
                     )}
 
-                    {Object.keys(toplam).length > 0 && (
-                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                        <div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Tahsilat</div>
+                    {/* Tahsilat + Kâr/Zarar özeti */}
+                    {(Object.keys(toplam).length > 0 || Object.keys(maliyetPB).length > 0) && (
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+                        <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Tahsil Edilen</div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>
-                            {Object.entries(toplam).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
+                            {Object.keys(toplam).length === 0 ? '0' : Object.entries(toplam).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
                           </div>
+                        </div>
+                        <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
+                            {Object.keys(maliyetPB).length === 0 ? '0' : Object.entries(maliyetPB).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
+                          </div>
+                        </div>
+                        <div style={{ background: 'rgba(34,197,94,0.12)', padding: '10px 12px', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar</div>
+                          <div style={{ fontSize: '15px', fontWeight: '700' }}>
+                            {karZarar.map(({ pb, deger }, i) => (
+                              <span key={pb} style={{ color: deger >= 0 ? '#22c55e' : '#ef4444' }}>
+                                {i > 0 && <span style={{ color: '#64748b' }}>{'  ·  '}</span>}
+                                {deger >= 0 ? '+' : ''}{deger.toFixed(2)} {pb}
+                              </span>
+                            ))}
+                          </div>
+                          {farkliPB && <div style={{ fontSize: '9px', color: '#fbbf24', marginTop: '2px' }}>⚠️ Farklı para birimleri ayrı hesaplanır</div>}
                         </div>
                       </div>
                     )}
