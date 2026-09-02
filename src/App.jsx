@@ -3845,6 +3845,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [visaCountryFilter, setVisaCountryFilter] = useState('all');
+  const [visaSort, setVisaSort] = useState('appointmentDesc'); // sıralama: başvuru/randevu tarihi
   const [idataInfoModal, setIdataInfoModal] = useState(null); // {visa, customer} — iDATA hazır bilgi paneli
   // Bir vize başvurusundan görünen ülke etiketini çöz (filtre + dropdown ortak kullanır)
   const extractVisaCountry = (v) => {
@@ -3920,6 +3921,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       : v.status === visaStatusFilter;
     const matchCountry = visaCountryFilter === 'all' ? true : extractVisaCountry(v) === visaCountryFilter;
     return matchSearch && matchStatus && matchCountry;
+  }).sort((a, b) => {
+    const ts = (d) => d ? new Date(d).getTime() || 0 : 0;
+    switch (visaSort) {
+      case 'appointmentAsc': {
+        // Randevusu olmayanlar en sona
+        const x = ts(a.appointmentDate), y = ts(b.appointmentDate);
+        if (!x && !y) return 0; if (!x) return 1; if (!y) return -1;
+        return x - y;
+      }
+      case 'applicationDesc': return ts(b.applicationDate) - ts(a.applicationDate);
+      case 'applicationAsc': {
+        const x = ts(a.applicationDate), y = ts(b.applicationDate);
+        if (!x && !y) return 0; if (!x) return 1; if (!y) return -1;
+        return x - y;
+      }
+      case 'nameAsc': return (a.customerName || '').localeCompare(b.customerName || '', 'tr');
+      case 'appointmentDesc':
+      default: return ts(b.appointmentDate) - ts(a.appointmentDate);
+    }
   });
 
   // Excel export fonksiyonu
@@ -4074,16 +4094,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
     const data = visaApplications.map(v => {
       const costs = v.costs || {};
-      const costCur = v.costCurrencies || {};
       const satisCur = v.visaCurrency || v.currency || '€';
+      const costCur = v.costCurrency || satisCur;
       // Maliyet kalemleri: her biri "tutar para birimi" olarak ayrı sütun
       const maliyetSutunlari = {};
       const toplamPB = {};
       costItems.forEach(f => {
         const tutar = parseFloat(costs[f.key]) || 0;
-        const pb = costCur[f.key] || satisCur;
-        maliyetSutunlari[f.label] = tutar ? `${tutar} ${pb}` : '';
-        if (tutar) toplamPB[pb] = (toplamPB[pb] || 0) + tutar;
+        maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCur}` : '';
+        if (tutar) toplamPB[costCur] = (toplamPB[costCur] || 0) + tutar;
       });
       // Ödemeler
       const odemeler = safeParseJSON(v.payments);
@@ -4111,6 +4130,14 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         'Vize Bedeli (Satış)': satis ? `${satis.toFixed(2)} ${satisCur}` : '',
         'Toplam Maliyet': Object.entries(toplamPB).map(([c, val]) => `${val.toFixed(2)} ${c}`).join(' · '),
         'Tahsil Edilen': Object.entries(odemeToplam).map(([c, val]) => `${val.toFixed(2)} ${c}`).join(' · '),
+        'Kâr / Zarar': (() => {
+          const tumPB = [...new Set([...Object.keys(odemeToplam), ...Object.keys(toplamPB)])];
+          if (tumPB.length === 0) return '';
+          return tumPB.map(c => {
+            const d = (odemeToplam[c] || 0) - (toplamPB[c] || 0);
+            return `${d >= 0 ? '+' : ''}${d.toFixed(2)} ${c}`;
+          }).join(' · ');
+        })(),
         'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.note ? ' ' + o.note : ''})`).join(' | '),
         'Notlar': v.notes || ''
       };
@@ -4808,13 +4835,13 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const discount = parseFloat(formData.visaDiscount) || 0;
                 const netSale = salePrice - discount;
 
-                // Her para birimi için ayrı toplam
+                // Tüm kalemler tek para biriminde (formData.costCurrency)
+                const costCur = formData.costCurrency || saleCurrency;
                 const totalsByCurrency = {};
                 costFields.forEach(f => {
                   const amount = parseFloat(costs[f.key]) || 0;
                   if (amount === 0) return;
-                  const cur = costCurrencies[f.key] || saleCurrency;
-                  totalsByCurrency[cur] = (totalsByCurrency[cur] || 0) + amount;
+                  totalsByCurrency[costCur] = (totalsByCurrency[costCur] || 0) + amount;
                 });
                 // Satışla aynı para birimindeki toplam (kâr/zarar için)
                 const totalSameCurrency = totalsByCurrency[saleCurrency] || 0;
@@ -4825,26 +4852,29 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', padding: '14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                       <h4 style={{ margin: 0, fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>💰 Mali Bilgiler (Maliyet Kalemleri)</h4>
-                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>Vize başına ödediğin kalemler</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Tüm kalemler için para birimi:</span>
+                        <select value={formData.costCurrency || saleCurrency}
+                          onChange={e => setFormData({ ...formData, costCurrency: e.target.value })}
+                          style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                          <option value="€" style={{ background: '#0c1929' }}>€</option>
+                          <option value="$" style={{ background: '#0c1929' }}>$</option>
+                          <option value="£" style={{ background: '#0c1929' }}>£</option>
+                          <option value="₺" style={{ background: '#0c1929' }}>₺</option>
+                        </select>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
                       {costFields.map(f => (
                         <div key={f.key}>
                           <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{f.label}</label>
-                          <div style={{ display: 'flex', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <input type="number" step="0.01" min="0" value={costs[f.key] || ''}
                               onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})}
                               placeholder="0"
                               style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', minWidth: 0 }} />
-                            <select value={costCurrencies[f.key] || saleCurrency}
-                              onChange={e => setFormData({...formData, costCurrencies: {...costCurrencies, [f.key]: e.target.value}})}
-                              style={{ width: '52px', padding: '7px 4px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '11px', boxSizing: 'border-box' }}>
-                              <option value="€">€</option>
-                              <option value="$">$</option>
-                              <option value="£">£</option>
-                              <option value="₺">₺</option>
-                            </select>
+                            <span style={{ fontSize: '12px', color: '#94a3b8', flexShrink: 0 }}>{formData.costCurrency || saleCurrency}</span>
                           </div>
                         </div>
                       ))}
@@ -4897,13 +4927,13 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
                 // Maliyet toplamı (kâr/zarar için) — para birimi bazlı
                 const _costs = formData.costs || {};
-                const _costCur = formData.costCurrencies || {};
                 const _saleCur = formData.visaCurrency || '€';
+                const _costCur = formData.costCurrency || _saleCur;
                 const _costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : [
-                  { key: 'konsolosluk' }, { key: 'araci' }, { key: 'sigorta' }, { key: 'idata' }, { key: 'kargo' }, { key: 'fuar' }, { key: 'diger' }
+                  { key: 'konsolosluk' }, { key: 'araci' }, { key: 'sigorta' }, { key: 'vfs' }, { key: 'koordinasyon' }, { key: 'sms' }, { key: 'kargo' }, { key: 'kdv' }, { key: 'diger' }
                 ];
                 const maliyetPB = {};
-                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; const c = _costCur[f.key] || _saleCur; maliyetPB[c] = (maliyetPB[c] || 0) + a; });
+                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
 
                 // Kâr/Zarar: her para birimi için tahsilat − maliyet
                 const tumPB = [...new Set([...Object.keys(toplam), ...Object.keys(maliyetPB)])];
@@ -4964,6 +4994,51 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                         </div>
                       </div>
                     )}
+                  </div>
+                );
+              })()}
+
+              {/* BANKA BİLGİLERİ — Ayarlar'dan (belgelerde göster işaretli bankalar) */}
+              {(() => {
+                const banks = getActiveBanks(appSettings);
+                if (!banks || banks.length === 0) return null;
+                const kopyala = (txt, etiket) => {
+                  navigator.clipboard?.writeText(txt).then(() => showToast?.(`${etiket} kopyalandı`, 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+                };
+                return (
+                  <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '12px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>🏦 Banka Bilgileri <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>— müşteriye göndermek için kopyalayın</span></h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {banks.map((b, bi) => {
+                        const satirlar = [
+                          { et: 'TL', iban: b.ibanTL },
+                          { et: 'EUR', iban: b.ibanEUR },
+                          { et: 'USD', iban: b.ibanUSD }
+                        ].filter(x => x.iban);
+                        if (!satirlar.length) return null;
+                        return (
+                          <div key={bi} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#e8f1f8', marginBottom: '2px' }}>
+                              {b.bankName}{b.branch ? ` — ${b.branch}` : ''}
+                            </div>
+                            {b.accountName && <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>{b.accountName}</div>}
+                            {satirlar.map(({ et, iban }) => (
+                              <div key={et} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                <span style={{ fontSize: '10px', color: '#64748b', width: '32px', flexShrink: 0 }}>{et}</span>
+                                <span style={{ flex: 1, fontSize: '12px', color: '#e8f1f8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{iban}</span>
+                                <button type="button" onClick={() => kopyala(iban, `${et} IBAN`)} style={{ flexShrink: 0, padding: '4px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>📋</button>
+                              </div>
+                            ))}
+                            {b.swift && <div style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>SWIFT: {b.swift}</div>}
+                            <button type="button" onClick={() => kopyala(
+                              `${b.bankName}${b.branch ? ' — ' + b.branch : ''}\n${b.accountName || ''}\n` +
+                              satirlar.map(({ et, iban }) => `${et}: ${iban}`).join('\n') + (b.swift ? `\nSWIFT: ${b.swift}` : ''),
+                              'Banka bilgileri'
+                            )} style={{ marginTop: '8px', width: '100%', padding: '7px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '7px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📋 Tümünü Kopyala</button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })()}
@@ -5219,6 +5294,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </select>
           );
         })()}
+        {/* Sıralama */}
+        <select value={visaSort} onChange={e => setVisaSort(e.target.value)}
+          style={{ padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.15)', color: '#10b981', outline: 'none', minWidth: '190px', appearance: 'auto' }}>
+          <option value="appointmentDesc" style={{ background: '#0c1929', color: '#fff' }}>🗓 Randevu — yeni → eski</option>
+          <option value="appointmentAsc" style={{ background: '#0c1929', color: '#fff' }}>🗓 Randevu — eski → yeni</option>
+          <option value="applicationDesc" style={{ background: '#0c1929', color: '#fff' }}>📝 Başvuru — yeni → eski</option>
+          <option value="applicationAsc" style={{ background: '#0c1929', color: '#fff' }}>📝 Başvuru — eski → yeni</option>
+          <option value="nameAsc" style={{ background: '#0c1929', color: '#fff' }}>🔤 İsme göre (A-Z)</option>
+        </select>
       </div>
 
       {/* TAKVİM */}
@@ -5249,7 +5333,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: daysLeft <= 3 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.1)', padding: '14px', borderRadius: '10px', border: daysLeft <= 3 ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
+                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{formatDate(v.appointmentDate)} {v.appointmentTime && `• ${v.appointmentTime}`}</p>
                       <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{v.country} - {v.visaType}</p>
                     </div>
@@ -5276,7 +5360,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
+                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
                     </div>
@@ -5408,7 +5492,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const cat = getCategoryInfo(v.category);
                 return (
                   <div key={v.id} onClick={() => { setDayDetailModal(null); openEditVisa(v); }} style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {v.customerName}</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                     <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.appointmentTime || '-'} • {v.country}</p>
                     <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
                   </div>
