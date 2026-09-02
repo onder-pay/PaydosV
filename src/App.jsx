@@ -4059,22 +4059,62 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       showToast?.('Export edilecek vize başvurusu yok', 'warning');
       return;
     }
-    const data = visaApplications.map(v => ({
-      'Müşteri Adı': v.customerName || '',
-      'Telefon': v.customerPhone || '',
-      'Kategori': getCategoryInfo(v.category)?.label || v.category || '',
-      'Ülke': v.country || '',
-      'Vize Türü': v.visaType || '',
-      'Vize Süresi': v.visaDuration || '',
-      'Başvuru Tarihi': formatDate(v.applicationDate) || '',
-      'Randevu Tarihi': formatDate(v.appointmentDate) || '',
-      'Randevu Saati': v.appointmentTime || '',
-      'PNR': v.pnr || '',
-      'İşlem': v.processor || '',
-      'Ödeme Durumu': v.paymentStatus || '',
-      'Durum': v.status || '',
-      'Notlar': v.notes || ''
-    }));
+    // Ayarlardaki maliyet kalemleri (yoksa varsayılan)
+    const costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
+      ? appSettings.visaCostItems
+      : [
+          { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+          { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+          { key: 'sigorta', label: 'Sigorta' },
+          { key: 'idata', label: 'iData / VFS Hiz. Bed.' },
+          { key: 'kargo', label: 'Sms Kargo Diğer Giderler' },
+          { key: 'fuar', label: 'Fuar Giriş Bileti' },
+          { key: 'diger', label: 'Diğer' }
+        ];
+
+    const data = visaApplications.map(v => {
+      const costs = v.costs || {};
+      const costCur = v.costCurrencies || {};
+      const satisCur = v.visaCurrency || v.currency || '€';
+      // Maliyet kalemleri: her biri "tutar para birimi" olarak ayrı sütun
+      const maliyetSutunlari = {};
+      const toplamPB = {};
+      costItems.forEach(f => {
+        const tutar = parseFloat(costs[f.key]) || 0;
+        const pb = costCur[f.key] || satisCur;
+        maliyetSutunlari[f.label] = tutar ? `${tutar} ${pb}` : '';
+        if (tutar) toplamPB[pb] = (toplamPB[pb] || 0) + tutar;
+      });
+      // Ödemeler
+      const odemeler = safeParseJSON(v.payments);
+      const odemeToplam = {};
+      odemeler.forEach(o => { const a = parseFloat(o.amount) || 0; if (!a) return; const c = o.currency || '€'; odemeToplam[c] = (odemeToplam[c] || 0) + a; });
+      const indirim = parseFloat(v.visaDiscount) || 0;
+      const satis = (parseFloat(v.visaPrice || v.price) || 0) - indirim;
+
+      return {
+        'Müşteri Adı': v.customerName || '',
+        'Telefon': v.customerPhone || '',
+        'Kategori': getCategoryInfo(v.category)?.label || v.category || '',
+        'Ülke': v.country || '',
+        'Vize Türü': v.visaType || '',
+        'Vize Süresi': v.visaDuration || '',
+        'Başvuru Tarihi': formatDate(v.applicationDate) || '',
+        'Randevu Tarihi': formatDate(v.appointmentDate) || '',
+        'Randevu Saati': v.appointmentTime || '',
+        'PNR': v.pnr || '',
+        'İşlem': v.processor || '',
+        'Ödeme Durumu': v.paymentStatus || '',
+        'Durum': v.status || '',
+        ...maliyetSutunlari,
+        'İndirim': indirim ? `${indirim} ${satisCur}` : '',
+        'Vize Bedeli (Satış)': satis ? `${satis.toFixed(2)} ${satisCur}` : '',
+        'Toplam Maliyet': Object.entries(toplamPB).map(([c, val]) => `${val.toFixed(2)} ${c}`).join(' · '),
+        'Tahsil Edilen': Object.entries(odemeToplam).map(([c, val]) => `${val.toFixed(2)} ${c}`).join(' · '),
+        'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.note ? ' ' + o.note : ''})`).join(' | '),
+        'Notlar': v.notes || ''
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Vize Başvuruları');
@@ -4824,32 +4864,72 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       </span>
                     </div>
 
-                    {/* Özet */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    {/* Özet — kâr/zarar hesaplanmaz (farklı para birimleri kur olmadan toplanamaz) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                       <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet (para birimine göre)</div>
                         <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
                           {Object.keys(totalsByCurrency).length === 0
                             ? `0 ${saleCurrency}`
-                            : Object.entries(totalsByCurrency).map(([cur, val]) => `${val.toFixed(2)} ${cur}`).join(' + ')}
+                            : Object.entries(totalsByCurrency).map(([cur, val]) => `${val.toFixed(2)} ${cur}`).join('  ·  ')}
                         </div>
                       </div>
                       <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Net Satış</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Vize Bedeli (satış)</div>
                         <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
                         {discount > 0 && <div style={{ fontSize: '9px', color: '#f59e0b' }}>(-{discount} indirim)</div>}
                       </div>
-                      <div style={{ background: profit >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.15)', padding: '10px 12px', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar ({saleCurrency})</div>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: profit >= 0 ? '#22c55e' : '#ef4444' }}>
-                          {profit >= 0 ? '+' : ''}{profit.toFixed(2)} {saleCurrency}
-                          {netSale > 0 && <span style={{ fontSize: '11px', marginLeft: '6px', opacity: 0.8 }}>({margin.toFixed(1)}%)</span>}
-                        </div>
-                        {Object.keys(totalsByCurrency).filter(c => c !== saleCurrency).length > 0 && (
-                          <div style={{ fontSize: '9px', color: '#fbbf24', marginTop: '2px' }}>⚠️ Farklı para birimlerinde maliyet var</div>
-                        )}
-                      </div>
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* MÜŞTERİ ÖDEMELERİ — manuel giriş, para birimi + tarih */}
+              {(() => {
+                const odemeler = safeParseJSON(formData.payments);
+                const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list) });
+                const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
+                const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
+                const delOdeme = (i) => setOdemeler(odemeler.filter((_, x) => x !== i));
+                // Para birimi bazlı toplam
+                const toplam = {};
+                odemeler.forEach(o => { const a = parseFloat(o.amount) || 0; if (!a) return; const c = o.currency || '€'; toplam[c] = (toplam[c] || 0) + a; });
+
+                return (
+                  <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <h4 style={{ margin: 0, fontSize: '13px', color: '#10b981', fontWeight: '600' }}>💵 Müşteri Ödemeleri</h4>
+                      <button type="button" onClick={addOdeme} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '6px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ödeme Ekle</button>
+                    </div>
+
+                    {odemeler.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Henüz ödeme girilmedi. "➕ Ödeme Ekle" ile müşteriden alınan tutarı girin.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {odemeler.map((o, i) => (
+                          <div key={o.id || i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 90px 1.2fr 1.5fr 36px', gap: '8px', alignItems: 'center' }}>
+                            <input type="number" step="0.01" value={o.amount || ''} onChange={e => updateOdeme(i, { amount: e.target.value })} placeholder="Tutar" style={inputStyle} />
+                            <select value={o.currency || '€'} onChange={e => updateOdeme(i, { currency: e.target.value })} style={inputStyle}>
+                              <option value="₺">₺</option><option value="€">€</option><option value="$">$</option><option value="£">£</option>
+                            </select>
+                            <input type="date" value={o.date || ''} onChange={e => updateOdeme(i, { date: e.target.value })} style={inputStyle} />
+                            <input type="text" value={o.note || ''} onChange={e => updateOdeme(i, { note: e.target.value })} placeholder="Açıklama (nakit, havale...)" style={inputStyle} />
+                            <button type="button" onClick={() => delOdeme(i)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', padding: '8px' }} title="Sil">🗑️</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {Object.keys(toplam).length > 0 && (
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Tahsilat</div>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>
+                            {Object.entries(toplam).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
