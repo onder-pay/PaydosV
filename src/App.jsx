@@ -3837,6 +3837,57 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
   }
 }
 
+function BankInfoModule({ appSettings, showToast, isMobile }) {
+  const banks = getActiveBanks(appSettings);
+  const kopyala = (txt, etiket) => {
+    navigator.clipboard?.writeText(txt).then(() => showToast?.(`${etiket} kopyalandı`, 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+  };
+  return (
+    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '900px', margin: '0 auto' }}>
+      <h2 style={{ fontSize: '20px', margin: '0 0 6px', color: '#fff' }}>🏦 Banka Bilgileri</h2>
+      <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 20px' }}>Ayarlar'da "belgelerde göster" işaretli bankalar. Müşteriye göndermek için kopyalayın.</p>
+      {(!banks || banks.length === 0) ? (
+        <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '40px', textAlign: 'center' }}>
+          <span style={{ fontSize: '42px' }}>🏦</span>
+          <p style={{ color: '#64748b', marginTop: '12px' }}>Kayıtlı banka yok. Ayarlar → Banka Bilgileri'nden ekleyin.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+          {banks.map((b, bi) => {
+            const satirlar = [
+              { et: 'TL', iban: b.ibanTL },
+              { et: 'EUR', iban: b.ibanEUR },
+              { et: 'USD', iban: b.ibanUSD }
+            ].filter(x => x.iban);
+            if (!satirlar.length) return null;
+            return (
+              <div key={bi} style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '14px', padding: '18px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8', marginBottom: '2px' }}>
+                  {b.bankName}{b.branch ? ` — ${b.branch}` : ''}
+                </div>
+                {b.accountName && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>{b.accountName}</div>}
+                {satirlar.map(({ et, iban }) => (
+                  <div key={et} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', width: '36px', flexShrink: 0, fontWeight: '700' }}>{et}</span>
+                    <span style={{ flex: 1, fontSize: '13px', color: '#e8f1f8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{iban}</span>
+                    <button onClick={() => kopyala(iban, `${et} IBAN`)} style={{ flexShrink: 0, padding: '6px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '7px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>📋</button>
+                  </div>
+                ))}
+                {b.swift && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '8px' }}>SWIFT: {b.swift}</div>}
+                <button onClick={() => kopyala(
+                  `${b.bankName}${b.branch ? ' — ' + b.branch : ''}\n${b.accountName || ''}\n` +
+                  satirlar.map(({ et, iban }) => `${et}: ${iban}`).join('\n') + (b.swift ? `\nSWIFT: ${b.swift}` : ''),
+                  'Banka bilgileri'
+                )} style={{ marginTop: '12px', width: '100%', padding: '10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '9px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>📋 Tümünü Kopyala</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
@@ -4994,51 +5045,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                         </div>
                       </div>
                     )}
-                  </div>
-                );
-              })()}
-
-              {/* BANKA BİLGİLERİ — Ayarlar'dan (belgelerde göster işaretli bankalar) */}
-              {(() => {
-                const banks = getActiveBanks(appSettings);
-                if (!banks || banks.length === 0) return null;
-                const kopyala = (txt, etiket) => {
-                  navigator.clipboard?.writeText(txt).then(() => showToast?.(`${etiket} kopyalandı`, 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
-                };
-                return (
-                  <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '12px', padding: '14px' }}>
-                    <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>🏦 Banka Bilgileri <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>— müşteriye göndermek için kopyalayın</span></h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {banks.map((b, bi) => {
-                        const satirlar = [
-                          { et: 'TL', iban: b.ibanTL },
-                          { et: 'EUR', iban: b.ibanEUR },
-                          { et: 'USD', iban: b.ibanUSD }
-                        ].filter(x => x.iban);
-                        if (!satirlar.length) return null;
-                        return (
-                          <div key={bi} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#e8f1f8', marginBottom: '2px' }}>
-                              {b.bankName}{b.branch ? ` — ${b.branch}` : ''}
-                            </div>
-                            {b.accountName && <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>{b.accountName}</div>}
-                            {satirlar.map(({ et, iban }) => (
-                              <div key={et} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                                <span style={{ fontSize: '10px', color: '#64748b', width: '32px', flexShrink: 0 }}>{et}</span>
-                                <span style={{ flex: 1, fontSize: '12px', color: '#e8f1f8', fontFamily: 'monospace', wordBreak: 'break-all' }}>{iban}</span>
-                                <button type="button" onClick={() => kopyala(iban, `${et} IBAN`)} style={{ flexShrink: 0, padding: '4px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>📋</button>
-                              </div>
-                            ))}
-                            {b.swift && <div style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>SWIFT: {b.swift}</div>}
-                            <button type="button" onClick={() => kopyala(
-                              `${b.bankName}${b.branch ? ' — ' + b.branch : ''}\n${b.accountName || ''}\n` +
-                              satirlar.map(({ et, iban }) => `${et}: ${iban}`).join('\n') + (b.swift ? `\nSWIFT: ${b.swift}` : ''),
-                              'Banka bilgileri'
-                            )} style={{ marginTop: '8px', width: '100%', padding: '7px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '7px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📋 Tümünü Kopyala</button>
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
                 );
               })()}
@@ -13596,12 +13602,12 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             _docId: d.id,
             ...data,
             // Ekran için normalize edilmiş alanlar
-            _name: data.customerName || `${data.formData?.name || ''} ${data.formData?.surname || ''}`.trim() || 'İsimsiz',
-            _phone: data.customerPhone || data.formData?.phone || '',
+            _name: data.customerName || `${data.formData?.firstName || data.formData?.name || ''} ${data.formData?.lastName || data.formData?.surname || ''}`.trim() || 'İsimsiz',
+            _phone: data.customerPhone || data.formData?.phone || data.formData?.homePhone || '',
             _email: data.customerEmail || data.formData?.email || '',
             _status: data.status === 'draft' ? 'Beklemede' : (data.status || 'Beklemede'),
             _tcKimlik: data.tcKimlik || data.formData?.tcKimlik || '',
-            _passportNo: data.passportNo || data.formData?.passportNo || '',
+            _passportNo: data.passportNo || data.formData?.passportNo || data.formData?.passportNumber || '',
           };
         });
         // createdAt karışık tipte olabilir (string ISO veya Firestore Timestamp) — ms'e çevir
@@ -15813,6 +15819,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
     { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vizeevrak.netlify.app/#/panel' },
+    { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'settings', icon: '⚙️', label: 'Ayarlar' }
   ];
 
@@ -15827,6 +15834,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
       default: return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
