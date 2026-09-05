@@ -15818,7 +15818,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'quotes', icon: '📄', label: 'Teklif & Proforma' },
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
-    { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vizeevrak.netlify.app/#/panel' },
+    { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vize.paydostur.com/#/panel' },
     { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'settings', icon: '⚙️', label: 'Ayarlar' }
   ];
