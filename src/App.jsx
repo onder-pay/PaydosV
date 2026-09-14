@@ -4601,11 +4601,46 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               }}
             >
               <span style={{ fontWeight: isToday ? '700' : '500', fontSize: '14px' }}>{d.day || ''}</span>
-              {hasAppointments && (
-                <span style={{ fontSize: '9px', color: '#f59e0b', marginTop: '2px', fontWeight: '600' }}>
-                  {d.appointments.length > 2 ? `${d.appointments.length} randevu` : d.appointments.map(a => a.customerName?.split(' ')[0]).join(', ')}
-                </span>
-              )}
+              {hasAppointments && (() => {
+                // Ülkeye göre grupla: 🇩🇪 3  🇺🇸 2  gibi göster
+                const bayrak = (ulke) => {
+                  const u = (ulke || '').toLocaleLowerCase('tr');
+                  if (/almanya|german/.test(u)) return '🇩🇪';
+                  if (/amerika|abd|usa|birleşik devlet/.test(u)) return '🇺🇸';
+                  if (/italya|itali/.test(u)) return '🇮🇹';
+                  if (/fransa|franc/.test(u)) return '🇫🇷';
+                  if (/hollanda|nederland|netherland/.test(u)) return '🇳🇱';
+                  if (/ingiltere|birleşik krallık|uk|britan/.test(u)) return '🇬🇧';
+                  if (/rusya|russ/.test(u)) return '🇷🇺';
+                  if (/çin|cin|china/.test(u)) return '🇨🇳';
+                  if (/bae|dubai|emirlik|arap emir/.test(u)) return '🇦🇪';
+                  if (/ispanya|spain/.test(u)) return '🇪🇸';
+                  if (/yunanistan|greece|greek/.test(u)) return '🇬🇷';
+                  if (/avusturya|austria/.test(u)) return '🇦🇹';
+                  if (/belçika|belgium/.test(u)) return '🇧🇪';
+                  if (/çekya|çek|czech/.test(u)) return '🇨🇿';
+                  if (/macaristan|hungar/.test(u)) return '🇭🇺';
+                  if (/polonya|poland|polska/.test(u)) return '🇵🇱';
+                  if (/portekiz|portugal/.test(u)) return '🇵🇹';
+                  if (/isviçre|switzerland|swiss/.test(u)) return '🇨🇭';
+                  return '🌍';
+                };
+                const grup = {};
+                d.appointments.forEach(a => {
+                  const f = bayrak(extractVisaCountry(a));
+                  grup[f] = (grup[f] || 0) + 1;
+                });
+                const girisler = Object.entries(grup);
+                return (
+                  <span style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center', marginTop: '3px', lineHeight: 1 }}>
+                    {girisler.map(([f, adet]) => (
+                      <span key={f} style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                        {f}{adet}
+                      </span>
+                    ))}
+                  </span>
+                );
+              })()}
             </div>
           );
         })}
@@ -5812,6 +5847,59 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       if (t) { setSelectedTour(t); onTourOpened?.(); }
     }
   }, [initialTourId, tours]);
+
+  // OTOMATİK ONARIM: Açılan turda customerId='new' (müşteriye bağlanmamış) rezervasyonları
+  // gerçek müşteriye bağla — varsa mevcut müşteriye, yoksa yeni müşteri kaydı aç.
+  const onarımYapıldı = useRef({});
+  useEffect(() => {
+    if (!selectedTour || !customers.length) return;
+    if (onarımYapıldı.current[selectedTour.id]) return; // her tur için bir kez
+    const bagsizlar = (selectedTour.reservations || []).filter(r => r.customerId === 'new' && r.customerName && !r.cancelled);
+    if (!bagsizlar.length) { onarımYapıldı.current[selectedTour.id] = true; return; }
+    onarımYapıldı.current[selectedTour.id] = true;
+
+    const sadele = (s) => normalizeTr((s || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim());
+    let yeniCustomers = [...customers];
+    let bagli = 0, olusturuldu = 0;
+    const now = new Date().toISOString();
+
+    const guncelRez = (selectedTour.reservations || []).map(r => {
+      if (r.customerId !== 'new' || !r.customerName || r.cancelled) return r;
+      const hedef = sadele(r.customerName);
+      // 1) Mevcut müşteride ara (isim normalize + boşluksuz)
+      let cust = yeniCustomers.find(c => sadele(`${c.firstName} ${c.lastName}`) === hedef)
+        || yeniCustomers.find(c => sadele(`${c.firstName} ${c.lastName}`).replace(/\s/g, '') === hedef.replace(/\s/g, ''));
+      if (cust) { bagli++; }
+      else {
+        // 2) Yoksa yeni müşteri oluştur
+        const temiz = (r.customerName || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
+        const parts = temiz.split(/\s+/);
+        const newId = generateUniqueId();
+        cust = {
+          id: newId, _docId: newId,
+          firstName: titleCaseTr(parts[0] || ''), lastName: titleCaseTr(parts.slice(1).join(' ')),
+          phone: r.customerPhone || '', email: r.customerEmail || '', company: r.company || '',
+          tcKimlik: '', birthDate: '', birthPlace: '', city: '', sector: '', notes: '', tkMemberNo: '',
+          passports: '[]', schengenVisas: '[]', usaVisa: '{}', tags: '[]', activities: '[]',
+          verified: false, createdBy: 'Tur Onarım', createdAt: now, updatedAt: now
+        };
+        yeniCustomers.push(cust);
+        setDoc(doc(db, 'customers', newId), cust).catch(() => {});
+        olusturuldu++;
+      }
+      return { ...r, customerId: cust.id, customerName: `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim() };
+    });
+
+    if (bagli + olusturuldu > 0) {
+      if (olusturuldu > 0) setCustomers(yeniCustomers);
+      const yeniTur = { ...selectedTour, reservations: guncelRez };
+      setTours(prev => prev.map(t => t.id === selectedTour.id ? yeniTur : t));
+      setSelectedTour(yeniTur);
+      // Firestore'a turu yaz
+      try { const docId = selectedTour._docId || String(selectedTour.id); const sd = { ...yeniTur }; delete sd._docId; setDoc(doc(db, 'tours', docId), sd, { merge: true }).catch(() => {}); } catch (e) {}
+      showToast?.(`${bagli + olusturuldu} katılımcı müşteri kaydına bağlandı${olusturuldu ? ` (${olusturuldu} yeni kayıt)` : ''}`, 'success');
+    }
+  }, [selectedTour, customers]);
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
@@ -6393,9 +6481,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         // Müşteri eşleştir veya oluştur
         let cust = newCustomers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(name));
         if (!cust) {
-          const parts = name.split(/\s+/);
+          // İsimdeki doğum tarihini temizle + titleCase
+          const temizName = name.replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          const parts = temizName.split(/\s+/);
           const newId = generateUniqueId();
-          cust = { id: newId, _docId: newId, firstName: parts[0], lastName: parts.slice(1).join(' '), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
+          cust = { id: newId, _docId: newId, firstName: titleCaseTr(parts[0]), lastName: titleCaseTr(parts.slice(1).join(' ')), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
           newCustomers.push(cust);
           try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
           created++;
@@ -7177,13 +7267,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                                   let found = res.customerId && res.customerId !== 'new'
                                     ? customers.find(c => String(c.id) === String(res.customerId) || String(c._docId) === String(res.customerId))
                                     : null;
-                                  // 2) İsimle (Türkçe normalize + isimdeki doğum tarihi temizlenmiş)
+                                  // 2) İsimle — tarih temizle, Türkçe normalize, boşlukları sadeleştir
                                   if (!found) {
-                                    const temiz = (res.customerName || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
-                                    found = customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(temiz));
+                                    const sadeleAd = (s) => normalizeTr((s || '').replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim());
+                                    const hedef = sadeleAd(res.customerName);
+                                    found = customers.find(c => sadeleAd(`${c.firstName} ${c.lastName}`) === hedef);
+                                    // 3) Hâlâ yoksa: boşluksuz karşılaştır (fazladan/eksik boşluk sorununa karşı)
+                                    if (!found) {
+                                      const bosluksuz = hedef.replace(/\s/g, '');
+                                      found = customers.find(c => sadeleAd(`${c.firstName} ${c.lastName}`).replace(/\s/g, '') === bosluksuz);
+                                    }
                                   }
                                   if (found && onNavigateToCustomer) onNavigateToCustomer(found, selectedTour?.id);
-                                  else showToast?.('Bu katılımcının müşteri kaydı bulunamadı — rezervasyonu düzenleyip müşteriyi yeniden seçin', 'warning');
+                                  else showToast?.('Müşteri kaydı henüz yüklenmemiş olabilir — sayfayı yenileyip (🔄) tekrar deneyin', 'warning');
                                 }}
                                 style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}
                                 title="Profili aç"
@@ -13669,7 +13765,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
           <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>DS-160 formu gönderen müşteriler</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={() => setShowUrlModal(true)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+          <button onClick={() => { setUrlInput(ds160Url); setShowUrlModal(true); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px 14px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
             ⚙️ Site URL
           </button>
           <button onClick={() => {
@@ -14096,15 +14192,16 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>⚙️ DS-160 Site URL Ayarı</h3>
             <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Site URL</label>
             <input
-              value={urlInput || ds160Url}
+              value={urlInput}
               onChange={e => setUrlInput(e.target.value)}
-              placeholder="https://ds160-paydos.netlify.app"
+              placeholder="https://crm.paydostur.com/ds160.html"
               style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
               <button onClick={() => setShowUrlModal(false)} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>İptal</button>
               <button onClick={() => {
-                const newUrl = urlInput.trim() || ds160Url;
+                const newUrl = urlInput.trim();
+                if (!newUrl) { showToast?.('URL boş olamaz', 'error'); return; }
                 setAppSettings(prev => ({...prev, ds160SiteUrl: newUrl}));
                 showToast?.('URL kaydedildi', 'success');
                 setShowUrlModal(false);
