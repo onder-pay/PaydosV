@@ -4,6 +4,8 @@
 // İzin verilen origin'ler (sadece kendi sitelerin)
 const ALLOWED_ORIGINS = [
   'https://paydosv.netlify.app',
+  'https://crm.paydostur.com',
+  'https://vize.paydostur.com',
   'https://paydoscrm.netlify.app',
   'http://localhost:5173',  // Vite dev server
   'http://localhost:3000',
