@@ -2,9 +2,21 @@
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Paydos CRM</title>
-    <meta name="theme-color" content="#0c1929" />
+
+    <!-- PWA: uygulama olarak yüklenebilmesi için -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ff4342" />
+    <meta name="description" content="Paydos Turizm müşteri, vize ve tur yönetim sistemi" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Paydos CRM" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+
     <style>
       * { box-sizing: border-box; }
       html, body, #root {
@@ -16,10 +28,28 @@
         color: #e8f1f8;
         overflow-x: hidden;
       }
+      /* Telefonda uygulama olarak açıldığında çentik/alt çubuk boşluğu */
+      @supports (padding: env(safe-area-inset-top)) {
+        body {
+          padding-top: env(safe-area-inset-top);
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <script>
+      // Service Worker kaydı — hızlı açılış ve internet kesildiğinde temel çalışma
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function (e) {
+            console.warn('Service Worker kaydedilemedi:', e);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
