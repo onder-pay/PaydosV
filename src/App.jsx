@@ -5230,6 +5230,52 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {/* YAKLAŞAN RANDEVU UYARISI — dikkat çekici, açılışta üstte */}
+      {upcomingReminders.length > 0 && (() => {
+        const acil = upcomingReminders.filter(v => { const d = getDaysLeft(v.appointmentDate); return d !== null && d <= 2; });
+        const gunEtiket = (d) => d === 0 ? 'BUGÜN' : d === 1 ? 'YARIN' : `${d} gün`;
+        return (
+          <div style={{
+            marginBottom: '18px',
+            background: acil.length > 0 ? 'linear-gradient(135deg, rgba(239,68,68,0.18), rgba(220,38,38,0.10))' : 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.08))',
+            border: acil.length > 0 ? '1.5px solid rgba(239,68,68,0.5)' : '1.5px solid rgba(245,158,11,0.45)',
+            borderRadius: '14px', padding: isMobile ? '14px' : '16px 20px',
+            boxShadow: acil.length > 0 ? '0 4px 24px rgba(239,68,68,0.2)' : '0 4px 20px rgba(245,158,11,0.15)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '22px' }}>{acil.length > 0 ? '🚨' : '⏰'}</span>
+              <span style={{ fontSize: isMobile ? '15px' : '17px', fontWeight: '800', color: acil.length > 0 ? '#ef4444' : '#f59e0b' }}>
+                Yaklaşan Randevular ({upcomingReminders.length})
+              </span>
+              {acil.length > 0 && <span style={{ fontSize: '11px', background: '#ef4444', color: '#fff', padding: '3px 10px', borderRadius: '12px', fontWeight: '700' }}>{acil.length} ACİL</span>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+              {upcomingReminders.map(v => {
+                const d = getDaysLeft(v.appointmentDate);
+                const kirmizi = d <= 2;
+                return (
+                  <div key={v.id} onClick={() => openEditVisa(v)} style={{
+                    background: 'rgba(0,0,0,0.2)', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer',
+                    border: kirmizi ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(245,158,11,0.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px'
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#e8f1f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleCaseTr(v.customerName)}</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>{extractVisaCountry(v)} · {formatDate(v.appointmentDate)}{v.appointmentTime ? ` ${v.appointmentTime}` : ''}</div>
+                    </div>
+                    <span style={{
+                      flexShrink: 0, fontSize: '12px', fontWeight: '800', padding: '4px 10px', borderRadius: '8px', whiteSpace: 'nowrap',
+                      background: kirmizi ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.2)',
+                      color: kirmizi ? '#ef4444' : '#f59e0b'
+                    }}>{gunEtiket(d)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>🌍 Vize Başvuruları ({visaApplications.length})</h2>
