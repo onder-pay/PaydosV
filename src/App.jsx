@@ -4246,7 +4246,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setSelectedCustomer(null);
     setSelectedCategory(null);
     setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
-    setFormData({});
+    // Ayarlardaki varsayılan maliyet kalemlerini yeni başvuruya uygula
+    const varsayilan = appSettings?.visaCostDefaults || {};
+    setFormData({
+      costs: { ...varsayilan },
+      costCurrency: appSettings?.visaCostDefaultCurrency || '€'
+    });
     setEditingVisa(null);
   };
 
@@ -4602,40 +4607,42 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             >
               <span style={{ fontWeight: isToday ? '700' : '500', fontSize: '14px' }}>{d.day || ''}</span>
               {hasAppointments && (() => {
-                // Ülkeye göre grupla: 🇩🇪 3  🇺🇸 2  gibi göster
-                const bayrak = (ulke) => {
+                // Ülkeye göre grupla — bayrak emojisi bazı sistemlerde (Windows) görünmüyor,
+                // bu yüzden kısa Türkçe ülke kodu + renk kullanılıyor
+                const ulkeKodu = (ulke) => {
                   const u = (ulke || '').toLocaleLowerCase('tr');
-                  if (/almanya|german/.test(u)) return '🇩🇪';
-                  if (/amerika|abd|usa|birleşik devlet/.test(u)) return '🇺🇸';
-                  if (/italya|itali/.test(u)) return '🇮🇹';
-                  if (/fransa|franc/.test(u)) return '🇫🇷';
-                  if (/hollanda|nederland|netherland/.test(u)) return '🇳🇱';
-                  if (/ingiltere|birleşik krallık|uk|britan/.test(u)) return '🇬🇧';
-                  if (/rusya|russ/.test(u)) return '🇷🇺';
-                  if (/çin|cin|china/.test(u)) return '🇨🇳';
-                  if (/bae|dubai|emirlik|arap emir/.test(u)) return '🇦🇪';
-                  if (/ispanya|spain/.test(u)) return '🇪🇸';
-                  if (/yunanistan|greece|greek/.test(u)) return '🇬🇷';
-                  if (/avusturya|austria/.test(u)) return '🇦🇹';
-                  if (/belçika|belgium/.test(u)) return '🇧🇪';
-                  if (/çekya|çek|czech/.test(u)) return '🇨🇿';
-                  if (/macaristan|hungar/.test(u)) return '🇭🇺';
-                  if (/polonya|poland|polska/.test(u)) return '🇵🇱';
-                  if (/portekiz|portugal/.test(u)) return '🇵🇹';
-                  if (/isviçre|switzerland|swiss/.test(u)) return '🇨🇭';
-                  return '🌍';
+                  if (/almanya|german/.test(u)) return { k: 'ALM', r: '#334155' };
+                  if (/amerika|abd|usa|birleşik devlet/.test(u)) return { k: 'ABD', r: '#1e40af' };
+                  if (/italya|itali/.test(u)) return { k: 'İTA', r: '#16a34a' };
+                  if (/fransa|franc/.test(u)) return { k: 'FRA', r: '#2563eb' };
+                  if (/hollanda|nederland|netherland/.test(u)) return { k: 'HOL', r: '#ea580c' };
+                  if (/ingiltere|birleşik krallık|uk|britan/.test(u)) return { k: 'İNG', r: '#1e3a8a' };
+                  if (/rusya|russ/.test(u)) return { k: 'RUS', r: '#1d4ed8' };
+                  if (/çin|cin|china/.test(u)) return { k: 'ÇİN', r: '#dc2626' };
+                  if (/bae|dubai|emirlik|arap emir/.test(u)) return { k: 'BAE', r: '#166534' };
+                  if (/ispanya|spain/.test(u)) return { k: 'İSP', r: '#b91c1c' };
+                  if (/yunanistan|greece|greek/.test(u)) return { k: 'YUN', r: '#0284c7' };
+                  if (/avusturya|austria/.test(u)) return { k: 'AVU', r: '#b91c1c' };
+                  if (/belçika|belgium/.test(u)) return { k: 'BEL', r: '#ca8a04' };
+                  if (/çekya|çek|czech/.test(u)) return { k: 'ÇEK', r: '#1e40af' };
+                  if (/macaristan|hungar/.test(u)) return { k: 'MAC', r: '#16a34a' };
+                  if (/polonya|poland|polska/.test(u)) return { k: 'POL', r: '#dc2626' };
+                  if (/portekiz|portugal/.test(u)) return { k: 'POR', r: '#16a34a' };
+                  if (/isviçre|switzerland|swiss/.test(u)) return { k: 'İSV', r: '#dc2626' };
+                  return { k: 'DİĞ', r: '#64748b' };
                 };
                 const grup = {};
                 d.appointments.forEach(a => {
-                  const f = bayrak(extractVisaCountry(a));
-                  grup[f] = (grup[f] || 0) + 1;
+                  const info = ulkeKodu(extractVisaCountry(a));
+                  if (!grup[info.k]) grup[info.k] = { adet: 0, renk: info.r };
+                  grup[info.k].adet += 1;
                 });
                 const girisler = Object.entries(grup);
                 return (
                   <span style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', justifyContent: 'center', marginTop: '3px', lineHeight: 1 }}>
-                    {girisler.map(([f, adet]) => (
-                      <span key={f} style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                        {f}{adet}
+                    {girisler.map(([kod, v]) => (
+                      <span key={kod} style={{ fontSize: '9px', fontWeight: '800', color: '#fff', background: v.renk, padding: '1px 4px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                        {kod} {v.adet}
                       </span>
                     ))}
                   </span>
@@ -9248,10 +9255,15 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     if (!flightRaw.trim()) { showToast?.('Önce uçuş bilgilerini yapıştırın', 'warning'); return; }
     setFlightBusy(true); setFlightWarn([]);
     try {
+      const bugun = new Date();
+      const bugunStr = bugun.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
       const prompt = `Aşağıdaki serbest metinden uçuş bilgilerini çıkar. Aktarmalı uçuşlarda HER BACAĞI ayrı bir legs elemanı yap. SADECE şu JSON'u döndür, başka hiçbir şey yazma:
 {"flightOut":{"date":"","legs":[{"airline":"","dep":"","arr":"","plane":""}]},"flightRet":{"date":"","legs":[{"airline":"","dep":"","arr":"","plane":""}]}}
+BUGÜNÜN TARİHİ: ${bugunStr}
 Kurallar:
 - date: "15 Ekim 2026 Perşembe" gibi Türkçe biçim (o yönün ilk kalkış tarihi)
+- YIL KURALI: Uçuş her zaman GELECEKTE ya da bugündür, ASLA geçmişte değildir. Metinde yıl belirtilmemişse, tarihi BUGÜNDEN SONRAKİ en yakın yıl olacak şekilde seç. Örnek: bugün 2026'daysa ve metin "18 Kasım" diyorsa, bu 18 Kasım 2026'dır (2025 DEĞİL — o geçmişte kaldı). Metinde açıkça geçmiş bir yıl yazsa bile, mantıken uçuş gelecekte olmalı — bir sonraki uygun yılı kullan.
+- Gün adı (Çarşamba vb.) ile yıl çelişirse, GEÇMİŞ OLMAYAN yılı tercih et; gün adını yok say.
 - legs: aktarmasız uçuşta 1 eleman, aktarmalıda her bacak için bir eleman (örn. Madrid→İstanbul, İstanbul→İzmir = 2 eleman)
 - airline: "Turkish Airlines (TK 1856)" gibi havayolu + uçuş no
 - dep: "Madrid MAD · 14:30" (şehir + havalimanı kodu · saat)
@@ -14947,6 +14959,54 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                       setNewCostItem('');
                     }
                   }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* VARSAYILAN MALİYET DEĞERLERİ */}
+          {(() => {
+            const defaultItems = [
+              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+              { key: 'sigorta', label: 'Sigorta' },
+              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+              { key: 'koordinasyon', label: 'Koordinasyon' },
+              { key: 'sms', label: 'SMS' },
+              { key: 'kargo', label: 'Kargo' },
+              { key: 'kdv', label: 'KDV' },
+              { key: 'diger', label: 'Diğer' }
+            ];
+            const items = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : defaultItems;
+            const defs = appSettings?.visaCostDefaults || {};
+            const defCur = appSettings?.visaCostDefaultCurrency || '€';
+            return (
+              <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)', marginTop: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', color: '#10b981' }}>💵 Varsayılan Maliyet Değerleri</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Para birimi:</span>
+                    <select value={defCur} onChange={e => setAppSettings({ ...appSettings, visaCostDefaultCurrency: e.target.value })}
+                      style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                      <option value="€" style={{ background: '#0c1929' }}>€</option>
+                      <option value="$" style={{ background: '#0c1929' }}>$</option>
+                      <option value="£" style={{ background: '#0c1929' }}>£</option>
+                      <option value="₺" style={{ background: '#0c1929' }}>₺</option>
+                    </select>
+                  </div>
+                </div>
+                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu açıldığında bu değerler otomatik dolar. Her müşteride elle değiştirilebilir.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
+                  {items.map(f => (
+                    <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ flex: 1, fontSize: '12px', color: '#cbd5e1' }}>{f.label}</label>
+                      <input type="number" step="0.01" min="0" value={defs[f.key] ?? ''}
+                        onChange={e => setAppSettings({ ...appSettings, visaCostDefaults: { ...defs, [f.key]: parseFloat(e.target.value) || 0 } })}
+                        placeholder="0"
+                        style={{ width: '110px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
+                      <span style={{ fontSize: '12px', color: '#94a3b8', width: '16px' }}>{defCur}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             );
