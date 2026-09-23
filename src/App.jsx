@@ -914,31 +914,6 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
         </div>
       </div>
 
-      {/* Bugün Eklenenler */}
-      <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <span style={{ fontSize: '15px', fontWeight: '600', color: '#e2e8f0' }}>📅 Bugün Eklenenler</span>
-          <span style={{ fontSize: '11px', color: '#64748b', background: 'rgba(59,130,246,0.15)', padding: '2px 8px', borderRadius: '10px' }}>{todayActivities.length}</span>
-        </div>
-        {todayActivities.length === 0 ? (
-          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Bugün henüz bir kayıt eklenmedi</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {todayActivities.map((a, i) => {
-              const t = a.time ? new Date(a.time) : null;
-              const timeStr = t && !isNaN(t.getTime()) ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : '';
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', fontSize: '13px' }}>
-                  <span style={{ fontSize: '16px' }}>{a.icon}</span>
-                  <span style={{ flex: 1, color: '#cbd5e1' }}>{a.text}</span>
-                  {timeStr && <span style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>{timeStr}</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
       {/* Generic Liste Modal */}
       {modal && (
         <div onClick={() => setModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
@@ -4072,7 +4047,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       normalizeTr(v.customerName).includes(normalizeTr(visaSearchQuery)) ||
       v.customerPhone?.includes(visaSearchQuery) ||
       normalizeTr(v.country).includes(normalizeTr(visaSearchQuery)) ||
-      normalizeTr(v.pnr).includes(normalizeTr(visaSearchQuery))
+      normalizeTr(v.pnr).includes(normalizeTr(visaSearchQuery)) ||
+      normalizeTr(v.label).includes(normalizeTr(visaSearchQuery))
     );
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
@@ -5410,7 +5386,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             type="text"
             value={visaSearchQuery}
             onChange={e => setVisaSearchQuery(e.target.value)}
-            placeholder="🔍 Müşteri adı, telefon, ülke veya PNR ile ara..."
+            placeholder="🔍 Müşteri adı, telefon, ülke, PNR veya etiket ile ara..."
             style={{ width: '100%', padding: '12px 16px', paddingRight: visaSearchQuery ? '40px' : '16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
           />
           {visaSearchQuery && (
