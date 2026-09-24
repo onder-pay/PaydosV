@@ -4329,12 +4329,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setSelectedCustomer(null);
     setSelectedCategory(null);
     setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
-    // Ayarlardaki varsayılan maliyet kalemlerini yeni başvuruya uygula
-    const varsayilan = appSettings?.visaCostDefaults || {};
-    setFormData({
-      costs: { ...varsayilan },
-      costCurrency: appSettings?.visaCostDefaultCurrency || '€'
-    });
+    // Maliyet varsayılanları kategori seçilince (selectCategory) uygulanır
+    setFormData({});
     setEditingVisa(null);
   };
 
@@ -4384,7 +4380,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       notes: '',
       price: '',
       cost: '',
-      currency: '€'
+      currency: '€',
+      // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
+      costs: { ...((appSettings?.visaCostDefaults || {})[cat.id] || {}) },
+      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '€'
     });
   };
 
@@ -14360,6 +14359,89 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 }
 
 // AYARLAR MODÜLÜ
+// Kategori bazlı varsayılan vize maliyetleri ayarı (Schengen/Amerika/Rusya... ayrı)
+function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
+  const kategoriler = [
+    { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
+    { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
+    { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
+    { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
+    { id: 'uae', label: 'BAE', icon: '🇦🇪' },
+    { id: 'china', label: 'Çin', icon: '🇨🇳' },
+    { id: 'other', label: 'Diğer', icon: '🌍' }
+  ];
+  const [aktifKat, setAktifKat] = useState('schengen');
+  const defaultItems = [
+    { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+    { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+    { key: 'sigorta', label: 'Sigorta' },
+    { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+    { key: 'koordinasyon', label: 'Koordinasyon' },
+    { key: 'sms', label: 'SMS' },
+    { key: 'kargo', label: 'Kargo' },
+    { key: 'kdv', label: 'KDV' },
+    { key: 'diger', label: 'Diğer' }
+  ];
+  const items = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : defaultItems;
+  // visaCostDefaults artık kategori bazlı: { schengen: {...}, usa: {...} }
+  const tumDefs = appSettings?.visaCostDefaults || {};
+  const tumCur = appSettings?.visaCostDefaultCurrency || {};
+  const katDefs = tumDefs[aktifKat] || {};
+  const katCur = tumCur[aktifKat] || '€';
+
+  const setKatDeger = (key, val) => {
+    setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
+  };
+  const setKatCur = (cur) => {
+    setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+  };
+
+  return (
+    <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)', marginTop: '16px' }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>💵 Varsayılan Maliyet Değerleri</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Her vize kategorisi için ayrı varsayılan gir. Yeni başvuruda kategori seçilince otomatik dolar, elle değiştirilebilir.</p>
+
+      {/* Kategori sekmeleri */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        {kategoriler.map(k => (
+          <button key={k.id} onClick={() => setAktifKat(k.id)} style={{
+            padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+            border: aktifKat === k.id ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(255,255,255,0.1)',
+            background: aktifKat === k.id ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.04)',
+            color: aktifKat === k.id ? '#10b981' : '#94a3b8'
+          }}>{k.icon} {k.label}</button>
+        ))}
+      </div>
+
+      {/* Seçili kategorinin para birimi */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{kategoriler.find(k => k.id === aktifKat)?.label} para birimi:</span>
+        <select value={katCur} onChange={e => setKatCur(e.target.value)}
+          style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+          <option value="€" style={{ background: '#0c1929' }}>€</option>
+          <option value="$" style={{ background: '#0c1929' }}>$</option>
+          <option value="£" style={{ background: '#0c1929' }}>£</option>
+          <option value="₺" style={{ background: '#0c1929' }}>₺</option>
+        </select>
+      </div>
+
+      {/* Kalemler */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
+        {items.map(f => (
+          <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ flex: 1, fontSize: '12px', color: '#cbd5e1' }}>{f.label}</label>
+            <input type="number" step="0.01" min="0" value={katDefs[f.key] ?? ''}
+              onChange={e => setKatDeger(f.key, e.target.value)}
+              placeholder="0"
+              style={{ width: '110px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
+            <span style={{ fontSize: '12px', color: '#94a3b8', width: '16px' }}>{katCur}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
@@ -15051,53 +15133,8 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             );
           })()}
 
-          {/* VARSAYILAN MALİYET DEĞERLERİ */}
-          {(() => {
-            const defaultItems = [
-              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-              { key: 'sigorta', label: 'Sigorta' },
-              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-              { key: 'koordinasyon', label: 'Koordinasyon' },
-              { key: 'sms', label: 'SMS' },
-              { key: 'kargo', label: 'Kargo' },
-              { key: 'kdv', label: 'KDV' },
-              { key: 'diger', label: 'Diğer' }
-            ];
-            const items = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : defaultItems;
-            const defs = appSettings?.visaCostDefaults || {};
-            const defCur = appSettings?.visaCostDefaultCurrency || '€';
-            return (
-              <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)', marginTop: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#10b981' }}>💵 Varsayılan Maliyet Değerleri</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Para birimi:</span>
-                    <select value={defCur} onChange={e => setAppSettings({ ...appSettings, visaCostDefaultCurrency: e.target.value })}
-                      style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                      <option value="€" style={{ background: '#0c1929' }}>€</option>
-                      <option value="$" style={{ background: '#0c1929' }}>$</option>
-                      <option value="£" style={{ background: '#0c1929' }}>£</option>
-                      <option value="₺" style={{ background: '#0c1929' }}>₺</option>
-                    </select>
-                  </div>
-                </div>
-                <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu açıldığında bu değerler otomatik dolar. Her müşteride elle değiştirilebilir.</p>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
-                  {items.map(f => (
-                    <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <label style={{ flex: 1, fontSize: '12px', color: '#cbd5e1' }}>{f.label}</label>
-                      <input type="number" step="0.01" min="0" value={defs[f.key] ?? ''}
-                        onChange={e => setAppSettings({ ...appSettings, visaCostDefaults: { ...defs, [f.key]: parseFloat(e.target.value) || 0 } })}
-                        placeholder="0"
-                        style={{ width: '110px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
-                      <span style={{ fontSize: '12px', color: '#94a3b8', width: '16px' }}>{defCur}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          {/* VARSAYILAN MALİYET DEĞERLERİ — kategori bazlı */}
+          <VarsayilanMaliyetAyari appSettings={appSettings} setAppSettings={setAppSettings} isMobile={isMobile} />
         </div>
       )}
 
