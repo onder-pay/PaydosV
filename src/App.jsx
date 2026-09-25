@@ -3275,11 +3275,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
                         const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
-                        const updated = { ...existing, passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now };
+                        // Pasaporttan okunan kişisel bilgiler: kartta boşsa doldur, doluysa dokunma
+                        const filled = {};
+                        if (aiResult.birthPlace && !existing.birthPlace) filled.birthPlace = aiResult.birthPlace;
+                        if (aiResult.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(aiResult.birthDate) && !existing.birthDate) filled.birthDate = aiResult.birthDate;
+                        if (aiResult.tcKimlik && /^\d{11}$/.test(aiResult.tcKimlik) && !existing.tcKimlik) filled.tcKimlik = aiResult.tcKimlik;
+                        const patch = { ...filled, passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now };
+                        const updated = { ...existing, ...patch };
                         setCustomers(prev => prev.map(c => c.id === existing.id ? updated : c));
-                        setDoc(doc(db, 'customers', existing._docId || String(existing.id)), { passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now }, { merge: true })
+                        setDoc(doc(db, 'customers', existing._docId || String(existing.id)), patch, { merge: true })
                           .catch(err => showToast?.('❌ Pasaport kaydedilemedi: ' + err.message, 'error'));
-                        showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi`, 'success');
+                        const extra = [filled.birthPlace && 'doğum yeri', filled.birthDate && 'doğum tarihi', filled.tcKimlik && 'TC'].filter(Boolean);
+                        showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi${extra.length ? ` (+ ${extra.join(', ')})` : ''}`, 'success');
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
                         setTimeout(() => setSelectedCustomer(updated), 100);
                       }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>
