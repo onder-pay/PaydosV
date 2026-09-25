@@ -3,23 +3,31 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db, auth } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField } from 'firebase/firestore';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
-import { DEJAVU_TR_B64 } from './dejavuFont';
+import { DEJAVU_TR_B64, DEJAVU_TR_BOLD_B64 } from './dejavuFont';
 
-// jsPDF'e Türkçe destekli font (DejaVu Sans subset) ekler ve aktif eder.
-// Türkçe karakter (ş/ğ/İ/ı/ç/ö/ü) içeren text PDF'lerde çağrılmalı.
-let _dejavuLoaded = false;
+// jsPDF'e Türkçe destekli font (DejaVu Sans alt kümesi, normal + kalın) ekler ve aktif eder.
+// Başarılıysa true döner; o durumda metinler Türkçe karakterleriyle olduğu gibi yazılabilir.
 const enableTurkishFont = (doc) => {
   try {
     doc.addFileToVFS('DejaVuSans-TR.ttf', DEJAVU_TR_B64);
     doc.addFont('DejaVuSans-TR.ttf', 'DejaVuTR', 'normal');
+    doc.addFileToVFS('DejaVuSans-TR-Bold.ttf', DEJAVU_TR_BOLD_B64);
+    doc.addFont('DejaVuSans-TR-Bold.ttf', 'DejaVuTR', 'bold');
     doc.setFont('DejaVuTR', 'normal');
     return true;
   } catch (e) { console.warn('Türkçe font yüklenemedi:', e.message); return false; }
 };
+// Font yüklenemezse yedek: Türkçe karakterleri ASCII'ye indirger (standart PDF fontları desteklemez)
+const asciiTr = (text) => (text == null ? '' : String(text))
+  .replace(/ı/g, 'i').replace(/İ/g, 'I').replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+  .replace(/ü/g, 'u').replace(/Ü/g, 'U').replace(/ş/g, 's').replace(/Ş/g, 'S')
+  .replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
+// Yeni bir jsPDF belgesi için Türkçe fontu açar ve uygun metin dönüştürücüyü döner
+const pdfText = (doc) => enableTurkishFont(doc) ? (t) => (t == null ? '' : String(t)) : asciiTr;
 
 // html2canvas'ı CDN'den yükle (global — tüm modüller kullanır)
 const loadHtml2Canvas = () => new Promise((resolve, reject) => {
@@ -178,6 +186,42 @@ const SOZLESME_SABIT = {
 };
 // ===== Ülke -> vize durumu (T.C. Dışişleri Bakanlığı listesi) =====
 const VIZE_DURUM = {"Türkiye":{"b":"yurtici","y":"yurtici","t":"Yurt içi seyahat — vize gerekmez."},"KKTC":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır. Vatandaşlarımızın KKTC’ye geçerli kimlik belgeleri ile vizesiz olarak seyahat edebilmeleri mümkündür. 30 Haziran 2021 tarihi itibariyle eski tip nüfus cüzdanları ile seyahat uygulaması sona erecek olup, KKTC’ye seyahat edecek vatandaşlarımız yalnızca yeni nesil Türkiye Cumhuriyeti kimlik kartlarını kullanabilecektir."},"Almanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Avusturya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Belçika":{"b":"tabi","y":"muaf","t":"Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili Türk vatandaşları 1 Aralık 2022 tarihi itibariyle Belçika üzerinden yapacakları transit uçuşlarda havalimanı transit vizeye tabidir."},"Çekya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Danimarka":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Estonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Finlandiya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Fransa":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hırvatistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hollanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hususi ve umuma mahsus pasaport hamili Türk vatandaşları Hollanda havalimanlarından transit olarak Schengen bölgesi dışına yapacakları transit geçişlerde transit vizeye tabidir. Türk vatandaşı gemi mürettebatı, Uluslararası Çalışma Örgütü Gemi Adamı Kimlik Belgesi Sözleşmesi No: 108 (1958) veya No: 185 (2003), Uluslararası Deniz Trafiğinin Kolaylaştırılması Sözleşmesi ve ilgili Hollanda ulusal mevz"},"İspanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsviçre":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İtalya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"İzlanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Letonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Liechtenstein":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Litvanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lüksemburg":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Macaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içerisinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Malta":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamilleri vizeden muaftır."},"Norveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Oslo Gardermoen Havalimanı üzerinden üçüncü ülkelere seyahat edecek vatandaşlarımızın Norveç temsilciliklerinden transit vize alması gerekmektedir."},"Polonya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Portekiz":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Slovakya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri anılan ülkeye yapacakları seyahatlerinde 90 gün için vizeden muaftır."},"Slovenya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Yunanistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Birleşik Krallık":{"b":"tabi","y":"tabi","t":"Diplomatik, hususî, hizmet ve umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. İngiltere üzerinden diğer ülkelere aktarmalı seyahat edecek vatandaşlarımız transit vizeye tabidir. Bununla birlikte, vatandaşlarımızın, gidilecek ülkeye (onward flight) 24 saat içinde uçmaları ve gerekli vizelerinin/belgelerinin olması şartının yanı sıra belirli koşulları sağlamaları halinde, transit vizeden muaf olacakları (transit without visa concession) Londra Başkonsolosluğumuz tarafından bildirilmektedir. Ayrıntılı bilgi için http://www.mfa.gov.tr/ingiltere-uzerinden-diger-ulkelere-aktarmali-seyah"},"İrlanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet ve hususî pasaport hamilleri vizeye tabidir. Diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Bakan heyetine dahil olarak resmî ziyarette bulunan hizmet ve hususî pasaport hamilleri vizeden muaftır."},"Romanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, altı ay içinde üç ayı aşmamak kaydıyla, vizeden muaftır."},"Bulgaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi pasaport hamilleri ülkeye ilk giriş tarihinden itibaren 180 gün içerisinde 90 gün süreyle vizeden muaftır. Diplomatik pasaport ile Hizmet pasaportu hamilleri ise anılan ülkeye yapacakları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sırbistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Karadağ":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız 30 gün süreyle vizeden muaftır. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 90 gün süreyle vizeden muaftır."},"Kuzey Makedonya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Kuzey Makedonya’ya Öğrenim Vizesi İçin Talep Edilen Belgeler (site_media/html/viza-dstudies.doc)"},"Bosna Hersek":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır. Diplomatik, hususi ve hizmet pasaportu hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Arnavutluk":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kosova":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Ukrayna":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Vatandaşlarımız geçerli biyometrik kimlik belgeleri (yeni tip kimlik kartı) ile, Türkiye’den seyahat etmek şartıyla, Ukrayna’ya vizesiz olarak giriş yapabilmektedirler."},"Rusya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hususî ve hizmet pasaportu hamilleri her 180 günde 90 günü aşmamak şartıyla 30 gün süreyle vizeden muaftır. Diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır. Vatandaşlarımız Rusya Federasyonu’na elektronik vizeyle seyahat edebilmektedirler. E-vize, Rusya Dışişleri Bakanlığı'nın https://electronic-visa.kdmid.ru (https://electronic-visa.kdmid.ru/) adresindeki özel web sitesinde veya belirtilen web sitesinden indirilecek mobil uygulamada elektronik olarak doldurulan başvuru formu üzerinden verilir. E-vize başvurusu Rusya Federasyonu'na t"},"Belarus":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili Türk vatandaşları 30 gün süreyle vizeden muaftır. Toplam kalış süresi ilk giriş tarihinden itibaren 1 yıl içerisinde 90 günü geçemez."},"Moldova":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Vatikan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"Andorra":{"b":"?","y":"?","t":"Schengen bölgesine dahil olmayan Andorra’ya doğrudan seyahat imkanı bulunmamakta olup, ülkeye giriş İspanya ya da Fransa üzerinden yapılabilmektedir. Bu çerçevede, vatandaşlarımızın Andorra’ya seyahat edebilmek için çift girişli veya müteaddit girişli Schengen vizesi alması gerekmektedir."},"Monako":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Monako’ya seyahat etmek isteyen vatandaşlarımızın vize başvurularını, resmi ikametleri başka bir ülkede bulunmadığı takdirde, Türkiye’deki Fransa Büyükelçiliği veya Başkonsolosluklarına yapmaları gerekmektedir."},"San Marino":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"BAE":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır."},"Suudi Arabistan":{"b":"tabi","y":"?","t":"Umuma mahsus ve resmi pasaport hamili vatandaşlarımız vizeye tabi olup, turistik amaçlı e-vizelerini “https://visa.visitsaudi.com (https://visa.visitsaudi.com) ” internet adresinden, Suudi Arabistan'a varışlarında havalimanlarında bulunan e-vize kabinlerinden veya anılan ülkenin Türkiye'de mukim temsilciliklerinden “365 günde 90 gün” kalış süreli “tek girişli” veya “çok girişli” olarak alabileceklerdir. Bahsekonu e-vizeler Hac ziyaretlerini kapsamamaktadır (menfi). Hac döneminde, e-vizeyle yalnızca kutsal bölgeler haricindeki şehirlere turistik ziyaret mümkün olabilecektir. 2025 yılı Hac dönem"},"Katar":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Bahreyn":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 30 gün süreli vizelerini Bahreyn’e seyahatlerinden önce e-vize olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kuveyt":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 90 gün süreli vizelerini sınır kapılarında ücretsiz olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 180 günde 90 gün süreyle vizeden muaftır."},"Umman":{"b":"muaf","y":"muaf","t":"Diplomatik, hizmet ve hususî pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma mahsus pasaport hamilleri her 180 günde 90 günü aşmamak kaydıyla her ziyarette 30 gün süreyle vizeden muaftır."},"Ürdün":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lübnan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Lübnan’da göreve atanan Diplomatik, Hizmet ve Hususi Pasaport hamilleri görevleri müddetince, vizeden muaftır."},"İsrail":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Filistin":{"b":"?","y":"?","t":"Vatandaşlarımıza vize uygulanmamaktadır. Filistin’e seyahat edecek Türkiye Cumhuriyeti vatandaşlarının İsrail vizesi almaları gerekmektedir (Mısır üzerinden Gazze Şeridi’ne girecek vatandaşlarımız hariç)."},"Mısır":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır. Mısır’a seyahat eden vatandaşlarımız sınır kapılarında vize alabilmektedirler."},"İran":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Irak":{"b":"muaf","y":"muaf","t":"15 yaşından küçük ve 50 yaşından büyük umuma mahsus pasaport hamilleri 30 gün süreyle vizeden muaftır. 15-50 yaş arasındaki umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Çin Halk Cumhuriyeti":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususi pasaport hamilleri 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Turistik grup vizesi alarak Çin’e seyahat eden vatandaşlarımıza Çin Halk Cumhuriyeti konsoloslukları tarafından biri Çin’e girişte, diğeri ise çıkışta ibraz edilmek üzere 2 adet grup vize belgesi verilmektedir. Ülkeye girişte veya çıkışta sorun yaşanmaması için belgelerin girişte ve çıkışta ibraz edilmesi gerekmektedir. Buna ilaveten, grup vizesiyle seyahat edenlerin Çin’e girişte ve çıkışta birlikte hareket etmeleri beklenmekte, çok acil d"},"Hong Kong":{"b":"muaf","y":"muaf","t":"Pasaport geçerlilik süresi en az 6 ay olan umuma mahsus pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları turistik veya iş görüşmesi amaçlı seyahatlerinde vizeden muaftır. Pasaport geçerlilik süresi en az 6 ay olan diplomatik, hizmet ve hususi pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları seyahatlerinde vizeden muaftır"},"Tayvan":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaportlar vizeye tabidir. Diplomatik ve hizmet pasaportu hamili vatandaşlarımızın basılı (kağıt) vize almaları gerekmektedir. Umuma mahsus ve hususî pasaport hamili vatandaşlarımızın 30 güne kadar ikamet süreli tek girişli vizelerini e-vize olarak (ücretsiz) almaları mümkündür. Havalimanında (varışta) vize uygulaması 15 Ocak 2026 tarihi itibarıyla sona ermiştir."},"Japonya":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Güney Kore":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Öte yandan, vatandaşlarımızın Kore'ye seyahatleri öncesinde Elektronik Seyahat Yetkilendirme (k-eta) kaydını www.k-eta.go.kr (http://www.k-eta.go.kr) internet adresinden başvuru yaparak tamamlamaları gerekmektedir."},"Hindistan":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tayland":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 60 güne kadar vizeden muaftır. Diplomatik, Hizmet, Hususi Pasaport Hamilleri ise 90 güne kadar vizeden muaftır. Diplomatlar ve resmi görevliler de dahil olmak üzere, Tayland'a seyahat edecek tüm vatandaşların, varış tarihlerinden 3 gün önce https://tdac.immigration.go.th (https://tdac.immigration.go.th/) linki üzerinden \"Tayland Dijital Varış Kartı\"nı doldurmaları gerekmektedir."},"Vietnam":{"b":"tabi","y":"muaf","t":"Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir."},"Singapur":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili vatandaşlarımız vizeden muaftır. Singapur’a ilk girişte 30 gün kalış imkanı sağlanmakta, başvuru üzerine onay alınması halinde kalış süresi 90 güne kadar uzatılabilmektedir."},"Malezya":{"b":"?","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımıza ülkeye girişlerinde 90 gün ikamet süreli turistik amaçlı giriş vizesi ücretsiz olarak tatbik edilmektedir. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Endonezya":{"b":"muaf","y":"muaf","t":"Diplomatik, hususî ve hizmet ve umuma mahsus pasaport hamili vatandaşlarımız 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Endonezya'ya gidecek bütün yolcuların 1 Ekim 2025 tarihinden itibaren https://allindonesia.imigrasi.go.id (https://allindonesia.imigrasi.go.id) websitesi üzerinden varış tarihinden en fazla 3 gün içerisinde (Endonezya’ya varmadan önceki 72 saat içinde) bildirimde bulunmaları ve sistem üzerinden kendilerine iletilen QR kodu ülkeye girişte sınır birimlerine ibraz etmeleri gerekmektedir."},"Filipinler":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sri Lanka":{"b":"tabi","y":"tabi","t":"Diplomatik, hizmet, hususi ve umuma mahsus pasaport hamilleri vizeye tabi olup, turistik amaçlı seyahatlerinde vizelerini www.eta.gov.lk (http://www.eta.gov.lk/slvisa/) internet adresinden veya ülkeye girişte sınır kapılarında alabilmektedirler. Vatandaşlarımız 25 Mayıs 2026 tarihi itibarıyla 30 gün süreli turistik amaçlı vizelerini Sri Lanka’ya varıştan önce https://eta.gov.lk (https://eta.gov.lk/) internet adresinden ücretsiz olarak alabilmektedirler."},"Nepal":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, vizelerini sınır kapılarında alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Pakistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Bangladeş":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Maldivler":{"b":"tabi","y":"?","t":"Umuma Mahsus Pasaport hamili vatandaşlarımız vizeye tabi olup, 30 gün süreli vizelerini sınır kapılarından harçsız olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri de 30 güne kadar seyahatlerinde vizelerini sınır kapılarından harçsız olarak alabilmektedirler."},"Kazakistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamili vatandaşlarımız her 180 günde 90 günü aşmamak kaydıyla vizeden muaftır."},"Özbekistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport Hamilleri 30 gün süreyle vizeden muaftır. Hususi ve Hizmet Pasaportu Hamilleri 30 gün süreyle vizeden muaftır. Diplomatik Pasaport hamilleri vizeden muaftır. ''3 günden fazla bir süre için Özbekistan’da kalacak yabancıların yerleşik uygulamalar çerçevesinde 3 gün içerisinde kaldıkları otelden geçici ikamet belgesi almaları, meskende konaklanacaksa 3 gün içerisinde geçici ikamet kaydı yaptırmaları ve sözkonusu belgeleri Özbekistan’dan ayrılırken ibraz etmeleri gerekmektedir. Aksi takdirde kural ihlali yapanlara para cezası uygulanmaktadır.''"},"Kırgızistan":{"b":"muaf","y":"?","t":"Umuma mahsus ve resmi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Tacikistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. Hususî ve hizmet pasaportu hamili vatandaşlarımız 60 gün, diplomatik pasaport hamili vatandaşlarımız ise 90 gün süreyle vizeden muaftır."},"Türkmenistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, resmi ziyaretler için pasaport örnekleri ile birlikte, geliş amacına ilişkin Büyükelçiliğimizce bildirim yapılması kaydıyla Türkmenistan'a kabul edilmektedirler. Ülkede 3 günden fazla kalınması durumunda, Türkmenistan makamlarına ikamet kaydı yaptırılması zorunludur. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, özel ziyaretleri için, Türkmenistan'da bulunan yakınları/tanıdıkları tar"},"Azerbaycan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 güne kadar vizeden muaftır. Vatandaşlarımız turistik amaçlı seyahatlerinde, doğrudan ülkemizden Azerbaycan’a seyahat etmek koşuluyla, kimlik kartlarıyla da giriş yapabilmektedirler."},"Gürcistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, diplomatik, hizmet ve hususî pasaport hamili vatandaşlarımız bir yıla kadar seyahatlerinde vizeden muaftırlar. Vatandaşlarımızın geçerli yeni tip kimlik kartıyla da Gürcistan’a vizesiz olarak seyahat edebilmeleri mümkündür. 1 Ocak 2026 tarihi itibariyle Gürcistan’a umuma mahsus pasaportla veya kimlik kartıyla seyahat edecek vatandaşlarımızın zorunlu seyahat (sağlık ve kaza) sigortası yaptırmaları gerekmektedir. Gürcistan’da bulunan veya yabancı bir sigorta şirketi tarafından düzenlenebilecek, Gürcistan'daki kalış süresinin tamamını (hem giriş hem çıkış tarihlerini) kapsayan ve en"},"Ermenistan":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili vatandaşlarımızın Ermenistan’a seyahatleri öncesinde vize veya elektronik vize almaları gerekmektedir. Diplomatik, hususî ve hizmet pasaportu hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 1 Ocak 2026 tarihi itibariyle 21 gün ikamet süreli elektronik vizeyle Ermenistan’a seyahat edebilmektedirler."},"Amerika Birleşik Devletleri":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Kanada":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeye tabidir."},"Meksika":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hususî ve hizmet pasaportu hamili vatandaşlarımız vizeye tabidir. Diplomatik pasaport hamili vatandaşlarımız ise vizeden muaftır. Turizm, iş, eğitim, gazetecilik veya transit geçiş gibi nedenlerle Meksika'ya seyahat edecek umuma mahsus pasaport hamili Türk vatandaşları, havayoluyla seyahat etmek kaydıyla 30 gün geçerli tek girişli e-vizelerini https://www.inm.gob.mx/sae/publico/tr/solicitud.html (https://www.inm.gob.mx/sae/publico/tr/solicitud.html) adresi üzerinden alabilmektedir. E-vize imkânından sadece umuma mahsus pasaport hamili vatandaşlarımız yararlanabilmekte olup, buna "},"Brezilya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Arjantin":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Şili":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Peru":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Kolombiya":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Küba":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları 90 güne kadar olan seyahatlerinde vizeden muaftır. Küba’ya seyahat etmeden en fazla 48 saat önce https://dviajeros.mitrans.gob.cu/inicio (https://dviajeros.mitrans.gob.cu/inicio) internet adresinde yer alan formun doldurulması ve otomatik olarak oluşturulacak QR kodunun ilgili havayolu ve sınır kapısındaki görevlilere basılı halde veya elektronik formatta gösterilmesi gerekmektedir."},"Panama":{"b":"muaf","y":"muaf","t":"Diplomatik, Hizmet ve Hususi ve Umuma Mahsus Pasaport hamilleri 3 aylık bir süre için vizeden muaf bulunmaktadırlar."},"Fas":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tunus":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Cezayir":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Güney Afrika":{"b":"?","y":"muaf","t":"Diplomatik Pasaport, Hususi Pasaport ve Hizmet Pasaportu hamili vatandaşlarımız 30 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamili vatandaşlarımız 30 güne kadar süreli vizelerini sınır kapılarından kaşe tatbiki şeklinde ve harçsız olarak alabilmektedir."},"Kenya":{"b":"?","y":"muaf","t":"Kenya’nın 2024 yılında getirdiği Elektronik Seyahat Yetkilendirme Sistemi kapsamında, Umuma Mahsus Pasaport hamili vatandaşlarımızın Kenya’yı ziyaretleri öncesinde \"www.etakenya.go.ke (http://www.etakenya.go.ke/) \" adresinden başvuru yapmaları gerekmekte olup bu başvurular ücrete tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamili vatandaşlarımız ise Kenya'yı ziyaretlerinde 90 gün süreyle ETA sisteminden muaftır."},"Tanzanya":{"b":"tabi","y":"muaf","t":"Diplomatik, hususi ve hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Umuma mahsus pasaport hamili Türk vatandaşları ise vizeye tabidir. Tanzanya'ya seyahat edecek olan umuma mahsus pasaport hamili vatandaşlarımız \"visa.immigration.go.tz (http://www.immigration.go.tz) \" internet adresinden elektronik vize veya sınır kapılarında vize alabilmektedirler."},"Etiyopya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Nijerya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi ve Hizmet Pasaportu Hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Senegal":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları, 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Avustralya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Yeni Zelanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Fiji":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."}};
+
+// ===== Vize maliyet kalemleri (kategori bazlı) =====
+const VISA_COST_CATEGORIES = [
+  { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
+  { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
+  { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
+  { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
+  { id: 'uae', label: 'BAE', icon: '🇦🇪' },
+  { id: 'china', label: 'Çin', icon: '🇨🇳' },
+  { id: 'other', label: 'Diğer', icon: '🌍' }
+];
+const DEFAULT_VISA_COST_ITEMS = [
+  { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+  { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+  { key: 'sigorta', label: 'Sigorta' },
+  { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+  { key: 'koordinasyon', label: 'Koordinasyon' },
+  { key: 'sms', label: 'SMS' },
+  { key: 'kargo', label: 'Kargo' },
+  { key: 'kdv', label: 'KDV' },
+  { key: 'diger', label: 'Diğer' }
+];
+// visaCostItems iki biçimde olabilir: eski düz dizi [...] veya kategori bazlı { schengen: [...], usa: [...] }
+const getVisaCostItems = (appSettings, category) => {
+  const raw = appSettings?.visaCostItems;
+  if (Array.isArray(raw)) return raw.length ? raw : DEFAULT_VISA_COST_ITEMS;
+  const list = raw && raw[category || 'schengen'];
+  return Array.isArray(list) && list.length ? list : DEFAULT_VISA_COST_ITEMS;
+};
+// Bir başvurunun maliyetlerini para birimi bazında toplar. Kalem listesinden bağımsız olarak
+// kayıttaki tüm tutarları sayar — ayarlardan kaldırılan bir kalem kâr/zarardan düşmesin.
+const sumVisaCosts = (visa) => {
+  const cur = visa?.costCurrency || visa?.visaCurrency || visa?.currency || '€';
+  const total = Object.values(visa?.costs || {}).reduce((t, v) => t + (parseFloat(v) || 0), 0);
+  return total ? { [cur]: total } : {};
+};
 
 // ===== SÖZLEŞME: paylaşılan üreticiler (QuotesModule + ToursModule) =====
 const trTarih = (iso) => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
@@ -349,16 +393,24 @@ const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string'
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
-  // Sadece rakamları al
-  const digits = phone.replace(/\D/g, '');
-  // Başındaki 90 veya 0'ı kaldır, 90 ekle
-  const clean = digits.replace(/^(90|0)/, '');
-  return '90' + clean;
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('00')) return digits.slice(2);   // 0049... uluslararası önek
+  if (digits.startsWith('90')) return digits;            // +90 5XX...
+  if (digits.startsWith('0')) return '90' + digits.slice(1); // 05XX... (yerel)
+  if (digits.length <= 10) return '90' + digits;          // 5XX XXX XX XX
+  return digits;                                          // yabancı numara (+49, +44 ...) — olduğu gibi
 };
 
 const generateUniqueId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+};
+
+// send-mail fonksiyonunu çağırır. Firebase oturum jetonu (ID token) gönderilir;
+// sunucu jetonu doğrulamadan mail atmaz (aksi halde fonksiyon herkese açık bir spam rölesi olur).
+const sendMailRequest = async ({ headers = {}, ...opts }) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  return fetch('/.netlify/functions/send-mail', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
 };
 
 // İŞLEM LOGU — önemli işlemleri activity_logs koleksiyonuna yazar.
@@ -728,7 +780,7 @@ function LoginScreen({ onLogin, users }) {
       // Firebase Auth ile giriş (Firestore Rules güvenliği için)
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       // users koleksiyonundan profil/rol bul (yoksa temel profil)
-      const profile = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+      const profile = users.find(u => (u.email || '').toLowerCase() === email.trim().toLowerCase());
       onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
     } catch (err) {
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
@@ -1308,16 +1360,23 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           return;
         }
 
-        setCustomers([...customers, ...newCustomers]);
-        
-        for (const c of newCustomers) {
+        // Firestore'a yaz (customers otomatik senkronize edilmiyor — yazılmazsa sayfa yenilenince kaybolur)
+        const now = new Date().toISOString();
+        const toSave = newCustomers.map(c => ({ ...c, _docId: String(c.id), updatedAt: now, verified: false,
+          firstName: titleCaseTr(c.firstName), lastName: titleCaseTr(c.lastName),
+          passports: '[]', schengenVisas: '[]', usaVisa: '{}' }));
+        for (let i = 0; i < toSave.length; i += 400) {
+          const batch = writeBatch(db);
+          toSave.slice(i, i + 400).forEach(c => { const { _docId, ...data } = c; batch.set(doc(db, 'customers', _docId), data); });
+          await batch.commit();
         }
-        
-        alert(`${newCustomers.length} müşteri başarıyla eklendi!`);
+        setCustomers(prev => [...prev, ...toSave]);
+
+        alert(`${toSave.length} müşteri başarıyla eklendi!`);
         setShowExcelModal(false);
       } catch (err) {
         console.error(err);
-        alert('Excel dosyası okunamadı!');
+        alert('Excel içe aktarılamadı: ' + err.message);
       }
     };
     reader.readAsBinaryString(file);
@@ -1501,19 +1560,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     }
     // === VALİDASYON SONU ===
 
-    // TC Kimlik eşsizlik kontrolü
-    if (formData.tcKimlik && formData.tcKimlik.trim()) {
-      const duplicate = customers.find(c =>
-        c.tcKimlik === formData.tcKimlik &&
-        (!editingCustomer || (c._docId !== editingCustomer._docId && String(c.id) !== String(editingCustomer.id)))
-      );
-      if (duplicate) {
-        showToast?.(`❌ Bu TC Kimlik No zaten kayıtlı: ${duplicate.firstName} ${duplicate.lastName}`, 'error');
-        setFormTab('info');
-        return;
-      }
-    }
-    
     const now = new Date().toISOString();
     const fullData = {
       ...formData,
@@ -1567,13 +1613,19 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
 
 
-  const deleteCustomer = async (id) => {
+  // Müşteriyi Firestore doküman kimliğiyle (_docId) eşleştirerek siler. Eskiden yalnızca c.id ile
+  // eşleşiyordu; id alanı olmayan eski kayıtlarda yanlış kaydı silebilir / listeyi boşaltabilirdi.
+  const deleteCustomer = async (cust) => {
+    if (!cust) return;
     if (!confirm('Silmek istediğinize emin misiniz?')) return;
-    const cust = customers.find(c => c.id === id);
-    setCustomers(customers.filter(c => c.id !== id));
-    if (selectedCustomer?.id === id) setSelectedCustomer(null);
-    logActivity('delete', 'Müşteri', cust ? `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim() : '', currentUser);
-    try { const docId = cust?._docId || (id !== undefined && id !== null ? String(id) : null); if (docId) await deleteDoc(doc(db, 'customers', docId)); } catch(e) { console.warn('Firestore silme hatası:', e.message); }
+    const key = cust._docId || (cust.id != null ? String(cust.id) : null);
+    if (!key) { showToast?.('Müşteri kimliği bulunamadı, silinemedi', 'error'); return; }
+    const same = (c) => (c._docId || (c.id != null ? String(c.id) : null)) === key;
+    setCustomers(prev => prev.filter(c => !same(c)));
+    if (selectedCustomer && same(selectedCustomer)) setSelectedCustomer(null);
+    logActivity('delete', 'Müşteri', `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim(), currentUser);
+    try { await deleteDoc(doc(db, 'customers', key)); }
+    catch (e) { showToast?.('❌ Firestore\'dan silinemedi: ' + e.message, 'error'); }
   };
 
   const mainTabStyle = (active) => ({
@@ -2453,7 +2505,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>✏️</span> Düzenle
             </button>
-            <button onClick={() => { if(confirm('Bu müşteriyi silmek istediğinize emin misiniz?')) { deleteCustomer(c.id); setSelectedCustomer(null); } }} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>🗑️</span> Sil
             </button>
           </div>
@@ -2478,7 +2530,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {c.verified !== false && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
+            {c.verified === true && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
             {cPassports.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}>🛂 {cPassports.length}</span>}
             {cSchengen.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.2)', color: '#10b981' }}>🇪🇺 {cSchengen.length}</span>}
             {cUsa.endDate && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}>🇺🇸</span>}
@@ -3196,8 +3248,10 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
                         const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
-                        const updated = { ...existing, passports: newPassports, verified: false, lastEditedAt: now, updatedAt: now };
+                        const updated = { ...existing, passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now };
                         setCustomers(prev => prev.map(c => c.id === existing.id ? updated : c));
+                        setDoc(doc(db, 'customers', existing._docId || String(existing.id)), { passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now }, { merge: true })
+                          .catch(err => showToast?.('❌ Pasaport kaydedilemedi: ' + err.message, 'error'));
                         showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi`, 'success');
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
                         setTimeout(() => setSelectedCustomer(updated), 100);
@@ -3236,7 +3290,17 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           usaVisa: aiResult._usaVisa ? { ...aiResult._usaVisa, createdAt: aiResult._usaVisa.createdAt || now } : {},
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
+                        delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
+                        newCust.firstName = titleCaseTr(newCust.firstName || '');
+                        newCust.lastName = titleCaseTr(newCust.lastName || '');
+                        newCust.passports = JSON.stringify(newCust.passports);
+                        newCust.schengenVisas = JSON.stringify(newCust.schengenVisas);
+                        newCust.usaVisa = JSON.stringify(newCust.usaVisa);
+                        newCust._docId = newCust.id;
                         setCustomers(prev => [newCust, ...prev]);
+                        { const { _docId, ...saveData } = newCust;
+                          setDoc(doc(db, 'customers', _docId), saveData)
+                            .catch(err => showToast?.('❌ Müşteri kaydedilemedi: ' + err.message, 'error')); }
                         showToast?.('✅ Müşteri eklendi — kontrol edilmesi gerekiyor', 'success');
                         setShowAiModal(false);
                         setAiText(''); setAiResult(null); setAiImages([]);
@@ -3680,7 +3744,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             const bodyText = rep(tpl.body);
             const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
             try {
-              const resp = await fetch('/.netlify/functions/send-mail', {
+              const resp = await sendMailRequest({
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.smtpTour?.from || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtpTour })
               });
@@ -3812,7 +3876,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
     const allAttachments = appSettings?.attachments || [];
     const linkedAttachments = allAttachments.filter(a => a.linkedTypes?.includes(vize_turu));
 
-    const resp = await fetch('/.netlify/functions/send-mail', {
+    const resp = await sendMailRequest({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4213,18 +4277,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       showToast?.('Export edilecek vize başvurusu yok', 'warning');
       return;
     }
-    // Ayarlardaki maliyet kalemleri (yoksa varsayılan)
-    const costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
-      ? appSettings.visaCostItems
-      : [
-          { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-          { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-          { key: 'sigorta', label: 'Sigorta' },
-          { key: 'idata', label: 'iData / VFS Hiz. Bed.' },
-          { key: 'kargo', label: 'Sms Kargo Diğer Giderler' },
-          { key: 'fuar', label: 'Fuar Giriş Bileti' },
-          { key: 'diger', label: 'Diğer' }
-        ];
+    // Tüm kategorilerdeki maliyet kalemlerinin birleşimi (anahtar bazında tekil) — her biri ayrı sütun
+    const costItems = [];
+    VISA_COST_CATEGORIES.forEach(k => getVisaCostItems(appSettings, k.id).forEach(it => {
+      if (!costItems.some(x => x.key === it.key)) costItems.push(it);
+    }));
 
     const data = visaApplications.map(v => {
       const costs = v.costs || {};
@@ -4236,8 +4293,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       costItems.forEach(f => {
         const tutar = parseFloat(costs[f.key]) || 0;
         maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCur}` : '';
-        if (tutar) toplamPB[costCur] = (toplamPB[costCur] || 0) + tutar;
       });
+      Object.assign(toplamPB, sumVisaCosts(v));
       // Ödemeler
       const odemeler = safeParseJSON(v.payments);
       const odemeToplam = {};
@@ -4527,6 +4584,18 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       console.error('Proforma oluşturma hatası:', error);
       showToast?.('Proforma oluşturulamadı: ' + error.message, 'error');
     }
+  };
+
+  // Proformayı indirir ve müşteriye WhatsApp mesajını açar (wa.me dosya ekleyemez — PDF elle eklenir)
+  const sendProformaWhatsApp = async (visa) => {
+    const phone = (visa.customerPhone || customers.find(c => c.id === visa.customerId)?.phone || '').replace(/\D/g, '');
+    if (!phone) { showToast?.('Müşterinin telefon numarası yok', 'error'); return; }
+    await generateProforma(visa);
+    const price = visa.visaPrice || visa.price || 0;
+    const currency = visa.visaCurrency || visa.currency || '€';
+    const msg = `Sayın ${visa.customerName || ''},\n\n${visa.country ? visa.country + ' ' : ''}${visa.visaDuration || visa.visaType || 'vize'} hizmet bedeli: ${price} ${currency}\n\nProforma faturanız ekte yer almaktadır.\n\nPaydos Turizm`;
+    window.open(`https://wa.me/${formatWhatsAppPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
+    showToast?.('Proforma indirildi — WhatsApp\'ta dosyayı ekleyip gönderin', 'info');
   };
 
   const [saving, setSaving] = useState(false);
@@ -4992,21 +5061,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {(() => {
                 const costs = formData.costs || {};
                 const costCurrencies = formData.costCurrencies || {};
-                // Default kalemler (ayarlardan gelir, yoksa default'lar)
-                const defaultCostItems = [
-                  { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-                  { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-                  { key: 'sigorta', label: 'Sigorta' },
-                  { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-                  { key: 'koordinasyon', label: 'Koordinasyon' },
-                  { key: 'sms', label: 'SMS' },
-                  { key: 'kargo', label: 'Kargo' },
-                  { key: 'kdv', label: 'KDV' },
-                  { key: 'diger', label: 'Diğer' }
-                ];
-                const costFields = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
-                  ? appSettings.visaCostItems
-                  : defaultCostItems;
+                // Kalemler kategori bazlı (Ayarlar → Vize Ayarları → Maliyet Kalemleri)
+                const costFields = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
 
                 const salePrice = parseFloat(formData.visaPrice) || 0;
                 const saleCurrency = formData.visaCurrency || '€';
@@ -5107,9 +5163,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const _costs = formData.costs || {};
                 const _saleCur = formData.visaCurrency || '€';
                 const _costCur = formData.costCurrency || _saleCur;
-                const _costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : [
-                  { key: 'konsolosluk' }, { key: 'araci' }, { key: 'sigorta' }, { key: 'vfs' }, { key: 'koordinasyon' }, { key: 'sms' }, { key: 'kargo' }, { key: 'kdv' }, { key: 'diger' }
-                ];
+                const _costItems = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
                 const maliyetPB = {};
                 _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
 
@@ -6139,6 +6193,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
   const generateTourVoucher = (tour, hi, room, roomNo, returnDoc = false) => {
     const doc = new jsPDF();
+    const T = pdfText(doc);
     const fmtEN = (d) => {
       if (!d) return '-';
       const dt = new Date(d);
@@ -6159,8 +6214,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.text('Paydos Tur', 20, 20);
     doc.setFontSize(8); doc.setTextColor(100);
     doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
-    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
-    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
+    doc.text(T('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 20, 30);
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${T(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
 
     doc.setFontSize(20); doc.setTextColor(40);
     doc.text('HOTEL VOUCHER', 195, 22, { align: 'right' });
@@ -6176,18 +6231,18 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.setFontSize(9); doc.setTextColor(220, 53, 69);
     doc.text('HOTEL DETAILS', 24, 51);
     doc.setFontSize(14); doc.setTextColor(40);
-    doc.text(ascii(hi.name || tour.name || ''), 24, 58);
+    doc.text(T(hi.name || tour.name || ''), 24, 58);
     doc.setFontSize(9); doc.setTextColor(80);
-    if (hi.address) doc.text(`Address: ${ascii(hi.address)}`, 24, 64);
-    const loc = `${ascii(hi.city || '')}${hi.country ? ', ' + ascii(hi.country) : ''}`;
+    if (hi.address) doc.text(`Address: ${T(hi.address)}`, 24, 64);
+    const loc = `${T(hi.city || '')}${hi.country ? ', ' + T(hi.country) : ''}`;
     if (loc.trim()) doc.text(`Location: ${loc}`, 24, 69);
-    if (hi.phone) doc.text(`Phone: ${ascii(hi.phone)}`, 24, 74);
+    if (hi.phone) doc.text(`Phone: ${T(hi.phone)}`, 24, 74);
     const resCode = hi.bookingCode || '';
     if (resCode) {
       doc.setFillColor(220, 53, 69); doc.rect(135, 53, 58, 9, 'F');
       doc.setFontSize(7); doc.setTextColor(255,255,255);
       doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
-      doc.setFontSize(10); doc.text(ascii(resCode), 164, 61, { align: 'center' });
+      doc.setFontSize(10); doc.text(T(resCode), 164, 61, { align: 'center' });
     }
 
     // GUEST DETAILS (oda misafirleri)
@@ -6198,7 +6253,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     yPos += 8;
     doc.setFontSize(11); doc.setTextColor(40);
     room.forEach((g, i) => {
-      doc.text(`${i+1}. ${ascii(g.customerName || '')}`, 24, yPos);
+      doc.text(`${i+1}. ${T(g.customerName || '')}`, 24, yPos);
       yPos += 6;
     });
     yPos += 4;
@@ -6212,7 +6267,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     const roomType = room[0]?.roomType || hi.roomType || 'Standard';
     doc.text(`Check-in:  ${fmtEN(checkIn)}`, 24, yPos); yPos += 6;
     doc.text(`Check-out: ${fmtEN(checkOut)}`, 24, yPos); yPos += 6;
-    doc.text(`Nights: ${nights}   |   Room Type: ${ascii(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
+    doc.text(`Nights: ${nights}   |   Room Type: ${T(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
     doc.text(`Meal Plan: ${mealPlan(hi.concept)}`, 24, yPos); yPos += 10;
 
     // PAID damgası
@@ -6258,8 +6313,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.setFontSize(8); doc.setTextColor(80);
     doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
     doc.setTextColor(120);
-    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
-    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
+    doc.text(T('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${T(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
     doc.setTextColor(150);
     doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
@@ -6430,7 +6485,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const old = [...tours];
       setTours(tours.filter(t => t.id !== tour.id));
       showToast('Tur silindi', 'success');
-      addToUndo(() => setTours(old), 'Tur silme');
+      addToUndo({ type: 'delete', undo: () => setTours(old) });
       try {
         const docId = tour._docId || String(tour.id);
         await deleteDoc(doc(db, 'tours', docId));
@@ -6516,7 +6571,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         } catch (e) { /* sözleşme üretilemezse mail yine gitsin */ }
       }
       try {
-        const resp = await fetch('/.netlify/functions/send-mail', {
+        const resp = await sendMailRequest({
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: perAttachments, smtp: appSettings?.smtpTour })
         });
@@ -8682,17 +8737,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     try {
       const doc = new jsPDF();
       
-      // Türkçe karakter çevirme fonksiyonu
-      const toTurkishChars = (text) => {
-        if (!text) return '';
-        return text
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      // Türkçe font (DejaVu) — yüklenemezse ASCII'ye düşer
+      const toTurkishChars = pdfText(doc);
       
       // Logo ve Başlık
       doc.setFontSize(20);
@@ -8701,14 +8747,14 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-    doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(toTurkishChars('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(toTurkishChars('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+    doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
     
     // Teklif/Proforma Başlık
     doc.setFontSize(24);
     doc.setTextColor(220, 53, 69);
-    doc.text(quote.type === 'teklif' ? 'TEKLIF' : 'PROFORMA FATURA', 150, 20);
+    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 150, 20);
     
     doc.setFontSize(10);
     doc.setTextColor(100);
@@ -8717,16 +8763,16 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Bilgiler
     doc.setFontSize(10);
     doc.setTextColor(60);
-    doc.text('TARIH', 20, 50);
-    doc.text('OPSIYON TARIHI', 70, 50);
-    doc.text('PARA BIRIMI', 120, 50);
+    doc.text(toTurkishChars('TARİH'), 20, 50);
+    doc.text(toTurkishChars('OPSİYON TARİHİ'), 70, 50);
+    doc.text(toTurkishChars('PARA BİRİMİ'), 120, 50);
     doc.text('HAZIRLAYAN', 150, 50);
     
     doc.setTextColor(0);
     doc.text(new Date(quote.createdAt).toLocaleDateString('tr-TR'), 20, 56);
     doc.text(quote.optionDate ? new Date(quote.optionDate).toLocaleDateString('tr-TR') : '-', 70, 56);
     doc.text(quote.currency, 120, 56);
-    doc.text(toTurkishChars(quote.createdBy || 'Onder Tasci'), 150, 56);
+    doc.text(toTurkishChars(quote.createdBy || 'Önder Taşçı'), 150, 56);
     
     // Konu
     doc.setTextColor(60);
@@ -8737,7 +8783,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Müşteri Bilgileri
     doc.setFontSize(12);
     doc.setTextColor(220, 53, 69);
-    doc.text('MUSTERI BILGILERI', 20, 85);
+    doc.text(toTurkishChars('MÜŞTERİ BİLGİLERİ'), 20, 85);
     
     doc.setFontSize(10);
     doc.setTextColor(60);
@@ -8745,7 +8791,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     if (quote.type === 'proforma') {
       doc.text('Vergi Dairesi', 110, 93);
     } else {
-      doc.text('Yetkili Kisi', 110, 93);
+      doc.text(toTurkishChars('Yetkili Kişi'), 110, 93);
     }
     
     doc.setTextColor(0);
@@ -8757,13 +8803,13 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.text('E-posta', 110, 107);
     
     doc.setTextColor(0);
-    doc.text(quote.customer.phone || '-', 20, 113);
-    doc.text(quote.customer.email || '-', 110, 113);
+    doc.text(String(quote.customer.phone || '-'), 20, 113);
+    doc.text(String(quote.customer.email || '-'), 110, 113);
     
     // Hizmet Kalemleri Tablosu
     doc.setFontSize(12);
     doc.setTextColor(220, 53, 69);
-    doc.text('HIZMET KALEMLERI', 20, 126);
+    doc.text(toTurkishChars('HİZMET KALEMLERİ'), 20, 126);
     
     
     // Manuel tablo çizimi (autoTable yerine)
@@ -8774,10 +8820,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.rect(20, currentY, 170, 8, 'F');
     doc.setFontSize(9);
     doc.setTextColor(255);
-    doc.text('HIZMET', 22, currentY + 5);
-    doc.text('ACIKLAMA', 62, currentY + 5);
+    doc.text(toTurkishChars('HİZMET'), 22, currentY + 5);
+    doc.text(toTurkishChars('AÇIKLAMA'), 62, currentY + 5);
     doc.text('ADET', 125, currentY + 5);
-    doc.text('BIRIM', 145, currentY + 5);
+    doc.text(toTurkishChars('BİRİM'), 145, currentY + 5);
     doc.text('TOPLAM', 170, currentY + 5);
     currentY += 8;
     
@@ -8788,8 +8834,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
         doc.setFillColor(245, 245, 245);
         doc.rect(20, currentY, 170, 7, 'F');
       }
-      doc.text(toTurkishChars(item.service.substring(0, 15)), 22, currentY + 5);
-      doc.text(toTurkishChars(item.description.substring(0, 25)), 62, currentY + 5);
+      doc.text(toTurkishChars(String(item.service || '').substring(0, 15)), 22, currentY + 5);
+      doc.text(toTurkishChars(String(item.description || '').substring(0, 25)), 62, currentY + 5);
       doc.text(item.quantity.toString(), 130, currentY + 5);
       doc.text(item.unitPrice.toFixed(2), 150, currentY + 5);
       doc.text((item.quantity * item.unitPrice).toFixed(2), 175, currentY + 5);
@@ -8814,7 +8860,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     
     if (quote.discount > 0) {
       doc.setTextColor(60);
-      doc.text('Indirim:', 130, finalY + (quote.vatIncluded ? 12 : 6));
+      doc.text(toTurkishChars('İndirim:'), 130, finalY + (quote.vatIncluded ? 12 : 6));
       doc.setTextColor(0);
       doc.text(`-${quote.discount.toFixed(2)} ${quote.currency}`, 180, finalY + (quote.vatIncluded ? 12 : 6), { align: 'right' });
     }
@@ -8833,13 +8879,13 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       const bankY = totalY + 15;
       doc.setFontSize(11);
       doc.setTextColor(220, 53, 69);
-      doc.text('BANKA BILGILERI', 20, bankY);
+      doc.text(toTurkishChars('BANKA BİLGİLERİ'), 20, bankY);
       
       doc.setFontSize(9);
       doc.setTextColor(60);
       const BKq = getActiveBanks(appSettings)[0];
       doc.text(toTurkishChars(`${BKq.bankName} - ${BKq.branch} (${BKq.branchCode})`), 20, bankY + 6);
-      doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, bankY + 11);
+      doc.text(toTurkishChars('Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.'), 20, bankY + 11);
       doc.setTextColor(0);
       const qAccs = (Array.isArray(BKq.accounts) ? BKq.accounts : []).filter(a => a.iban);
       let qby = bankY + 18;
@@ -8867,9 +8913,9 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.setFontSize(8);
     doc.setTextColor(100);
     const footerText = quote.type === 'teklif' 
-      ? '• Bu teklif opsiyon tarihine kadar gecerlidir. • Fiyatlar doviz kuruna gore degisiklik gosterebilir.'
-      : 'Bu proforma fatura bilgi amaclidir ve yasal belge niteligi tasimaz.';
-    doc.text(footerText, 105, 285, { align: 'center' });
+      ? '• Bu teklif opsiyon tarihine kadar geçerlidir. • Fiyatlar döviz kuruna göre değişiklik gösterebilir.'
+      : 'Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.';
+    doc.text(toTurkishChars(footerText), 105, 285, { align: 'center' });
     doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
     
     return doc;
@@ -8959,7 +9005,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       id: Date.now(),
       number: `${formData.type === 'teklif' ? 'TKL' : 'PF'}-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(quotes.length + 1).padStart(3, '0')}`,
       createdAt: new Date().toISOString(),
-      createdBy: 'Önder Taşcı'
+      createdBy: currentUser?.name || currentUser?.email || 'Önder Taşçı'
     };
 
     setQuotes([...quotes, newQuote]);
@@ -9417,7 +9463,7 @@ ${flightRaw}`;
         id, type: 'tur-teklifi', subject: offer.title,
         customer: { firstName: offer.subtitle || '', lastName: '' },
         number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`,
-        offer, createdAt: now.toISOString(), createdBy: 'Önder Taşcı'
+        offer, createdAt: now.toISOString(), createdBy: currentUser?.name || currentUser?.email || 'Önder Taşçı'
       };
       setQuotes(prev => [...prev, newQ]);
       setOfferId(id);
@@ -10171,12 +10217,9 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
     const card = creditCards.find(c => c.id === id);
     const updated = creditCards.filter(c => c.id !== id);
     setCreditCards(updated);
-    showToast?.('Kart silindi', 'info', {
-      label: '↩️ Geri Al',
-      action: () => {
+    showToast?.('Kart silindi', 'info', () => {
         setCreditCards([...updated, card].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         showToast?.('Kart geri yüklendi', 'success');
-      }
     });
   };
 
@@ -10760,38 +10803,38 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const generatePackageProforma = (pk) => {
     try {
       const doc = new jsPDF();
-      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const tr = pdfText(doc);
       const cur = pkgCurrency(pk);
       const curCode = cur === '€' ? 'EUR' : cur === '$' ? 'USD' : cur === '£' ? 'GBP' : cur === '₺' ? 'TRY' : 'EUR';
       doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
       doc.setFontSize(9); doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
       const now = new Date();
       const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
       doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
       doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
       doc.setDrawColor(220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8); doc.setTextColor(120);
-      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.text(tr('TARİH'), 24, 53); doc.text(tr('PARA BİRİMİ'), 90, 53); doc.text('HAZIRLAYAN', 150, 53);
       doc.setFontSize(10); doc.setTextColor(40);
-      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text(tr(pk.title || 'Seyahat Paketi'), 20, 78);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI', 20, 90); doc.line(20, 92, 195, 92);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ'), 20, 90); doc.line(20, 92, 195, 92);
       doc.setFontSize(11); doc.setTextColor(40); doc.text(tr(pk.customerName), 20, 99);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('PAKET KALEMLERI', 20, 112); doc.line(20, 114, 195, 114);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('PAKET KALEMLERİ'), 20, 112); doc.line(20, 114, 195, 114);
       doc.setFillColor(245, 245, 245); doc.rect(20, 117, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
-      doc.text('HIZMET', 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
+      doc.text(tr('HİZMET'), 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
       let y = 130, subtotal = 0;
       (pk.items || []).forEach((it, i) => {
         const amt = parseFloat(it.amount) || 0; subtotal += amt;
         if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 9, 'F'); }
         doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(tr(it.label).replace(/[^ -~]/g, '').trim().substring(0, 70) || 'Hizmet', 22, y);
+        doc.text(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, '')).trim().substring(0, 70) || tr('Hizmet'), 22, y);
         doc.text(`${amt.toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
         y += 9;
         if (y > 250) { doc.addPage(); y = 30; }
@@ -11148,43 +11191,43 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     if (!resList || !resList.length) { showToast?.('Rezervasyon seçin', 'error'); return; }
     try {
       const doc = new jsPDF();
-      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const tr = pdfText(doc);
       const currency = fl.currency || '€';
       const currencyCode = currency === '€' ? 'EUR' : currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '₺' ? 'TRY' : 'EUR';
       doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
       doc.setFontSize(9); doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
       const now = new Date();
       const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
       doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
       doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
       doc.setDrawColor(220, 220, 220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8); doc.setTextColor(120);
-      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.text(tr('TARİH'), 24, 53); doc.text(tr('PARA BİRİMİ'), 90, 53); doc.text('HAZIRLAYAN', 150, 53);
       doc.setFontSize(10); doc.setTextColor(40);
-      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
-      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Ucus Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Uçuş Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ BİLGİLERİ'), 20, 90);
       doc.line(20, 92, 195, 92);
       const firstCust = customers.find(c => String(c.id) === String(resList[0].customerId));
       doc.setFontSize(9); doc.setTextColor(120); doc.text('Firma / Ad Soyad', 20, 99);
       doc.setFontSize(11); doc.setTextColor(40);
       const baslikAd = birlesik
-        ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kisi`)
+        ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kişi`)
         : tr(resList[0].customerName);
       doc.text(baslikAd.substring(0, 55), 20, 105);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('Telefon', 20, 113);
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text(tr(resList[0].phone || firstCust?.phone || '-'), 20, 119);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('HIZMET KALEMLERI', 20, 130);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('HİZMET KALEMLERİ'), 20, 130);
       doc.line(20, 132, 195, 132);
       doc.setFillColor(245, 245, 245); doc.rect(20, 135, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
-      doc.text('YOLCU', 22, 140); doc.text('UCUS', 85, 140); doc.text('EKSTRA', 135, 140); doc.text('TUTAR', 193, 140, { align: 'right' });
+      doc.text('YOLCU', 22, 140); doc.text(tr('UÇUŞ'), 85, 140); doc.text('EKSTRA', 135, 140); doc.text('TUTAR', 193, 140, { align: 'right' });
       let y = 148, subtotal = 0;
       resList.forEach((r, i) => {
         const tot = flightResTotal(r); subtotal += tot;
@@ -11227,16 +11270,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const doc = new jsPDF();
 
       // Türkçe karakter dönüştürücü
-      const tr = (text) => {
-        if (!text) return '';
-        return String(text)
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      const tr = pdfText(doc);
 
       // Para birimi (ilk rezervasyondan)
       const currency = reservations[0].currency || '€';
@@ -11249,9 +11283,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       doc.setFontSize(9);
       doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
 
       // Proforma No
       const now = new Date();
@@ -11270,9 +11304,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text('TARIH', 24, 53);
-      doc.text('OPSIYON TARIHI', 70, 53);
-      doc.text('PARA BIRIMI', 120, 53);
+      doc.text(tr('TARİH'), 24, 53);
+      doc.text(tr('OPSİYON TARİHİ'), 70, 53);
+      doc.text(tr('PARA BİRİMİ'), 120, 53);
       doc.text('HAZIRLAYAN', 155, 53);
       doc.setFontSize(10);
       doc.setTextColor(40);
@@ -11280,7 +11314,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(now.toLocaleDateString('tr-TR'), 24, 60);
       doc.text(optionDate.toLocaleDateString('tr-TR'), 70, 60);
       doc.text(currencyCode, 120, 60);
-      doc.text('Onder Tasci', 155, 60);
+      doc.text(tr(currentUser?.name || 'Önder Taşçı'), 155, 60);
 
       // KONU
       doc.setFontSize(9);
@@ -11289,14 +11323,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(11);
       doc.setTextColor(40);
       const konu = reservations.length === 1
-        ? `${tr(hotel.name)} - Otel Konaklamasi`
-        : `${tr(hotel.name)} - Toplu Otel Konaklamasi (${reservations.length} rezervasyon)`;
-      doc.text(konu, 20, 78);
+        ? `${tr(hotel.name)} - Otel Konaklaması`
+        : `${tr(hotel.name)} - Toplu Otel Konaklaması (${reservations.length} rezervasyon)`;
+      doc.text(tr(konu), 20, 78);
 
       // MÜŞTERİ BİLGİLERİ
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.text(tr('MÜŞTERİ BİLGİLERİ'), 20, 90);
       doc.setDrawColor(220, 220, 220);
       doc.line(20, 92, 195, 92);
 
@@ -11312,7 +11346,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(40);
       const custName = uniqueCustomers.length === 1
         ? tr(uniqueCustomers[0])
-        : `Cesitli (${uniqueCustomers.length} kisi)`;
+        : tr(`Çeşitli (${uniqueCustomers.length} kişi)`);
       doc.text(custName, 20, 105);
       doc.text(tr(firstCustomer?.taxOffice || '-'), 110, 105);
 
@@ -11328,7 +11362,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // HİZMET KALEMLERİ
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('HIZMET KALEMLERI', 20, 132);
+      doc.text(tr('HİZMET KALEMLERİ'), 20, 132);
       doc.line(20, 134, 195, 134);
 
       // Tablo başlığı
@@ -11336,15 +11370,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.rect(20, 137, 175, 7, 'F');
       doc.setFontSize(8);
       doc.setTextColor(80);
-      doc.text('OTEL / HIZMET', 22, 142);
-      doc.text('ACIKLAMA', 80, 142);
+      doc.text(tr('OTEL / HİZMET'), 22, 142);
+      doc.text(tr('AÇIKLAMA'), 80, 142);
       doc.text('GECE', 145, 142, { align: 'center' });
-      doc.text('GECELIK', 165, 142, { align: 'right' });
+      doc.text(tr('GECELİK'), 165, 142, { align: 'right' });
       doc.text('TOPLAM', 193, 142, { align: 'right' });
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvalti' : c === 'hb' ? 'Yarim Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
+      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvaltı' : c === 'hb' ? 'Yarım Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -11358,7 +11392,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           const dt = new Date(d);
           return isNaN(dt) ? d : dt.toLocaleDateString('tr-TR');
         };
-        const aciklama = `${tr(r.customerName || '')}\n${formatD(r.checkIn)} > ${formatD(r.checkOut)}\n${tr(r.roomType || '')} (${conceptLabel(r.concept)})`;
+        const aciklama = `${tr(r.customerName || '')}\n${formatD(r.checkIn)} > ${formatD(r.checkOut)}\n${tr(r.roomType || '')} (${tr(conceptLabel(r.concept))})`;
 
         // Sıra zebra renk
         if (i % 2 === 1) {
@@ -11419,7 +11453,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // Banka bilgileri
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('BANKA BILGILERI', 20, yPos);
+      doc.text(tr('BANKA BİLGİLERİ'), 20, yPos);
       doc.setDrawColor(220, 220, 220);
       doc.line(20, yPos + 2, 195, yPos + 2);
       yPos += 7;
@@ -11428,7 +11462,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const BKh = getActiveBanks(appSettings)[0];
       doc.text(tr(`${BKh.bankName} - ${BKh.branch} (${BKh.branchCode})`), 20, yPos);
       yPos += 5;
-      doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, yPos);
+      doc.text(tr('Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.'), 20, yPos);
       const hAccs = (Array.isArray(BKh.accounts) ? BKh.accounts : []).filter(a => a.iban);
       (hAccs.length ? hAccs : [{ currency: 'TL', iban: BKh.ibanTL }, { currency: 'EUR', iban: BKh.ibanEUR }].filter(a => a.iban)).forEach(a => {
         yPos += 5;
@@ -11438,7 +11472,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150);
-      doc.text('Bu proforma fatura bilgi amaclidir ve yasal belge niteligi tasimaz.', 105, 285, { align: 'center' });
+      doc.text(tr('Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.'), 105, 285, { align: 'center' });
       doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
 
       // Kaydet
@@ -11465,16 +11499,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const doc = new jsPDF();
 
       // Türkçe karakter dönüştürücü (jsPDF font sorunu için)
-      const ascii = (text) => {
-        if (!text) return '';
-        return String(text)
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      const ascii = pdfText(doc);
 
       const r = reservation;
       const nights = calcNights(r.checkIn, r.checkOut);
@@ -11497,7 +11522,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8);
       doc.setTextColor(100);
       doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
-      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
+      doc.text(ascii('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 20, 30);
       doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
 
       // VOUCHER başlığı
@@ -11706,13 +11731,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(80);
       doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
       doc.setTextColor(120);
-      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
+      doc.text(ascii('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
       doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
       doc.setTextColor(150);
       doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
       // Kaydet
-      const fileName = `Voucher_${ascii(hotel.name || '').replace(/\s/g,'_')}_${ascii(r.customerName || '').replace(/\s/g,'_')}.pdf`;
+      const fileName = `Voucher_${asciiTr(hotel.name || '').replace(/\s/g,'_')}_${asciiTr(r.customerName || '').replace(/\s/g,'_')}.pdf`;
       doc.save(fileName);
       showToast?.('✅ Voucher downloaded', 'success');
     } catch (e) {
@@ -13607,12 +13632,9 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
     const agency = agencies.find(a => a.id === id);
     const updated = agencies.filter(a => a.id !== id);
     setAgencies(updated);
-    showToast?.('Acentelik silindi', 'info', {
-      label: '↩️ Geri Al',
-      action: () => {
+    showToast?.('Acentelik silindi', 'info', () => {
         setAgencies([...updated, agency].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         showToast?.('Acentelik geri yüklendi', 'success');
-      }
     });
   };
 
@@ -14195,32 +14217,32 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 
                         // Bölüm başlıklarını tanımla
                         const sections = [
-                          { title: 'KİSİSEL BILGILER', keys: ['firstName','lastName','maidenSurname','gender','maritalStatus','birthDate','birthPlace','birthCountry','nationality','otherNationality','tcKimlik','homeAddress','homeZip','homePhone','phone','email'] },
-                          { title: 'PASAPORT BILGILERI', keys: ['passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','oldPassport','lostPassport','travelHistory'] },
-                          { title: 'SEYAHAT VE DIGER BILGILER', keys: ['visaType','arrivalDate','departureDate','stayDuration','usAddress','usPhone','usEmail','tripPayer','hasCompanion','companionName','companionRelation','companionPhone','companionEmail','inviterName','inviterRelation'] },
-                          { title: 'DAHA ONCE AMERIKADA BULUNDUNUZ MU?', keys: ['beenToUS','usArrivalDate','usDepartureDate','hadUSVisa','usVisaDate','visaNumber','sameVisaCategory','hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason','greencardPetition'] },
-                          { title: 'AILE BILGISI', keys: ['fatherName','fatherBirth','fatherBirthPlace','fatherNationality','motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality','parentInUS','relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen','relativeAddress','relativePhone','relativeEmail','relative2Name','relative2Relation','relative2USCitizen','relative2Address','relative2Phone','relative2Email'] },
-                          { title: 'ES HAKKINDA BILGILER', keys: ['spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate','divorceCount','exSpouseName','exSpouseBirth','marriageDate','divorceDate','divorceReason','exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2'] },
-                          { title: 'IS HAYATINIZ', keys: ['occupation','jobDescription','monthlySalary','employerName','employerAddress','employerZip','employerPhone','jobStartDate','prevEmployerName','prevEmployerAddress','prevEmployerPhone','prevJobStartDate','prevJobEndDate'] },
+                          { title: 'KİŞİSEL BİLGİLER', keys: ['firstName','lastName','maidenSurname','gender','maritalStatus','birthDate','birthPlace','birthCountry','nationality','otherNationality','tcKimlik','homeAddress','homeZip','homePhone','phone','email'] },
+                          { title: 'PASAPORT BİLGİLERİ', keys: ['passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','oldPassport','lostPassport','travelHistory'] },
+                          { title: 'SEYAHAT VE DİĞER BİLGİLER', keys: ['visaType','arrivalDate','departureDate','stayDuration','usAddress','usPhone','usEmail','tripPayer','hasCompanion','companionName','companionRelation','companionPhone','companionEmail','inviterName','inviterRelation'] },
+                          { title: 'DAHA ÖNCE AMERİKA\'DA BULUNDUNUZ MU?', keys: ['beenToUS','usArrivalDate','usDepartureDate','hadUSVisa','usVisaDate','visaNumber','sameVisaCategory','hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason','greencardPetition'] },
+                          { title: 'AİLE BİLGİSİ', keys: ['fatherName','fatherBirth','fatherBirthPlace','fatherNationality','motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality','parentInUS','relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen','relativeAddress','relativePhone','relativeEmail','relative2Name','relative2Relation','relative2USCitizen','relative2Address','relative2Phone','relative2Email'] },
+                          { title: 'EŞ HAKKINDA BİLGİLER', keys: ['spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate','divorceCount','exSpouseName','exSpouseBirth','marriageDate','divorceDate','divorceReason','exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2'] },
+                          { title: 'İŞ HAYATINIZ', keys: ['occupation','jobDescription','monthlySalary','employerName','employerAddress','employerZip','employerPhone','jobStartDate','prevEmployerName','prevEmployerAddress','prevEmployerPhone','prevJobStartDate','prevJobEndDate'] },
                           { title: 'EN SON MEZUN OLUNAN OKUL', keys: ['schoolName','schoolAddress','educationField','educationStartEnd'] },
-                          { title: 'DIGER BILGILER', keys: ['militaryService','militaryRank','militaryStart','militaryEnd','languages'] },
-                          { title: 'SOSYAL MEDYA BILGILERI', keys: ['facebook','instagram','twitter','linkedin','youtube','reddit','pinterest','tumblr','vk','weibo','myspace'] },
-                          { title: 'GUVENLIK SORULARI', keys: ['sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'] },
+                          { title: 'DİĞER BİLGİLER', keys: ['militaryService','militaryRank','militaryStart','militaryEnd','languages'] },
+                          { title: 'SOSYAL MEDYA BİLGİLERİ', keys: ['facebook','instagram','twitter','linkedin','youtube','reddit','pinterest','tumblr','vk','weibo','myspace'] },
+                          { title: 'GÜVENLİK SORULARI', keys: ['sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'] },
                         ];
 
                         const doc2 = new jsPDF();
+                        const clean = pdfText(doc2);
                         // Başlık
                         doc2.setFillColor(26, 58, 92);
                         doc2.rect(0, 0, 210, 32, 'F');
                         doc2.setFontSize(14); doc2.setTextColor(255);
-                        doc2.text('AMERIKA BILGI FORMU - DS-160', 15, 13);
+                        doc2.text(clean('AMERİKA BİLGİ FORMU - DS-160'), 15, 13);
                         doc2.setFontSize(8); doc2.setTextColor(180);
-                        doc2.text('ASAGIDA BELIRTILEN BILGILER DS-160 ONLINE FORMUNUZ ICINDIR', 15, 21);
+                        doc2.text(clean('AŞAĞIDA BELİRTİLEN BİLGİLER DS-160 ONLINE FORMUNUZ İÇİNDİR'), 15, 21);
                         doc2.setFontSize(9); doc2.setTextColor(200);
-                        const nameClean = (app._name||'').replace(/[İı]/g,i=>i==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
-                        doc2.text(`Basvuran: ${nameClean}   |   ${new Date().toLocaleDateString('tr-TR')}`, 15, 28);
+                        const nameClean = clean(app._name || '');
+                        doc2.text(clean(`Başvuran: ${nameClean}   |   ${new Date().toLocaleDateString('tr-TR')}`), 15, 28);
 
-                        const clean = (s) => String(s||'').replace(/[İı]/g,x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
 
                         let y = 40;
                         let rowIdx = 0;
@@ -14258,7 +14280,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           doc2.setFillColor(26, 58, 92);
                           doc2.rect(15, y-2, 180, 9, 'F');
                           doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
-                          doc2.text(section.title, 17, y+4);
+                          doc2.text(clean(section.title), 17, y+4);
                           y += 12; rowIdx = 0;
 
                           sectionRows.forEach(([k, v]) => {
@@ -14286,7 +14308,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           doc2.setFillColor(26, 58, 92);
                           doc2.rect(15, y-2, 180, 9, 'F');
                           doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
-                          doc2.text('DIGER', 17, y+4);
+                          doc2.text(clean('DİĞER'), 17, y+4);
                           y += 12; rowIdx = 0;
                           extraRows.forEach(([k, v]) => {
                             if (y > 275) { doc2.addPage(); y = 15; }
@@ -14359,49 +14381,47 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 }
 
 // AYARLAR MODÜLÜ
-// Kategori bazlı varsayılan vize maliyetleri ayarı (Schengen/Amerika/Rusya... ayrı)
+// Kategori bazlı vize maliyet kalemleri + varsayılan değerleri (Schengen/Amerika/Rusya... ayrı)
 function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
-  const kategoriler = [
-    { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
-    { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
-    { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
-    { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
-    { id: 'uae', label: 'BAE', icon: '🇦🇪' },
-    { id: 'china', label: 'Çin', icon: '🇨🇳' },
-    { id: 'other', label: 'Diğer', icon: '🌍' }
-  ];
+  const kategoriler = VISA_COST_CATEGORIES;
   const [aktifKat, setAktifKat] = useState('schengen');
-  const defaultItems = [
-    { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-    { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-    { key: 'sigorta', label: 'Sigorta' },
-    { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-    { key: 'koordinasyon', label: 'Koordinasyon' },
-    { key: 'sms', label: 'SMS' },
-    { key: 'kargo', label: 'Kargo' },
-    { key: 'kdv', label: 'KDV' },
-    { key: 'diger', label: 'Diğer' }
-  ];
-  const items = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : defaultItems;
-  // visaCostDefaults artık kategori bazlı: { schengen: {...}, usa: {...} }
+  const [yeniKalem, setYeniKalem] = useState('');
+  const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+  // Kategori bazlı kalemler. Eski düz dizi varsa ilk düzenlemede tüm kategorilere kopyalanır (geriye uyum).
+  const rawItems = appSettings?.visaCostItems;
+  const eskiDuz = Array.isArray(rawItems) ? rawItems : null;
+  const katItemsAll = (rawItems && !Array.isArray(rawItems)) ? rawItems : {};
+  const items = getVisaCostItems(appSettings, aktifKat);
+
   const tumDefs = appSettings?.visaCostDefaults || {};
   const tumCur = appSettings?.visaCostDefaultCurrency || {};
   const katDefs = tumDefs[aktifKat] || {};
   const katCur = tumCur[aktifKat] || '€';
 
-  const setKatDeger = (key, val) => {
-    setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
+  const setKatItems = (yeni) => {
+    const base = eskiDuz ? Object.fromEntries(kategoriler.map(k => [k.id, [...eskiDuz]])) : { ...katItemsAll };
+    base[aktifKat] = yeni;
+    setAppSettings({ ...appSettings, visaCostItems: base });
   };
-  const setKatCur = (cur) => {
-    setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+  const setKatDeger = (key, val) => setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
+  const setKatCur = (cur) => setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+
+  const kalemEkle = () => {
+    const label = (yeniKalem || '').trim();
+    if (!label) return;
+    let key = slugify(label) || 'kalem_' + Date.now();
+    if (items.some(it => it.key === key)) key = `${key}_${Date.now()}`;
+    setKatItems([...items, { key, label }]);
+    setYeniKalem('');
   };
+  const katAd = kategoriler.find(k => k.id === aktifKat)?.label;
 
   return (
-    <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)', marginTop: '16px' }}>
-      <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>💵 Varsayılan Maliyet Değerleri</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Her vize kategorisi için ayrı varsayılan gir. Yeni başvuruda kategori seçilince otomatik dolar, elle değiştirilebilir.</p>
+    <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>💰 Vize Maliyet Kalemleri & Varsayılan Değerler</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Her vize kategorisi için ayrı kalem listesi ve varsayılan değer. Yeni başvuruda kategori seçilince o kategorinin kalemleri + değerleri otomatik gelir.</p>
 
-      {/* Kategori sekmeleri */}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {kategoriler.map(k => (
           <button key={k.id} onClick={() => setAktifKat(k.id)} style={{
@@ -14413,9 +14433,8 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
         ))}
       </div>
 
-      {/* Seçili kategorinin para birimi */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{kategoriler.find(k => k.id === aktifKat)?.label} para birimi:</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} para birimi:</span>
         <select value={katCur} onChange={e => setKatCur(e.target.value)}
           style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
           <option value="€" style={{ background: '#0c1929' }}>€</option>
@@ -14425,18 +14444,28 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
         </select>
       </div>
 
-      {/* Kalemler */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
-        {items.map(f => (
-          <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ flex: 1, fontSize: '12px', color: '#cbd5e1' }}>{f.label}</label>
-            <input type="number" step="0.01" min="0" value={katDefs[f.key] ?? ''}
-              onChange={e => setKatDeger(f.key, e.target.value)}
-              placeholder="0"
-              style={{ width: '110px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
-            <span style={{ fontSize: '12px', color: '#94a3b8', width: '16px' }}>{katCur}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+        {items.map((it, idx) => (
+          <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16,185,129,0.06)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <button onClick={() => { if (idx === 0) return; const n = [...items]; [n[idx-1], n[idx]] = [n[idx], n[idx-1]]; setKatItems(n); }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
+              <button onClick={() => { if (idx === items.length-1) return; const n = [...items]; [n[idx], n[idx+1]] = [n[idx+1], n[idx]]; setKatItems(n); }} disabled={idx === items.length-1} style={{ background: 'none', border: 'none', color: idx === items.length-1 ? '#475569' : '#94a3b8', cursor: idx === items.length-1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
+            </div>
+            <input type="text" value={it.label} onChange={e => { const n = [...items]; n[idx] = { ...it, label: e.target.value }; setKatItems(n); }}
+              style={{ flex: 1, minWidth: 0, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
+            <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
+              style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+            <span style={{ fontSize: '11px', color: '#94a3b8', width: '14px', flexShrink: 0 }}>{katCur}</span>
+            <button onClick={() => { if (!window.confirm(`"${it.label}" kalemini ${katAd} kategorisinden silmek istiyor musun?`)) return; setKatItems(items.filter((_, i) => i !== idx)); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}>🗑️</button>
           </div>
         ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input type="text" value={yeniKalem} onChange={e => setYeniKalem(e.target.value)} placeholder={`${katAd} için yeni kalem (örn: Vize Sigortası)`}
+          onKeyDown={e => { if (e.key === 'Enter') kalemEkle(); }}
+          style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
+        <button onClick={kalemEkle} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
       </div>
     </div>
   );
@@ -14455,7 +14484,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [newVisaStatus, setNewVisaStatus] = useState('');
   const [newSector, setNewSector] = useState('');
   const [newHotelRoomType, setNewHotelRoomType] = useState('');
-  const [newCostItem, setNewCostItem] = useState('');
   const [newDuration, setNewDuration] = useState({ category: 'usa', value: '', price: 0, currency: '€' });
   const [newRoomType, setNewRoomType] = useState('');
 
@@ -14546,17 +14574,20 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
     }
   };
 
+  // Şifre Firebase Auth üzerinde değişir (giriş Firebase Auth ile yapılıyor).
+  // Eskiden sadece Firestore'daki düz metin şifre güncelleniyordu; giriş eski şifreyle devam ediyordu.
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (passwordData.current !== currentUser.password) {
-      setPasswordError('Mevcut şifre yanlış!');
+    const fbUser = auth.currentUser;
+    if (!fbUser || !fbUser.email) {
+      setPasswordError('Oturum bulunamadı, çıkış yapıp tekrar giriş yapın.');
       return;
     }
-    if (passwordData.new.length < 4) {
-      setPasswordError('Yeni şifre en az 4 karakter olmalı');
+    if (passwordData.new.length < 6) {
+      setPasswordError('Yeni şifre en az 6 karakter olmalı');
       return;
     }
     if (passwordData.new !== passwordData.confirm) {
@@ -14564,14 +14595,24 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       return;
     }
 
-    const updated = users.map(u => u.id === currentUser.id ? { ...u, password: passwordData.new } : u);
-    setUsers(updated);
-    
-    const updatedCurrentUser = { ...currentUser, password: passwordData.new };
-    setCurrentUser(updatedCurrentUser);
-    localStorage.setItem('paydos_current_user', JSON.stringify(updatedCurrentUser));
-    
-    
+    try {
+      await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, passwordData.current));
+      await updatePassword(fbUser, passwordData.new);
+    } catch (err) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') setPasswordError('Mevcut şifre yanlış!');
+      else if (err.code === 'auth/weak-password') setPasswordError('Yeni şifre çok zayıf');
+      else if (err.code === 'auth/too-many-requests') setPasswordError('Çok fazla deneme. Biraz bekleyin.');
+      else setPasswordError('Şifre değiştirilemedi: ' + (err.code || err.message));
+      return;
+    }
+
+    // Firestore/localStorage'da düz metin şifre tutma — varsa temizle
+    const { password: _pw, ...cleanUser } = currentUser;
+    setUsers(users.map(u => u.id === currentUser.id ? (({ password, ...rest }) => rest)(u) : u));
+    setCurrentUser(cleanUser);
+    localStorage.setItem('paydos_current_user', JSON.stringify(cleanUser));
+    try { await setDoc(doc(db, 'users', currentUser._docId || String(currentUser.id)), { password: deleteField() }, { merge: true }); } catch (err) { /* profil dokümanı yoksa önemli değil */ }
+
     setPasswordSuccess('Şifre başarıyla değiştirildi!');
     setPasswordData({ current: '', new: '', confirm: '' });
     setTimeout(() => setPasswordSuccess(''), 3000);
@@ -15056,84 +15097,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             </div>
           </div>
 
-          {/* VİZE MALİYET KALEMLERİ */}
-          {(() => {
-            const defaultItems = [
-              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-              { key: 'sigorta', label: 'Sigorta' },
-              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-              { key: 'koordinasyon', label: 'Koordinasyon' },
-              { key: 'sms', label: 'SMS' },
-              { key: 'kargo', label: 'Kargo' },
-              { key: 'kdv', label: 'KDV' },
-              { key: 'diger', label: 'Diğer' }
-            ];
-            const items = appSettings?.visaCostItems || defaultItems;
-            const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-            return (
-              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#ef4444' }}>💰 Vize Maliyet Kalemleri</h3>
-                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
-                  Yeni vize başvurusunda görünen maliyet kalemleri. Sıra önemli — listelenen sırada görünür.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                  {items.map((it, idx) => (
-                    <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <button onClick={() => {
-                          if (idx === 0) return;
-                          const newItems = [...items];
-                          [newItems[idx-1], newItems[idx]] = [newItems[idx], newItems[idx-1]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
-                        <button onClick={() => {
-                          if (idx === items.length - 1) return;
-                          const newItems = [...items];
-                          [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', color: idx === items.length - 1 ? '#475569' : '#94a3b8', cursor: idx === items.length - 1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
-                      </div>
-                      <input type="text" value={it.label}
-                        onChange={e => {
-                          const newItems = [...items];
-                          newItems[idx] = { ...it, label: e.target.value };
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }}
-                        style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
-                      <button onClick={() => {
-                        if (!window.confirm(`"${it.label}" kalemini silmek istiyor musun?`)) return;
-                        setAppSettings({ ...appSettings, visaCostItems: items.filter((_, i) => i !== idx) });
-                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input type="text" value={newCostItem || ''} onChange={e => setNewCostItem(e.target.value)}
-                    placeholder="Yeni maliyet kalemi (örn: Vize Sigortası)"
-                    onKeyPress={e => {
-                      if (e.key === 'Enter' && (newCostItem || '').trim()) {
-                        const label = newCostItem.trim();
-                        const key = slugify(label) || 'kalem_' + Date.now();
-                        setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                        setNewCostItem('');
-                      }
-                    }}
-                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
-                  <button onClick={() => {
-                    if ((newCostItem || '').trim()) {
-                      const label = newCostItem.trim();
-                      const key = slugify(label) || 'kalem_' + Date.now();
-                      setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                      setNewCostItem('');
-                    }
-                  }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* VARSAYILAN MALİYET DEĞERLERİ — kategori bazlı */}
           <VarsayilanMaliyetAyari appSettings={appSettings} setAppSettings={setAppSettings} isMobile={isMobile} />
         </div>
       )}
@@ -15859,6 +15822,9 @@ function AppInner() {
         try {
           const snapshot = await getDocs(collection(db, col.name));
           const items = snapshot.empty ? [] : snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+          // Sunucudan gelen veriyi geri yazma (debouncedSave bu işareti görüp atlar)
+          applyingRemote.current[col.name] = true;
+          loadFailed.current[col.name] = false;
           col.setter(items);
           // localStorage'a hafif (resimsiz) kaydet — quota aşımını önler
           try {
@@ -15874,8 +15840,11 @@ function AppInner() {
             });
             localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
           } catch(e) {}
-        } catch (e) { console.warn(`${col.name} yükleme hatası:`, e.message); }
+        } catch (e) { loadFailed.current[col.name] = true; console.warn(`${col.name} yükleme hatası:`, e.message); }
       }));
+      // Kayıt ancak sunucu verisi yüklendikten sonra açılır — aksi halde localStorage'daki eski
+      // önbellek Firestore'a yazılıp aradaki yeni kayıtları silebilirdi.
+      initialLoadDone.current = true;
     })();
 
     // Her küçük koleksiyon için gerçek zamanlı dinleyici (ilk snapshot atlanır, sonra sadece değişenler)
@@ -15992,7 +15961,8 @@ function AppInner() {
   const initialLoadDone = useRef(false);
   // Gerçek zamanlı dinleyiciden gelen güncellemeleri işaretle — debouncedSave bunları TEKRAR YAZMASIN (sonsuz döngü önlenir)
   const applyingRemote = useRef({});
-  useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
+  // Yüklenemeyen koleksiyonlarda silme senkronu yapılmaz (state eski önbellek olabilir)
+  const loadFailed = useRef({});
 
   // Eski tek-banka alanını (bankInfo) temizle — artık banks[] dizisi kullanılıyor
   useEffect(() => {
@@ -16024,9 +15994,9 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   }, []);
 
   const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
-    if (!initialLoadDone.current) return;
-    // Bu güncelleme gerçek zamanlı dinleyiciden geldiyse tekrar yazma (döngü önleme)
+    // Bu güncelleme sunucudan/dinleyiciden geldiyse tekrar yazma (döngü önleme)
     if (applyingRemote.current[collectionName]) { applyingRemote.current[collectionName] = false; return; }
+    if (!initialLoadDone.current) return;
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
       try {
@@ -16038,7 +16008,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
           // Silme sync YAPMA: customers (4000+ kayıt pahalı) ve visa_applications (iDATA/işlem
           // sırasında race condition + _docId tutarsızlığı veri kaybına yol açıyordu).
           // Bu modüllerde silme zaten anında deleteDoc ile yapılıyor.
-          if (collectionName !== 'customers' && collectionName !== 'visa_applications') {
+          if (collectionName !== 'customers' && collectionName !== 'visa_applications' && !loadFailed.current[collectionName]) {
             const snapshot = await getDocs(collection(db, collectionName));
             const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
             let delBatch = writeBatch(db);
