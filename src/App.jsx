@@ -1491,6 +1491,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     }
 
     // === TARİH VALİDASYONU ===
+    // Not: Süresi dolmuş pasaport/vize kaydı engellenmez — geçmiş vizeler başvurularda istenen
+    // bilgidir ve eski kontrol, vizesi bitmiş müşterinin hiçbir bilgisinin güncellenmesine izin vermiyordu.
     const today = new Date(); today.setHours(0,0,0,0);
 
     // Pasaport kontrolleri
@@ -1501,13 +1503,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         const expiry = safeParseDate(p.expiryDate);
         if (issue && expiry && expiry <= issue) {
           alert(`Pasaport #${p.passportNo || '?'}: Geçerlilik tarihi veriliş tarihinden sonra olmalıdır!`);
-          setFormTab('passport'); return;
-        }
-      }
-      if (p.expiryDate) {
-        const expiry = safeParseDate(p.expiryDate);
-        if (expiry && expiry < today) {
-          alert(`Pasaport #${p.passportNo || '?'}: Süresi dolmuş pasaport kaydedilemez! Geçerlilik: ${formatDate(p.expiryDate)}`);
           setFormTab('passport'); return;
         }
       }
@@ -1524,13 +1519,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           setFormTab('schengen'); return;
         }
       }
-      if (v.endDate) {
-        const end = safeParseDate(v.endDate);
-        if (end && end < today) {
-          alert(`Schengen (${v.country || '?'}): Süresi dolmuş vize kaydedilemez! Bitiş: ${formatDate(v.endDate)}`);
-          setFormTab('schengen'); return;
-        }
-      }
     }
 
     // ABD vize kontrolü
@@ -1539,13 +1527,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       const end = safeParseDate(usaVisa.endDate);
       if (start && end && end <= start) {
         alert('ABD Vizesi: Bitiş tarihi başlangıç tarihinden sonra olmalıdır!');
-        setFormTab('usa'); return;
-      }
-    }
-    if (usaVisa.endDate) {
-      const end = safeParseDate(usaVisa.endDate);
-      if (end && end < today) {
-        alert(`ABD Vizesi: Süresi dolmuş vize kaydedilemez! Bitiş: ${formatDate(usaVisa.endDate)}`);
         setFormTab('usa'); return;
       }
     }
