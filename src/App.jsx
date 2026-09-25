@@ -187,6 +187,42 @@ const SOZLESME_SABIT = {
 // ===== Ülke -> vize durumu (T.C. Dışişleri Bakanlığı listesi) =====
 const VIZE_DURUM = {"Türkiye":{"b":"yurtici","y":"yurtici","t":"Yurt içi seyahat — vize gerekmez."},"KKTC":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır. Vatandaşlarımızın KKTC’ye geçerli kimlik belgeleri ile vizesiz olarak seyahat edebilmeleri mümkündür. 30 Haziran 2021 tarihi itibariyle eski tip nüfus cüzdanları ile seyahat uygulaması sona erecek olup, KKTC’ye seyahat edecek vatandaşlarımız yalnızca yeni nesil Türkiye Cumhuriyeti kimlik kartlarını kullanabilecektir."},"Almanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Avusturya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Belçika":{"b":"tabi","y":"muaf","t":"Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili Türk vatandaşları 1 Aralık 2022 tarihi itibariyle Belçika üzerinden yapacakları transit uçuşlarda havalimanı transit vizeye tabidir."},"Çekya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Danimarka":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Estonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Finlandiya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Fransa":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hırvatistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Hollanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hususi ve umuma mahsus pasaport hamili Türk vatandaşları Hollanda havalimanlarından transit olarak Schengen bölgesi dışına yapacakları transit geçişlerde transit vizeye tabidir. Türk vatandaşı gemi mürettebatı, Uluslararası Çalışma Örgütü Gemi Adamı Kimlik Belgesi Sözleşmesi No: 108 (1958) veya No: 185 (2003), Uluslararası Deniz Trafiğinin Kolaylaştırılması Sözleşmesi ve ilgili Hollanda ulusal mevz"},"İspanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İsviçre":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"İtalya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"İzlanda":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Letonya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Liechtenstein":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Litvanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lüksemburg":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Macaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içerisinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Malta":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamilleri vizeden muaftır."},"Norveç":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Oslo Gardermoen Havalimanı üzerinden üçüncü ülkelere seyahat edecek vatandaşlarımızın Norveç temsilciliklerinden transit vize alması gerekmektedir."},"Polonya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Portekiz":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Slovakya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri anılan ülkeye yapacakları seyahatlerinde 90 gün için vizeden muaftır."},"Slovenya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Yunanistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Birleşik Krallık":{"b":"tabi","y":"tabi","t":"Diplomatik, hususî, hizmet ve umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. İngiltere üzerinden diğer ülkelere aktarmalı seyahat edecek vatandaşlarımız transit vizeye tabidir. Bununla birlikte, vatandaşlarımızın, gidilecek ülkeye (onward flight) 24 saat içinde uçmaları ve gerekli vizelerinin/belgelerinin olması şartının yanı sıra belirli koşulları sağlamaları halinde, transit vizeden muaf olacakları (transit without visa concession) Londra Başkonsolosluğumuz tarafından bildirilmektedir. Ayrıntılı bilgi için http://www.mfa.gov.tr/ingiltere-uzerinden-diger-ulkelere-aktarmali-seyah"},"İrlanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet ve hususî pasaport hamilleri vizeye tabidir. Diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Bakan heyetine dahil olarak resmî ziyarette bulunan hizmet ve hususî pasaport hamilleri vizeden muaftır."},"Romanya":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, altı ay içinde üç ayı aşmamak kaydıyla, vizeden muaftır."},"Bulgaristan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi pasaport hamilleri ülkeye ilk giriş tarihinden itibaren 180 gün içerisinde 90 gün süreyle vizeden muaftır. Diplomatik pasaport ile Hizmet pasaportu hamilleri ise anılan ülkeye yapacakları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sırbistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Karadağ":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız 30 gün süreyle vizeden muaftır. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 90 gün süreyle vizeden muaftır."},"Kuzey Makedonya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Kuzey Makedonya’ya Öğrenim Vizesi İçin Talep Edilen Belgeler (site_media/html/viza-dstudies.doc)"},"Bosna Hersek":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır. Diplomatik, hususi ve hizmet pasaportu hamilleri 180 gün içinde 90 günü aşmamak kaydıyla vizeden muaftır."},"Arnavutluk":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kosova":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Ukrayna":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır. Vatandaşlarımız geçerli biyometrik kimlik belgeleri (yeni tip kimlik kartı) ile, Türkiye’den seyahat etmek şartıyla, Ukrayna’ya vizesiz olarak giriş yapabilmektedirler."},"Rusya":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hususî ve hizmet pasaportu hamilleri her 180 günde 90 günü aşmamak şartıyla 30 gün süreyle vizeden muaftır. Diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır. Vatandaşlarımız Rusya Federasyonu’na elektronik vizeyle seyahat edebilmektedirler. E-vize, Rusya Dışişleri Bakanlığı'nın https://electronic-visa.kdmid.ru (https://electronic-visa.kdmid.ru/) adresindeki özel web sitesinde veya belirtilen web sitesinden indirilecek mobil uygulamada elektronik olarak doldurulan başvuru formu üzerinden verilir. E-vize başvurusu Rusya Federasyonu'na t"},"Belarus":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili Türk vatandaşları 30 gün süreyle vizeden muaftır. Toplam kalış süresi ilk giriş tarihinden itibaren 1 yıl içerisinde 90 günü geçemez."},"Moldova":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Vatikan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"Andorra":{"b":"?","y":"?","t":"Schengen bölgesine dahil olmayan Andorra’ya doğrudan seyahat imkanı bulunmamakta olup, ülkeye giriş İspanya ya da Fransa üzerinden yapılabilmektedir. Bu çerçevede, vatandaşlarımızın Andorra’ya seyahat edebilmek için çift girişli veya müteaddit girişli Schengen vizesi alması gerekmektedir."},"Monako":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Monako’ya seyahat etmek isteyen vatandaşlarımızın vize başvurularını, resmi ikametleri başka bir ülkede bulunmadığı takdirde, Türkiye’deki Fransa Büyükelçiliği veya Başkonsolosluklarına yapmaları gerekmektedir."},"San Marino":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. (Vatikan için de geçerlidir)."},"BAE":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır."},"Suudi Arabistan":{"b":"tabi","y":"?","t":"Umuma mahsus ve resmi pasaport hamili vatandaşlarımız vizeye tabi olup, turistik amaçlı e-vizelerini “https://visa.visitsaudi.com (https://visa.visitsaudi.com) ” internet adresinden, Suudi Arabistan'a varışlarında havalimanlarında bulunan e-vize kabinlerinden veya anılan ülkenin Türkiye'de mukim temsilciliklerinden “365 günde 90 gün” kalış süreli “tek girişli” veya “çok girişli” olarak alabileceklerdir. Bahsekonu e-vizeler Hac ziyaretlerini kapsamamaktadır (menfi). Hac döneminde, e-vizeyle yalnızca kutsal bölgeler haricindeki şehirlere turistik ziyaret mümkün olabilecektir. 2025 yılı Hac dönem"},"Katar":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Bahreyn":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 30 gün süreli vizelerini Bahreyn’e seyahatlerinden önce e-vize olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Kuveyt":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, 90 gün süreli vizelerini sınır kapılarında ücretsiz olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri 180 günde 90 gün süreyle vizeden muaftır."},"Umman":{"b":"muaf","y":"muaf","t":"Diplomatik, hizmet ve hususî pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma mahsus pasaport hamilleri her 180 günde 90 günü aşmamak kaydıyla her ziyarette 30 gün süreyle vizeden muaftır."},"Ürdün":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Lübnan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Lübnan’da göreve atanan Diplomatik, Hizmet ve Hususi Pasaport hamilleri görevleri müddetince, vizeden muaftır."},"İsrail":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Filistin":{"b":"?","y":"?","t":"Vatandaşlarımıza vize uygulanmamaktadır. Filistin’e seyahat edecek Türkiye Cumhuriyeti vatandaşlarının İsrail vizesi almaları gerekmektedir (Mısır üzerinden Gazze Şeridi’ne girecek vatandaşlarımız hariç)."},"Mısır":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar seyahatlerinde vizeden muaftır. Mısır’a seyahat eden vatandaşlarımız sınır kapılarında vize alabilmektedirler."},"İran":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Irak":{"b":"muaf","y":"muaf","t":"15 yaşından küçük ve 50 yaşından büyük umuma mahsus pasaport hamilleri 30 gün süreyle vizeden muaftır. 15-50 yaş arasındaki umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususî pasaport hamilleri her 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Çin Halk Cumhuriyeti":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hizmet ve hususi pasaport hamilleri 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Turistik grup vizesi alarak Çin’e seyahat eden vatandaşlarımıza Çin Halk Cumhuriyeti konsoloslukları tarafından biri Çin’e girişte, diğeri ise çıkışta ibraz edilmek üzere 2 adet grup vize belgesi verilmektedir. Ülkeye girişte veya çıkışta sorun yaşanmaması için belgelerin girişte ve çıkışta ibraz edilmesi gerekmektedir. Buna ilaveten, grup vizesiyle seyahat edenlerin Çin’e girişte ve çıkışta birlikte hareket etmeleri beklenmekte, çok acil d"},"Hong Kong":{"b":"muaf","y":"muaf","t":"Pasaport geçerlilik süresi en az 6 ay olan umuma mahsus pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları turistik veya iş görüşmesi amaçlı seyahatlerinde vizeden muaftır. Pasaport geçerlilik süresi en az 6 ay olan diplomatik, hizmet ve hususi pasaport hamili Türk vatandaşları, Hong Kong Özel İdare Bölgesi’ne 90 güne kadar yapacakları seyahatlerinde vizeden muaftır"},"Tayvan":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaportlar vizeye tabidir. Diplomatik ve hizmet pasaportu hamili vatandaşlarımızın basılı (kağıt) vize almaları gerekmektedir. Umuma mahsus ve hususî pasaport hamili vatandaşlarımızın 30 güne kadar ikamet süreli tek girişli vizelerini e-vize olarak (ücretsiz) almaları mümkündür. Havalimanında (varışta) vize uygulaması 15 Ocak 2026 tarihi itibarıyla sona ermiştir."},"Japonya":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Güney Kore":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Öte yandan, vatandaşlarımızın Kore'ye seyahatleri öncesinde Elektronik Seyahat Yetkilendirme (k-eta) kaydını www.k-eta.go.kr (http://www.k-eta.go.kr) internet adresinden başvuru yaparak tamamlamaları gerekmektedir."},"Hindistan":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tayland":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 60 güne kadar vizeden muaftır. Diplomatik, Hizmet, Hususi Pasaport Hamilleri ise 90 güne kadar vizeden muaftır. Diplomatlar ve resmi görevliler de dahil olmak üzere, Tayland'a seyahat edecek tüm vatandaşların, varış tarihlerinden 3 gün önce https://tdac.immigration.go.th (https://tdac.immigration.go.th/) linki üzerinden \"Tayland Dijital Varış Kartı\"nı doldurmaları gerekmektedir."},"Vietnam":{"b":"tabi","y":"muaf","t":"Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamilleri vizeye tabidir."},"Singapur":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususî ve diplomatik pasaport hamili vatandaşlarımız vizeden muaftır. Singapur’a ilk girişte 30 gün kalış imkanı sağlanmakta, başvuru üzerine onay alınması halinde kalış süresi 90 güne kadar uzatılabilmektedir."},"Malezya":{"b":"?","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımıza ülkeye girişlerinde 90 gün ikamet süreli turistik amaçlı giriş vizesi ücretsiz olarak tatbik edilmektedir. Hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Endonezya":{"b":"muaf","y":"muaf","t":"Diplomatik, hususî ve hizmet ve umuma mahsus pasaport hamili vatandaşlarımız 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Endonezya'ya gidecek bütün yolcuların 1 Ekim 2025 tarihinden itibaren https://allindonesia.imigrasi.go.id (https://allindonesia.imigrasi.go.id) websitesi üzerinden varış tarihinden en fazla 3 gün içerisinde (Endonezya’ya varmadan önceki 72 saat içinde) bildirimde bulunmaları ve sistem üzerinden kendilerine iletilen QR kodu ülkeye girişte sınır birimlerine ibraz etmeleri gerekmektedir."},"Filipinler":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet Pasaportu hamili Türk vatandaşları 30 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Sri Lanka":{"b":"tabi","y":"tabi","t":"Diplomatik, hizmet, hususi ve umuma mahsus pasaport hamilleri vizeye tabi olup, turistik amaçlı seyahatlerinde vizelerini www.eta.gov.lk (http://www.eta.gov.lk/slvisa/) internet adresinden veya ülkeye girişte sınır kapılarında alabilmektedirler. Vatandaşlarımız 25 Mayıs 2026 tarihi itibarıyla 30 gün süreli turistik amaçlı vizelerini Sri Lanka’ya varıştan önce https://eta.gov.lk (https://eta.gov.lk/) internet adresinden ücretsiz olarak alabilmektedirler."},"Nepal":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabi olup, vizelerini sınır kapılarında alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Pakistan":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeden muaftır."},"Bangladeş":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamilleri her 180 günde 90 gün süreyle vizeden muaftır."},"Maldivler":{"b":"tabi","y":"?","t":"Umuma Mahsus Pasaport hamili vatandaşlarımız vizeye tabi olup, 30 gün süreli vizelerini sınır kapılarından harçsız olarak alabilmektedirler. Hizmet, hususi ve diplomatik pasaport hamilleri de 30 güne kadar seyahatlerinde vizelerini sınır kapılarından harçsız olarak alabilmektedirler."},"Kazakistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamili vatandaşlarımız her 180 günde 90 günü aşmamak kaydıyla vizeden muaftır."},"Özbekistan":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport Hamilleri 30 gün süreyle vizeden muaftır. Hususi ve Hizmet Pasaportu Hamilleri 30 gün süreyle vizeden muaftır. Diplomatik Pasaport hamilleri vizeden muaftır. ''3 günden fazla bir süre için Özbekistan’da kalacak yabancıların yerleşik uygulamalar çerçevesinde 3 gün içerisinde kaldıkları otelden geçici ikamet belgesi almaları, meskende konaklanacaksa 3 gün içerisinde geçici ikamet kaydı yaptırmaları ve sözkonusu belgeleri Özbekistan’dan ayrılırken ibraz etmeleri gerekmektedir. Aksi takdirde kural ihlali yapanlara para cezası uygulanmaktadır.''"},"Kırgızistan":{"b":"muaf","y":"?","t":"Umuma mahsus ve resmi pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Tacikistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamili vatandaşlarımız vizeye tabidir. Hususî ve hizmet pasaportu hamili vatandaşlarımız 60 gün, diplomatik pasaport hamili vatandaşlarımız ise 90 gün süreyle vizeden muaftır."},"Türkmenistan":{"b":"tabi","y":"muaf","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, resmi ziyaretler için pasaport örnekleri ile birlikte, geliş amacına ilişkin Büyükelçiliğimizce bildirim yapılması kaydıyla Türkmenistan'a kabul edilmektedirler. Ülkede 3 günden fazla kalınması durumunda, Türkmenistan makamlarına ikamet kaydı yaptırılması zorunludur. Hizmet, Hususi ve Diplomatik pasaport hamili vatandaşlarımız 30 güne kadar vizeden muaf olmakla birlikte, özel ziyaretleri için, Türkmenistan'da bulunan yakınları/tanıdıkları tar"},"Azerbaycan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 güne kadar vizeden muaftır. Vatandaşlarımız turistik amaçlı seyahatlerinde, doğrudan ülkemizden Azerbaycan’a seyahat etmek koşuluyla, kimlik kartlarıyla da giriş yapabilmektedirler."},"Gürcistan":{"b":"muaf","y":"muaf","t":"Umuma mahsus, diplomatik, hizmet ve hususî pasaport hamili vatandaşlarımız bir yıla kadar seyahatlerinde vizeden muaftırlar. Vatandaşlarımızın geçerli yeni tip kimlik kartıyla da Gürcistan’a vizesiz olarak seyahat edebilmeleri mümkündür. 1 Ocak 2026 tarihi itibariyle Gürcistan’a umuma mahsus pasaportla veya kimlik kartıyla seyahat edecek vatandaşlarımızın zorunlu seyahat (sağlık ve kaza) sigortası yaptırmaları gerekmektedir. Gürcistan’da bulunan veya yabancı bir sigorta şirketi tarafından düzenlenebilecek, Gürcistan'daki kalış süresinin tamamını (hem giriş hem çıkış tarihlerini) kapsayan ve en"},"Ermenistan":{"b":"tabi","y":"tabi","t":"Umuma mahsus pasaport hamilleri vizeye tabidir. Umuma mahsus pasaport hamili vatandaşlarımızın Ermenistan’a seyahatleri öncesinde vize veya elektronik vize almaları gerekmektedir. Diplomatik, hususî ve hizmet pasaportu hamilleri vizeye tabidir. Diplomatik, hususî ve hizmet pasaportu hamili vatandaşlarımız 1 Ocak 2026 tarihi itibariyle 21 gün ikamet süreli elektronik vizeyle Ermenistan’a seyahat edebilmektedirler."},"Amerika Birleşik Devletleri":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hizmet, Hususi ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Kanada":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri vizeye tabidir."},"Meksika":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hususî ve hizmet pasaportu hamili vatandaşlarımız vizeye tabidir. Diplomatik pasaport hamili vatandaşlarımız ise vizeden muaftır. Turizm, iş, eğitim, gazetecilik veya transit geçiş gibi nedenlerle Meksika'ya seyahat edecek umuma mahsus pasaport hamili Türk vatandaşları, havayoluyla seyahat etmek kaydıyla 30 gün geçerli tek girişli e-vizelerini https://www.inm.gob.mx/sae/publico/tr/solicitud.html (https://www.inm.gob.mx/sae/publico/tr/solicitud.html) adresi üzerinden alabilmektedir. E-vize imkânından sadece umuma mahsus pasaport hamili vatandaşlarımız yararlanabilmekte olup, buna "},"Brezilya":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Arjantin":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Şili":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Peru":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır. Hizmet, Hususi ve Diplomatik Pasaport hamilleri 180 gün içinde 90 günü aşmamak kaydıyla, anılan ülkeye yapacakları seyahatlerinde vizeden muaftır."},"Kolombiya":{"b":"muaf","y":"muaf","t":"Umuma mahsus pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Diplomatik, Hususi ve Hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Küba":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Diplomatik, Hizmet ve Hususi Pasaport hamilleri ise, anılan ülkeye yapacakları 90 güne kadar olan seyahatlerinde vizeden muaftır. Küba’ya seyahat etmeden en fazla 48 saat önce https://dviajeros.mitrans.gob.cu/inicio (https://dviajeros.mitrans.gob.cu/inicio) internet adresinde yer alan formun doldurulması ve otomatik olarak oluşturulacak QR kodunun ilgili havayolu ve sınır kapısındaki görevlilere basılı halde veya elektronik formatta gösterilmesi gerekmektedir."},"Panama":{"b":"muaf","y":"muaf","t":"Diplomatik, Hizmet ve Hususi ve Umuma Mahsus Pasaport hamilleri 3 aylık bir süre için vizeden muaf bulunmaktadırlar."},"Fas":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 gün süreyle vizeden muaftır. Hususi, Hizmet ve Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Tunus":{"b":"muaf","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri 90 güne kadar vizeden muaftır. Diplomatik, Hizmet ve Hususi Pasaport hamilleri 90 güne kadar vizeden muaftır."},"Cezayir":{"b":"tabi","y":"muaf","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri anılan ülkeye yapacakları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Güney Afrika":{"b":"?","y":"muaf","t":"Diplomatik Pasaport, Hususi Pasaport ve Hizmet Pasaportu hamili vatandaşlarımız 30 güne kadar vizeden muaftır. Umuma Mahsus Pasaport hamili vatandaşlarımız 30 güne kadar süreli vizelerini sınır kapılarından kaşe tatbiki şeklinde ve harçsız olarak alabilmektedir."},"Kenya":{"b":"?","y":"muaf","t":"Kenya’nın 2024 yılında getirdiği Elektronik Seyahat Yetkilendirme Sistemi kapsamında, Umuma Mahsus Pasaport hamili vatandaşlarımızın Kenya’yı ziyaretleri öncesinde \"www.etakenya.go.ke (http://www.etakenya.go.ke/) \" adresinden başvuru yapmaları gerekmekte olup bu başvurular ücrete tabidir. Diplomatik, Hususi ve Hizmet Pasaportu hamili vatandaşlarımız ise Kenya'yı ziyaretlerinde 90 gün süreyle ETA sisteminden muaftır."},"Tanzanya":{"b":"tabi","y":"muaf","t":"Diplomatik, hususi ve hizmet pasaportu hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır. Umuma mahsus pasaport hamili Türk vatandaşları ise vizeye tabidir. Tanzanya'ya seyahat edecek olan umuma mahsus pasaport hamili vatandaşlarımız \"visa.immigration.go.tz (http://www.immigration.go.tz) \" internet adresinden elektronik vize veya sınır kapılarında vize alabilmektedirler."},"Etiyopya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları ise vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Nijerya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi ve Hizmet Pasaportu Hamilleri vizeye tabidir. Diplomatik Pasaport hamilleri 90 gün süreyle vizeden muaftır."},"Senegal":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamili Türk vatandaşları vizeye tabidir. Hususi ve Hizmet Pasaportu hamili Türk vatandaşları vizeye tabidir. Diplomatik Pasaport hamili Türk vatandaşları, 90 güne kadar ikamet süreli seyahatlerinde vizeden muaftır."},"Avustralya":{"b":"tabi","y":"tabi","t":"Umuma Mahsus Pasaport hamilleri vizeye tabidir. Hususi, Hizmet ve Diplomatik Pasaport hamilleri vizeye tabidir."},"Yeni Zelanda":{"b":"tabi","y":"tabi","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri vizeye tabidir."},"Fiji":{"b":"muaf","y":"muaf","t":"Umuma mahsus, hizmet, hususi ve diplomatik pasaport hamilleri 90 gün süreyle vizeden muaftır."}};
 
+// ===== Vize maliyet kalemleri (kategori bazlı) =====
+const VISA_COST_CATEGORIES = [
+  { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
+  { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
+  { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
+  { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
+  { id: 'uae', label: 'BAE', icon: '🇦🇪' },
+  { id: 'china', label: 'Çin', icon: '🇨🇳' },
+  { id: 'other', label: 'Diğer', icon: '🌍' }
+];
+const DEFAULT_VISA_COST_ITEMS = [
+  { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
+  { key: 'araci', label: 'Aracı Hizmet Bedeli' },
+  { key: 'sigorta', label: 'Sigorta' },
+  { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
+  { key: 'koordinasyon', label: 'Koordinasyon' },
+  { key: 'sms', label: 'SMS' },
+  { key: 'kargo', label: 'Kargo' },
+  { key: 'kdv', label: 'KDV' },
+  { key: 'diger', label: 'Diğer' }
+];
+// visaCostItems iki biçimde olabilir: eski düz dizi [...] veya kategori bazlı { schengen: [...], usa: [...] }
+const getVisaCostItems = (appSettings, category) => {
+  const raw = appSettings?.visaCostItems;
+  if (Array.isArray(raw)) return raw.length ? raw : DEFAULT_VISA_COST_ITEMS;
+  const list = raw && raw[category || 'schengen'];
+  return Array.isArray(list) && list.length ? list : DEFAULT_VISA_COST_ITEMS;
+};
+// Bir başvurunun maliyetlerini para birimi bazında toplar. Kalem listesinden bağımsız olarak
+// kayıttaki tüm tutarları sayar — ayarlardan kaldırılan bir kalem kâr/zarardan düşmesin.
+const sumVisaCosts = (visa) => {
+  const cur = visa?.costCurrency || visa?.visaCurrency || visa?.currency || '€';
+  const total = Object.values(visa?.costs || {}).reduce((t, v) => t + (parseFloat(v) || 0), 0);
+  return total ? { [cur]: total } : {};
+};
+
 // ===== SÖZLEŞME: paylaşılan üreticiler (QuotesModule + ToursModule) =====
 const trTarih = (iso) => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const contractSure = (c) => {
@@ -4221,18 +4257,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       showToast?.('Export edilecek vize başvurusu yok', 'warning');
       return;
     }
-    // Ayarlardaki maliyet kalemleri (yoksa varsayılan)
-    const costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
-      ? appSettings.visaCostItems
-      : [
-          { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-          { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-          { key: 'sigorta', label: 'Sigorta' },
-          { key: 'idata', label: 'iData / VFS Hiz. Bed.' },
-          { key: 'kargo', label: 'Sms Kargo Diğer Giderler' },
-          { key: 'fuar', label: 'Fuar Giriş Bileti' },
-          { key: 'diger', label: 'Diğer' }
-        ];
+    // Tüm kategorilerdeki maliyet kalemlerinin birleşimi (anahtar bazında tekil) — her biri ayrı sütun
+    const costItems = [];
+    VISA_COST_CATEGORIES.forEach(k => getVisaCostItems(appSettings, k.id).forEach(it => {
+      if (!costItems.some(x => x.key === it.key)) costItems.push(it);
+    }));
 
     const data = visaApplications.map(v => {
       const costs = v.costs || {};
@@ -4244,8 +4273,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       costItems.forEach(f => {
         const tutar = parseFloat(costs[f.key]) || 0;
         maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCur}` : '';
-        if (tutar) toplamPB[costCur] = (toplamPB[costCur] || 0) + tutar;
       });
+      Object.assign(toplamPB, sumVisaCosts(v));
       // Ödemeler
       const odemeler = safeParseJSON(v.payments);
       const odemeToplam = {};
@@ -5000,21 +5029,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {(() => {
                 const costs = formData.costs || {};
                 const costCurrencies = formData.costCurrencies || {};
-                // Default kalemler (ayarlardan gelir, yoksa default'lar)
-                const defaultCostItems = [
-                  { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-                  { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-                  { key: 'sigorta', label: 'Sigorta' },
-                  { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-                  { key: 'koordinasyon', label: 'Koordinasyon' },
-                  { key: 'sms', label: 'SMS' },
-                  { key: 'kargo', label: 'Kargo' },
-                  { key: 'kdv', label: 'KDV' },
-                  { key: 'diger', label: 'Diğer' }
-                ];
-                const costFields = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0)
-                  ? appSettings.visaCostItems
-                  : defaultCostItems;
+                // Kalemler kategori bazlı (Ayarlar → Vize Ayarları → Maliyet Kalemleri)
+                const costFields = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
 
                 const salePrice = parseFloat(formData.visaPrice) || 0;
                 const saleCurrency = formData.visaCurrency || '€';
@@ -5115,9 +5131,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const _costs = formData.costs || {};
                 const _saleCur = formData.visaCurrency || '€';
                 const _costCur = formData.costCurrency || _saleCur;
-                const _costItems = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : [
-                  { key: 'konsolosluk' }, { key: 'araci' }, { key: 'sigorta' }, { key: 'vfs' }, { key: 'koordinasyon' }, { key: 'sms' }, { key: 'kargo' }, { key: 'kdv' }, { key: 'diger' }
-                ];
+                const _costItems = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
                 const maliyetPB = {};
                 _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
 
@@ -14341,49 +14355,47 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 }
 
 // AYARLAR MODÜLÜ
-// Kategori bazlı varsayılan vize maliyetleri ayarı (Schengen/Amerika/Rusya... ayrı)
+// Kategori bazlı vize maliyet kalemleri + varsayılan değerleri (Schengen/Amerika/Rusya... ayrı)
 function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
-  const kategoriler = [
-    { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
-    { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
-    { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
-    { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
-    { id: 'uae', label: 'BAE', icon: '🇦🇪' },
-    { id: 'china', label: 'Çin', icon: '🇨🇳' },
-    { id: 'other', label: 'Diğer', icon: '🌍' }
-  ];
+  const kategoriler = VISA_COST_CATEGORIES;
   const [aktifKat, setAktifKat] = useState('schengen');
-  const defaultItems = [
-    { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-    { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-    { key: 'sigorta', label: 'Sigorta' },
-    { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-    { key: 'koordinasyon', label: 'Koordinasyon' },
-    { key: 'sms', label: 'SMS' },
-    { key: 'kargo', label: 'Kargo' },
-    { key: 'kdv', label: 'KDV' },
-    { key: 'diger', label: 'Diğer' }
-  ];
-  const items = (appSettings?.visaCostItems && appSettings.visaCostItems.length > 0) ? appSettings.visaCostItems : defaultItems;
-  // visaCostDefaults artık kategori bazlı: { schengen: {...}, usa: {...} }
+  const [yeniKalem, setYeniKalem] = useState('');
+  const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+  // Kategori bazlı kalemler. Eski düz dizi varsa ilk düzenlemede tüm kategorilere kopyalanır (geriye uyum).
+  const rawItems = appSettings?.visaCostItems;
+  const eskiDuz = Array.isArray(rawItems) ? rawItems : null;
+  const katItemsAll = (rawItems && !Array.isArray(rawItems)) ? rawItems : {};
+  const items = getVisaCostItems(appSettings, aktifKat);
+
   const tumDefs = appSettings?.visaCostDefaults || {};
   const tumCur = appSettings?.visaCostDefaultCurrency || {};
   const katDefs = tumDefs[aktifKat] || {};
   const katCur = tumCur[aktifKat] || '€';
 
-  const setKatDeger = (key, val) => {
-    setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
+  const setKatItems = (yeni) => {
+    const base = eskiDuz ? Object.fromEntries(kategoriler.map(k => [k.id, [...eskiDuz]])) : { ...katItemsAll };
+    base[aktifKat] = yeni;
+    setAppSettings({ ...appSettings, visaCostItems: base });
   };
-  const setKatCur = (cur) => {
-    setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+  const setKatDeger = (key, val) => setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
+  const setKatCur = (cur) => setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+
+  const kalemEkle = () => {
+    const label = (yeniKalem || '').trim();
+    if (!label) return;
+    let key = slugify(label) || 'kalem_' + Date.now();
+    if (items.some(it => it.key === key)) key = `${key}_${Date.now()}`;
+    setKatItems([...items, { key, label }]);
+    setYeniKalem('');
   };
+  const katAd = kategoriler.find(k => k.id === aktifKat)?.label;
 
   return (
-    <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)', marginTop: '16px' }}>
-      <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>💵 Varsayılan Maliyet Değerleri</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Her vize kategorisi için ayrı varsayılan gir. Yeni başvuruda kategori seçilince otomatik dolar, elle değiştirilebilir.</p>
+    <div style={{ background: 'rgba(16,185,129,0.06)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>💰 Vize Maliyet Kalemleri & Varsayılan Değerler</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>Her vize kategorisi için ayrı kalem listesi ve varsayılan değer. Yeni başvuruda kategori seçilince o kategorinin kalemleri + değerleri otomatik gelir.</p>
 
-      {/* Kategori sekmeleri */}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {kategoriler.map(k => (
           <button key={k.id} onClick={() => setAktifKat(k.id)} style={{
@@ -14395,9 +14407,8 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
         ))}
       </div>
 
-      {/* Seçili kategorinin para birimi */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{kategoriler.find(k => k.id === aktifKat)?.label} para birimi:</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} para birimi:</span>
         <select value={katCur} onChange={e => setKatCur(e.target.value)}
           style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
           <option value="€" style={{ background: '#0c1929' }}>€</option>
@@ -14407,18 +14418,28 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
         </select>
       </div>
 
-      {/* Kalemler */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
-        {items.map(f => (
-          <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ flex: 1, fontSize: '12px', color: '#cbd5e1' }}>{f.label}</label>
-            <input type="number" step="0.01" min="0" value={katDefs[f.key] ?? ''}
-              onChange={e => setKatDeger(f.key, e.target.value)}
-              placeholder="0"
-              style={{ width: '110px', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '6px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
-            <span style={{ fontSize: '12px', color: '#94a3b8', width: '16px' }}>{katCur}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+        {items.map((it, idx) => (
+          <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16,185,129,0.06)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <button onClick={() => { if (idx === 0) return; const n = [...items]; [n[idx-1], n[idx]] = [n[idx], n[idx-1]]; setKatItems(n); }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
+              <button onClick={() => { if (idx === items.length-1) return; const n = [...items]; [n[idx], n[idx+1]] = [n[idx+1], n[idx]]; setKatItems(n); }} disabled={idx === items.length-1} style={{ background: 'none', border: 'none', color: idx === items.length-1 ? '#475569' : '#94a3b8', cursor: idx === items.length-1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
+            </div>
+            <input type="text" value={it.label} onChange={e => { const n = [...items]; n[idx] = { ...it, label: e.target.value }; setKatItems(n); }}
+              style={{ flex: 1, minWidth: 0, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
+            <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
+              style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+            <span style={{ fontSize: '11px', color: '#94a3b8', width: '14px', flexShrink: 0 }}>{katCur}</span>
+            <button onClick={() => { if (!window.confirm(`"${it.label}" kalemini ${katAd} kategorisinden silmek istiyor musun?`)) return; setKatItems(items.filter((_, i) => i !== idx)); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}>🗑️</button>
           </div>
         ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input type="text" value={yeniKalem} onChange={e => setYeniKalem(e.target.value)} placeholder={`${katAd} için yeni kalem (örn: Vize Sigortası)`}
+          onKeyDown={e => { if (e.key === 'Enter') kalemEkle(); }}
+          style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
+        <button onClick={kalemEkle} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
       </div>
     </div>
   );
@@ -14437,7 +14458,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [newVisaStatus, setNewVisaStatus] = useState('');
   const [newSector, setNewSector] = useState('');
   const [newHotelRoomType, setNewHotelRoomType] = useState('');
-  const [newCostItem, setNewCostItem] = useState('');
   const [newDuration, setNewDuration] = useState({ category: 'usa', value: '', price: 0, currency: '€' });
   const [newRoomType, setNewRoomType] = useState('');
 
@@ -15038,84 +15058,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             </div>
           </div>
 
-          {/* VİZE MALİYET KALEMLERİ */}
-          {(() => {
-            const defaultItems = [
-              { key: 'konsolosluk', label: 'Konsolosluk Bedeli' },
-              { key: 'araci', label: 'Aracı Hizmet Bedeli' },
-              { key: 'sigorta', label: 'Sigorta' },
-              { key: 'vfs', label: 'iData / VFS Hiz. Bed.' },
-              { key: 'koordinasyon', label: 'Koordinasyon' },
-              { key: 'sms', label: 'SMS' },
-              { key: 'kargo', label: 'Kargo' },
-              { key: 'kdv', label: 'KDV' },
-              { key: 'diger', label: 'Diğer' }
-            ];
-            const items = appSettings?.visaCostItems || defaultItems;
-            const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-            return (
-              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#ef4444' }}>💰 Vize Maliyet Kalemleri</h3>
-                <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>
-                  Yeni vize başvurusunda görünen maliyet kalemleri. Sıra önemli — listelenen sırada görünür.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                  {items.map((it, idx) => (
-                    <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <button onClick={() => {
-                          if (idx === 0) return;
-                          const newItems = [...items];
-                          [newItems[idx-1], newItems[idx]] = [newItems[idx], newItems[idx-1]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === 0} style={{ background: 'none', border: 'none', color: idx === 0 ? '#475569' : '#94a3b8', cursor: idx === 0 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▲</button>
-                        <button onClick={() => {
-                          if (idx === items.length - 1) return;
-                          const newItems = [...items];
-                          [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', color: idx === items.length - 1 ? '#475569' : '#94a3b8', cursor: idx === items.length - 1 ? 'default' : 'pointer', fontSize: '10px', lineHeight: 1, padding: 0 }}>▼</button>
-                      </div>
-                      <input type="text" value={it.label}
-                        onChange={e => {
-                          const newItems = [...items];
-                          newItems[idx] = { ...it, label: e.target.value };
-                          setAppSettings({ ...appSettings, visaCostItems: newItems });
-                        }}
-                        style={{ flex: 1, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
-                      <button onClick={() => {
-                        if (!window.confirm(`"${it.label}" kalemini silmek istiyor musun?`)) return;
-                        setAppSettings({ ...appSettings, visaCostItems: items.filter((_, i) => i !== idx) });
-                      }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input type="text" value={newCostItem || ''} onChange={e => setNewCostItem(e.target.value)}
-                    placeholder="Yeni maliyet kalemi (örn: Vize Sigortası)"
-                    onKeyPress={e => {
-                      if (e.key === 'Enter' && (newCostItem || '').trim()) {
-                        const label = newCostItem.trim();
-                        const key = slugify(label) || 'kalem_' + Date.now();
-                        setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                        setNewCostItem('');
-                      }
-                    }}
-                    style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' }} />
-                  <button onClick={() => {
-                    if ((newCostItem || '').trim()) {
-                      const label = newCostItem.trim();
-                      const key = slugify(label) || 'kalem_' + Date.now();
-                      setAppSettings({ ...appSettings, visaCostItems: [...items, { key, label }] });
-                      setNewCostItem('');
-                    }
-                  }} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Ekle</button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* VARSAYILAN MALİYET DEĞERLERİ — kategori bazlı */}
           <VarsayilanMaliyetAyari appSettings={appSettings} setAppSettings={setAppSettings} isMobile={isMobile} />
         </div>
       )}
