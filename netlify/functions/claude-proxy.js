@@ -1,6 +1,8 @@
 // netlify/functions/claude-proxy.js
 // Claude API'yi sunucu tarafında çağırır, API key'i tarayıcıdan gizler
 
+const { verifyFirebaseUser } = require('./_shared/firebase-auth');
+
 // İzin verilen origin'ler (sadece kendi sitelerin)
 const ALLOWED_ORIGINS = [
   'https://paydosv.netlify.app',
@@ -21,6 +23,16 @@ const ALLOWED_MODELS = [
   'claude-haiku-4-5-20251001'
 ];
 
+// Netlify önizleme adresleri (deploy-preview-N-- ve commit hash'li adresler)
+const PREVIEW_ORIGIN_RE = /^https:\/\/[a-z0-9-]+--paydosv\.netlify\.app$/;
+const isAllowedOrigin = (o) => ALLOWED_ORIGINS.includes(o) || PREVIEW_ORIGIN_RE.test(o);
+
+// Girişsiz istekler (DS-160 müşteri formu) sadece belge okuma için: tek mesaj, görsel/PDF içermeli,
+// küçük model ve düşük token. Aksi halde fonksiyon, API anahtarınızı herkese açan bir röle olurdu.
+const ANON_MODELS = ['claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-haiku-4-5-20251001'];
+const ANON_MAX_TOKENS = 1000;
+const ANON_RATE_LIMIT = 10; // dakikada istek (IP başına)
+
 const MAX_TOKENS_CAP = 2000; // max_tokens üst limit
 const MAX_BODY_SIZE = 6 * 1024 * 1024; // 6MB (pasaport görseli için yeterli)
 
@@ -29,11 +41,11 @@ const rateLimitMap = new Map();
 const RATE_LIMIT = 30; // dakikada istek
 const WINDOW_MS = 60 * 1000;
 
-const checkRateLimit = (ip) => {
+const checkRateLimit = (ip, limit = RATE_LIMIT) => {
   const now = Date.now();
   const entries = rateLimitMap.get(ip) || [];
   const recent = entries.filter(t => now - t < WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) return false;
+  if (recent.length >= limit) return false;
   recent.push(now);
   rateLimitMap.set(ip, recent);
   // Cleanup: çok büyürse temizle
@@ -47,10 +59,10 @@ const checkRateLimit = (ip) => {
 
 const buildHeaders = (origin) => {
   // Origin allowlist kontrolü
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const allowedOrigin = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin'
   };
@@ -66,7 +78,7 @@ exports.handler = async (event) => {
   }
 
   // Origin kontrolü - izin verilmeyen origin'leri reddet
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+  if (origin && !isAllowedOrigin(origin)) {
     return {
       statusCode: 403,
       headers,
@@ -96,11 +108,15 @@ exports.handler = async (event) => {
     };
   }
 
+  // Giriş yapmış CRM kullanıcısı mı?
+  const authedUser = await verifyFirebaseUser(event);
+
   // Rate limit
-  const ip = event.headers['x-forwarded-for']?.split(',')[0]?.trim()
+  const ip = event.headers['x-nf-client-connection-ip']
+          || event.headers['x-forwarded-for']?.split(',')[0]?.trim()
           || event.headers['client-ip']
           || 'unknown';
-  if (!checkRateLimit(ip)) {
+  if (!checkRateLimit(authedUser ? `u:${authedUser}` : `ip:${ip}`, authedUser ? RATE_LIMIT : ANON_RATE_LIMIT)) {
     return {
       statusCode: 429,
       headers,
@@ -154,6 +170,20 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({ error: 'Maksimum 20 mesaj kabul edilir' })
     };
+  }
+
+  if (!authedUser) {
+    const content = body.messages[0] && body.messages[0].content;
+    const hasDoc = Array.isArray(content) && content.some(c => c && (c.type === 'image' || c.type === 'document'));
+    if (body.messages.length !== 1 || !hasDoc || !ANON_MODELS.includes(body.model)) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Bu işlem için CRM girişi gerekli' })
+      };
+    }
+    // Sadece temel alanlar — system/tools vb. girişsiz kullanılamaz
+    body = { model: body.model, max_tokens: Math.min(body.max_tokens, ANON_MAX_TOKENS), messages: body.messages };
   }
 
   try {
