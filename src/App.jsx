@@ -7,19 +7,27 @@ import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnap
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
-import { DEJAVU_TR_B64 } from './dejavuFont';
+import { DEJAVU_TR_B64, DEJAVU_TR_BOLD_B64 } from './dejavuFont';
 
-// jsPDF'e Türkçe destekli font (DejaVu Sans subset) ekler ve aktif eder.
-// Türkçe karakter (ş/ğ/İ/ı/ç/ö/ü) içeren text PDF'lerde çağrılmalı.
-let _dejavuLoaded = false;
+// jsPDF'e Türkçe destekli font (DejaVu Sans alt kümesi, normal + kalın) ekler ve aktif eder.
+// Başarılıysa true döner; o durumda metinler Türkçe karakterleriyle olduğu gibi yazılabilir.
 const enableTurkishFont = (doc) => {
   try {
     doc.addFileToVFS('DejaVuSans-TR.ttf', DEJAVU_TR_B64);
     doc.addFont('DejaVuSans-TR.ttf', 'DejaVuTR', 'normal');
+    doc.addFileToVFS('DejaVuSans-TR-Bold.ttf', DEJAVU_TR_BOLD_B64);
+    doc.addFont('DejaVuSans-TR-Bold.ttf', 'DejaVuTR', 'bold');
     doc.setFont('DejaVuTR', 'normal');
     return true;
   } catch (e) { console.warn('Türkçe font yüklenemedi:', e.message); return false; }
 };
+// Font yüklenemezse yedek: Türkçe karakterleri ASCII'ye indirger (standart PDF fontları desteklemez)
+const asciiTr = (text) => (text == null ? '' : String(text))
+  .replace(/ı/g, 'i').replace(/İ/g, 'I').replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+  .replace(/ü/g, 'u').replace(/Ü/g, 'U').replace(/ş/g, 's').replace(/Ş/g, 'S')
+  .replace(/ö/g, 'o').replace(/Ö/g, 'O').replace(/ç/g, 'c').replace(/Ç/g, 'C');
+// Yeni bir jsPDF belgesi için Türkçe fontu açar ve uygun metin dönüştürücüyü döner
+const pdfText = (doc) => enableTurkishFont(doc) ? (t) => (t == null ? '' : String(t)) : asciiTr;
 
 // html2canvas'ı CDN'den yükle (global — tüm modüller kullanır)
 const loadHtml2Canvas = () => new Promise((resolve, reject) => {
@@ -6139,6 +6147,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
   const generateTourVoucher = (tour, hi, room, roomNo, returnDoc = false) => {
     const doc = new jsPDF();
+    const T = pdfText(doc);
     const fmtEN = (d) => {
       if (!d) return '-';
       const dt = new Date(d);
@@ -6159,8 +6168,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.text('Paydos Tur', 20, 20);
     doc.setFontSize(8); doc.setTextColor(100);
     doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
-    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
-    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
+    doc.text(T('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 20, 30);
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${T(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
 
     doc.setFontSize(20); doc.setTextColor(40);
     doc.text('HOTEL VOUCHER', 195, 22, { align: 'right' });
@@ -6176,18 +6185,18 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.setFontSize(9); doc.setTextColor(220, 53, 69);
     doc.text('HOTEL DETAILS', 24, 51);
     doc.setFontSize(14); doc.setTextColor(40);
-    doc.text(ascii(hi.name || tour.name || ''), 24, 58);
+    doc.text(T(hi.name || tour.name || ''), 24, 58);
     doc.setFontSize(9); doc.setTextColor(80);
-    if (hi.address) doc.text(`Address: ${ascii(hi.address)}`, 24, 64);
-    const loc = `${ascii(hi.city || '')}${hi.country ? ', ' + ascii(hi.country) : ''}`;
+    if (hi.address) doc.text(`Address: ${T(hi.address)}`, 24, 64);
+    const loc = `${T(hi.city || '')}${hi.country ? ', ' + T(hi.country) : ''}`;
     if (loc.trim()) doc.text(`Location: ${loc}`, 24, 69);
-    if (hi.phone) doc.text(`Phone: ${ascii(hi.phone)}`, 24, 74);
+    if (hi.phone) doc.text(`Phone: ${T(hi.phone)}`, 24, 74);
     const resCode = hi.bookingCode || '';
     if (resCode) {
       doc.setFillColor(220, 53, 69); doc.rect(135, 53, 58, 9, 'F');
       doc.setFontSize(7); doc.setTextColor(255,255,255);
       doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
-      doc.setFontSize(10); doc.text(ascii(resCode), 164, 61, { align: 'center' });
+      doc.setFontSize(10); doc.text(T(resCode), 164, 61, { align: 'center' });
     }
 
     // GUEST DETAILS (oda misafirleri)
@@ -6198,7 +6207,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     yPos += 8;
     doc.setFontSize(11); doc.setTextColor(40);
     room.forEach((g, i) => {
-      doc.text(`${i+1}. ${ascii(g.customerName || '')}`, 24, yPos);
+      doc.text(`${i+1}. ${T(g.customerName || '')}`, 24, yPos);
       yPos += 6;
     });
     yPos += 4;
@@ -6212,7 +6221,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     const roomType = room[0]?.roomType || hi.roomType || 'Standard';
     doc.text(`Check-in:  ${fmtEN(checkIn)}`, 24, yPos); yPos += 6;
     doc.text(`Check-out: ${fmtEN(checkOut)}`, 24, yPos); yPos += 6;
-    doc.text(`Nights: ${nights}   |   Room Type: ${ascii(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
+    doc.text(`Nights: ${nights}   |   Room Type: ${T(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
     doc.text(`Meal Plan: ${mealPlan(hi.concept)}`, 24, yPos); yPos += 10;
 
     // PAID damgası
@@ -6258,8 +6267,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.setFontSize(8); doc.setTextColor(80);
     doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
     doc.setTextColor(120);
-    doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
-    doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
+    doc.text(T('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
+    doc.text(`Tel: +90 258 263 71 76 | Email: ${T(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
     doc.setTextColor(150);
     doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
@@ -8682,17 +8691,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     try {
       const doc = new jsPDF();
       
-      // Türkçe karakter çevirme fonksiyonu
-      const toTurkishChars = (text) => {
-        if (!text) return '';
-        return text
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      // Türkçe font (DejaVu) — yüklenemezse ASCII'ye düşer
+      const toTurkishChars = pdfText(doc);
       
       // Logo ve Başlık
       doc.setFontSize(20);
@@ -8701,14 +8701,14 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-    doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(toTurkishChars('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(toTurkishChars('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+    doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
     
     // Teklif/Proforma Başlık
     doc.setFontSize(24);
     doc.setTextColor(220, 53, 69);
-    doc.text(quote.type === 'teklif' ? 'TEKLIF' : 'PROFORMA FATURA', 150, 20);
+    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 150, 20);
     
     doc.setFontSize(10);
     doc.setTextColor(100);
@@ -8717,16 +8717,16 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Bilgiler
     doc.setFontSize(10);
     doc.setTextColor(60);
-    doc.text('TARIH', 20, 50);
-    doc.text('OPSIYON TARIHI', 70, 50);
-    doc.text('PARA BIRIMI', 120, 50);
+    doc.text(toTurkishChars('TARİH'), 20, 50);
+    doc.text(toTurkishChars('OPSİYON TARİHİ'), 70, 50);
+    doc.text(toTurkishChars('PARA BİRİMİ'), 120, 50);
     doc.text('HAZIRLAYAN', 150, 50);
     
     doc.setTextColor(0);
     doc.text(new Date(quote.createdAt).toLocaleDateString('tr-TR'), 20, 56);
     doc.text(quote.optionDate ? new Date(quote.optionDate).toLocaleDateString('tr-TR') : '-', 70, 56);
     doc.text(quote.currency, 120, 56);
-    doc.text(toTurkishChars(quote.createdBy || 'Onder Tasci'), 150, 56);
+    doc.text(toTurkishChars(quote.createdBy || 'Önder Taşçı'), 150, 56);
     
     // Konu
     doc.setTextColor(60);
@@ -8737,7 +8737,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Müşteri Bilgileri
     doc.setFontSize(12);
     doc.setTextColor(220, 53, 69);
-    doc.text('MUSTERI BILGILERI', 20, 85);
+    doc.text(toTurkishChars('MÜŞTERİ BİLGİLERİ'), 20, 85);
     
     doc.setFontSize(10);
     doc.setTextColor(60);
@@ -8745,7 +8745,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     if (quote.type === 'proforma') {
       doc.text('Vergi Dairesi', 110, 93);
     } else {
-      doc.text('Yetkili Kisi', 110, 93);
+      doc.text(toTurkishChars('Yetkili Kişi'), 110, 93);
     }
     
     doc.setTextColor(0);
@@ -8757,13 +8757,13 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.text('E-posta', 110, 107);
     
     doc.setTextColor(0);
-    doc.text(quote.customer.phone || '-', 20, 113);
-    doc.text(quote.customer.email || '-', 110, 113);
+    doc.text(String(quote.customer.phone || '-'), 20, 113);
+    doc.text(String(quote.customer.email || '-'), 110, 113);
     
     // Hizmet Kalemleri Tablosu
     doc.setFontSize(12);
     doc.setTextColor(220, 53, 69);
-    doc.text('HIZMET KALEMLERI', 20, 126);
+    doc.text(toTurkishChars('HİZMET KALEMLERİ'), 20, 126);
     
     
     // Manuel tablo çizimi (autoTable yerine)
@@ -8774,10 +8774,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.rect(20, currentY, 170, 8, 'F');
     doc.setFontSize(9);
     doc.setTextColor(255);
-    doc.text('HIZMET', 22, currentY + 5);
-    doc.text('ACIKLAMA', 62, currentY + 5);
+    doc.text(toTurkishChars('HİZMET'), 22, currentY + 5);
+    doc.text(toTurkishChars('AÇIKLAMA'), 62, currentY + 5);
     doc.text('ADET', 125, currentY + 5);
-    doc.text('BIRIM', 145, currentY + 5);
+    doc.text(toTurkishChars('BİRİM'), 145, currentY + 5);
     doc.text('TOPLAM', 170, currentY + 5);
     currentY += 8;
     
@@ -8788,8 +8788,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
         doc.setFillColor(245, 245, 245);
         doc.rect(20, currentY, 170, 7, 'F');
       }
-      doc.text(toTurkishChars(item.service.substring(0, 15)), 22, currentY + 5);
-      doc.text(toTurkishChars(item.description.substring(0, 25)), 62, currentY + 5);
+      doc.text(toTurkishChars(String(item.service || '').substring(0, 15)), 22, currentY + 5);
+      doc.text(toTurkishChars(String(item.description || '').substring(0, 25)), 62, currentY + 5);
       doc.text(item.quantity.toString(), 130, currentY + 5);
       doc.text(item.unitPrice.toFixed(2), 150, currentY + 5);
       doc.text((item.quantity * item.unitPrice).toFixed(2), 175, currentY + 5);
@@ -8814,7 +8814,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     
     if (quote.discount > 0) {
       doc.setTextColor(60);
-      doc.text('Indirim:', 130, finalY + (quote.vatIncluded ? 12 : 6));
+      doc.text(toTurkishChars('İndirim:'), 130, finalY + (quote.vatIncluded ? 12 : 6));
       doc.setTextColor(0);
       doc.text(`-${quote.discount.toFixed(2)} ${quote.currency}`, 180, finalY + (quote.vatIncluded ? 12 : 6), { align: 'right' });
     }
@@ -8833,13 +8833,13 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       const bankY = totalY + 15;
       doc.setFontSize(11);
       doc.setTextColor(220, 53, 69);
-      doc.text('BANKA BILGILERI', 20, bankY);
+      doc.text(toTurkishChars('BANKA BİLGİLERİ'), 20, bankY);
       
       doc.setFontSize(9);
       doc.setTextColor(60);
       const BKq = getActiveBanks(appSettings)[0];
       doc.text(toTurkishChars(`${BKq.bankName} - ${BKq.branch} (${BKq.branchCode})`), 20, bankY + 6);
-      doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, bankY + 11);
+      doc.text(toTurkishChars('Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.'), 20, bankY + 11);
       doc.setTextColor(0);
       const qAccs = (Array.isArray(BKq.accounts) ? BKq.accounts : []).filter(a => a.iban);
       let qby = bankY + 18;
@@ -8867,9 +8867,9 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.setFontSize(8);
     doc.setTextColor(100);
     const footerText = quote.type === 'teklif' 
-      ? '• Bu teklif opsiyon tarihine kadar gecerlidir. • Fiyatlar doviz kuruna gore degisiklik gosterebilir.'
-      : 'Bu proforma fatura bilgi amaclidir ve yasal belge niteligi tasimaz.';
-    doc.text(footerText, 105, 285, { align: 'center' });
+      ? '• Bu teklif opsiyon tarihine kadar geçerlidir. • Fiyatlar döviz kuruna göre değişiklik gösterebilir.'
+      : 'Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.';
+    doc.text(toTurkishChars(footerText), 105, 285, { align: 'center' });
     doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
     
     return doc;
@@ -10760,38 +10760,38 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const generatePackageProforma = (pk) => {
     try {
       const doc = new jsPDF();
-      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const tr = pdfText(doc);
       const cur = pkgCurrency(pk);
       const curCode = cur === '€' ? 'EUR' : cur === '$' ? 'USD' : cur === '£' ? 'GBP' : cur === '₺' ? 'TRY' : 'EUR';
       doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
       doc.setFontSize(9); doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
       const now = new Date();
       const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
       doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
       doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
       doc.setDrawColor(220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8); doc.setTextColor(120);
-      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.text(tr('TARİH'), 24, 53); doc.text(tr('PARA BİRİMİ'), 90, 53); doc.text('HAZIRLAYAN', 150, 53);
       doc.setFontSize(10); doc.setTextColor(40);
-      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text(tr(pk.title || 'Seyahat Paketi'), 20, 78);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI', 20, 90); doc.line(20, 92, 195, 92);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ'), 20, 90); doc.line(20, 92, 195, 92);
       doc.setFontSize(11); doc.setTextColor(40); doc.text(tr(pk.customerName), 20, 99);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('PAKET KALEMLERI', 20, 112); doc.line(20, 114, 195, 114);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('PAKET KALEMLERİ'), 20, 112); doc.line(20, 114, 195, 114);
       doc.setFillColor(245, 245, 245); doc.rect(20, 117, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
-      doc.text('HIZMET', 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
+      doc.text(tr('HİZMET'), 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
       let y = 130, subtotal = 0;
       (pk.items || []).forEach((it, i) => {
         const amt = parseFloat(it.amount) || 0; subtotal += amt;
         if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 9, 'F'); }
         doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(tr(it.label).replace(/[^ -~]/g, '').trim().substring(0, 70) || 'Hizmet', 22, y);
+        doc.text(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, '')).trim().substring(0, 70) || tr('Hizmet'), 22, y);
         doc.text(`${amt.toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
         y += 9;
         if (y > 250) { doc.addPage(); y = 30; }
@@ -11148,43 +11148,43 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     if (!resList || !resList.length) { showToast?.('Rezervasyon seçin', 'error'); return; }
     try {
       const doc = new jsPDF();
-      const tr = (t) => { if (!t) return ''; return String(t).replace(/ı/g,'i').replace(/İ/g,'I').replace(/ğ/g,'g').replace(/Ğ/g,'G').replace(/ü/g,'u').replace(/Ü/g,'U').replace(/ş/g,'s').replace(/Ş/g,'S').replace(/ö/g,'o').replace(/Ö/g,'O').replace(/ç/g,'c').replace(/Ç/g,'C'); };
+      const tr = pdfText(doc);
       const currency = fl.currency || '€';
       const currencyCode = currency === '€' ? 'EUR' : currency === '$' ? 'USD' : currency === '£' ? 'GBP' : currency === '₺' ? 'TRY' : 'EUR';
       doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
       doc.setFontSize(9); doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
       const now = new Date();
       const pno = `PF-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
       doc.setFontSize(16); doc.setTextColor(40); doc.text('PROFORMA FATURA', 195, 22, { align: 'right' });
       doc.setFontSize(11); doc.setTextColor(220, 53, 69); doc.text(pno, 195, 30, { align: 'right' });
       doc.setDrawColor(220, 220, 220); doc.setFillColor(245, 245, 245); doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8); doc.setTextColor(120);
-      doc.text('TARIH', 24, 53); doc.text('PARA BIRIMI', 90, 53); doc.text('HAZIRLAYAN', 150, 53);
+      doc.text(tr('TARİH'), 24, 53); doc.text(tr('PARA BİRİMİ'), 90, 53); doc.text('HAZIRLAYAN', 150, 53);
       doc.setFontSize(10); doc.setTextColor(40);
-      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text('Onder Tasci', 150, 60);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
-      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Ucus Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Uçuş Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ BİLGİLERİ'), 20, 90);
       doc.line(20, 92, 195, 92);
       const firstCust = customers.find(c => String(c.id) === String(resList[0].customerId));
       doc.setFontSize(9); doc.setTextColor(120); doc.text('Firma / Ad Soyad', 20, 99);
       doc.setFontSize(11); doc.setTextColor(40);
       const baslikAd = birlesik
-        ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kisi`)
+        ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kişi`)
         : tr(resList[0].customerName);
       doc.text(baslikAd.substring(0, 55), 20, 105);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('Telefon', 20, 113);
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text(tr(resList[0].phone || firstCust?.phone || '-'), 20, 119);
-      doc.setFontSize(9); doc.setTextColor(120); doc.text('HIZMET KALEMLERI', 20, 130);
+      doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('HİZMET KALEMLERİ'), 20, 130);
       doc.line(20, 132, 195, 132);
       doc.setFillColor(245, 245, 245); doc.rect(20, 135, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
-      doc.text('YOLCU', 22, 140); doc.text('UCUS', 85, 140); doc.text('EKSTRA', 135, 140); doc.text('TUTAR', 193, 140, { align: 'right' });
+      doc.text('YOLCU', 22, 140); doc.text(tr('UÇUŞ'), 85, 140); doc.text('EKSTRA', 135, 140); doc.text('TUTAR', 193, 140, { align: 'right' });
       let y = 148, subtotal = 0;
       resList.forEach((r, i) => {
         const tot = flightResTotal(r); subtotal += tot;
@@ -11227,16 +11227,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const doc = new jsPDF();
 
       // Türkçe karakter dönüştürücü
-      const tr = (text) => {
-        if (!text) return '';
-        return String(text)
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      const tr = pdfText(doc);
 
       // Para birimi (ilk rezervasyondan)
       const currency = reservations[0].currency || '€';
@@ -11249,9 +11240,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       doc.setFontSize(9);
       doc.setTextColor(100);
-      doc.text('Paydos Turizm Ve Seyahat Acentaligi Sanayi Ve Ticaret Limited Sirketi', 20, 28);
-      doc.text('Mehmetcik Mahallesi Ulus Caddesi No: 124/1 Denizli / Turkiye', 20, 33);
-      doc.text('Tax: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
+      doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
+      doc.text(tr('Mehmetçik Mahallesi Ulus Caddesi No: 124/1 Denizli / Türkiye'), 20, 33);
+      doc.text('Vergi: Pamukkale VD 7230433632 | Tel: 0 258 263 71 76', 20, 38);
 
       // Proforma No
       const now = new Date();
@@ -11270,9 +11261,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.rect(20, 48, 175, 14, 'FD');
       doc.setFontSize(8);
       doc.setTextColor(120);
-      doc.text('TARIH', 24, 53);
-      doc.text('OPSIYON TARIHI', 70, 53);
-      doc.text('PARA BIRIMI', 120, 53);
+      doc.text(tr('TARİH'), 24, 53);
+      doc.text(tr('OPSİYON TARİHİ'), 70, 53);
+      doc.text(tr('PARA BİRİMİ'), 120, 53);
       doc.text('HAZIRLAYAN', 155, 53);
       doc.setFontSize(10);
       doc.setTextColor(40);
@@ -11280,7 +11271,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(now.toLocaleDateString('tr-TR'), 24, 60);
       doc.text(optionDate.toLocaleDateString('tr-TR'), 70, 60);
       doc.text(currencyCode, 120, 60);
-      doc.text('Onder Tasci', 155, 60);
+      doc.text(tr(currentUser?.name || 'Önder Taşçı'), 155, 60);
 
       // KONU
       doc.setFontSize(9);
@@ -11289,14 +11280,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(11);
       doc.setTextColor(40);
       const konu = reservations.length === 1
-        ? `${tr(hotel.name)} - Otel Konaklamasi`
-        : `${tr(hotel.name)} - Toplu Otel Konaklamasi (${reservations.length} rezervasyon)`;
-      doc.text(konu, 20, 78);
+        ? `${tr(hotel.name)} - Otel Konaklaması`
+        : `${tr(hotel.name)} - Toplu Otel Konaklaması (${reservations.length} rezervasyon)`;
+      doc.text(tr(konu), 20, 78);
 
       // MÜŞTERİ BİLGİLERİ
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('MUSTERI BILGILERI', 20, 90);
+      doc.text(tr('MÜŞTERİ BİLGİLERİ'), 20, 90);
       doc.setDrawColor(220, 220, 220);
       doc.line(20, 92, 195, 92);
 
@@ -11312,7 +11303,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(40);
       const custName = uniqueCustomers.length === 1
         ? tr(uniqueCustomers[0])
-        : `Cesitli (${uniqueCustomers.length} kisi)`;
+        : tr(`Çeşitli (${uniqueCustomers.length} kişi)`);
       doc.text(custName, 20, 105);
       doc.text(tr(firstCustomer?.taxOffice || '-'), 110, 105);
 
@@ -11328,7 +11319,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // HİZMET KALEMLERİ
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('HIZMET KALEMLERI', 20, 132);
+      doc.text(tr('HİZMET KALEMLERİ'), 20, 132);
       doc.line(20, 134, 195, 134);
 
       // Tablo başlığı
@@ -11336,15 +11327,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.rect(20, 137, 175, 7, 'F');
       doc.setFontSize(8);
       doc.setTextColor(80);
-      doc.text('OTEL / HIZMET', 22, 142);
-      doc.text('ACIKLAMA', 80, 142);
+      doc.text(tr('OTEL / HİZMET'), 22, 142);
+      doc.text(tr('AÇIKLAMA'), 80, 142);
       doc.text('GECE', 145, 142, { align: 'center' });
-      doc.text('GECELIK', 165, 142, { align: 'right' });
+      doc.text(tr('GECELİK'), 165, 142, { align: 'right' });
       doc.text('TOPLAM', 193, 142, { align: 'right' });
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvalti' : c === 'hb' ? 'Yarim Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
+      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvaltı' : c === 'hb' ? 'Yarım Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -11358,7 +11349,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           const dt = new Date(d);
           return isNaN(dt) ? d : dt.toLocaleDateString('tr-TR');
         };
-        const aciklama = `${tr(r.customerName || '')}\n${formatD(r.checkIn)} > ${formatD(r.checkOut)}\n${tr(r.roomType || '')} (${conceptLabel(r.concept)})`;
+        const aciklama = `${tr(r.customerName || '')}\n${formatD(r.checkIn)} > ${formatD(r.checkOut)}\n${tr(r.roomType || '')} (${tr(conceptLabel(r.concept))})`;
 
         // Sıra zebra renk
         if (i % 2 === 1) {
@@ -11419,7 +11410,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // Banka bilgileri
       doc.setFontSize(9);
       doc.setTextColor(120);
-      doc.text('BANKA BILGILERI', 20, yPos);
+      doc.text(tr('BANKA BİLGİLERİ'), 20, yPos);
       doc.setDrawColor(220, 220, 220);
       doc.line(20, yPos + 2, 195, yPos + 2);
       yPos += 7;
@@ -11428,7 +11419,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const BKh = getActiveBanks(appSettings)[0];
       doc.text(tr(`${BKh.bankName} - ${BKh.branch} (${BKh.branchCode})`), 20, yPos);
       yPos += 5;
-      doc.text('Hesap Sahibi: Paydos Turizm Seyahat ve Acenteligi San. Tic. Ltd. Sti.', 20, yPos);
+      doc.text(tr('Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.'), 20, yPos);
       const hAccs = (Array.isArray(BKh.accounts) ? BKh.accounts : []).filter(a => a.iban);
       (hAccs.length ? hAccs : [{ currency: 'TL', iban: BKh.ibanTL }, { currency: 'EUR', iban: BKh.ibanEUR }].filter(a => a.iban)).forEach(a => {
         yPos += 5;
@@ -11438,7 +11429,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150);
-      doc.text('Bu proforma fatura bilgi amaclidir ve yasal belge niteligi tasimaz.', 105, 285, { align: 'center' });
+      doc.text(tr('Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.'), 105, 285, { align: 'center' });
       doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
 
       // Kaydet
@@ -11465,16 +11456,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const doc = new jsPDF();
 
       // Türkçe karakter dönüştürücü (jsPDF font sorunu için)
-      const ascii = (text) => {
-        if (!text) return '';
-        return String(text)
-          .replace(/ı/g, 'i').replace(/İ/g, 'I')
-          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-          .replace(/ş/g, 's').replace(/Ş/g, 'S')
-          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-          .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-      };
+      const ascii = pdfText(doc);
 
       const r = reservation;
       const nights = calcNights(r.checkIn, r.checkOut);
@@ -11497,7 +11479,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8);
       doc.setTextColor(100);
       doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 20, 26);
-      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 20, 30);
+      doc.text(ascii('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 20, 30);
       doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 20, 34);
 
       // VOUCHER başlığı
@@ -11706,13 +11688,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(80);
       doc.text('Paydos Tourism and Travel Agency Co. Ltd.', 105, 282, { align: 'center' });
       doc.setTextColor(120);
-      doc.text('Mehmetcik Mah. Ulus Cad. No: 124/1 Denizli / Turkey', 105, 286, { align: 'center' });
+      doc.text(ascii('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
       doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
       doc.setTextColor(150);
       doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
 
       // Kaydet
-      const fileName = `Voucher_${ascii(hotel.name || '').replace(/\s/g,'_')}_${ascii(r.customerName || '').replace(/\s/g,'_')}.pdf`;
+      const fileName = `Voucher_${asciiTr(hotel.name || '').replace(/\s/g,'_')}_${asciiTr(r.customerName || '').replace(/\s/g,'_')}.pdf`;
       doc.save(fileName);
       showToast?.('✅ Voucher downloaded', 'success');
     } catch (e) {
@@ -14195,32 +14177,32 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 
                         // Bölüm başlıklarını tanımla
                         const sections = [
-                          { title: 'KİSİSEL BILGILER', keys: ['firstName','lastName','maidenSurname','gender','maritalStatus','birthDate','birthPlace','birthCountry','nationality','otherNationality','tcKimlik','homeAddress','homeZip','homePhone','phone','email'] },
-                          { title: 'PASAPORT BILGILERI', keys: ['passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','oldPassport','lostPassport','travelHistory'] },
-                          { title: 'SEYAHAT VE DIGER BILGILER', keys: ['visaType','arrivalDate','departureDate','stayDuration','usAddress','usPhone','usEmail','tripPayer','hasCompanion','companionName','companionRelation','companionPhone','companionEmail','inviterName','inviterRelation'] },
-                          { title: 'DAHA ONCE AMERIKADA BULUNDUNUZ MU?', keys: ['beenToUS','usArrivalDate','usDepartureDate','hadUSVisa','usVisaDate','visaNumber','sameVisaCategory','hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason','greencardPetition'] },
-                          { title: 'AILE BILGISI', keys: ['fatherName','fatherBirth','fatherBirthPlace','fatherNationality','motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality','parentInUS','relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen','relativeAddress','relativePhone','relativeEmail','relative2Name','relative2Relation','relative2USCitizen','relative2Address','relative2Phone','relative2Email'] },
-                          { title: 'ES HAKKINDA BILGILER', keys: ['spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate','divorceCount','exSpouseName','exSpouseBirth','marriageDate','divorceDate','divorceReason','exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2'] },
-                          { title: 'IS HAYATINIZ', keys: ['occupation','jobDescription','monthlySalary','employerName','employerAddress','employerZip','employerPhone','jobStartDate','prevEmployerName','prevEmployerAddress','prevEmployerPhone','prevJobStartDate','prevJobEndDate'] },
+                          { title: 'KİŞİSEL BİLGİLER', keys: ['firstName','lastName','maidenSurname','gender','maritalStatus','birthDate','birthPlace','birthCountry','nationality','otherNationality','tcKimlik','homeAddress','homeZip','homePhone','phone','email'] },
+                          { title: 'PASAPORT BİLGİLERİ', keys: ['passportType','passportNo','passportNumber','passportCity','passportIssueDate','passportExpiry','passportExpDate','oldPassport','lostPassport','travelHistory'] },
+                          { title: 'SEYAHAT VE DİĞER BİLGİLER', keys: ['visaType','arrivalDate','departureDate','stayDuration','usAddress','usPhone','usEmail','tripPayer','hasCompanion','companionName','companionRelation','companionPhone','companionEmail','inviterName','inviterRelation'] },
+                          { title: 'DAHA ÖNCE AMERİKA\'DA BULUNDUNUZ MU?', keys: ['beenToUS','usArrivalDate','usDepartureDate','hadUSVisa','usVisaDate','visaNumber','sameVisaCategory','hadFingerprint','visaLost','visaCancelled','visaRefused','refusalReason','greencardPetition'] },
+                          { title: 'AİLE BİLGİSİ', keys: ['fatherName','fatherBirth','fatherBirthPlace','fatherNationality','motherName','motherBirth','motherBirthPlace','motherMaidenName','motherNationality','parentInUS','relativeInUS','relativeInUSName','relativeRelation','relativeUSCitizen','relativeAddress','relativePhone','relativeEmail','relative2Name','relative2Relation','relative2USCitizen','relative2Address','relative2Phone','relative2Email'] },
+                          { title: 'EŞ HAKKINDA BİLGİLER', keys: ['spouseName','spouseMaidenName','spouseBirthPlace','spouseBirthDate','divorceCount','exSpouseName','exSpouseBirth','marriageDate','divorceDate','divorceReason','exSpouse2Name','exSpouse2Birth','marriageDate2','divorceDate2','divorceReason2'] },
+                          { title: 'İŞ HAYATINIZ', keys: ['occupation','jobDescription','monthlySalary','employerName','employerAddress','employerZip','employerPhone','jobStartDate','prevEmployerName','prevEmployerAddress','prevEmployerPhone','prevJobStartDate','prevJobEndDate'] },
                           { title: 'EN SON MEZUN OLUNAN OKUL', keys: ['schoolName','schoolAddress','educationField','educationStartEnd'] },
-                          { title: 'DIGER BILGILER', keys: ['militaryService','militaryRank','militaryStart','militaryEnd','languages'] },
-                          { title: 'SOSYAL MEDYA BILGILERI', keys: ['facebook','instagram','twitter','linkedin','youtube','reddit','pinterest','tumblr','vk','weibo','myspace'] },
-                          { title: 'GUVENLIK SORULARI', keys: ['sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'] },
+                          { title: 'DİĞER BİLGİLER', keys: ['militaryService','militaryRank','militaryStart','militaryEnd','languages'] },
+                          { title: 'SOSYAL MEDYA BİLGİLERİ', keys: ['facebook','instagram','twitter','linkedin','youtube','reddit','pinterest','tumblr','vk','weibo','myspace'] },
+                          { title: 'GÜVENLİK SORULARI', keys: ['sec_drugs','sec_laundering','sec_trafficking','sec_prostitution','sec_terrorism','sec_genocide','sec_torture','sec_violence','sec_assassin','sec_military','sec_spy','sec_disorder','sec_arrested','sec_disease','sec_deported'] },
                         ];
 
                         const doc2 = new jsPDF();
+                        const clean = pdfText(doc2);
                         // Başlık
                         doc2.setFillColor(26, 58, 92);
                         doc2.rect(0, 0, 210, 32, 'F');
                         doc2.setFontSize(14); doc2.setTextColor(255);
-                        doc2.text('AMERIKA BILGI FORMU - DS-160', 15, 13);
+                        doc2.text(clean('AMERİKA BİLGİ FORMU - DS-160'), 15, 13);
                         doc2.setFontSize(8); doc2.setTextColor(180);
-                        doc2.text('ASAGIDA BELIRTILEN BILGILER DS-160 ONLINE FORMUNUZ ICINDIR', 15, 21);
+                        doc2.text(clean('AŞAĞIDA BELİRTİLEN BİLGİLER DS-160 ONLINE FORMUNUZ İÇİNDİR'), 15, 21);
                         doc2.setFontSize(9); doc2.setTextColor(200);
-                        const nameClean = (app._name||'').replace(/[İı]/g,i=>i==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
-                        doc2.text(`Basvuran: ${nameClean}   |   ${new Date().toLocaleDateString('tr-TR')}`, 15, 28);
+                        const nameClean = clean(app._name || '');
+                        doc2.text(clean(`Başvuran: ${nameClean}   |   ${new Date().toLocaleDateString('tr-TR')}`), 15, 28);
 
-                        const clean = (s) => String(s||'').replace(/[İı]/g,x=>x==='İ'?'I':'i').replace(/[ğ]/g,'g').replace(/[Ğ]/g,'G').replace(/[ş]/g,'s').replace(/[Ş]/g,'S').replace(/[ü]/g,'u').replace(/[Ü]/g,'U').replace(/[ö]/g,'o').replace(/[Ö]/g,'O').replace(/[ç]/g,'c').replace(/[Ç]/g,'C');
 
                         let y = 40;
                         let rowIdx = 0;
@@ -14258,7 +14240,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           doc2.setFillColor(26, 58, 92);
                           doc2.rect(15, y-2, 180, 9, 'F');
                           doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
-                          doc2.text(section.title, 17, y+4);
+                          doc2.text(clean(section.title), 17, y+4);
                           y += 12; rowIdx = 0;
 
                           sectionRows.forEach(([k, v]) => {
@@ -14286,7 +14268,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           doc2.setFillColor(26, 58, 92);
                           doc2.rect(15, y-2, 180, 9, 'F');
                           doc2.setFontSize(8); doc2.setTextColor(255); doc2.setFont(undefined,'bold');
-                          doc2.text('DIGER', 17, y+4);
+                          doc2.text(clean('DİĞER'), 17, y+4);
                           y += 12; rowIdx = 0;
                           extraRows.forEach(([k, v]) => {
                             if (y > 275) { doc2.addPage(); y = 15; }
