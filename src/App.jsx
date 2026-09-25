@@ -394,6 +394,8 @@ const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = S
 const safeParseTags = (val) => { if (!val) return []; if (Array.isArray(val)) return val.filter(t => t && typeof t === 'string'); if (typeof val === 'string') return val.split(',').map(t => t.trim()).filter(Boolean); return []; };
 const safeParseActivities = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
 const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
+// Açılamayan belge görseli boş kalmasın — alt metni kırmızı uyarı olarak görünür
+const onDocImgError = (e) => { const t = e.currentTarget; t.style.minHeight = '60px'; t.style.background = 'rgba(239,68,68,0.12)'; t.style.color = '#ef4444'; t.style.fontSize = '12px'; };
 const safeParseObj = (val) => { if (!val) return {}; if (typeof val === 'object') return val; try { const o = JSON.parse(val); return o && typeof o === 'object' ? o : {}; } catch { return {}; } };
 const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
@@ -1882,7 +1884,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   {passport.image ? (
                     <div>
                       <img src={passport.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
-                            onError={e => { e.currentTarget.style.minHeight = '60px'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.fontSize = '12px'; }}
+                            onError={onDocImgError}
                         onClick={() => setImagePreview({ show: true, src: passport.image, title: `Pasaport - ${passport.passportNo || ''}` })}
                         style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(59,130,246,0.4)', cursor: 'zoom-in', display: 'block' }} />
                       <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
@@ -1977,7 +1979,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   {/* Görsel altta - tam genişlik */}
                   {visa.image ? (
                     <div>
-                      <img src={visa.image} alt="Vize"
+                      <img src={visa.image} alt="Vize ⚠️ görsel açılamadı — tekrar yükleyin" onError={onDocImgError}
                         onClick={() => setImagePreview({ show: true, src: visa.image, title: `Schengen - ${visa.country || ''}` })}
                         style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(16,185,129,0.3)', cursor: 'zoom-in', display: 'block' }} />
                       <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
@@ -2043,7 +2045,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 </div>
                 {usaVisa.image ? (
                   <div>
-                    <img src={usaVisa.image} alt="ABD Vizesi"
+                    <img src={usaVisa.image} alt="ABD Vizesi ⚠️ görsel açılamadı — tekrar yükleyin" onError={onDocImgError}
                       onClick={() => setImagePreview({ show: true, src: usaVisa.image, title: 'ABD Vizesi' })}
                       style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(139,92,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
                     <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
@@ -2293,7 +2295,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         </div>
                         {p.image && (
                           <img src={p.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
-                            onError={e => { e.currentTarget.style.minHeight = '60px'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.fontSize = '12px'; }}
+                            onError={onDocImgError}
                             onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}` })}
                             style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
                         )}
@@ -2355,7 +2357,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           <InfoBox label="Bitiş" value={formatDate(v.endDate)} highlight={v.endDate && getDaysLeft(v.endDate) <= 90} />
                         </div>
                         {v.image && (
-                          <img src={v.image} alt="Vize"
+                          <img src={v.image} alt="Vize ⚠️ görsel açılamadı — tekrar yükleyin" onError={onDocImgError}
                             onClick={() => setImagePreview({ show: true, src: v.image, title: `Schengen - ${v.country}` })}
                             style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)', cursor: 'zoom-in', display: 'block' }} />
                         )}
@@ -2408,7 +2410,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         <InfoBox label="Vize Bitiş" value={formatDate(cUsa.endDate)} highlight={cUsa.endDate && getDaysLeft(cUsa.endDate) <= 30} />
                       </div>
                       {cUsa.image && (
-                        <img src={cUsa.image} alt="ABD Vizesi" onClick={() => setImagePreview({ show: true, src: cUsa.image, title: 'ABD Vizesi' })} style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                        <img src={cUsa.image} alt="ABD Vizesi ⚠️ görsel açılamadı — tekrar yükleyin" onError={onDocImgError} onClick={() => setImagePreview({ show: true, src: cUsa.image, title: 'ABD Vizesi' })} style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
                       )}
                     </div>
                   </div>
