@@ -10,8 +10,23 @@
 
 const nodemailer = require('nodemailer');
 
-// Firebase Web API anahtarı (istemcide zaten açık; gizli değildir). Env ile değiştirilebilir.
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyBGPKWf2A6Zck1zJaT3JAhOai1UVIPjwZo';
+const crypto = require('crypto');
+
+// Firebase projesi — ID token'ın bu projeye ait olduğu doğrulanır
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'paydos-crm';
+const GOOGLE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+let certCache = { certs: null, expires: 0 };
+
+const getGoogleCerts = async () => {
+  if (certCache.certs && Date.now() < certCache.expires) return certCache.certs;
+  const resp = await fetch(GOOGLE_CERTS_URL);
+  if (!resp.ok) throw new Error('Google sertifikaları alınamadı');
+  const maxAge = parseInt(((resp.headers.get('cache-control') || '').match(/max-age=(\d+)/) || [])[1] || '3600', 10);
+  certCache = { certs: await resp.json(), expires: Date.now() + maxAge * 1000 };
+  return certCache.certs;
+};
+
+const b64urlJson = (part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
 
 // Ekler yalnızca Firebase Storage'dan indirilebilir (SSRF'e karşı: iç ağ / rastgele URL çekilmez)
 const ALLOWED_ATTACHMENT_HOSTS = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
@@ -20,22 +35,28 @@ const isAllowedAttachmentUrl = (u) => {
   catch { return false; }
 };
 
-// İstekteki Firebase ID token'ı doğrular; geçerliyse kullanıcının e-postasını döner.
+// İstekteki Firebase ID token'ı Google'ın imza sertifikalarıyla yerelde doğrular (API anahtarı gerekmez —
+// anahtardaki referer kısıtı sunucu isteklerini engelliyordu). Geçerliyse kullanıcı e-postası/uid döner.
 // Bu kontrol olmadan fonksiyon, SMTP hesabınızı kullanan herkese açık bir mail rölesidir.
 const verifyFirebaseUser = async (event) => {
   const authHeader = event.headers.authorization || event.headers.Authorization || '';
   const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  if (!idToken) return null;
+  const parts = idToken.split('.');
+  if (parts.length !== 3) return null;
   try {
-    const resp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const user = data.users && data.users[0];
-    return user && !user.disabled ? (user.email || user.localId) : null;
+    const header = b64urlJson(parts[0]);
+    const payload = b64urlJson(parts[1]);
+    if (header.alg !== 'RS256') return null;
+    const certs = await getGoogleCerts();
+    const cert = certs[header.kid];
+    if (!cert) return null;
+    const ok = crypto.createVerify('RSA-SHA256').update(`${parts[0]}.${parts[1]}`).verify(cert, Buffer.from(parts[2], 'base64url'));
+    if (!ok) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
+    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
+    if (!payload.sub || payload.exp <= now || payload.iat > now + 300) return null;
+    return payload.email || payload.sub;
   } catch {
     return null;
   }
