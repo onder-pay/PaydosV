@@ -394,6 +394,7 @@ const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = S
 const safeParseTags = (val) => { if (!val) return []; if (Array.isArray(val)) return val.filter(t => t && typeof t === 'string'); if (typeof val === 'string') return val.split(',').map(t => t.trim()).filter(Boolean); return []; };
 const safeParseActivities = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
 const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
+const safeParseObj = (val) => { if (!val) return {}; if (typeof val === 'object') return val; try { const o = JSON.parse(val); return o && typeof o === 'object' ? o : {}; } catch { return {}; } };
 const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
@@ -413,6 +414,12 @@ const generateUniqueId = () => {
 
 // send-mail fonksiyonunu çağırır. Firebase oturum jetonu (ID token) gönderilir;
 // sunucu jetonu doğrulamadan mail atmaz (aksi halde fonksiyon herkese açık bir spam rölesi olur).
+// CRM'den Claude proxy çağrısı — giriş token'ı ile (girişsiz istekler sunucuda kısıtlıdır)
+const claudeRequest = async ({ headers = {}, ...opts }) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  return fetch('/.netlify/functions/claude-proxy', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
+};
+
 const sendMailRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
   return fetch('/.netlify/functions/send-mail', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
@@ -784,8 +791,17 @@ function LoginScreen({ onLogin, users }) {
     try {
       // Firebase Auth ile giriş (Firestore Rules güvenliği için)
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      // users koleksiyonundan profil/rol bul (yoksa temel profil)
-      const profile = users.find(u => (u.email || '').toLowerCase() === email.trim().toLowerCase());
+      // users koleksiyonundan profil/rol bul — giriş ekranındaki liste sadece yerel önbellek
+      // (yeni cihazda boş); bu yüzden girişten sonra Firestore'dan okunur. Yoksa temel profil.
+      const mail = email.trim().toLowerCase();
+      let profile = null;
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        const d = snap.docs.find(x => (x.data().email || '').toLowerCase() === mail);
+        if (d) profile = { ...d.data(), _docId: d.id };
+      } catch (e) { console.warn('Kullanıcı profili okunamadı:', e.message); }
+      if (!profile) profile = users.find(u => (u.email || '').toLowerCase() === mail) || null;
+      if (profile) { const { password: _pw, ...clean } = profile; profile = clean; }
       onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
     } catch (err) {
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
@@ -833,7 +849,7 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
   });
   // USA vizesi olanlar
   const withUsa = customers.filter(c => {
-    const visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+    const visa = safeParseObj(c.usaVisa);
     return visa.endDate;
   });
   // Pasaportu 6 ay içinde bitecekler
@@ -1230,13 +1246,13 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
   // USA vizesi olanlar
   const withUsa = customers.filter(c => {
-    const visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+    const visa = safeParseObj(c.usaVisa);
     return visa.endDate;
   });
 
   // USA vizesi 1 ay içinde bitecekler
   const usaExpiring = customers.filter(c => {
-    const visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+    const visa = safeParseObj(c.usaVisa);
     if (!visa.endDate) return false;
     const days = getDaysLeft(visa.endDate);
     return days !== null && days > 0 && days <= 30;
@@ -1253,7 +1269,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       }
       if (dateRangeVisa !== 'schengen') {
         let visa = {};
-        try { visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {}; } catch(e) {}
+        try { visa = safeParseObj(c.usaVisa); } catch(e) {}
         if (overlaps(visa.issueDate || visa.startDate, visa.endDate)) return true;
       }
       return false;
@@ -1412,7 +1428,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const savedSchengen = safeParseJSON(customer.schengenVisas).filter(v => v.country);
     setSchengenVisas(savedSchengen.length > 0 ? savedSchengen : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }]);
     // USA bilgilerini yükle
-    const savedUsa = customer.usaVisa ? (typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa) : customer.usaVisa) : {};
+    const savedUsa = safeParseObj(customer.usaVisa);
     setUsaVisa({ startDate: savedUsa.startDate || '', endDate: savedUsa.endDate || '', image: savedUsa.image || '' });
     setFormTab('info');
     setShowForm(true); 
@@ -1853,7 +1869,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           showToast?.('AI pasaport okuyor...', 'info');
                           try {
                             const b64 = await imageToBase64(passport.image);
-                            const resp = await fetch('/.netlify/functions/claude-proxy', {
+                            const resp = await claudeRequest({
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe. birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
@@ -1948,7 +1964,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           showToast?.('AI vize okuyor...', 'info');
                           try {
                             const b64 = await imageToBase64(visa.image);
-                            const resp = await fetch('/.netlify/functions/claude-proxy', {
+                            const resp = await claudeRequest({
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu Schengen vizesi. SADECE JSON: {"country":"Almanya","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}' }] }] })
@@ -2045,7 +2061,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const c = selectedCustomer;
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
-    const cUsa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+    const cUsa = safeParseObj(c.usaVisa);
     const hasGreenPassport = cPassports.some(p =>
       p.passportType === 'Yeşil Pasaport (Hususi)' ||
       p.passportType?.includes('Yeşil') ||
@@ -2504,7 +2520,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const renderCustomerCard = (c) => {
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
-    const cUsa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+    const cUsa = safeParseObj(c.usaVisa);
     const expiringP = cPassports.find(p => { const d = getDaysLeft(p.expiryDate); return d !== null && d > 0 && d <= 180; });
     
     return (
@@ -2636,7 +2652,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               ) : (
                 dateRangeMatches.map(c => {
                   const sch = safeParseJSON(c.schengenVisas).find(v => v.startDate && v.endDate && v.startDate <= dateRangeTo && v.endDate >= dateRangeFrom);
-                  let usa = {}; try { usa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {}; } catch(e) {}
+                  let usa = {}; try { usa = safeParseObj(c.usaVisa); } catch(e) {}
                   const usaOk = (usa.issueDate || usa.startDate) && usa.endDate && (usa.issueDate || usa.startDate) <= dateRangeTo && usa.endDate >= dateRangeFrom;
                   return (
                     <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(6,182,212,0.2)', cursor: 'pointer' }}>
@@ -2863,7 +2879,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>ABD vizesi olan müşteri yok</p>
           ) : (
             withUsa.map(c => {
-              const visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+              const visa = safeParseObj(c.usaVisa);
               return (
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(139,92,246,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2896,7 +2912,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>1 ay içinde ABD vizesi bitecek müşteri yok 🎉</p>
           ) : (
             usaExpiring.map(c => {
-              const visa = c.usaVisa ? (typeof c.usaVisa === 'string' ? JSON.parse(c.usaVisa || '{}') : c.usaVisa) : {};
+              const visa = safeParseObj(c.usaVisa);
               return (
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3337,7 +3353,7 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
                     if (aiText.trim()) userContent.push({ type: 'text', text: aiText });
                     const msgContent = userContent.length === 1 && userContent[0].type === 'text' ? userContent[0].text : userContent;
 
-                    const resp = await fetch('/.netlify/functions/claude-proxy', {
+                    const resp = await claudeRequest({
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ model, max_tokens: 1500, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] })
@@ -4605,21 +4621,22 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
           const saveData = { ...updatedVisa, updatedAt: new Date().toISOString() };
           delete saveData._docId;
           await setDoc(doc(db, 'visa_applications', docId), saveData, { merge: true });
-        } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); }
-        showToast?.('Vize başvurusu güncellendi', 'success');
+          showToast?.('Vize başvurusu güncellendi', 'success');
+        } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('status', 'Vize', `${formData.customerName || ''} — ${formData.country || ''} ${formData.status || ''}`.trim(), currentUser);
       } else {
         const autoCountry = formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : '');
         const newVisa = { ...formData, country: autoCountry, categoryId: selectedCategory?.id || formData.category || 'schengen', id: generateUniqueId(), createdAt: new Date().toISOString() };
         setVisaApplications([...visaApplications, newVisa]);
-        addToUndo?.({ type: 'create', undo: () => setVisaApplications(prev => prev.filter(v => v.id !== newVisa.id)) });
+        // visa_applications'ta silme senkronu yok — geri almada Firestore'dan da sil
+        addToUndo?.({ type: 'create', undo: () => { setVisaApplications(prev => prev.filter(v => v.id !== newVisa.id)); deleteDoc(doc(db, 'visa_applications', String(newVisa.id))).catch(e => console.warn('Geri alma silme hatası:', e.message)); } });
         // ⚡ Anında Firestore'a yaz
         try {
           const docId = String(newVisa.id);
           const saveData = { ...newVisa, updatedAt: new Date().toISOString() };
           await setDoc(doc(db, 'visa_applications', docId), saveData, { merge: true });
-        } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); }
-        showToast?.(`${formData.customerName} için vize başvurusu oluşturuldu`, 'success');
+          showToast?.(`${formData.customerName} için vize başvurusu oluşturuldu`, 'success');
+        } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('create', 'Vize', `${formData.customerName || ''} — ${autoCountry} ${formData.visaDuration || ''}`.trim(), currentUser);
 
         // Otomatik mail gönder
@@ -6803,7 +6820,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
         if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; }
       } else if (selectedTour?.country === 'Amerika Birleşik Devletleri' || selectedTour?.country === 'ABD') {
-        const usaVisa = typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa || '{}') : (customer.usaVisa || {});
+        const usaVisa = safeParseObj(customer.usaVisa);
         if (usaVisa.endDate && getDaysLeft(usaVisa.endDate) > 0) { hasVisa = true; visaEndDate = usaVisa.endDate; }
       }
 
@@ -6888,7 +6905,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         const validVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) > 0);
         if (validVisa) { hasVisa = true; visaEndDate = validVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
       } else if (isUSA) {
-        const usaVisa = typeof customer.usaVisa === 'string' ? JSON.parse(customer.usaVisa || '{}') : (customer.usaVisa || {});
+        const usaVisa = safeParseObj(customer.usaVisa);
         if (usaVisa.endDate && getDaysLeft(usaVisa.endDate) > 0) { hasVisa = true; visaEndDate = usaVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
       }
     }
@@ -9392,7 +9409,7 @@ Kurallar:
 - Bilinmeyen alanı boş string bırak. UYDURMA.
 METİN:
 ${flightRaw}`;
-      const resp = await fetch('/.netlify/functions/claude-proxy', {
+      const resp = await claudeRequest({
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 700, messages: [{ role: 'user', content: prompt }] })
       });
@@ -9578,7 +9595,7 @@ KURALLAR:
 - Giyim tavsiyesi ekle (mont, yağmurluk, şemsiye vb.).
 - Sağlık/aşı konusuna GİRME.
 - Sadece metni döndür, başlık/açıklama yazma.`;
-      const r = await fetch('/.netlify/functions/claude-proxy', {
+      const r = await claudeRequest({
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 300, messages: [{ role: 'user', content: prompt }] })
       });
@@ -14533,7 +14550,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
 
     if (editingUser) {
       const updateData = { name: userFormData.name, email: userFormData.email, role: userFormData.role };
-      if (userFormData.password) updateData.password = userFormData.password;
 
       const updated = users.map(u => u.id === editingUser.id ? { ...u, ...updateData } : u);
       setUsers(updated);
@@ -14555,11 +14571,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       }
 
     } else {
-      if (!userFormData.password) {
-        alert('Yeni kullanıcı için şifre zorunlu');
-        return;
-      }
-      const newUser = { ...userFormData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+      // Şifre Firestore'a yazılmaz — giriş Firebase Auth ile yapılır, hesap Firebase Console'dan açılır
+      const { password: _pw, ...formNoPw } = userFormData;
+      const newUser = { ...formNoPw, id: generateUniqueId(), createdAt: new Date().toISOString() };
       setUsers([...users, newUser]);
       // Firestore'a gerçekten yaz
       try {
@@ -15522,9 +15536,8 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>E-posta *</label>
                   <input type="email" value={userFormData.email || ''} onChange={e => setUserFormData({...userFormData, email: e.target.value})} placeholder="email@ornek.com" style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }} required />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>{editingUser ? 'Yeni Şifre (boş bırakılırsa değişmez)' : 'Şifre *'}</label>
-                  <input type="password" value={userFormData.password || ''} onChange={e => setUserFormData({...userFormData, password: e.target.value})} placeholder="••••••••" style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }} {...(!editingUser && { required: true })} />
+                <div style={{ padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  🔐 Giriş hesabı buradan açılmaz. Firebase Console → Authentication → Users → <b>Add user</b> ile bu e-postaya hesap açın; kullanıcı kendi şifresini Ayarlar → Profil'den değiştirir.
                 </div>
                 {isAdmin && editingUser?.id !== currentUser.id && (
                   <div>
@@ -15619,6 +15632,9 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Menü sırasıyla aynı olmalı (menüde ⌘1-9 olarak gösterilir)
+const SHORTCUT_MODULES = [['dashboard', 'Dashboard'], ['customers', 'Müşteriler'], ['visa', 'Vize'], ['ds160', 'Amerika Vize'], ['tours', 'Turlar'], ['hotels', 'Oteller ve Uçuşlar'], ['quotes', 'Teklif & Proforma'], ['agencies', 'Acentelikler'], ['cards', 'Kredi Kartları']];
+
 function AppInner() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -15649,7 +15665,11 @@ function AppInner() {
       ];
       await Promise.all(cols.map(async ([name, setter]) => {
         const snap = await getDocs(collection(db, name));
-        setter(snap.empty ? [] : snap.docs.map(d => ({ ...d.data(), _docId: d.id })));
+        const items = snap.empty ? [] : snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+        applyingRemote.current[name] = true; // sunucudan geldi — tekrar yazma
+        loadFailed.current[name] = false;
+        knownDocs.current[name] = snapshotDocs(items);
+        setter(items);
       }));
       const cs = await getDocs(collection(db, 'customers'));
       let citems = cs.empty ? [] : cs.docs.map(d => ({ ...d.data(), _docId: d.id }));
@@ -15679,6 +15699,7 @@ function AppInner() {
   const [quotes, setQuotes] = useState([]);
   const [users, setUsers] = useState(defaultUsers);
   const [isLoading, setIsLoading] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [undoStack, setUndoStack] = useState([]);
   const [appSettings, setAppSettings] = useState({
@@ -15787,17 +15808,18 @@ function AppInner() {
   // Klavye kısayolları
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Yazı alanındayken tarayıcının kendi geri alması çalışsın (veri geri alma tetiklenmesin)
+      const t = e.target;
+      const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
       // Ctrl/Cmd + Z = Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      if (!typing && (e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         performUndo();
       }
-      // Ctrl/Cmd + 1-7 = Modül değiştir
-      if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
-        e.preventDefault();
-        const modules = ['dashboard', 'customers', 'visa', 'quotes', 'agencies', 'cards', 'settings'];
-        setActiveModule(modules[parseInt(e.key) - 1]);
-        showToast(`${['Dashboard', 'Müşteriler', 'Vize', 'Teklif & Proforma', 'Acentelikler', 'Kredi Kartları', 'Ayarlar'][parseInt(e.key) - 1]} açıldı`, 'info');
+      // Ctrl/Cmd + 1-9 = Modül değiştir (menüdeki ⌘ numaralarıyla aynı sıra)
+      if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(e.key)) {
+        const m = SHORTCUT_MODULES[parseInt(e.key) - 1];
+        if (m) { e.preventDefault(); setActiveModule(m[0]); showToast(`${m[1]} açıldı`, 'info'); }
       }
       // Escape = Sidebar kapat
       if (e.key === 'Escape' && sidebarOpen) {
@@ -15850,7 +15872,20 @@ function AppInner() {
     let unsubs = [];
     const authUnsub = onAuthStateChanged(auth, (user) => {
       // Firebase Auth oturumu yoksa veri çekme (Firestore Rules güvenliği)
-      if (!user || firestoreLoaded.current) return;
+      if (!user) {
+        // Oturum düştü / çıkış yapıldı: dinleyicileri kapat, kaydı durdur. Ekranda "giriş yapılmış"
+        // görünüp veri yüklenmeyen ve yapılan değişikliklerin sessizce kaybolduğu durumu önler.
+        unsubs.forEach(u => u()); unsubs = [];
+        firestoreLoaded.current = false;
+        initialLoadDone.current = false;
+        settingsLoaded.current = false;
+        if (localStorage.getItem('paydos_logged_in') === 'true') {
+          localStorage.removeItem('paydos_logged_in'); localStorage.removeItem('paydos_current_user');
+          setIsLoggedIn(false); setCurrentUser(null);
+        }
+        return;
+      }
+      if (firestoreLoaded.current) return;
       firestoreLoaded.current = true;
 
     // Küçük koleksiyonlar: tam gerçek zamanlı dinleme
@@ -15878,6 +15913,7 @@ function AppInner() {
           // Sunucudan gelen veriyi geri yazma (debouncedSave bu işareti görüp atlar)
           applyingRemote.current[col.name] = true;
           loadFailed.current[col.name] = false;
+          knownDocs.current[col.name] = snapshotDocs(items);
           col.setter(items);
           // localStorage'a hafif (resimsiz) kaydet — quota aşımını önler
           try {
@@ -15898,6 +15934,7 @@ function AppInner() {
       // Kayıt ancak sunucu verisi yüklendikten sonra açılır — aksi halde localStorage'daki eski
       // önbellek Firestore'a yazılıp aradaki yeni kayıtları silebilirdi.
       initialLoadDone.current = true;
+      setDataReady(true); // tek seferlik temizlik efektleri yükleme bitince çalışsın
     })();
 
     // Her küçük koleksiyon için gerçek zamanlı dinleyici (ilk snapshot atlanır, sonra sadece değişenler)
@@ -15920,6 +15957,11 @@ function AppInner() {
         }
         // debouncedSave bu güncellemeyi tekrar yazmasın (döngü önleme)
         applyingRemote.current[col.name] = true;
+        const known = knownDocs.current[col.name] || (knownDocs.current[col.name] = new Map());
+        changes.forEach(change => {
+          const data = { ...change.doc.data(), _docId: change.doc.id };
+          if (change.type === 'removed') known.delete(change.doc.id); else known.set(change.doc.id, docSig(data));
+        });
         col.setter(prev => {
           let updated = Array.isArray(prev) ? [...prev] : [];
           changes.forEach(change => {
@@ -15993,6 +16035,7 @@ function AppInner() {
 
     // App settings
     const settingsUnsub = onSnapshot(collection(db, 'app_settings'), (snapshot) => {
+      settingsLoaded.current = true;
       if (!snapshot.empty) {
         const settingsDoc = snapshot.docs[0].data();
         if (settingsDoc) {
@@ -16016,6 +16059,14 @@ function AppInner() {
   const applyingRemote = useRef({});
   // Yüklenemeyen koleksiyonlarda silme senkronu yapılmaz (state eski önbellek olabilir)
   const loadFailed = useRef({});
+  // Her koleksiyonda bu cihazın bildiği kayıtlar (kimlik → içerik). Kayıt sırasında:
+  //  - sadece burada olup yerelde kaldırılanlar silinir (başka cihazdan yeni eklenmiş kayıt silinmez),
+  //  - sadece içeriği değişen kayıtlar yazılır (tüm koleksiyon her seferinde yeniden yazılmaz,
+  //    başkasının aynı anda düzenlediği diğer kayıtların üzerine eski veri yazılmaz).
+  const knownDocs = useRef({});
+  const docKey = (item) => item._docId || (item.id !== undefined && item.id !== null ? String(item.id) : null);
+  const docSig = (item) => { const { _docId, updatedAt, ...rest } = item; try { return JSON.stringify(rest); } catch { return String(Math.random()); } };
+  const snapshotDocs = (arr) => { const m = new Map(); (Array.isArray(arr) ? arr : []).forEach(it => { const k = docKey(it); if (k) m.set(k, docSig(it)); }); return m; };
 
   // Eski tek-banka alanını (bankInfo) temizle — artık banks[] dizisi kullanılıyor
   useEffect(() => {
@@ -16046,40 +16097,50 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     document.head.appendChild(st);
   }, []);
 
-  const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
+  const latestData = useRef({});
+  const settingsLoaded = useRef(false);
+  const debouncedSave = useCallback((key, collectionName, dataAtCall, isSettings = false) => {
+    // Zamanlayıcı en güncel state ile çalışır — bekleme sırasında başka cihazdan gelen kayıtlar dahil
+    latestData.current[collectionName] = dataAtCall;
     // Bu güncelleme sunucudan/dinleyiciden geldiyse tekrar yazma (döngü önleme)
     if (applyingRemote.current[collectionName]) { applyingRemote.current[collectionName] = false; return; }
     if (!initialLoadDone.current) return;
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
+      const data = latestData.current[collectionName];
       try {
         if (isSettings) {
           const snapshot = await getDocs(collection(db, collectionName));
           const docId = snapshot.empty ? 'main' : snapshot.docs[0].id;
-          await setDoc(doc(db, collectionName, docId), data, { merge: true });
+          // Sunucu ayarları yüklendiyse tam yaz: merge silinen anahtarları (ör. temizlenen tür
+          // maliyeti) Firestore'da bırakıyordu ve yenilemede geri geliyorlardı. Yüklenmediyse eski
+          // davranış (merge) — sunucudaki bilinmeyen ayarlar ezilmesin.
+          await setDoc(doc(db, collectionName, docId), data, settingsLoaded.current ? {} : { merge: true });
         } else {
           // Silme sync YAPMA: customers (4000+ kayıt pahalı) ve visa_applications (iDATA/işlem
           // sırasında race condition + _docId tutarsızlığı veri kaybına yol açıyordu).
           // Bu modüllerde silme zaten anında deleteDoc ile yapılıyor.
           if (collectionName !== 'customers' && collectionName !== 'visa_applications' && !loadFailed.current[collectionName]) {
-            const snapshot = await getDocs(collection(db, collectionName));
-            const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
+            const currentIds = new Set(data.map(docKey).filter(Boolean));
+            const removedIds = [...(knownDocs.current[collectionName]?.keys() || [])].filter(id => !currentIds.has(id));
             let delBatch = writeBatch(db);
             let delCount = 0;
-            for (const fsDoc of snapshot.docs) {
-              if (!currentIds.has(fsDoc.id)) {
-                delBatch.delete(fsDoc.ref);
-                delCount++;
-                if (delCount >= 400) { await delBatch.commit(); delBatch = writeBatch(db); delCount = 0; }
-              }
+            for (const id of removedIds) {
+              delBatch.delete(doc(db, collectionName, id));
+              delCount++;
+              if (delCount >= 400) { await delBatch.commit(); delBatch = writeBatch(db); delCount = 0; }
             }
             if (delCount > 0) await delBatch.commit();
           }
-          // State'teki kayıtları kaydet
+          const prevDocs = knownDocs.current[collectionName];
+          knownDocs.current[collectionName] = snapshotDocs(data);
+          // State'teki kayıtları kaydet — sadece yeni veya değişenler
           let batch = writeBatch(db);
           let count = 0;
           const now = new Date().toISOString();
           for (const item of data) {
+            const k = docKey(item);
+            if (prevDocs && k && prevDocs.get(k) === docSig(item)) continue;
             const docId = item._docId || (item.id !== undefined && item.id !== null ? String(item.id) : null) || generateUniqueId();
             const saveData = { ...item, updatedAt: now };
             delete saveData._docId;
@@ -16141,7 +16202,24 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
         console.error('DS-160 kopya temizleme hatası:', e.message);
       }
     })();
-  }, [visaApplications]);
+  }, [visaApplications, dataReady]);
+  // 🧹 TEK SEFERLİK: users kayıtlarındaki düz metin şifreleri sil (giriş Firebase Auth ile yapılıyor,
+  // bu alan hiçbir işe yaramıyordu ama giriş yapan herkes okuyabiliyordu)
+  const pwCleanupDone = useRef(false);
+  useEffect(() => {
+    if (!initialLoadDone.current || pwCleanupDone.current) return;
+    const withPw = users.filter(u => u.password);
+    pwCleanupDone.current = true;
+    if (withPw.length === 0) return;
+    (async () => {
+      try {
+        const batch = writeBatch(db);
+        withPw.forEach(u => batch.set(doc(db, 'users', u._docId || String(u.id)), { password: deleteField() }, { merge: true }));
+        await batch.commit();
+        setUsers(prev => prev.map(u => { const { password, ...rest } = u; return rest; }));
+      } catch (e) { console.warn('Şifre temizleme hatası:', e.message); }
+    })();
+  }, [users, dataReady]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('group_flights', 'group_flights', groupFlights); }, [groupFlights]);
@@ -16153,7 +16231,11 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   useEffect(() => { debouncedSave('users', 'users', users); }, [users]);
   useEffect(() => { debouncedSave('app_settings', 'app_settings', appSettings, true); }, [appSettings]);
   const handleLogin = (user) => { setIsLoggedIn(true); setCurrentUser(user); localStorage.setItem('paydos_logged_in', 'true'); localStorage.setItem('paydos_current_user', JSON.stringify(user)); };
-  const handleLogout = () => { signOut(auth).catch(()=>{}); firestoreLoaded.current = false; setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem('paydos_logged_in'); localStorage.removeItem('paydos_current_user'); };
+  const handleLogout = () => {
+    signOut(auth).catch(()=>{}); firestoreLoaded.current = false; setIsLoggedIn(false); setCurrentUser(null);
+    // Ortak bilgisayarda müşteri verisi (TC, pasaport, kart) tarayıcıda kalmasın
+    try { Object.keys(localStorage).filter(k => k.startsWith('paydos_')).forEach(k => localStorage.removeItem(k)); } catch(e) {}
+  };
 
   if (!isLoggedIn) return <LoginScreen onLogin={handleLogin} users={users} />;
   if (isLoading) return (<div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 50%, #0d2137 100%)' }}><div style={{ textAlign: 'center' }}><div style={{ fontSize: '48px', marginBottom: '16px' }}>✈️</div><p style={{ color: '#94a3b8' }}>Yükleniyor...</p></div></div>);
@@ -16200,14 +16282,14 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       {/* Klavye Kısayolları Bilgisi */}
       {!isMobile && (
         <div style={{ position: 'fixed', bottom: '20px', left: '280px', fontSize: '10px', color: '#64748b', zIndex: 50 }}>
-          ⌨️ Ctrl+1-7: Modül | Ctrl+Z: Geri Al
+          ⌨️ Ctrl+1-9: Modül | Ctrl+Z: Geri Al
         </div>
       )}
       
       {isMobile && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100 }} />}
       <aside style={{ position: 'fixed', left: isMobile ? (sidebarOpen ? 0 : '-280px') : 0, top: 0, bottom: 0, width: '260px', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 200, transition: 'left 0.3s ease', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
-        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { if (item.external) { window.open(item.external, '_blank', 'noopener'); if (isMobile) setSidebarOpen(false); return; } setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>{item.external ? '↗' : `⌘${idx+1}`}</span>}</button>))}</nav>
+        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { if (item.external) { window.open(item.external, '_blank', 'noopener'); if (isMobile) setSidebarOpen(false); return; } setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>{item.external ? '↗' : (SHORTCUT_MODULES[idx]?.[0] === item.id ? `⌘${idx+1}` : '')}</span>}</button>))}</nav>
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}><div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px' }}>{currentUser?.name?.[0] || 'U'}</div><div><p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>{currentUser?.name}</p><p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p></div></div><button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🚪 Çıkış Yap</button></div>
       </aside>
       <main style={{ marginLeft: isMobile ? 0 : '260px', minHeight: '100vh' }}>
