@@ -114,7 +114,7 @@ function fbSave(){
   // Yeni başvuruda status alanı yoktur; CRM bunu "Beklemede" olarak gösterir.
   if(justSubmitted)payload.status="submitted"; // kayıt başarılı olunca bayrak iner
   var doSave=function(){
-    if(window.__saveDS160){window.__saveDS160(ID,payload).then(function(){if(payload.status)justSubmitted=false}).catch(function(e){console.error("Firebase kayit hatasi:",e)})}
+    if(window.__saveDS160){window.__saveDS160(ID,payload).then(function(){if(payload.status){justSubmitted=false;notifyOffice()}}).catch(function(e){console.error("Firebase kayit hatasi:",e)})}
   };
   if(window.__ds160FBReady)doSave();
   else window.__ds160PendingSave=doSave;
@@ -164,6 +164,8 @@ function hPH(inp){
     f2d(fl).then(function(du){return rsz(du,300,300)}).then(function(th){phB64=th;sv();R();URL.revokeObjectURL(ou)});
   };im.src=ou;
 }
+// Gönderim kaydı Firestore'a yazıldıktan sonra ofise bilgi maili (sunucu tekrarı engeller)
+function notifyOffice(){fetch("/.netlify/functions/ds160-notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:ID})}).catch(function(e){console.warn("Bildirim gonderilemedi:",e)})}
 function sub(){done=true;justSubmitted=true;sv();genPDF();R()}
 function genPDF(){
   try{
