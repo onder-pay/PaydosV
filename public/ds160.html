@@ -165,8 +165,9 @@ function hPH(inp){
   };im.src=ou;
 }
 // Gönderim kaydı Firestore'a yazıldıktan sonra ofise bilgi maili (sunucu tekrarı engeller)
-function notifyOffice(){fetch("/.netlify/functions/ds160-notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:ID})}).catch(function(e){console.warn("Bildirim gonderilemedi:",e)})}
-function sub(){done=true;justSubmitted=true;sv();genPDF();R()}
+var lastPdfB64="";
+function notifyOffice(){fetch("/.netlify/functions/ds160-notify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:ID,pdf:lastPdfB64})}).catch(function(e){console.warn("Bildirim gonderilemedi:",e)})}
+function sub(){done=true;justSubmitted=true;genPDF();sv();R()}
 function genPDF(){
   try{
     if(!window.jspdf){console.error("jsPDF yuklenmedi");return}
@@ -210,6 +211,8 @@ function genPDF(){
     var dt=new Date().toLocaleDateString("tr-TR");
     doc.text("Olusturma: "+dt+" | www.paydosturizm.com",105,290,{align:"center"});
     var fn="DS160_"+(nm.replace(/\s+/g,"_")||"Basvuru")+".pdf";
+    // Ofis bildirim mailine eklenmek üzere base64 kopyası
+    try{var du=doc.output("datauristring");lastPdfB64=du.slice(du.indexOf("base64,")+7)}catch(e){lastPdfB64=""}
     doc.save(fn);
   }catch(e){console.error("PDF hatasi:",e)}
 }
