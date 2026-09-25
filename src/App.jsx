@@ -13848,7 +13848,8 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             _name: data.customerName || `${data.formData?.firstName || data.formData?.name || ''} ${data.formData?.lastName || data.formData?.surname || ''}`.trim() || 'İsimsiz',
             _phone: data.customerPhone || data.formData?.phone || data.formData?.homePhone || '',
             _email: data.customerEmail || data.formData?.email || '',
-            _status: data.status === 'draft' ? 'Beklemede' : (data.status || 'Beklemede'),
+            // Formun yazdığı teknik durumlar (draft/submitted) Türkçe etikete çevrilir
+            _status: (!data.status || data.status === 'draft') ? 'Beklemede' : data.status === 'submitted' ? 'Gönderildi' : data.status,
             _tcKimlik: data.tcKimlik || data.formData?.tcKimlik || '',
             _passportNo: data.passportNo || data.formData?.passportNo || data.formData?.passportNumber || '',
           };
@@ -13881,7 +13882,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 
   const statusColors = {
     'Beklemede': '#f59e0b',
-    'draft': '#f59e0b',
+    'Gönderildi': '#a855f7',
     'İnceleniyor': '#3b82f6',
     'Tamamlandı': '#10b981',
     'Reddedildi': '#ef4444',
@@ -13895,11 +13896,11 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
       (a._email || '').toLowerCase().includes(q) ||
       (a._phone || '').includes(q) ||
       (a._tcKimlik || '').includes(q);
-    const matchS = statusFilter === 'all' || a._status === statusFilter || a.status === statusFilter;
+    const matchS = statusFilter === 'all' || a._status === statusFilter;
     return matchQ && matchS;
   });
 
-  const statuses = ['all', 'Beklemede', 'İnceleniyor', 'Tamamlandı', 'Reddedildi', 'İptal'];
+  const statuses = ['all', 'Beklemede', 'Gönderildi', 'İnceleniyor', 'Tamamlandı', 'Reddedildi', 'İptal'];
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
@@ -13962,9 +13963,10 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '20px' }}>
         {[
           { label: 'Toplam', value: applications.length, color: '#3b82f6' },
-          { label: 'Beklemede', value: applications.filter(a => a.status === 'Beklemede' || !a.status).length, color: '#f59e0b' },
-          { label: 'İnceleniyor', value: applications.filter(a => a.status === 'İnceleniyor').length, color: '#3b82f6' },
-          { label: 'Tamamlandı', value: applications.filter(a => a.status === 'Tamamlandı').length, color: '#10b981' },
+          { label: 'Beklemede', value: applications.filter(a => a._status === 'Beklemede').length, color: '#f59e0b' },
+          { label: 'Gönderildi', value: applications.filter(a => a._status === 'Gönderildi').length, color: '#a855f7' },
+          { label: 'İnceleniyor', value: applications.filter(a => a._status === 'İnceleniyor').length, color: '#3b82f6' },
+          { label: 'Tamamlandı', value: applications.filter(a => a._status === 'Tamamlandı').length, color: '#10b981' },
         ].map(stat => (
           <div key={stat.label} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${stat.color}30`, borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
             <div style={{ fontSize: '22px', fontWeight: '700', color: stat.color }}>{stat.value}</div>
