@@ -190,10 +190,10 @@ const VIZE_DURUM = {"Türkiye":{"b":"yurtici","y":"yurtici","t":"Yurt içi seyah
 // ===== Vize maliyet kalemleri (kategori bazlı) =====
 const VISA_COST_CATEGORIES = [
   { id: 'schengen', label: 'Schengen', icon: '🇪🇺' },
-  { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
   { id: 'russia', label: 'Rusya', icon: '🇷🇺' },
+  { id: 'uae', label: 'BAE (Dubai)', icon: '🇦🇪' },
+  { id: 'usa', label: 'Amerika', icon: '🇺🇸' },
   { id: 'uk', label: 'İngiltere', icon: '🇬🇧' },
-  { id: 'uae', label: 'BAE', icon: '🇦🇪' },
   { id: 'china', label: 'Çin', icon: '🇨🇳' },
   { id: 'other', label: 'Diğer', icon: '🌍' }
 ];
@@ -215,6 +215,11 @@ const getVisaCostItems = (appSettings, category) => {
   const list = raw && raw[category || 'schengen'];
   return Array.isArray(list) && list.length ? list : DEFAULT_VISA_COST_ITEMS;
 };
+// Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
+const getVisaCostDefaults = (appSettings, category, typeName) => ({
+  ...((appSettings?.visaCostDefaults || {})[category] || {}),
+  ...(typeName ? (((appSettings?.visaCostTypeDefaults || {})[category] || {})[typeName] || {}) : {})
+});
 // Bir başvurunun maliyetlerini para birimi bazında toplar. Kalem listesinden bağımsız olarak
 // kayıttaki tüm tutarları sayar — ayarlardan kaldırılan bir kalem kâr/zarardan düşmesin.
 const sumVisaCosts = (visa) => {
@@ -4060,10 +4065,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   // Vize kategorileri - durations appSettings'ten alınır
   const visaCategories = [
     { id: 'schengen', label: 'Schengen', icon: '🇪🇺', color: '#10b981', countries: ['Almanya', 'Fransa', 'İtalya', 'İspanya', 'Hollanda', 'Belçika', 'Avusturya', 'Yunanistan', 'Portekiz', 'Polonya', 'Çekya', 'Macaristan', 'İsviçre', 'Danimarka', 'İsveç', 'Norveç', 'Finlandiya'], durations: null },
-    { id: 'usa', label: 'Amerika', icon: '🇺🇸', color: '#3b82f6', countries: ['Amerika Birleşik Devletleri'], durations: appSettings?.visaDurations?.usa || null },
     { id: 'russia', label: 'Rusya', icon: '🇷🇺', color: '#ef4444', countries: ['Rusya'], durations: appSettings?.visaDurations?.russia || null },
-    { id: 'uk', label: 'İngiltere', icon: '🇬🇧', color: '#8b5cf6', countries: ['İngiltere'], durations: appSettings?.visaDurations?.uk || null },
     { id: 'uae', label: 'BAE', icon: '🇦🇪', color: '#f59e0b', countries: ['Birleşik Arap Emirlikleri'], durations: appSettings?.visaDurations?.uae || null },
+    { id: 'usa', label: 'Amerika', icon: '🇺🇸', color: '#3b82f6', countries: ['Amerika Birleşik Devletleri'], durations: appSettings?.visaDurations?.usa || null },
+    { id: 'uk', label: 'İngiltere', icon: '🇬🇧', color: '#8b5cf6', countries: ['İngiltere'], durations: appSettings?.visaDurations?.uk || null },
     { id: 'china', label: 'Çin', icon: '🇨🇳', color: '#dc2626', countries: ['Çin'], durations: appSettings?.visaDurations?.china || null },
     { id: 'other', label: 'Diğer', icon: '🌍', color: '#64748b', countries: ['Kanada', 'Avustralya', 'Japonya', 'Hindistan', 'Güney Kore', 'Brezilya', 'Meksika', 'Diğer'], durations: null }
   ];
@@ -4420,7 +4425,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       cost: '',
       currency: '€',
       // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
-      costs: { ...((appSettings?.visaCostDefaults || {})[cat.id] || {}) },
+      costs: getVisaCostDefaults(appSettings, cat.id),
       costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '€'
     });
   };
@@ -4714,7 +4719,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
   }[status] || '#94a3b8');
 
-  const getCategoryInfo = (catId) => visaCategories.find(c => c.id === catId) || visaCategories[5];
+  const getCategoryInfo = (catId) => visaCategories.find(c => c.id === catId) || visaCategories.find(c => c.id === 'other'); // eskiden [5] = Çin idi: kategorisi olmayan başvuru Çin bayrağıyla görünüyordu
 
   // Takvim renderı
   const renderCalendar = (days, monthName, year) => (
@@ -4968,7 +4973,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency })}
+                            onClick={() => setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency,
+                              // Yeni başvuruda tür seçilince o türe özel varsayılan maliyetler gelir; mevcut başvurunun maliyetine dokunulmaz
+                              ...(!editingVisa ? { costs: getVisaCostDefaults(appSettings, selectedCategory.id, name) } : {}) })}
                             style={{
                               padding: '12px 10px', textAlign: 'left',
                               background: selected ? `${selectedCategory.color}25` : 'rgba(255,255,255,0.05)',
@@ -14368,6 +14375,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   const kategoriler = VISA_COST_CATEGORIES;
   const [aktifKat, setAktifKat] = useState('schengen');
+  const [aktifTur, setAktifTur] = useState(''); // '' = kategori varsayılanı, aksi halde vize türü adı
   const [yeniKalem, setYeniKalem] = useState('');
   const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 
@@ -14381,6 +14389,16 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   const tumCur = appSettings?.visaCostDefaultCurrency || {};
   const katDefs = tumDefs[aktifKat] || {};
   const katCur = tumCur[aktifKat] || '€';
+  const turAdlari = (appSettings?.visaDurations?.[aktifKat] || []).map(d => (typeof d === 'string' ? d : d.name)).filter(Boolean);
+  const tumTurDefs = appSettings?.visaCostTypeDefaults || {};
+  const katTurDefs = tumTurDefs[aktifKat] || {};
+  const turDefs = aktifTur ? (katTurDefs[aktifTur] || {}) : {};
+  // Türe özel değer: boş bırakılırsa kategori varsayılanı kullanılır
+  const setTurDeger = (key, val) => {
+    const yeni = { ...turDefs };
+    if (val === '' || val == null) delete yeni[key]; else yeni[key] = parseFloat(val) || 0;
+    setAppSettings({ ...appSettings, visaCostTypeDefaults: { ...tumTurDefs, [aktifKat]: { ...katTurDefs, [aktifTur]: yeni } } });
+  };
 
   const setKatItems = (yeni) => {
     const base = eskiDuz ? Object.fromEntries(kategoriler.map(k => [k.id, [...eskiDuz]])) : { ...katItemsAll };
@@ -14407,7 +14425,7 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
 
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {kategoriler.map(k => (
-          <button key={k.id} onClick={() => setAktifKat(k.id)} style={{
+          <button key={k.id} onClick={() => { setAktifKat(k.id); setAktifTur(''); }} style={{
             padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
             border: aktifKat === k.id ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(255,255,255,0.1)',
             background: aktifKat === k.id ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.04)',
@@ -14427,6 +14445,18 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
         </select>
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>Değerler:</span>
+        <select value={aktifTur} onChange={e => setAktifTur(e.target.value)}
+          style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer', maxWidth: '100%' }}>
+          <option value="" style={{ background: '#0c1929' }}>{katAd} — tüm türler (varsayılan)</option>
+          {turAdlari.map(t => (
+            <option key={t} value={t} style={{ background: '#0c1929' }}>{t}{katTurDefs[t] && Object.keys(katTurDefs[t]).length ? ' ✎' : ''}</option>
+          ))}
+        </select>
+        {aktifTur && <span style={{ fontSize: '11px', color: '#64748b' }}>Sadece farklı olan kalemi yazın; boş bırakılan kalem kategori varsayılanını kullanır.</span>}
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
         {items.map((it, idx) => (
           <div key={it.key + idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16,185,129,0.06)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
@@ -14436,8 +14466,14 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
             </div>
             <input type="text" value={it.label} onChange={e => { const n = [...items]; n[idx] = { ...it, label: e.target.value }; setKatItems(n); }}
               style={{ flex: 1, minWidth: 0, padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '5px', color: '#fff', fontSize: '12px' }} />
-            <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
-              style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+            {aktifTur ? (
+              <input type="number" step="0.01" min="0" value={turDefs[it.key] ?? ''} onChange={e => setTurDeger(it.key, e.target.value)} placeholder={String(katDefs[it.key] ?? 0)}
+                title="Boş = kategori varsayılanı"
+                style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: turDefs[it.key] != null ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${turDefs[it.key] != null ? 'rgba(245,158,11,0.5)' : 'rgba(16,185,129,0.25)'}`, borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+            ) : (
+              <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
+                style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+            )}
             <span style={{ fontSize: '11px', color: '#94a3b8', width: '14px', flexShrink: 0 }}>{katCur}</span>
             <button onClick={() => { if (!window.confirm(`"${it.label}" kalemini ${katAd} kategorisinden silmek istiyor musun?`)) return; setKatItems(items.filter((_, i) => i !== idx)); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}>🗑️</button>
           </div>
@@ -15074,6 +15110,40 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                       <option value="₺">₺</option>
                     </select>
                     <button onClick={() => { if (newDuration.value && newDuration.value.trim()) { const newItem = { name: newDuration.value.trim(), price: newDuration.price || 0, currency: newDuration.currency || '€' }; setAppSettings({ ...appSettings, visaDurations: { ...appSettings.visaDurations, china: [...(appSettings.visaDurations?.china || []), newItem] } }); setNewDuration({ category: '', value: '', price: 0, currency: '€' }); } }} style={{ padding: '6px 10px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>➕</button>
+                  </div>
+                </div>
+              </details>
+              <details style={{ background: 'rgba(148,163,184,0.05)', borderRadius: '10px', border: '1px solid rgba(148,163,184,0.2)', padding: '12px' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: '600', color: '#94a3b8', fontSize: '14px', listStyle: 'none' }}>
+                  <span style={{ marginRight: '8px' }}>🌍</span>
+                  Diğer ({(appSettings?.visaDurations?.other || []).length} tür)
+                </summary>
+                <div style={{ paddingLeft: '26px', marginTop: '10px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {(appSettings?.visaDurations?.other || []).map((d, idx) => {
+                      const name = typeof d === 'string' ? d : d.name;
+                      const price = typeof d === 'object' ? d.price : 0;
+                      const currency = typeof d === 'object' ? d.currency : '€';
+                      return (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(148,163,184,0.15)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(148,163,184,0.3)' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {name} {price > 0 && `• ${price} ${currency}`}
+                          </span>
+                          <button onClick={() => setAppSettings({ ...appSettings, visaDurations: { ...appSettings.visaDurations, other: appSettings.visaDurations.other.filter((_, i) => i !== idx) } })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <input type="text" value={newDuration.category === 'other' ? newDuration.value : ''} onChange={e => setNewDuration({ ...newDuration, category: 'other', value: e.target.value })} placeholder="Vize türü" style={{ flex: '1 1 120px', padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '11px' }} />
+                    <input type="number" value={newDuration.category === 'other' ? (newDuration.price || '') : ''} onChange={e => setNewDuration({ ...newDuration, category: 'other', price: Number(e.target.value) })} placeholder="Fiyat" style={{ width: '70px', padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '11px' }} />
+                    <select value={newDuration.category === 'other' ? (newDuration.currency || '€') : '€'} onChange={e => setNewDuration({ ...newDuration, category: 'other', currency: e.target.value })} style={{ width: '50px', padding: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e8f1f8', fontSize: '11px' }}>
+                      <option value="€">€</option>
+                      <option value="$">$</option>
+                      <option value="£">£</option>
+                      <option value="₺">₺</option>
+                    </select>
+                    <button onClick={() => { if (newDuration.value && newDuration.value.trim()) { const newItem = { name: newDuration.value.trim(), price: newDuration.price || 0, currency: newDuration.currency || '€' }; setAppSettings({ ...appSettings, visaDurations: { ...appSettings.visaDurations, other: [...(appSettings.visaDurations?.other || []), newItem] } }); setNewDuration({ category: '', value: '', price: 0, currency: '€' }); } }} style={{ padding: '6px 10px', background: 'linear-gradient(135deg, #64748b, #475569)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>➕</button>
                   </div>
                 </div>
               </details>
