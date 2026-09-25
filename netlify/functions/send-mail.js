@@ -10,10 +10,41 @@
 
 const nodemailer = require('nodemailer');
 
+// Firebase Web API anahtarı (istemcide zaten açık; gizli değildir). Env ile değiştirilebilir.
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyBGPKWf2A6Zck1zJaT3JAhOai1UVIPjwZo';
+
+// Ekler yalnızca Firebase Storage'dan indirilebilir (SSRF'e karşı: iç ağ / rastgele URL çekilmez)
+const ALLOWED_ATTACHMENT_HOSTS = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
+const isAllowedAttachmentUrl = (u) => {
+  try { const url = new URL(u); return url.protocol === 'https:' && ALLOWED_ATTACHMENT_HOSTS.includes(url.hostname); }
+  catch { return false; }
+};
+
+// İstekteki Firebase ID token'ı doğrular; geçerliyse kullanıcının e-postasını döner.
+// Bu kontrol olmadan fonksiyon, SMTP hesabınızı kullanan herkese açık bir mail rölesidir.
+const verifyFirebaseUser = async (event) => {
+  const authHeader = event.headers.authorization || event.headers.Authorization || '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!idToken) return null;
+  try {
+    const resp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const user = data.users && data.users[0];
+    return user && !user.disabled ? (user.email || user.localId) : null;
+  } catch {
+    return null;
+  }
+};
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
 
@@ -22,6 +53,11 @@ exports.handler = async (event) => {
   }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  }
+
+  const authedUser = await verifyFirebaseUser(event);
+  if (!authedUser) {
+    return { statusCode: 401, headers, body: JSON.stringify({ error: 'Yetkisiz istek — CRM oturumu gerekli' }) };
   }
 
   try {
@@ -68,6 +104,7 @@ exports.handler = async (event) => {
         }
         // 2) URL'den indir (yüklü dosyalar)
         if (!a.url) continue;
+        if (!isAllowedAttachmentUrl(a.url)) { attachWarnings.push(`${a.filename || 'ek'}: izin verilmeyen adres`); continue; }
         try {
           const resp = await fetch(a.url);
           if (!resp.ok) { attachWarnings.push(`${a.filename || 'ek'}: indirilemedi (${resp.status})`); continue; }

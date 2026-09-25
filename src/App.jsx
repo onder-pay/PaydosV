@@ -3,8 +3,8 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db, auth } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField } from 'firebase/firestore';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
 import { DEJAVU_TR_B64, DEJAVU_TR_BOLD_B64 } from './dejavuFont';
@@ -393,16 +393,24 @@ const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string'
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
-  // Sadece rakamları al
-  const digits = phone.replace(/\D/g, '');
-  // Başındaki 90 veya 0'ı kaldır, 90 ekle
-  const clean = digits.replace(/^(90|0)/, '');
-  return '90' + clean;
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('00')) return digits.slice(2);   // 0049... uluslararası önek
+  if (digits.startsWith('90')) return digits;            // +90 5XX...
+  if (digits.startsWith('0')) return '90' + digits.slice(1); // 05XX... (yerel)
+  if (digits.length <= 10) return '90' + digits;          // 5XX XXX XX XX
+  return digits;                                          // yabancı numara (+49, +44 ...) — olduğu gibi
 };
 
 const generateUniqueId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+};
+
+// send-mail fonksiyonunu çağırır. Firebase oturum jetonu (ID token) gönderilir;
+// sunucu jetonu doğrulamadan mail atmaz (aksi halde fonksiyon herkese açık bir spam rölesi olur).
+const sendMailRequest = async ({ headers = {}, ...opts }) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  return fetch('/.netlify/functions/send-mail', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
 };
 
 // İŞLEM LOGU — önemli işlemleri activity_logs koleksiyonuna yazar.
@@ -772,7 +780,7 @@ function LoginScreen({ onLogin, users }) {
       // Firebase Auth ile giriş (Firestore Rules güvenliği için)
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       // users koleksiyonundan profil/rol bul (yoksa temel profil)
-      const profile = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+      const profile = users.find(u => (u.email || '').toLowerCase() === email.trim().toLowerCase());
       onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
     } catch (err) {
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
@@ -1352,16 +1360,23 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           return;
         }
 
-        setCustomers([...customers, ...newCustomers]);
-        
-        for (const c of newCustomers) {
+        // Firestore'a yaz (customers otomatik senkronize edilmiyor — yazılmazsa sayfa yenilenince kaybolur)
+        const now = new Date().toISOString();
+        const toSave = newCustomers.map(c => ({ ...c, _docId: String(c.id), updatedAt: now, verified: false,
+          firstName: titleCaseTr(c.firstName), lastName: titleCaseTr(c.lastName),
+          passports: '[]', schengenVisas: '[]', usaVisa: '{}' }));
+        for (let i = 0; i < toSave.length; i += 400) {
+          const batch = writeBatch(db);
+          toSave.slice(i, i + 400).forEach(c => { const { _docId, ...data } = c; batch.set(doc(db, 'customers', _docId), data); });
+          await batch.commit();
         }
-        
-        alert(`${newCustomers.length} müşteri başarıyla eklendi!`);
+        setCustomers(prev => [...prev, ...toSave]);
+
+        alert(`${toSave.length} müşteri başarıyla eklendi!`);
         setShowExcelModal(false);
       } catch (err) {
         console.error(err);
-        alert('Excel dosyası okunamadı!');
+        alert('Excel içe aktarılamadı: ' + err.message);
       }
     };
     reader.readAsBinaryString(file);
@@ -1545,19 +1560,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     }
     // === VALİDASYON SONU ===
 
-    // TC Kimlik eşsizlik kontrolü
-    if (formData.tcKimlik && formData.tcKimlik.trim()) {
-      const duplicate = customers.find(c =>
-        c.tcKimlik === formData.tcKimlik &&
-        (!editingCustomer || (c._docId !== editingCustomer._docId && String(c.id) !== String(editingCustomer.id)))
-      );
-      if (duplicate) {
-        showToast?.(`❌ Bu TC Kimlik No zaten kayıtlı: ${duplicate.firstName} ${duplicate.lastName}`, 'error');
-        setFormTab('info');
-        return;
-      }
-    }
-    
     const now = new Date().toISOString();
     const fullData = {
       ...formData,
@@ -1611,13 +1613,19 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
 
 
-  const deleteCustomer = async (id) => {
+  // Müşteriyi Firestore doküman kimliğiyle (_docId) eşleştirerek siler. Eskiden yalnızca c.id ile
+  // eşleşiyordu; id alanı olmayan eski kayıtlarda yanlış kaydı silebilir / listeyi boşaltabilirdi.
+  const deleteCustomer = async (cust) => {
+    if (!cust) return;
     if (!confirm('Silmek istediğinize emin misiniz?')) return;
-    const cust = customers.find(c => c.id === id);
-    setCustomers(customers.filter(c => c.id !== id));
-    if (selectedCustomer?.id === id) setSelectedCustomer(null);
-    logActivity('delete', 'Müşteri', cust ? `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim() : '', currentUser);
-    try { const docId = cust?._docId || (id !== undefined && id !== null ? String(id) : null); if (docId) await deleteDoc(doc(db, 'customers', docId)); } catch(e) { console.warn('Firestore silme hatası:', e.message); }
+    const key = cust._docId || (cust.id != null ? String(cust.id) : null);
+    if (!key) { showToast?.('Müşteri kimliği bulunamadı, silinemedi', 'error'); return; }
+    const same = (c) => (c._docId || (c.id != null ? String(c.id) : null)) === key;
+    setCustomers(prev => prev.filter(c => !same(c)));
+    if (selectedCustomer && same(selectedCustomer)) setSelectedCustomer(null);
+    logActivity('delete', 'Müşteri', `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim(), currentUser);
+    try { await deleteDoc(doc(db, 'customers', key)); }
+    catch (e) { showToast?.('❌ Firestore\'dan silinemedi: ' + e.message, 'error'); }
   };
 
   const mainTabStyle = (active) => ({
@@ -2497,7 +2505,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>✏️</span> Düzenle
             </button>
-            <button onClick={() => { if(confirm('Bu müşteriyi silmek istediğinize emin misiniz?')) { deleteCustomer(c.id); setSelectedCustomer(null); } }} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>🗑️</span> Sil
             </button>
           </div>
@@ -2522,7 +2530,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {c.verified !== false && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
+            {c.verified === true && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
             {cPassports.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}>🛂 {cPassports.length}</span>}
             {cSchengen.length > 0 && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.2)', color: '#10b981' }}>🇪🇺 {cSchengen.length}</span>}
             {cUsa.endDate && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}>🇺🇸</span>}
@@ -3240,8 +3248,10 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
                         const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
-                        const updated = { ...existing, passports: newPassports, verified: false, lastEditedAt: now, updatedAt: now };
+                        const updated = { ...existing, passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now };
                         setCustomers(prev => prev.map(c => c.id === existing.id ? updated : c));
+                        setDoc(doc(db, 'customers', existing._docId || String(existing.id)), { passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now }, { merge: true })
+                          .catch(err => showToast?.('❌ Pasaport kaydedilemedi: ' + err.message, 'error'));
                         showToast?.(`✅ ${existing.firstName} ${existing.lastName} — yeni pasaport eklendi`, 'success');
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
                         setTimeout(() => setSelectedCustomer(updated), 100);
@@ -3280,7 +3290,17 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           usaVisa: aiResult._usaVisa ? { ...aiResult._usaVisa, createdAt: aiResult._usaVisa.createdAt || now } : {},
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
+                        delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
+                        newCust.firstName = titleCaseTr(newCust.firstName || '');
+                        newCust.lastName = titleCaseTr(newCust.lastName || '');
+                        newCust.passports = JSON.stringify(newCust.passports);
+                        newCust.schengenVisas = JSON.stringify(newCust.schengenVisas);
+                        newCust.usaVisa = JSON.stringify(newCust.usaVisa);
+                        newCust._docId = newCust.id;
                         setCustomers(prev => [newCust, ...prev]);
+                        { const { _docId, ...saveData } = newCust;
+                          setDoc(doc(db, 'customers', _docId), saveData)
+                            .catch(err => showToast?.('❌ Müşteri kaydedilemedi: ' + err.message, 'error')); }
                         showToast?.('✅ Müşteri eklendi — kontrol edilmesi gerekiyor', 'success');
                         setShowAiModal(false);
                         setAiText(''); setAiResult(null); setAiImages([]);
@@ -3724,7 +3744,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             const bodyText = rep(tpl.body);
             const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
             try {
-              const resp = await fetch('/.netlify/functions/send-mail', {
+              const resp = await sendMailRequest({
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ to: testEmail.trim(), from: (appSettings?.smtpTour?.from || '').trim() || undefined, subject, html, text: bodyText, smtp: appSettings?.smtpTour })
               });
@@ -3856,7 +3876,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
     const allAttachments = appSettings?.attachments || [];
     const linkedAttachments = allAttachments.filter(a => a.linkedTypes?.includes(vize_turu));
 
-    const resp = await fetch('/.netlify/functions/send-mail', {
+    const resp = await sendMailRequest({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4564,6 +4584,18 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       console.error('Proforma oluşturma hatası:', error);
       showToast?.('Proforma oluşturulamadı: ' + error.message, 'error');
     }
+  };
+
+  // Proformayı indirir ve müşteriye WhatsApp mesajını açar (wa.me dosya ekleyemez — PDF elle eklenir)
+  const sendProformaWhatsApp = async (visa) => {
+    const phone = (visa.customerPhone || customers.find(c => c.id === visa.customerId)?.phone || '').replace(/\D/g, '');
+    if (!phone) { showToast?.('Müşterinin telefon numarası yok', 'error'); return; }
+    await generateProforma(visa);
+    const price = visa.visaPrice || visa.price || 0;
+    const currency = visa.visaCurrency || visa.currency || '€';
+    const msg = `Sayın ${visa.customerName || ''},\n\n${visa.country ? visa.country + ' ' : ''}${visa.visaDuration || visa.visaType || 'vize'} hizmet bedeli: ${price} ${currency}\n\nProforma faturanız ekte yer almaktadır.\n\nPaydos Turizm`;
+    window.open(`https://wa.me/${formatWhatsAppPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
+    showToast?.('Proforma indirildi — WhatsApp\'ta dosyayı ekleyip gönderin', 'info');
   };
 
   const [saving, setSaving] = useState(false);
@@ -6453,7 +6485,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const old = [...tours];
       setTours(tours.filter(t => t.id !== tour.id));
       showToast('Tur silindi', 'success');
-      addToUndo(() => setTours(old), 'Tur silme');
+      addToUndo({ type: 'delete', undo: () => setTours(old) });
       try {
         const docId = tour._docId || String(tour.id);
         await deleteDoc(doc(db, 'tours', docId));
@@ -6539,7 +6571,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         } catch (e) { /* sözleşme üretilemezse mail yine gitsin */ }
       }
       try {
-        const resp = await fetch('/.netlify/functions/send-mail', {
+        const resp = await sendMailRequest({
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ to: r.email, from: tourFrom, subject, html, text: bodyText, attachments: perAttachments, smtp: appSettings?.smtpTour })
         });
@@ -8973,7 +9005,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       id: Date.now(),
       number: `${formData.type === 'teklif' ? 'TKL' : 'PF'}-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${String(quotes.length + 1).padStart(3, '0')}`,
       createdAt: new Date().toISOString(),
-      createdBy: 'Önder Taşcı'
+      createdBy: currentUser?.name || currentUser?.email || 'Önder Taşçı'
     };
 
     setQuotes([...quotes, newQuote]);
@@ -9431,7 +9463,7 @@ ${flightRaw}`;
         id, type: 'tur-teklifi', subject: offer.title,
         customer: { firstName: offer.subtitle || '', lastName: '' },
         number: `TUR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(quotes.filter(q=>q.type==='tur-teklifi').length + 1).padStart(3,'0')}`,
-        offer, createdAt: now.toISOString(), createdBy: 'Önder Taşcı'
+        offer, createdAt: now.toISOString(), createdBy: currentUser?.name || currentUser?.email || 'Önder Taşçı'
       };
       setQuotes(prev => [...prev, newQ]);
       setOfferId(id);
@@ -10185,12 +10217,9 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
     const card = creditCards.find(c => c.id === id);
     const updated = creditCards.filter(c => c.id !== id);
     setCreditCards(updated);
-    showToast?.('Kart silindi', 'info', {
-      label: '↩️ Geri Al',
-      action: () => {
+    showToast?.('Kart silindi', 'info', () => {
         setCreditCards([...updated, card].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         showToast?.('Kart geri yüklendi', 'success');
-      }
     });
   };
 
@@ -13603,12 +13632,9 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
     const agency = agencies.find(a => a.id === id);
     const updated = agencies.filter(a => a.id !== id);
     setAgencies(updated);
-    showToast?.('Acentelik silindi', 'info', {
-      label: '↩️ Geri Al',
-      action: () => {
+    showToast?.('Acentelik silindi', 'info', () => {
         setAgencies([...updated, agency].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         showToast?.('Acentelik geri yüklendi', 'success');
-      }
     });
   };
 
@@ -14548,17 +14574,20 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
     }
   };
 
+  // Şifre Firebase Auth üzerinde değişir (giriş Firebase Auth ile yapılıyor).
+  // Eskiden sadece Firestore'daki düz metin şifre güncelleniyordu; giriş eski şifreyle devam ediyordu.
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (passwordData.current !== currentUser.password) {
-      setPasswordError('Mevcut şifre yanlış!');
+    const fbUser = auth.currentUser;
+    if (!fbUser || !fbUser.email) {
+      setPasswordError('Oturum bulunamadı, çıkış yapıp tekrar giriş yapın.');
       return;
     }
-    if (passwordData.new.length < 4) {
-      setPasswordError('Yeni şifre en az 4 karakter olmalı');
+    if (passwordData.new.length < 6) {
+      setPasswordError('Yeni şifre en az 6 karakter olmalı');
       return;
     }
     if (passwordData.new !== passwordData.confirm) {
@@ -14566,14 +14595,24 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       return;
     }
 
-    const updated = users.map(u => u.id === currentUser.id ? { ...u, password: passwordData.new } : u);
-    setUsers(updated);
-    
-    const updatedCurrentUser = { ...currentUser, password: passwordData.new };
-    setCurrentUser(updatedCurrentUser);
-    localStorage.setItem('paydos_current_user', JSON.stringify(updatedCurrentUser));
-    
-    
+    try {
+      await reauthenticateWithCredential(fbUser, EmailAuthProvider.credential(fbUser.email, passwordData.current));
+      await updatePassword(fbUser, passwordData.new);
+    } catch (err) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') setPasswordError('Mevcut şifre yanlış!');
+      else if (err.code === 'auth/weak-password') setPasswordError('Yeni şifre çok zayıf');
+      else if (err.code === 'auth/too-many-requests') setPasswordError('Çok fazla deneme. Biraz bekleyin.');
+      else setPasswordError('Şifre değiştirilemedi: ' + (err.code || err.message));
+      return;
+    }
+
+    // Firestore/localStorage'da düz metin şifre tutma — varsa temizle
+    const { password: _pw, ...cleanUser } = currentUser;
+    setUsers(users.map(u => u.id === currentUser.id ? (({ password, ...rest }) => rest)(u) : u));
+    setCurrentUser(cleanUser);
+    localStorage.setItem('paydos_current_user', JSON.stringify(cleanUser));
+    try { await setDoc(doc(db, 'users', currentUser._docId || String(currentUser.id)), { password: deleteField() }, { merge: true }); } catch (err) { /* profil dokümanı yoksa önemli değil */ }
+
     setPasswordSuccess('Şifre başarıyla değiştirildi!');
     setPasswordData({ current: '', new: '', confirm: '' });
     setTimeout(() => setPasswordSuccess(''), 3000);
@@ -15783,6 +15822,9 @@ function AppInner() {
         try {
           const snapshot = await getDocs(collection(db, col.name));
           const items = snapshot.empty ? [] : snapshot.docs.map(d => ({ ...d.data(), _docId: d.id }));
+          // Sunucudan gelen veriyi geri yazma (debouncedSave bu işareti görüp atlar)
+          applyingRemote.current[col.name] = true;
+          loadFailed.current[col.name] = false;
           col.setter(items);
           // localStorage'a hafif (resimsiz) kaydet — quota aşımını önler
           try {
@@ -15798,8 +15840,11 @@ function AppInner() {
             });
             localStorage.setItem(`paydos_${col.name}`, JSON.stringify(lite));
           } catch(e) {}
-        } catch (e) { console.warn(`${col.name} yükleme hatası:`, e.message); }
+        } catch (e) { loadFailed.current[col.name] = true; console.warn(`${col.name} yükleme hatası:`, e.message); }
       }));
+      // Kayıt ancak sunucu verisi yüklendikten sonra açılır — aksi halde localStorage'daki eski
+      // önbellek Firestore'a yazılıp aradaki yeni kayıtları silebilirdi.
+      initialLoadDone.current = true;
     })();
 
     // Her küçük koleksiyon için gerçek zamanlı dinleyici (ilk snapshot atlanır, sonra sadece değişenler)
@@ -15916,7 +15961,8 @@ function AppInner() {
   const initialLoadDone = useRef(false);
   // Gerçek zamanlı dinleyiciden gelen güncellemeleri işaretle — debouncedSave bunları TEKRAR YAZMASIN (sonsuz döngü önlenir)
   const applyingRemote = useRef({});
-  useEffect(() => { const t = setTimeout(() => { initialLoadDone.current = true; }, 5000); return () => clearTimeout(t); }, []);
+  // Yüklenemeyen koleksiyonlarda silme senkronu yapılmaz (state eski önbellek olabilir)
+  const loadFailed = useRef({});
 
   // Eski tek-banka alanını (bankInfo) temizle — artık banks[] dizisi kullanılıyor
   useEffect(() => {
@@ -15948,9 +15994,9 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   }, []);
 
   const debouncedSave = useCallback((key, collectionName, data, isSettings = false) => {
-    if (!initialLoadDone.current) return;
-    // Bu güncelleme gerçek zamanlı dinleyiciden geldiyse tekrar yazma (döngü önleme)
+    // Bu güncelleme sunucudan/dinleyiciden geldiyse tekrar yazma (döngü önleme)
     if (applyingRemote.current[collectionName]) { applyingRemote.current[collectionName] = false; return; }
+    if (!initialLoadDone.current) return;
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
     saveTimers.current[key] = setTimeout(async () => {
       try {
@@ -15962,7 +16008,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
           // Silme sync YAPMA: customers (4000+ kayıt pahalı) ve visa_applications (iDATA/işlem
           // sırasında race condition + _docId tutarsızlığı veri kaybına yol açıyordu).
           // Bu modüllerde silme zaten anında deleteDoc ile yapılıyor.
-          if (collectionName !== 'customers' && collectionName !== 'visa_applications') {
+          if (collectionName !== 'customers' && collectionName !== 'visa_applications' && !loadFailed.current[collectionName]) {
             const snapshot = await getDocs(collection(db, collectionName));
             const currentIds = new Set(data.map(item => (item._docId || item.id?.toString())));
             let delBatch = writeBatch(db);
