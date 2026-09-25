@@ -1446,19 +1446,29 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     setPassports(passports.filter(p => p.id !== id));
   };
 
+  // Fonksiyonel güncelleme: görsel yüklemesi bitince eski (kapanıştaki) liste ile diğer alanlar ezilmesin
   const updatePassport = (id, field, value) => {
-    setPassports(passports.map(p => p.id === id ? { ...p, [field]: value } : p));
+    setPassports(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
   // === Firebase Storage yükleme (base64 -> Storage URL) ===
+  // Devam eden görsel yüklemeleri — bitmeden kaydedilirse görsel kayboluyordu (yavaş mobil bağlantı)
+  const [pendingUploads, setPendingUploads] = useState(0);
   const uploadDocImage = async (imageData, customerId, fileName) => {
     if (!imageData || imageData.startsWith('http')) return imageData;   // zaten URL
     if (!imageData.startsWith('data:')) return imageData;               // beklenmedik format
-    const storage = getStorage();
-    const blob = await (await fetch(imageData)).blob();
-    const sRef = ref(storage, `documents/${customerId}/${fileName}`);
-    await uploadBytes(sRef, blob, { contentType: blob.type || 'image/jpeg' });
-    return await getDownloadURL(sRef);
+    setPendingUploads(n => n + 1);
+    try {
+      const storage = getStorage();
+      const blob = await (await fetch(imageData)).blob();
+      // Dosya adına zaman damgası: aynı ada yazınca URL değişmiyor, telefon eski görseli önbellekten gösteriyordu
+      const stamped = fileName.replace(/(\.[a-z0-9]+)?$/i, (ext) => `_${Date.now()}${ext || '.jpg'}`);
+      const sRef = ref(storage, `documents/${customerId}/${stamped}`);
+      await uploadBytes(sRef, blob, { contentType: blob.type || 'image/jpeg' });
+      return await getDownloadURL(sRef);
+    } finally {
+      setPendingUploads(n => Math.max(0, n - 1));
+    }
   };
   // OCR için: URL ise indirip base64'e çevir, base64 ise olduğu gibi ver
   const imageToBase64 = async (imageData) => {
@@ -1492,6 +1502,10 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   };
 
   const handleSubmit = async () => {
+    if (pendingUploads > 0) {
+      showToast?.('⏳ Görsel yükleniyor, birkaç saniye sonra tekrar Kaydet\'e basın', 'warning');
+      return;
+    }
     if (!formData.firstName || !formData.lastName) {
       alert('Ad ve Soyad alanları zorunludur!');
       setFormTab('info');
@@ -1572,6 +1586,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       usaVisa: usaVisa
     };
     
+    let saveError = null;
     if (editingCustomer) {
       const auditData = { lastEditedAt: now, updatedAt: now };
       const updated = customers.map(c => (c._docId && editingCustomer._docId ? c._docId === editingCustomer._docId : String(c.id) === String(editingCustomer.id)) ? { ...c, ...fullData, ...auditData } : c);
@@ -1586,7 +1601,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           schengenVisas: JSON.stringify(schengenVisas),
           usaVisa: JSON.stringify(usaVisa)
         }, { merge: true });
-      } catch (err) { console.error('Firestore kayıt hatası:', err); }
+      } catch (err) { console.error('Firestore kayıt hatası:', err); saveError = err; }
     } else {
       const newId = formData.id || generateUniqueId();
       const newCustomer = { ...fullData, id: newId, _docId: newId, createdAt: now.split('T')[0], lastEditedAt: now, updatedAt: now, verified: true };
@@ -1598,7 +1613,13 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           schengenVisas: JSON.stringify(Array.isArray(schengenVisas) ? schengenVisas : []),
           usaVisa: JSON.stringify(usaVisa || {})
         });
-      } catch (err) { console.error('Firestore kayıt hatası:', err); }
+      } catch (err) { console.error('Firestore kayıt hatası:', err); saveError = err; }
+    }
+    if (saveError) {
+      // Önceden hata olsa da "Kaydedildi" deniyordu; kayıt sadece bu cihazda kalıyor, diğer cihazlara hiç gitmiyordu
+      const big = /exceeds the maximum|too large|1048576|maximum size/i.test(saveError.message || '');
+      showToast?.(big ? '❌ Kaydedilemedi: kayıt çok büyük (görseller sunucuya yüklenemedi). Görselleri tekrar yükleyin.' : '❌ Sunucuya kaydedilemedi: ' + (saveError.code || saveError.message), 'error');
+      return;
     }
     showToast?.('✅ Kaydedildi', 'success');
     logActivity(editingCustomer ? 'status' : 'create', 'Müşteri', `${titleCaseTr(fullData.firstName)} ${titleCaseTr(fullData.lastName)}`.trim(), currentUser);
@@ -1860,7 +1881,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   {/* Fotoğraf altta - tam genişlik */}
                   {passport.image ? (
                     <div>
-                      <img src={passport.image} alt="Pasaport"
+                      <img src={passport.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
+                            onError={e => { e.currentTarget.style.minHeight = '60px'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.fontSize = '12px'; }}
                         onClick={() => setImagePreview({ show: true, src: passport.image, title: `Pasaport - ${passport.passportNo || ''}` })}
                         style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '2px solid rgba(59,130,246,0.4)', cursor: 'zoom-in', display: 'block' }} />
                       <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
@@ -2270,7 +2292,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           <InfoBox label="Geçerlilik Tarihi" value={formatDate(p.expiryDate)} highlight={p.expiryDate && getDaysLeft(p.expiryDate) <= 180} />
                         </div>
                         {p.image && (
-                          <img src={p.image} alt="Pasaport"
+                          <img src={p.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
+                            onError={e => { e.currentTarget.style.minHeight = '60px'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.fontSize = '12px'; }}
                             onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}` })}
                             style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
                         )}
