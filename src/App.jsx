@@ -39,6 +39,13 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
+// Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir
+const RES_DOCS = [
+  { field: 'hotelVoucherUrl', icon: '🏨', label: 'Otel giriş belgesi', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)' },
+  { field: 'fuarTicketUrl', icon: '🎫', label: 'Fuar bileti', color: '#10b981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.3)' },
+  { field: 'flightTicketUrl', icon: '✈️', label: 'Uçak bileti', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.3)' },
+];
+
 // pdf.js'i CDN'den yükle — PDF içindeki metni tarayıcıda okumak için (toplu bilet eşleştirme)
 const PDFJS_VER = '3.11.174';
 const loadPdfJs = () => new Promise((resolve, reject) => {
@@ -7396,7 +7403,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               const resList = (tour.reservations || []).filter(r => !r.cancelled && r.customerName);
               const nameOf = (id) => resList.find(r => r.id === id)?.customerName || '?';
               const setRow = (key, fn) => setBulkTicket(bt => ({ ...bt, rows: bt.rows.map(r => r.key === key ? fn(r) : r) }));
-              const label = bulkTicket.field === 'fuarTicketUrl' ? '🎫 Fuar bileti' : '✈️ Uçak bileti';
+              const dd = RES_DOCS.find(d => d.field === bulkTicket.field) || RES_DOCS[0];
+              const label = `${dd.icon} ${dd.label}`;
               const ready = bulkTicket.rows.filter(r => r.resIds.length).length;
               return (
                 <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
@@ -7450,10 +7458,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
-                <input type="file" accept="application/pdf,image/*" multiple id={`bulkfuar-${tour.id}`} style={{ display: 'none' }} onChange={e => { openBulkTicket(tour, 'fuarTicketUrl', e.target.files); e.target.value = ''; }} />
-                <button onClick={() => document.getElementById(`bulkfuar-${tour.id}`).click()} disabled={!!bulkTicket} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>🎫 Toplu Fuar Bileti</button>
-                <input type="file" accept="application/pdf,image/*" multiple id={`bulkflight-${tour.id}`} style={{ display: 'none' }} onChange={e => { openBulkTicket(tour, 'flightTicketUrl', e.target.files); e.target.value = ''; }} />
-                <button onClick={() => document.getElementById(`bulkflight-${tour.id}`).click()} disabled={!!bulkTicket} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✈️ Toplu Uçak Bileti</button>
+                {RES_DOCS.map(d => (
+                  <Fragment key={d.field}>
+                    <input type="file" accept="application/pdf,image/*" multiple id={`bulk-${d.field}-${tour.id}`} style={{ display: 'none' }} onChange={e => { openBulkTicket(tour, d.field, e.target.files); e.target.value = ''; }} />
+                    <button onClick={() => document.getElementById(`bulk-${d.field}-${tour.id}`).click()} disabled={!!bulkTicket} style={{ padding: '8px 14px', background: d.bg, border: `1px solid ${d.border}`, borderRadius: '8px', color: d.color, cursor: 'pointer', fontSize: '12px' }}>{d.icon} Toplu {d.label}</button>
+                  </Fragment>
+                ))}
                 <input type="file" accept=".xlsx,.xls" id={`bulkres-${tour.id}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkResUpload(tour, f); e.target.value = ''; }} />
                 <button onClick={() => document.getElementById(`bulkres-${tour.id}`).click()} disabled={bulkResBusy} style={{ padding: '8px 14px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: bulkResBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{bulkResBusy ? '⏳ Yükleniyor...' : '📤 Excel ile Liste Ekle'}</button>
                 <button onClick={() => downloadBulkResTemplate()} style={{ padding: '8px 14px', background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>📋 Örnek İndir</button>
@@ -7795,15 +7805,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ display: 'flex', gap: '4px' }}>
+                                {!res.cancelled && RES_DOCS.map(d => res[d.field]
+                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
+                                  : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
+                                )}
                                 {!res.cancelled && <button onClick={() => singleContract(tour, res)} disabled={!!szBusy} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: szBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Sözleşme PDF">{szBusy === res.id ? '⏳' : '📜'}</button>}
-                                {!res.cancelled && (res.fuarTicketUrl
-                                  ? <span style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res.fuarTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'fuarTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Fuar bileti (indir) — sağ tık: sil">🎫</button><button onClick={() => removeResDoc(tour, res, 'fuarTicketUrl')} title="Bileti sil" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
-                                  : <label style={{ cursor: resDocBusy === `${res.id}-fuarTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Fuar bileti yükle">{resDocBusy === `${res.id}-fuarTicketUrl` ? '⏳' : '🎫'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'fuarTicketUrl', e.target.files[0])} /></label>
-                                )}
-                                {!res.cancelled && (res.flightTicketUrl
-                                  ? <span style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res.flightTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'flightTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Uçak bileti (indir) — sağ tık: sil">✈️</button><button onClick={() => removeResDoc(tour, res, 'flightTicketUrl')} title="Bileti sil" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
-                                  : <label style={{ cursor: resDocBusy === `${res.id}-flightTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Uçak bileti yükle">{resDocBusy === `${res.id}-flightTicketUrl` ? '⏳' : '✈️'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'flightTicketUrl', e.target.files[0])} /></label>
-                                )}
                                 <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                                 {res.cancelled ? (
                                   <button onClick={async () => { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
