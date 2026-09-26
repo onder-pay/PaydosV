@@ -39,9 +39,9 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
-// Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir
+// Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
+// (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
 const RES_DOCS = [
-  { field: 'hotelVoucherUrl', icon: '🏨', label: 'Otel giriş belgesi', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)' },
   { field: 'fuarTicketUrl', icon: '🎫', label: 'Fuar bileti', color: '#10b981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.3)' },
   { field: 'flightTicketUrl', icon: '✈️', label: 'Uçak bileti', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.3)' },
 ];
@@ -6500,6 +6500,59 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.save(fileName);
   };
 
+  // Odalama: rezervasyonları oda tipine ve oda arkadaşlarına göre odalara böler.
+  // Odalama ekranı ve rezervasyon satırındaki 🏨 otel belgesi aynı oda numaralarını kullanır.
+  const buildRoomTypes = (tour) => {
+    const reservations = (tour.reservations || []).filter(r => !r.cancelled);
+    const roomTypes = {}; const assigned = new Set();
+    const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
+
+    // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
+    const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
+    // Çift yönlü: x, oda grubundaki HERHANGİ birinin arkadaşı mı (ya da tersi)
+    const grubaAitMi = (x, grup) => grup.some(g =>
+      x.customerName !== g.customerName && (
+        arkadasIsimleri(g).includes(x.customerName) ||
+        arkadasIsimleri(x).includes(g.customerName)
+      )
+    );
+
+    reservations.forEach(r => {
+      if (assigned.has(r.id)) return;
+      const type = r.roomType || '-';
+      if (!roomTypes[type]) roomTypes[type] = [];
+      const cap = roomCap(type);
+      const room = [r]; assigned.add(r.id);
+      // Kapasite dolana kadar, gruptan birinin arkadaşı olan kişileri ekle
+      let eklendi = true;
+      while (room.length < cap && eklendi) {
+        eklendi = false;
+        for (const x of reservations) {
+          if (assigned.has(x.id)) continue;
+          if (grubaAitMi(x, room)) { room.push(x); assigned.add(x.id); eklendi = true; if (room.length >= cap) break; }
+        }
+      }
+      roomTypes[type].push(room);
+    });
+    return roomTypes;
+  };
+  // Bir rezervasyonun odası ve oda numarası (odalama ekranındaki sırayla)
+  const findResRoom = (tour, resId) => {
+    let n = 0;
+    for (const rooms of Object.values(buildRoomTypes(tour))) {
+      for (const room of rooms) { n++; if (room.some(r => r.id === resId)) return { room, roomNo: n }; }
+    }
+    return null;
+  };
+  const openResHotelVoucher = (tour, res) => {
+    const hi = tour.voucherHotel || {};
+    if (!hi.name) { showToast?.('Önce Odalama ekranında otel bilgilerini girin', 'warning'); return; }
+    const found = findResRoom(tour, res.id);
+    if (!found) { showToast?.('Bu kişi odalamada bulunamadı', 'error'); return; }
+    try { generateTourVoucher(tour, hi, found.room, found.roomNo); }
+    catch (e) { showToast?.('Otel belgesi oluşturulamadı: ' + e.message, 'error'); }
+  };
+
   // Voucher'ı WhatsApp/paylaş menüsüne gönder (mobilde dosya ekli paylaşım)
   const shareTourVoucher = async (tour, hi, room, roomNo) => {
     if (!hi?.name) { showToast?.('Önce otel bilgilerini girin (Odalama formu)', 'warning'); return; }
@@ -7805,6 +7858,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ display: 'flex', gap: '4px' }}>
+                                {!res.cancelled && <button onClick={() => openResHotelVoucher(tour, res)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px', opacity: tour.voucherHotel?.name ? 1 : 0.4 }} title={tour.voucherHotel?.name ? `Otel giriş belgesi — ${tour.voucherHotel.name} (odalamadan)` : 'Otel giriş belgesi — önce Odalama\'da otel bilgilerini girin'}>🏨</button>}
                                 {!res.cancelled && RES_DOCS.map(d => res[d.field]
                                   ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
                                   : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
@@ -7948,37 +8002,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
             {/* Odalama Bölümü */}
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
-              const reservations = (tour.reservations || []).filter(r => !r.cancelled);
-              const roomTypes = {}; const assigned = new Set();
-              const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
-
-              // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
-              const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
-              // Çift yönlü: x, oda grubundaki HERHANGİ birinin arkadaşı mı (ya da tersi)
-              const grubaAitMi = (x, grup) => grup.some(g =>
-                x.customerName !== g.customerName && (
-                  arkadasIsimleri(g).includes(x.customerName) ||
-                  arkadasIsimleri(x).includes(g.customerName)
-                )
-              );
-
-              reservations.forEach(r => {
-                if (assigned.has(r.id)) return;
-                const type = r.roomType || '-';
-                if (!roomTypes[type]) roomTypes[type] = [];
-                const cap = roomCap(type);
-                const room = [r]; assigned.add(r.id);
-                // Kapasite dolana kadar, gruptan birinin arkadaşı olan kişileri ekle
-                let eklendi = true;
-                while (room.length < cap && eklendi) {
-                  eklendi = false;
-                  for (const x of reservations) {
-                    if (assigned.has(x.id)) continue;
-                    if (grubaAitMi(x, room)) { room.push(x); assigned.add(x.id); eklendi = true; if (room.length >= cap) break; }
-                  }
-                }
-                roomTypes[type].push(room);
-              });
+              const roomTypes = buildRoomTypes(tour);
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);
               return (
                 <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', zIndex: 2000, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
