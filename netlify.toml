@@ -14,6 +14,17 @@
   to = "/ds160.html"
   status = 200
 
+# Müşteri belge linki (/b/<kod>) — girişsiz belge sayfası
+[[redirects]]
+  from = "/b/*"
+  to = "/belgeler.html"
+  status = 200
+
+[[redirects]]
+  from = "/belgeler.html"
+  to = "/belgeler.html"
+  status = 200
+
 # SPA fallback — diğer tüm yollar React uygulamasına
 [[redirects]]
   from = "/*"

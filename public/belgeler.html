@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Paydos Turizm - Seyahat Belgeleriniz</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a);font-family:'DM Sans',sans-serif;color:#e0e0e0}
+.c{max-width:560px;margin:0 auto;padding:28px 16px 48px}
+.logo{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;background:linear-gradient(135deg,#e2b04a,#f0c96e);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
+.sub{color:#8888aa;font-size:14px;text-align:center;margin:4px 0 22px}
+.card{background:#16162a;border-radius:16px;border:1px solid #2a2a4a;padding:22px}
+.hi{font-size:15px;color:#c0c0d0;margin-bottom:4px}
+.tour{font-family:'Playfair Display',serif;color:#e2b04a;font-size:21px;margin-bottom:4px}
+.meta{font-size:13px;color:#8888aa;margin-bottom:18px}
+.doc{display:flex;align-items:center;gap:14px;padding:15px 16px;margin-top:10px;border-radius:12px;border:1px solid #2a2a4a;background:#0d0d1a;color:#e0e0e0;text-decoration:none;transition:border-color .2s,background .2s}
+.doc:hover,.doc:active{border-color:#e2b04a;background:rgba(226,176,74,.06)}
+.doc .i{font-size:26px;flex-shrink:0}
+.doc .t{flex:1;font-size:15px;font-weight:500}
+.doc .a{font-size:13px;color:#e2b04a;font-weight:700;white-space:nowrap}
+.msg{text-align:center;color:#8888aa;font-size:14px;padding:30px 10px;line-height:1.6}
+.foot{text-align:center;font-size:12px;color:#666680;margin-top:22px;line-height:1.7}
+.foot a{color:#8888aa}
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="logo">PAYDOS TURİZM</div>
+  <div class="sub">Seyahat Belgeleriniz</div>
+  <div class="card" id="box"><div class="msg">Yükleniyor…</div></div>
+  <div class="foot">Sorularınız için: <a href="tel:+902582637176">+90 258 263 71 76</a><br>www.paydosturizm.com</div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('box');
+  var show = function (t) { box.innerHTML = ''; var d = document.createElement('div'); d.className = 'msg'; d.textContent = t; box.appendChild(d); };
+  // Link biçimi: /b/<kod>  (eski/yedek: belgeler.html?k=<kod>)
+  var m = location.pathname.match(/\/b\/([A-Za-z0-9]{8,40})\/?$/);
+  var code = m ? m[1] : (new URLSearchParams(location.search).get('k') || '');
+  if (!/^[A-Za-z0-9]{8,40}$/.test(code)) { show('Geçersiz bağlantı.'); return; }
+
+  // Firestore REST değer biçimini düz JS'e çevir
+  var val = function (v) {
+    if (!v) return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return Number(v.integerValue);
+    if ('booleanValue' in v) return v.booleanValue;
+    if ('arrayValue' in v) return (v.arrayValue.values || []).map(val);
+    if ('mapValue' in v) { var o = {}, f = v.mapValue.fields || {}; for (var k in f) o[k] = val(f[k]); return o; }
+    return null;
+  };
+  var trDate = function (s) { var p = String(s || '').split('-'); return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : ''; };
+  // Sadece Firebase Storage adreslerine bağlantı verilir
+  var safeUrl = function (u) { try { var x = new URL(u); return x.protocol === 'https:' && /(^|\.)(firebasestorage\.googleapis\.com|storage\.googleapis\.com)$/.test(x.hostname) ? x.href : ''; } catch (e) { return ''; } };
+
+  fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
+    .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
+    .then(function (j) {
+      var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
+      box.innerHTML = '';
+      var add = function (tag, cls, text) { var e = document.createElement(tag); e.className = cls; e.textContent = text; box.appendChild(e); return e; };
+      if (f.customerName) add('div', 'hi', 'Sayın ' + f.customerName + ',');
+      add('div', 'tour', f.tourName || 'Turunuz');
+      var place = [f.city, f.country].filter(Boolean).join(', ');
+      var dates = [trDate(f.startDate), trDate(f.endDate)].filter(Boolean).join(' – ');
+      add('div', 'meta', [place, dates].filter(Boolean).join('  •  '));
+      var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
+      if (!docs.length) { add('div', 'msg', 'Henüz paylaşılmış belge yok.'); return; }
+      docs.forEach(function (d) {
+        var a = document.createElement('a');
+        a.className = 'doc'; a.href = safeUrl(d.url); a.target = '_blank'; a.rel = 'noopener';
+        var i = document.createElement('span'); i.className = 'i'; i.textContent = d.icon || '📄';
+        var t = document.createElement('span'); t.className = 't'; t.textContent = d.label || 'Belge';
+        var o = document.createElement('span'); o.className = 'a'; o.textContent = 'Aç ›';
+        a.appendChild(i); a.appendChild(t); a.appendChild(o); box.appendChild(a);
+      });
+    })
+    .catch(function (e) { show(e.message === '404' ? 'Bu bağlantı bulunamadı veya kaldırılmış.' : 'Belgeler yüklenemedi. Lütfen daha sonra tekrar deneyin.'); });
+})();
+</script>
+</body>
+</html>

@@ -6553,6 +6553,55 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     catch (e) { showToast?.('Otel belgesi oluşturulamadı: ' + e.message, 'error'); }
   };
 
+  // 🔗 BELGE LİNKİ: müşteriye tek link — tur programı, otel giriş belgesi, uçak ve fuar bileti.
+  // PDF'ler üretilip Storage'a yüklenir, özet Firestore'da paylasimlar/{token} olarak tutulur;
+  // /b/{token} sayfası (public/belgeler.html) girişsiz gösterir. Tekrar paylaşımda aynı link güncellenir.
+  const [shareBusy, setShareBusy] = useState('');
+  const [shareReady, setShareReady] = useState(null); // { link, text, phone, count }
+  const newShareToken = () => {
+    const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, b => abc[b % abc.length]).join('');
+  };
+  const shareResLink = async (tour, res) => {
+    if (shareBusy) return;
+    setShareBusy(res.id);
+    try {
+      const token = res.shareToken || newShareToken();
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const up = async (name, blob) => {
+        const r = ref(getStorage(), `paylasim/${token}/${name}`);
+        await uploadBytes(r, blob, { contentType: 'application/pdf' });
+        return getDownloadURL(r);
+      };
+      const docs = [];
+      if (tour.offerData) {
+        const p = await tourProgramPdf(tour, true);
+        docs.push({ icon: '🗺️', label: 'Tur Programı', url: await up('tur-programi.pdf', p.blob) });
+      }
+      const hi = tour.voucherHotel || {};
+      const room = hi.name ? findResRoom(tour, res.id) : null;
+      if (room) {
+        const { doc: vdoc } = generateTourVoucher(tour, hi, room.room, room.roomNo, true);
+        docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
+      }
+      if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
+      if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
+      if (!docs.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
+      await setDoc(doc(db, 'paylasimlar', token), {
+        customerName: res.customerName || '', tourName: tour.name || '',
+        country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
+        docs, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || ''
+      });
+      if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
+      const link = `${window.location.origin}/b/${token}`;
+      const text = `Sayın ${res.customerName || ''},\n\n${tour.name || 'Tur'} için belgeleriniz (${docs.map(d => d.label.split(' — ')[0]).join(', ')}):\n${link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm`;
+      setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length });
+    } catch (e) {
+      showToast?.('Link hazırlanamadı: ' + e.message, 'error');
+    } finally { setShareBusy(''); }
+  };
+
   // Voucher'ı WhatsApp/paylaş menüsüne gönder (mobilde dosya ekli paylaşım)
   const shareTourVoucher = async (tour, hi, room, roomNo) => {
     if (!hi?.name) { showToast?.('Önce otel bilgilerini girin (Odalama formu)', 'warning'); return; }
@@ -7452,6 +7501,20 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         const cancelledRes = tour.reservations?.filter(r => r.cancelled) || [];
         return (
           <div>
+            {shareReady && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShareReady(null)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '420px' }}>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '16px' }}>🔗 Belge linki hazır</h4>
+                  <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>{shareReady.name} — {shareReady.count} belge</p>
+                  <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px', fontSize: '12px', wordBreak: 'break-all', marginBottom: '14px', color: '#e8f1f8' }}>{shareReady.link}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <a href={`https://wa.me/${shareReady.phone || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.link); showToast?.('Link kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı — linki elle seçin', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Linki Kopyala</button>
+                    <button onClick={() => window.open(shareReady.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
+                  </div>
+                </div>
+              </div>
+            )}
             {bulkTicket && bulkTicket.tourId === tour.id && (() => {
               const resList = (tour.reservations || []).filter(r => !r.cancelled && r.customerName);
               const nameOf = (id) => resList.find(r => r.id === id)?.customerName || '?';
@@ -7863,6 +7926,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                                   ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
                                   : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
                                 )}
+                                {!res.cancelled && <button onClick={() => shareResLink(tour, res)} disabled={!!shareBusy} style={{ background: 'none', border: 'none', color: '#22c55e', cursor: shareBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Belge linkini WhatsApp'tan paylaş (program, otel, uçak, fuar)">{shareBusy === res.id ? '⏳' : '🔗'}</button>}
                                 {!res.cancelled && <button onClick={() => singleContract(tour, res)} disabled={!!szBusy} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: szBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Sözleşme PDF">{szBusy === res.id ? '⏳' : '📜'}</button>}
                                 <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                                 {res.cancelled ? (
