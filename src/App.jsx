@@ -1169,6 +1169,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [detailTab, setDetailTab] = useState('info');
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
+  const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
   const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -1472,6 +1473,16 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       setPendingUploads(n => Math.max(0, n - 1));
     }
   };
+  // AI hızlı ekle: okunan belge fotoğraflarını Storage'a yükle (önceden fotoğraf okunup atılıyordu,
+  // müşteride pasaport görseli hiç olmuyordu). Yüklenemeyen görsel atlanır — base64 kayda yazılmaz
+  // (Firestore 1MB sınırını aşıp tüm kaydı bozabilir).
+  const uploadAiImage = async (type, customerId, fileName) => {
+    const img = aiImages.find(i => i.type === type);
+    if (!img?.preview) return '';
+    try { return await uploadDocImage(img.preview, customerId, fileName); }
+    catch (e) { showToast?.(`⚠️ ${type === 'passport' ? 'Pasaport' : type === 'usa' ? 'ABD vize' : 'Schengen'} görseli yüklenemedi: ${e.message}`, 'warning'); return ''; }
+  };
+
   // OCR için: URL ise indirip base64'e çevir, base64 ise olduğu gibi ver
   const imageToBase64 = async (imageData) => {
     if (!imageData) return '';
@@ -3270,11 +3281,16 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div style={{ fontSize: '12px', color: '#e8f1f8', marginBottom: '4px' }}>{aiResult._dupTcMsg}</div>
                     <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Yeni pasaport: {aiResult._passports?.map(p => p.passportNo).join(', ')}</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => {
+                      <button disabled={aiSaving} onClick={async () => {
                         const existing = aiResult._addPassportTo;
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
-                        const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
+                        const custId = existing._docId || String(existing.id);
+                        setAiSaving(true);
+                        const added = (aiResult._passports || []).map(p => ({ ...p, id: p.id || generateUniqueId(), createdAt: p.createdAt || now }));
+                        if (added[0]) { const url = await uploadAiImage('passport', custId, `pasaport_${added[0].id}.jpg`); if (url) added[0].image = url; }
+                        setAiSaving(false);
+                        const newPassports = [...existingPassports, ...added];
                         // Pasaporttan okunan kişisel bilgiler: kartta boşsa doldur, doluysa dokunma
                         const filled = {};
                         if (aiResult.birthPlace && !existing.birthPlace) filled.birthPlace = aiResult.birthPlace;
@@ -3290,7 +3306,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
                         setTimeout(() => setSelectedCustomer(updated), 100);
                       }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>
-                        📎 Pasaportu Ekle
+                        {aiSaving ? '⏳ Görsel yükleniyor...' : '📎 Pasaportu Ekle'}
                       </button>
                       <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↩ Tekrar</button>
                     </div>
@@ -3300,7 +3316,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px' }}>
                     <div style={{ fontSize: '13px', color: '#10b981', fontWeight: '600', marginBottom: '8px' }}>✅ Yeni müşteri — sisteme kayıt edilecek</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => {
+                      <button disabled={aiSaving} onClick={async () => {
                         // TC kimlik eşsizlik kontrolü
                         if (aiResult.tcKimlik) {
                           const dup = customers.find(c => c.tcKimlik === aiResult.tcKimlik);
@@ -3310,18 +3326,28 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           }
                         }
                         const now = new Date().toISOString();
+                        const newCustId = generateUniqueId();
+                        setAiSaving(true);
+                        let aiPassports = (aiResult._passports || []).map(p => ({ ...p, id: p.id || generateUniqueId() }));
+                        const ppUrl = await uploadAiImage('passport', newCustId, `pasaport_${aiPassports[0]?.id || 'ai'}.jpg`);
+                        if (ppUrl) { if (aiPassports.length === 0) aiPassports = [{ ...emptyPassport, id: generateUniqueId() }]; aiPassports[0] = { ...aiPassports[0], image: ppUrl }; }
+                        let aiSchengen = (aiResult._schengen && aiResult._schengen.length > 0) ? aiResult._schengen : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }];
+                        const scUrl = await uploadAiImage('schengen', newCustId, `schengen_${aiSchengen[0].id || 1}.jpg`);
+                        if (scUrl) aiSchengen = [{ ...aiSchengen[0], image: scUrl }, ...aiSchengen.slice(1)];
+                        const usUrl = await uploadAiImage('usa', newCustId, 'abd_vize.jpg');
+                        const aiUsa = aiResult._usaVisa || (usUrl ? {} : null);
+                        if (aiUsa && usUrl) aiUsa.image = usUrl;
+                        setAiSaving(false);
                         const newCust = {
                           ...aiResult,
-                          id: generateUniqueId(),
+                          id: newCustId,
                           createdAt: now,
                           updatedAt: now,
                           lastEditedAt: now,
                           verified: false,
-                          passports: (aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })),
-                          schengenVisas: (aiResult._schengen && aiResult._schengen.length > 0)
-                            ? aiResult._schengen.map(v => ({ ...v, createdAt: v.createdAt || now }))
-                            : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }],
-                          usaVisa: aiResult._usaVisa ? { ...aiResult._usaVisa, createdAt: aiResult._usaVisa.createdAt || now } : {},
+                          passports: aiPassports.map(p => ({ ...p, createdAt: p.createdAt || now })),
+                          schengenVisas: aiSchengen.map(v => (v.country ? { ...v, createdAt: v.createdAt || now } : v)),
+                          usaVisa: aiUsa ? { ...aiUsa, createdAt: aiUsa.createdAt || now } : {},
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
                         delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
@@ -3339,7 +3365,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         setShowAiModal(false);
                         setAiText(''); setAiResult(null); setAiImages([]);
                       }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
-                        ✅ Yeni Müşteri Ekle
+                        {aiSaving ? '⏳ Görseller yükleniyor...' : '✅ Yeni Müşteri Ekle'}
                       </button>
                       <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
                         ↩ Tekrar
