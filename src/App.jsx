@@ -1165,6 +1165,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const cropDragRef = useRef(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  // Müşteri detayı açılınca tam kaydı (görseller dahil) sunucudan oku — liste önbellekten gelmiş olabilir
+  const selectedKey = selectedCustomer ? (selectedCustomer._docId || String(selectedCustomer.id)) : null;
+  useEffect(() => {
+    if (!selectedKey) return;
+    let cancelled = false;
+    getDoc(doc(db, 'customers', selectedKey)).then(snap => {
+      if (cancelled || !snap.exists()) return;
+      const full = { ...snap.data(), _docId: snap.id };
+      setSelectedCustomer(prev => (prev && (prev._docId || String(prev.id)) === selectedKey ? { ...prev, ...full } : prev));
+    }).catch(e => console.warn('Müşteri detayı okunamadı:', e.message));
+    return () => { cancelled = true; };
+  }, [selectedKey]);
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
@@ -1421,7 +1433,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     setShowForm(true); 
   };
   
-  const openEditForm = (customer) => { 
+  // Düzenleme her zaman sunucudaki TAM kayıttan açılır. Telefonda toplu yükleme yarıda kalınca
+  // CRM görselleri silinmiş önbellek kopyasıyla çalışıyordu; o kopyayla kaydetmek görselleri
+  // Firestore'dan kalıcı olarak siliyordu.
+  const openEditForm = async (customerArg) => {
+    let customer = customerArg;
+    try {
+      const snap = await getDoc(doc(db, 'customers', customerArg._docId || String(customerArg.id)));
+      if (snap.exists()) customer = { ...customerArg, ...snap.data(), _docId: snap.id };
+    } catch (e) {
+      showToast?.('❌ Sunucuya ulaşılamadı — görselleri kaybetmemek için düzenleme açılmadı. Bağlantıyı kontrol edip tekrar deneyin.', 'error');
+      return;
+    }
     setEditingCustomer(customer); 
     setFormData({ ...emptyForm, ...customer, tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
     // Pasaport bilgilerini yükle
@@ -1494,6 +1517,43 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
 
   // Toplu isim düzeltme: BÜYÜK/karışık isimleri titleCaseTr ile düzelt (bir kez çalıştırılır)
+  // TEK SEFERLİK: kayıtlara gömülü (base64) belge görsellerini Storage'a taşı. Telegram botu görselleri
+  // müşteri kaydının içine yazıyordu; bu yüzden müşteri listesi onlarca MB oluyor, telefonda yükleme yarıda
+  // kalıp görseller görünmüyordu. Taşınan görselin yerine Storage adresi yazılır; görsel silinmez.
+  const [migrating, setMigrating] = useState(null); // { done, total, moved, failed }
+  const migrateEmbeddedImages = async () => {
+    if (migrating) return;
+    if (!window.confirm('Müşteri kayıtlarına gömülü tüm belge görselleri Storage\'a taşınacak.\n\n• Görseller silinmez, sadece yeri değişir.\n• Bilgisayardan ve iyi bağlantıyla çalıştırın, bitene kadar sayfayı kapatmayın.\n• Firestore yedeklemesi açık değilse önce onu açın.\n\nDevam edilsin mi?')) return;
+    const ids = customers.map(c => c._docId || String(c.id)).filter(Boolean);
+    const st = { done: 0, total: ids.length, moved: 0, failed: 0 };
+    setMigrating({ ...st });
+    const moveImg = async (obj, custId, name) => {
+      if (!obj || typeof obj.image !== 'string' || !obj.image.startsWith('data:')) return obj;
+      const url = await uploadDocImage(obj.image, custId, name);
+      st.moved++;
+      return { ...obj, image: url };
+    };
+    for (const id of ids) {
+      try {
+        const snap = await getDoc(doc(db, 'customers', id));
+        if (snap.exists()) {
+          const d = snap.data();
+          const raw = `${d.passports || ''}${d.schengenVisas || ''}${typeof d.usaVisa === 'string' ? d.usaVisa : JSON.stringify(d.usaVisa || {})}`;
+          if (raw.includes('data:image')) {
+            const pp = await Promise.all(safeParseJSON(d.passports).map((x, i) => moveImg(x, id, `pasaport_${x.id || i}.jpg`)));
+            const sv = await Promise.all(safeParseJSON(d.schengenVisas).map((x, i) => moveImg(x, id, `schengen_${x.id || i}.jpg`)));
+            const us = await moveImg(safeParseObj(d.usaVisa), id, 'abd_vize.jpg');
+            await setDoc(doc(db, 'customers', id), { passports: JSON.stringify(pp), schengenVisas: JSON.stringify(sv), usaVisa: JSON.stringify(us) }, { merge: true });
+          }
+        }
+      } catch (e) { st.failed++; console.warn('Görsel taşıma hatası', id, e.message); }
+      st.done++;
+      if (st.done % 10 === 0 || st.done === st.total) setMigrating({ ...st });
+    }
+    setMigrating(null);
+    showToast?.(`🖼️ ${st.moved} görsel Storage'a taşındı${st.failed ? `, ${st.failed} müşteride hata (tekrar çalıştırılabilir)` : ''}`, st.failed ? 'warning' : 'success');
+  };
+
   const fixAllNames = async () => {
     const needsFix = customers.filter(c => {
       const fn = titleCaseTr(c.firstName || ''), ln = titleCaseTr(c.lastName || '');
@@ -3167,6 +3227,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>BÜYÜK harfle veya karışık yazılmış ad-soyadları düzgün biçime çevirir (örn: "MEHMET AKKÖSE" → "Mehmet Akköse"). Tüm müşterilerde bir kez çalıştırın.</p>
               <button onClick={fixAllNames} style={{ width: '100%', padding: '10px', background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔧 İsimleri Düzelt</button>
             </div>
+            {currentUser?.role === 'admin' && (
+            <div style={{ background: 'rgba(245,158,11,0.1)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.25)' }}>
+              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: '#f59e0b' }}>🖼️ Görselleri Storage'a Taşı</h4>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>Telegram botunun müşteri kaydına gömdüğü pasaport/vize görsellerini Storage'a taşır. Liste hafifler, telefonda görseller düzgün açılır. Tek seferlik; tekrar çalıştırmak zararsızdır.</p>
+              <button onClick={migrateEmbeddedImages} disabled={!!migrating} style={{ width: '100%', padding: '10px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: migrating ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                {migrating ? `⏳ ${migrating.done}/${migrating.total} müşteri — ${migrating.moved} görsel taşındı` : '🖼️ Görselleri Taşı'}
+              </button>
+            </div>
+            )}
           </div>
         </Modal>
       )}
@@ -3282,7 +3351,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Yeni pasaport: {aiResult._passports?.map(p => p.passportNo).join(', ')}</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button disabled={aiSaving} onClick={async () => {
-                        const existing = aiResult._addPassportTo;
+                        let existing = aiResult._addPassportTo;
+                        // Mevcut pasaportları sunucudan oku — önbellek kopyasında görseller silinmiş olabilir
+                        try {
+                          const snap = await getDoc(doc(db, 'customers', existing._docId || String(existing.id)));
+                          if (snap.exists()) existing = { ...existing, ...snap.data(), _docId: snap.id };
+                        } catch (e) { showToast?.('❌ Sunucuya ulaşılamadı, tekrar deneyin', 'error'); return; }
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
                         const custId = existing._docId || String(existing.id);
