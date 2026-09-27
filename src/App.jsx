@@ -39,6 +39,45 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
+// Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
+// (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
+const RES_DOCS = [
+  { field: 'fuarTicketUrl', icon: '🎫', label: 'Fuar bileti', color: '#10b981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.3)' },
+  { field: 'flightTicketUrl', icon: '✈️', label: 'Uçak bileti', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.3)' },
+];
+
+// pdf.js'i CDN'den yükle — PDF içindeki metni tarayıcıda okumak için (toplu bilet eşleştirme)
+const PDFJS_VER = '3.11.174';
+const loadPdfJs = () => new Promise((resolve, reject) => {
+  if (window.pdfjsLib) return resolve(window.pdfjsLib);
+  const s = document.createElement('script');
+  s.src = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/pdf.min.js`;
+  s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/pdf.worker.min.js`; resolve(window.pdfjsLib); };
+  s.onerror = () => reject(new Error('pdf.js yüklenemedi'));
+  document.head.appendChild(s);
+});
+const pdfFileText = async (file) => {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  let out = '';
+  for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    out += ' ' + tc.items.map(it => it.str).join(' ');
+  }
+  return out;
+};
+// İsim eşleştirme için sadeleştir: Türkçe → ASCII, büyük harf, harf dışı → boşluk
+const nameWords = (text) => {
+  const words = new Set();
+  asciiTr(text).toUpperCase().replace(/[^A-Z]+/g, ' ').split(' ').filter(Boolean).forEach(w => {
+    words.add(w);
+    // Uçak biletlerinde "YILMAZ/AHMETMR" gibi unvan bitişik yazılabiliyor
+    const m = w.match(/^([A-Z]{2,}?)(MRS|MR|MS|MISS|MSTR|CHD|INF)$/);
+    if (m) words.add(m[1]);
+  });
+  return words;
+};
+
 // Bir HTML string'ini A4 PDF'e çevirip indir (Türkçe %100 düzgün — tarayıcı render eder)
 const htmlToPdfDownload = async (innerHTML, filename, styleCSS = '') => {
   const html2canvas = await loadHtml2Canvas();
@@ -1165,10 +1204,23 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const cropDragRef = useRef(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  // Müşteri detayı açılınca tam kaydı (görseller dahil) sunucudan oku — liste önbellekten gelmiş olabilir
+  const selectedKey = selectedCustomer ? (selectedCustomer._docId || String(selectedCustomer.id)) : null;
+  useEffect(() => {
+    if (!selectedKey) return;
+    let cancelled = false;
+    getDoc(doc(db, 'customers', selectedKey)).then(snap => {
+      if (cancelled || !snap.exists()) return;
+      const full = { ...snap.data(), _docId: snap.id };
+      setSelectedCustomer(prev => (prev && (prev._docId || String(prev.id)) === selectedKey ? { ...prev, ...full } : prev));
+    }).catch(e => console.warn('Müşteri detayı okunamadı:', e.message));
+    return () => { cancelled = true; };
+  }, [selectedKey]);
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
+  const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
   const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -1420,7 +1472,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     setShowForm(true); 
   };
   
-  const openEditForm = (customer) => { 
+  // Düzenleme her zaman sunucudaki TAM kayıttan açılır. Telefonda toplu yükleme yarıda kalınca
+  // CRM görselleri silinmiş önbellek kopyasıyla çalışıyordu; o kopyayla kaydetmek görselleri
+  // Firestore'dan kalıcı olarak siliyordu.
+  const openEditForm = async (customerArg) => {
+    let customer = customerArg;
+    try {
+      const snap = await getDoc(doc(db, 'customers', customerArg._docId || String(customerArg.id)));
+      if (snap.exists()) customer = { ...customerArg, ...snap.data(), _docId: snap.id };
+    } catch (e) {
+      showToast?.('❌ Sunucuya ulaşılamadı — görselleri kaybetmemek için düzenleme açılmadı. Bağlantıyı kontrol edip tekrar deneyin.', 'error');
+      return;
+    }
     setEditingCustomer(customer); 
     setFormData({ ...emptyForm, ...customer, tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
     // Pasaport bilgilerini yükle
@@ -1472,6 +1535,16 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       setPendingUploads(n => Math.max(0, n - 1));
     }
   };
+  // AI hızlı ekle: okunan belge fotoğraflarını Storage'a yükle (önceden fotoğraf okunup atılıyordu,
+  // müşteride pasaport görseli hiç olmuyordu). Yüklenemeyen görsel atlanır — base64 kayda yazılmaz
+  // (Firestore 1MB sınırını aşıp tüm kaydı bozabilir).
+  const uploadAiImage = async (type, customerId, fileName) => {
+    const img = aiImages.find(i => i.type === type);
+    if (!img?.preview) return '';
+    try { return await uploadDocImage(img.preview, customerId, fileName); }
+    catch (e) { showToast?.(`⚠️ ${type === 'passport' ? 'Pasaport' : type === 'usa' ? 'ABD vize' : 'Schengen'} görseli yüklenemedi: ${e.message}`, 'warning'); return ''; }
+  };
+
   // OCR için: URL ise indirip base64'e çevir, base64 ise olduğu gibi ver
   const imageToBase64 = async (imageData) => {
     if (!imageData) return '';
@@ -1483,6 +1556,43 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
 
   // Toplu isim düzeltme: BÜYÜK/karışık isimleri titleCaseTr ile düzelt (bir kez çalıştırılır)
+  // TEK SEFERLİK: kayıtlara gömülü (base64) belge görsellerini Storage'a taşı. Telegram botu görselleri
+  // müşteri kaydının içine yazıyordu; bu yüzden müşteri listesi onlarca MB oluyor, telefonda yükleme yarıda
+  // kalıp görseller görünmüyordu. Taşınan görselin yerine Storage adresi yazılır; görsel silinmez.
+  const [migrating, setMigrating] = useState(null); // { done, total, moved, failed }
+  const migrateEmbeddedImages = async () => {
+    if (migrating) return;
+    if (!window.confirm('Müşteri kayıtlarına gömülü tüm belge görselleri Storage\'a taşınacak.\n\n• Görseller silinmez, sadece yeri değişir.\n• Bilgisayardan ve iyi bağlantıyla çalıştırın, bitene kadar sayfayı kapatmayın.\n• Firestore yedeklemesi açık değilse önce onu açın.\n\nDevam edilsin mi?')) return;
+    const ids = customers.map(c => c._docId || String(c.id)).filter(Boolean);
+    const st = { done: 0, total: ids.length, moved: 0, failed: 0 };
+    setMigrating({ ...st });
+    const moveImg = async (obj, custId, name) => {
+      if (!obj || typeof obj.image !== 'string' || !obj.image.startsWith('data:')) return obj;
+      const url = await uploadDocImage(obj.image, custId, name);
+      st.moved++;
+      return { ...obj, image: url };
+    };
+    for (const id of ids) {
+      try {
+        const snap = await getDoc(doc(db, 'customers', id));
+        if (snap.exists()) {
+          const d = snap.data();
+          const raw = `${d.passports || ''}${d.schengenVisas || ''}${typeof d.usaVisa === 'string' ? d.usaVisa : JSON.stringify(d.usaVisa || {})}`;
+          if (raw.includes('data:image')) {
+            const pp = await Promise.all(safeParseJSON(d.passports).map((x, i) => moveImg(x, id, `pasaport_${x.id || i}.jpg`)));
+            const sv = await Promise.all(safeParseJSON(d.schengenVisas).map((x, i) => moveImg(x, id, `schengen_${x.id || i}.jpg`)));
+            const us = await moveImg(safeParseObj(d.usaVisa), id, 'abd_vize.jpg');
+            await setDoc(doc(db, 'customers', id), { passports: JSON.stringify(pp), schengenVisas: JSON.stringify(sv), usaVisa: JSON.stringify(us) }, { merge: true });
+          }
+        }
+      } catch (e) { st.failed++; console.warn('Görsel taşıma hatası', id, e.message); }
+      st.done++;
+      if (st.done % 10 === 0 || st.done === st.total) setMigrating({ ...st });
+    }
+    setMigrating(null);
+    showToast?.(`🖼️ ${st.moved} görsel Storage'a taşındı${st.failed ? `, ${st.failed} müşteride hata (tekrar çalıştırılabilir)` : ''}`, st.failed ? 'warning' : 'success');
+  };
+
   const fixAllNames = async () => {
     const needsFix = customers.filter(c => {
       const fn = titleCaseTr(c.firstName || ''), ln = titleCaseTr(c.lastName || '');
@@ -3156,6 +3266,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>BÜYÜK harfle veya karışık yazılmış ad-soyadları düzgün biçime çevirir (örn: "MEHMET AKKÖSE" → "Mehmet Akköse"). Tüm müşterilerde bir kez çalıştırın.</p>
               <button onClick={fixAllNames} style={{ width: '100%', padding: '10px', background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔧 İsimleri Düzelt</button>
             </div>
+            {currentUser?.role === 'admin' && (
+            <div style={{ background: 'rgba(245,158,11,0.1)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.25)' }}>
+              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: '#f59e0b' }}>🖼️ Görselleri Storage'a Taşı</h4>
+              <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>Telegram botunun müşteri kaydına gömdüğü pasaport/vize görsellerini Storage'a taşır. Liste hafifler, telefonda görseller düzgün açılır. Tek seferlik; tekrar çalıştırmak zararsızdır.</p>
+              <button onClick={migrateEmbeddedImages} disabled={!!migrating} style={{ width: '100%', padding: '10px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: migrating ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                {migrating ? `⏳ ${migrating.done}/${migrating.total} müşteri — ${migrating.moved} görsel taşındı` : '🖼️ Görselleri Taşı'}
+              </button>
+            </div>
+            )}
           </div>
         </Modal>
       )}
@@ -3270,11 +3389,21 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div style={{ fontSize: '12px', color: '#e8f1f8', marginBottom: '4px' }}>{aiResult._dupTcMsg}</div>
                     <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Yeni pasaport: {aiResult._passports?.map(p => p.passportNo).join(', ')}</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => {
-                        const existing = aiResult._addPassportTo;
+                      <button disabled={aiSaving} onClick={async () => {
+                        let existing = aiResult._addPassportTo;
+                        // Mevcut pasaportları sunucudan oku — önbellek kopyasında görseller silinmiş olabilir
+                        try {
+                          const snap = await getDoc(doc(db, 'customers', existing._docId || String(existing.id)));
+                          if (snap.exists()) existing = { ...existing, ...snap.data(), _docId: snap.id };
+                        } catch (e) { showToast?.('❌ Sunucuya ulaşılamadı, tekrar deneyin', 'error'); return; }
                         const existingPassports = safeParseJSON(existing.passports);
                         const now = new Date().toISOString();
-                        const newPassports = [...existingPassports, ...((aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })))];
+                        const custId = existing._docId || String(existing.id);
+                        setAiSaving(true);
+                        const added = (aiResult._passports || []).map(p => ({ ...p, id: p.id || generateUniqueId(), createdAt: p.createdAt || now }));
+                        if (added[0]) { const url = await uploadAiImage('passport', custId, `pasaport_${added[0].id}.jpg`); if (url) added[0].image = url; }
+                        setAiSaving(false);
+                        const newPassports = [...existingPassports, ...added];
                         // Pasaporttan okunan kişisel bilgiler: kartta boşsa doldur, doluysa dokunma
                         const filled = {};
                         if (aiResult.birthPlace && !existing.birthPlace) filled.birthPlace = aiResult.birthPlace;
@@ -3290,7 +3419,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]);
                         setTimeout(() => setSelectedCustomer(updated), 100);
                       }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>
-                        📎 Pasaportu Ekle
+                        {aiSaving ? '⏳ Görsel yükleniyor...' : '📎 Pasaportu Ekle'}
                       </button>
                       <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↩ Tekrar</button>
                     </div>
@@ -3300,7 +3429,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px' }}>
                     <div style={{ fontSize: '13px', color: '#10b981', fontWeight: '600', marginBottom: '8px' }}>✅ Yeni müşteri — sisteme kayıt edilecek</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => {
+                      <button disabled={aiSaving} onClick={async () => {
                         // TC kimlik eşsizlik kontrolü
                         if (aiResult.tcKimlik) {
                           const dup = customers.find(c => c.tcKimlik === aiResult.tcKimlik);
@@ -3310,18 +3439,28 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           }
                         }
                         const now = new Date().toISOString();
+                        const newCustId = generateUniqueId();
+                        setAiSaving(true);
+                        let aiPassports = (aiResult._passports || []).map(p => ({ ...p, id: p.id || generateUniqueId() }));
+                        const ppUrl = await uploadAiImage('passport', newCustId, `pasaport_${aiPassports[0]?.id || 'ai'}.jpg`);
+                        if (ppUrl) { if (aiPassports.length === 0) aiPassports = [{ ...emptyPassport, id: generateUniqueId() }]; aiPassports[0] = { ...aiPassports[0], image: ppUrl }; }
+                        let aiSchengen = (aiResult._schengen && aiResult._schengen.length > 0) ? aiResult._schengen : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }];
+                        const scUrl = await uploadAiImage('schengen', newCustId, `schengen_${aiSchengen[0].id || 1}.jpg`);
+                        if (scUrl) aiSchengen = [{ ...aiSchengen[0], image: scUrl }, ...aiSchengen.slice(1)];
+                        const usUrl = await uploadAiImage('usa', newCustId, 'abd_vize.jpg');
+                        const aiUsa = aiResult._usaVisa || (usUrl ? {} : null);
+                        if (aiUsa && usUrl) aiUsa.image = usUrl;
+                        setAiSaving(false);
                         const newCust = {
                           ...aiResult,
-                          id: generateUniqueId(),
+                          id: newCustId,
                           createdAt: now,
                           updatedAt: now,
                           lastEditedAt: now,
                           verified: false,
-                          passports: (aiResult._passports || []).map(p => ({ ...p, createdAt: p.createdAt || now })),
-                          schengenVisas: (aiResult._schengen && aiResult._schengen.length > 0)
-                            ? aiResult._schengen.map(v => ({ ...v, createdAt: v.createdAt || now }))
-                            : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }],
-                          usaVisa: aiResult._usaVisa ? { ...aiResult._usaVisa, createdAt: aiResult._usaVisa.createdAt || now } : {},
+                          passports: aiPassports.map(p => ({ ...p, createdAt: p.createdAt || now })),
+                          schengenVisas: aiSchengen.map(v => (v.country ? { ...v, createdAt: v.createdAt || now } : v)),
+                          usaVisa: aiUsa ? { ...aiUsa, createdAt: aiUsa.createdAt || now } : {},
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
                         delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
@@ -3339,7 +3478,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         setShowAiModal(false);
                         setAiText(''); setAiResult(null); setAiImages([]);
                       }} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
-                        ✅ Yeni Müşteri Ekle
+                        {aiSaving ? '⏳ Görseller yükleniyor...' : '✅ Yeni Müşteri Ekle'}
                       </button>
                       <button onClick={() => setAiResult(null)} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
                         ↩ Tekrar
@@ -6361,6 +6500,108 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.save(fileName);
   };
 
+  // Odalama: rezervasyonları oda tipine ve oda arkadaşlarına göre odalara böler.
+  // Odalama ekranı ve rezervasyon satırındaki 🏨 otel belgesi aynı oda numaralarını kullanır.
+  const buildRoomTypes = (tour) => {
+    const reservations = (tour.reservations || []).filter(r => !r.cancelled);
+    const roomTypes = {}; const assigned = new Set();
+    const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
+
+    // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
+    const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
+    // Çift yönlü: x, oda grubundaki HERHANGİ birinin arkadaşı mı (ya da tersi)
+    const grubaAitMi = (x, grup) => grup.some(g =>
+      x.customerName !== g.customerName && (
+        arkadasIsimleri(g).includes(x.customerName) ||
+        arkadasIsimleri(x).includes(g.customerName)
+      )
+    );
+
+    reservations.forEach(r => {
+      if (assigned.has(r.id)) return;
+      const type = r.roomType || '-';
+      if (!roomTypes[type]) roomTypes[type] = [];
+      const cap = roomCap(type);
+      const room = [r]; assigned.add(r.id);
+      // Kapasite dolana kadar, gruptan birinin arkadaşı olan kişileri ekle
+      let eklendi = true;
+      while (room.length < cap && eklendi) {
+        eklendi = false;
+        for (const x of reservations) {
+          if (assigned.has(x.id)) continue;
+          if (grubaAitMi(x, room)) { room.push(x); assigned.add(x.id); eklendi = true; if (room.length >= cap) break; }
+        }
+      }
+      roomTypes[type].push(room);
+    });
+    return roomTypes;
+  };
+  // Bir rezervasyonun odası ve oda numarası (odalama ekranındaki sırayla)
+  const findResRoom = (tour, resId) => {
+    let n = 0;
+    for (const rooms of Object.values(buildRoomTypes(tour))) {
+      for (const room of rooms) { n++; if (room.some(r => r.id === resId)) return { room, roomNo: n }; }
+    }
+    return null;
+  };
+  const openResHotelVoucher = (tour, res) => {
+    const hi = tour.voucherHotel || {};
+    if (!hi.name) { showToast?.('Önce Odalama ekranında otel bilgilerini girin', 'warning'); return; }
+    const found = findResRoom(tour, res.id);
+    if (!found) { showToast?.('Bu kişi odalamada bulunamadı', 'error'); return; }
+    try { generateTourVoucher(tour, hi, found.room, found.roomNo); }
+    catch (e) { showToast?.('Otel belgesi oluşturulamadı: ' + e.message, 'error'); }
+  };
+
+  // 🔗 BELGE LİNKİ: müşteriye tek link — tur programı, otel giriş belgesi, uçak ve fuar bileti.
+  // PDF'ler üretilip Storage'a yüklenir, özet Firestore'da paylasimlar/{token} olarak tutulur;
+  // /b/{token} sayfası (public/belgeler.html) girişsiz gösterir. Tekrar paylaşımda aynı link güncellenir.
+  const [shareBusy, setShareBusy] = useState('');
+  const [shareReady, setShareReady] = useState(null); // { link, text, phone, count }
+  const newShareToken = () => {
+    const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, b => abc[b % abc.length]).join('');
+  };
+  const shareResLink = async (tour, res) => {
+    if (shareBusy) return;
+    setShareBusy(res.id);
+    try {
+      const token = res.shareToken || newShareToken();
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const up = async (name, blob) => {
+        const r = ref(getStorage(), `paylasim/${token}/${name}`);
+        await uploadBytes(r, blob, { contentType: 'application/pdf' });
+        return getDownloadURL(r);
+      };
+      const docs = [];
+      if (tour.offerData) {
+        const p = await tourProgramPdf(tour, true);
+        docs.push({ icon: '🗺️', label: 'Tur Programı', url: await up('tur-programi.pdf', p.blob) });
+      }
+      const hi = tour.voucherHotel || {};
+      const room = hi.name ? findResRoom(tour, res.id) : null;
+      if (room) {
+        const { doc: vdoc } = generateTourVoucher(tour, hi, room.room, room.roomNo, true);
+        docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
+      }
+      if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
+      if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
+      if (!docs.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
+      await setDoc(doc(db, 'paylasimlar', token), {
+        customerName: res.customerName || '', tourName: tour.name || '',
+        country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
+        docs, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || ''
+      });
+      if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
+      const link = `${window.location.origin}/b/${token}`;
+      const text = `Sayın ${res.customerName || ''},\n\n${tour.name || 'Tur'} için belgeleriniz (${docs.map(d => d.label.split(' — ')[0]).join(', ')}):\n${link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm`;
+      setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length });
+    } catch (e) {
+      showToast?.('Link hazırlanamadı: ' + e.message, 'error');
+    } finally { setShareBusy(''); }
+  };
+
   // Voucher'ı WhatsApp/paylaş menüsüne gönder (mobilde dosya ekli paylaşım)
   const shareTourVoucher = async (tour, hi, room, roomNo) => {
     if (!hi?.name) { showToast?.('Önce otel bilgilerini girin (Odalama formu)', 'warning'); return; }
@@ -6947,25 +7188,90 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
   // Rezervasyona belge yükle (fuar bileti / uçak bileti) — Firebase Storage
   const [resDocBusy, setResDocBusy] = useState('');
+  // Yükleme sürerken turlar değişmiş olabilir — güncellemeyi her zaman en son tur verisine uygula
+  const toursRef = useRef(tours);
+  toursRef.current = tours;
+  const storeResDocFile = async (tour, key, file) => {
+    const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+    const path = `tur-belgeleri/${tour.id}/${key}_${Date.now()}_${file.name}`;
+    const sRef = ref(getStorage(), path);
+    await uploadBytes(sRef, file);
+    return { url: await getDownloadURL(sRef), path };
+  };
+  // patches: { [resId]: { alan: değer } } — tek yazımla turdaki rezervasyonlara uygular
+  const patchTourReservations = async (tourId, patches) => {
+    const targetTour = toursRef.current.find(t => t.id === tourId);
+    if (!targetTour) throw new Error('Tur bulunamadı');
+    const updatedTour = { ...targetTour, reservations: (targetTour.reservations || []).map(r => patches[r.id] ? { ...r, ...patches[r.id] } : r) };
+    setTours(prev => prev.map(t => t.id === tourId ? updatedTour : t));
+    setSelectedTour(prev => (prev && prev.id === tourId ? updatedTour : prev));
+    const docId = targetTour._docId || String(targetTour.id);
+    const sd = { ...updatedTour }; delete sd._docId;
+    await setDoc(doc(db, 'tours', docId), sd, { merge: true });
+  };
   const uploadResDoc = async (tour, res, field, file) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
     setResDocBusy(`${res.id}-${field}`);
     try {
-      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-      const storage = getStorage();
-      const path = `tur-belgeleri/${tour.id}/${res.id}_${field}_${Date.now()}_${file.name}`;
-      const sRef = ref(storage, path);
-      await uploadBytes(sRef, file);
-      const url = await getDownloadURL(sRef);
-      const targetTour = tours.find(t => t.id === tour.id);
-      const updatedTour = { ...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? { ...r, [field]: url, [`${field}Path`]: path } : r) };
-      setTours(tours.map(t => t.id === tour.id ? updatedTour : t));
-      setSelectedTour(updatedTour);
-      try { const docId = targetTour._docId || String(targetTour.id); const sd = { ...updatedTour }; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch (e) {}
+      const { url, path } = await storeResDocFile(tour, `${res.id}_${field}`, file);
+      await patchTourReservations(tour.id, { [res.id]: { [field]: url, [`${field}Path`]: path } });
       showToast?.('Belge yüklendi', 'success');
     } catch (e) { showToast?.('Yükleme hatası: ' + e.message, 'error'); }
     finally { setResDocBusy(''); }
+  };
+
+  // 📦 TOPLU BİLET: çok sayıda PDF seç → içindeki yolcu adıyla rezervasyonlara otomatik eşleştir → önizle → yükle
+  const [bulkTicket, setBulkTicket] = useState(null); // { tourId, field, rows: [{ key, file, resIds, note }], busy, uploading }
+  const openBulkTicket = async (tour, field, fileList) => {
+    const files = Array.from(fileList || []).filter(f => f.size <= 10 * 1024 * 1024);
+    if (!files.length) { showToast?.('Dosya seçilmedi (en fazla 10MB/dosya)', 'error'); return; }
+    const resList = (tour.reservations || []).filter(r => !r.cancelled && r.customerName);
+    setBulkTicket({ tourId: tour.id, field, rows: [], busy: true });
+    const rows = [];
+    for (const [i, file] of files.entries()) {
+      let resIds = [], note = '';
+      if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
+        try {
+          const words = nameWords(await pdfFileText(file));
+          if (words.size === 0) note = 'PDF\'de metin yok (taranmış olabilir) — elle seçin';
+          else {
+            // Ad-soyadın TÜM kelimeleri PDF'te geçiyorsa eşleşir; birden fazla kişi geçiyorsa (grup bileti) hepsine atanır
+            // (Bilette ikinci ad yazılmayabilir: ilk ad + soyad geçmesi de yeterli)
+            resIds = resList.filter(r => {
+              const t = [...nameWords(r.customerName)].filter(w => w.length > 1);
+              if (!t.length) return false;
+              return t.every(w => words.has(w)) || (t.length >= 3 && words.has(t[0]) && words.has(t[t.length - 1]));
+            }).map(r => r.id);
+            if (!resIds.length) note = 'İsim bulunamadı — elle seçin';
+          }
+        } catch (e) { note = 'PDF okunamadı — elle seçin'; }
+      } else note = 'Görsel dosya — elle seçin';
+      rows.push({ key: `${i}_${file.name}`, file, resIds, note });
+    }
+    setBulkTicket({ tourId: tour.id, field, rows, busy: false });
+  };
+  const runBulkTicket = async () => {
+    const bt = bulkTicket; if (!bt) return;
+    const todo = bt.rows.filter(r => r.resIds.length);
+    if (!todo.length) { showToast?.('Eşleşen dosya yok', 'error'); return; }
+    setBulkTicket({ ...bt, uploading: true });
+    const tour = toursRef.current.find(t => t.id === bt.tourId);
+    const patches = {}; let fail = 0;
+    for (const row of todo) {
+      try {
+        const { url, path } = await storeResDocFile(tour, `toplu_${bt.field}`, row.file);
+        row.resIds.forEach(id => { patches[id] = { [bt.field]: url, [`${bt.field}Path`]: path }; });
+      } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', row.file.name, e.message); }
+    }
+    try {
+      if (Object.keys(patches).length) await patchTourReservations(bt.tourId, patches);
+      showToast?.(`🎫 ${Object.keys(patches).length} kişiye bilet eklendi${fail ? `, ${fail} dosya yüklenemedi` : ''}`, fail ? 'warning' : 'success');
+      setBulkTicket(null);
+    } catch (e) {
+      showToast?.('❌ Tura kaydedilemedi: ' + e.message, 'error');
+      setBulkTicket({ ...bt, uploading: false });
+    }
   };
   const removeResDoc = async (tour, res, field) => {
     if (!window.confirm('Bu belgeyi silmek istiyor musunuz?')) return;
@@ -6973,12 +7279,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const p = res[`${field}Path`];
       if (p) { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), p)).catch(() => {}); }
     } catch (e) {}
-    const targetTour = tours.find(t => t.id === tour.id);
-    const updatedTour = { ...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? { ...r, [field]: null, [`${field}Path`]: null } : r) };
-    setTours(tours.map(t => t.id === tour.id ? updatedTour : t));
-    setSelectedTour(updatedTour);
-    try { const docId = targetTour._docId || String(targetTour.id); const sd = { ...updatedTour }; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch (e) {}
-    showToast?.('Belge silindi', 'info');
+    try {
+      await patchTourReservations(tour.id, { [res.id]: { [field]: null, [`${field}Path`]: null } });
+      showToast?.('Belge silindi', 'info');
+    } catch (e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); }
   };
 
   const saveReservation = async () => {
@@ -7197,6 +7501,65 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         const cancelledRes = tour.reservations?.filter(r => r.cancelled) || [];
         return (
           <div>
+            {shareReady && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={() => setShareReady(null)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '420px' }}>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '16px' }}>🔗 Belge linki hazır</h4>
+                  <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>{shareReady.name} — {shareReady.count} belge</p>
+                  <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px', fontSize: '12px', wordBreak: 'break-all', marginBottom: '14px', color: '#e8f1f8' }}>{shareReady.link}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <a href={`https://wa.me/${shareReady.phone || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.link); showToast?.('Link kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı — linki elle seçin', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Linki Kopyala</button>
+                    <button onClick={() => window.open(shareReady.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {bulkTicket && bulkTicket.tourId === tour.id && (() => {
+              const resList = (tour.reservations || []).filter(r => !r.cancelled && r.customerName);
+              const nameOf = (id) => resList.find(r => r.id === id)?.customerName || '?';
+              const setRow = (key, fn) => setBulkTicket(bt => ({ ...bt, rows: bt.rows.map(r => r.key === key ? fn(r) : r) }));
+              const dd = RES_DOCS.find(d => d.field === bulkTicket.field) || RES_DOCS[0];
+              const label = `${dd.icon} ${dd.label}`;
+              const ready = bulkTicket.rows.filter(r => r.resIds.length).length;
+              return (
+                <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '15px' }}>{label} — toplu yükleme</h4>
+                  <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>PDF'teki yolcu adıyla otomatik eşleştirildi. Kontrol edin; yanlışsa × ile çıkarın, eksikse listeden ekleyin. Mevcut bileti olan kişide eskisinin yerine geçer.</p>
+                  {bulkTicket.busy ? <p style={{ fontSize: '13px' }}>⏳ PDF'ler okunuyor...</p> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto' }}>
+                      {bulkTicket.rows.map(row => (
+                        <div key={row.key} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px', border: `1px solid ${row.resIds.length ? 'rgba(16,185,129,0.3)' : 'rgba(234,179,8,0.35)'}` }}>
+                          <div style={{ fontSize: '12px', color: '#e8f1f8', wordBreak: 'break-all', marginBottom: '6px' }}>📄 {row.file.name}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                            {row.resIds.map(id => {
+                              const r = resList.find(x => x.id === id);
+                              return (
+                                <span key={id} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '12px', padding: '3px 8px', fontSize: '12px' }}>
+                                  {nameOf(id)}{r?.[bulkTicket.field] ? ' (değişecek)' : ''}
+                                  <button onClick={() => setRow(row.key, x => ({ ...x, resIds: x.resIds.filter(i => i !== id) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px', fontSize: '12px' }}>×</button>
+                                </span>
+                              );
+                            })}
+                            <select value="" onChange={e => { const id = resList.find(r => String(r.id) === e.target.value)?.id; if (id != null) setRow(row.key, x => ({ ...x, resIds: x.resIds.includes(id) ? x.resIds : [...x.resIds, id] })); }} style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: '12px' }}>
+                              <option value="">+ kişi ekle</option>
+                              {resList.filter(r => !row.resIds.includes(r.id)).map(r => <option key={r.id} value={String(r.id)}>{r.customerName}</option>)}
+                            </select>
+                            {row.note && !row.resIds.length && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {row.note}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button onClick={runBulkTicket} disabled={bulkTicket.busy || bulkTicket.uploading || !ready} style={{ flex: 1, padding: '10px', background: ready ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
+                      {bulkTicket.uploading ? '⏳ Yükleniyor...' : `⬆️ ${ready} dosyayı yükle`}
+                    </button>
+                    <button onClick={() => setBulkTicket(null)} disabled={bulkTicket.uploading} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
+                  </div>
+                </div>
+              );
+            })()}
             {/* Detay Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
               <button onClick={() => setSelectedTour(null)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
@@ -7211,6 +7574,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
+                {RES_DOCS.map(d => (
+                  <Fragment key={d.field}>
+                    <input type="file" accept="application/pdf,image/*" multiple id={`bulk-${d.field}-${tour.id}`} style={{ display: 'none' }} onChange={e => { openBulkTicket(tour, d.field, e.target.files); e.target.value = ''; }} />
+                    <button onClick={() => document.getElementById(`bulk-${d.field}-${tour.id}`).click()} disabled={!!bulkTicket} style={{ padding: '8px 14px', background: d.bg, border: `1px solid ${d.border}`, borderRadius: '8px', color: d.color, cursor: 'pointer', fontSize: '12px' }}>{d.icon} Toplu {d.label}</button>
+                  </Fragment>
+                ))}
                 <input type="file" accept=".xlsx,.xls" id={`bulkres-${tour.id}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleBulkResUpload(tour, f); e.target.value = ''; }} />
                 <button onClick={() => document.getElementById(`bulkres-${tour.id}`).click()} disabled={bulkResBusy} style={{ padding: '8px 14px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', cursor: bulkResBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{bulkResBusy ? '⏳ Yükleniyor...' : '📤 Excel ile Liste Ekle'}</button>
                 <button onClick={() => downloadBulkResTemplate()} style={{ padding: '8px 14px', background: 'rgba(148,163,184,0.12)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>📋 Örnek İndir</button>
@@ -7552,15 +7921,13 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ display: 'flex', gap: '4px' }}>
+                                {!res.cancelled && <button onClick={() => openResHotelVoucher(tour, res)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px', opacity: tour.voucherHotel?.name ? 1 : 0.4 }} title={tour.voucherHotel?.name ? `Otel giriş belgesi — ${tour.voucherHotel.name} (odalamadan)` : 'Otel giriş belgesi — önce Odalama\'da otel bilgilerini girin'}>🏨</button>}
+                                {!res.cancelled && RES_DOCS.map(d => res[d.field]
+                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
+                                  : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
+                                )}
+                                {!res.cancelled && <button onClick={() => shareResLink(tour, res)} disabled={!!shareBusy} style={{ background: 'none', border: 'none', color: '#22c55e', cursor: shareBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Belge linkini WhatsApp'tan paylaş (program, otel, uçak, fuar)">{shareBusy === res.id ? '⏳' : '🔗'}</button>}
                                 {!res.cancelled && <button onClick={() => singleContract(tour, res)} disabled={!!szBusy} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: szBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Sözleşme PDF">{szBusy === res.id ? '⏳' : '📜'}</button>}
-                                {!res.cancelled && (res.fuarTicketUrl
-                                  ? <button onClick={() => window.open(res.fuarTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'fuarTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Fuar bileti (indir) — sağ tık: sil">🎫</button>
-                                  : <label style={{ cursor: resDocBusy === `${res.id}-fuarTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Fuar bileti yükle">{resDocBusy === `${res.id}-fuarTicketUrl` ? '⏳' : '🎫'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'fuarTicketUrl', e.target.files[0])} /></label>
-                                )}
-                                {!res.cancelled && (res.flightTicketUrl
-                                  ? <button onClick={() => window.open(res.flightTicketUrl, '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, 'flightTicketUrl'); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Uçak bileti (indir) — sağ tık: sil">✈️</button>
-                                  : <label style={{ cursor: resDocBusy === `${res.id}-flightTicketUrl` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title="Uçak bileti yükle">{resDocBusy === `${res.id}-flightTicketUrl` ? '⏳' : '✈️'}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, 'flightTicketUrl', e.target.files[0])} /></label>
-                                )}
                                 <button onClick={() => openEditReservation(tour, res)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                                 {res.cancelled ? (
                                   <button onClick={async () => { const targetTour = tours.find(t => t.id === tour.id); if (!targetTour) return; const updatedTour = {...targetTour, reservations: targetTour.reservations.map(r => r.id === res.id ? {...r, cancelled: false, cancelledAt: null} : r)}; const u = tours.map(t => t.id === tour.id ? updatedTour : t); setTours(u); setSelectedTour(updatedTour); try { const docId = targetTour._docId || String(targetTour.id); const sd = {...updatedTour}; delete sd._docId; await setDoc(doc(db, 'tours', docId), sd, { merge: true }); } catch(e) { showToast('❌ Kaydedilemedi: ' + e.message, 'error'); return; } showToast('Rezervasyon geri alındı', 'success'); }} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: '14px' }} title="Geri Al">↩</button>
@@ -7699,37 +8066,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
             {/* Odalama Bölümü */}
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
-              const reservations = (tour.reservations || []).filter(r => !r.cancelled);
-              const roomTypes = {}; const assigned = new Set();
-              const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
-
-              // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
-              const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
-              // Çift yönlü: x, oda grubundaki HERHANGİ birinin arkadaşı mı (ya da tersi)
-              const grubaAitMi = (x, grup) => grup.some(g =>
-                x.customerName !== g.customerName && (
-                  arkadasIsimleri(g).includes(x.customerName) ||
-                  arkadasIsimleri(x).includes(g.customerName)
-                )
-              );
-
-              reservations.forEach(r => {
-                if (assigned.has(r.id)) return;
-                const type = r.roomType || '-';
-                if (!roomTypes[type]) roomTypes[type] = [];
-                const cap = roomCap(type);
-                const room = [r]; assigned.add(r.id);
-                // Kapasite dolana kadar, gruptan birinin arkadaşı olan kişileri ekle
-                let eklendi = true;
-                while (room.length < cap && eklendi) {
-                  eklendi = false;
-                  for (const x of reservations) {
-                    if (assigned.has(x.id)) continue;
-                    if (grubaAitMi(x, room)) { room.push(x); assigned.add(x.id); eklendi = true; if (room.length >= cap) break; }
-                  }
-                }
-                roomTypes[type].push(room);
-              });
+              const roomTypes = buildRoomTypes(tour);
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);
               return (
                 <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #0c1929, #1a3a5c)', zIndex: 2000, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
