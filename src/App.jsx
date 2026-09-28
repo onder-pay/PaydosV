@@ -14232,7 +14232,12 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
   const [showUrlModal, setShowUrlModal] = useState(false);
   const [urlInput, setUrlInput] = useState('');
 
-  const ds160Url = appSettings?.ds160SiteUrl || 'https://ds160-paydos.netlify.app';
+  // Adres https:// olmadan girilirse tarayıcı onu göreli yol sanıp CRM'in altında açıyordu
+  // (crm.paydostur.com/crm.paydostur.com/ds160.html → CRM ana sayfası). Protokolü tamamla.
+  const ds160Url = (() => {
+    const raw = String(appSettings?.ds160SiteUrl || 'https://ds160-paydos.netlify.app').trim();
+    return /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
+  })();
 
   useEffect(() => {
     const loadApplications = async () => {
@@ -14751,8 +14756,9 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
               <button onClick={() => setShowUrlModal(false)} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>İptal</button>
               <button onClick={() => {
-                const newUrl = urlInput.trim();
+                let newUrl = urlInput.trim();
                 if (!newUrl) { showToast?.('URL boş olamaz', 'error'); return; }
+                if (!/^https?:\/\//i.test(newUrl)) newUrl = `https://${newUrl.replace(/^\/+/, '')}`;
                 setAppSettings(prev => ({...prev, ds160SiteUrl: newUrl}));
                 showToast?.('URL kaydedildi', 'success');
                 setShowUrlModal(false);
