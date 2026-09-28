@@ -56,9 +56,15 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .pass .city{font-size:12px;color:#6b7094;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
 .pass .pt.r .city{margin-left:auto}
 .pass .time{font-size:16px;font-weight:700;margin-top:6px}
-.pass .path{flex:1;position:relative;height:30px;min-width:60px}
+.pass .path{flex:1;position:relative;height:44px;min-width:60px;background:none;border:none;padding:0;cursor:pointer;color:inherit;font:inherit}
 .pass .path::before{content:'';position:absolute;left:0;right:0;top:50%;border-top:2px dashed #c9cce0}
-.pass .plane{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);font-size:20px;animation:fly 3.2s ease-in-out infinite}
+.pass .plane{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);font-size:20px;animation:fly 3.2s ease-in-out infinite;line-height:1;pointer-events:none}
+.hint{display:inline-block;margin:0 0 10px 4px;font-size:12px;color:var(--gold2);opacity:.85}
+/* Mini oyun */
+.game{position:fixed;inset:0;z-index:50;background:rgba(5,8,20,.92);display:flex;align-items:center;justify-content:center;padding:12px}
+.game .gw{position:relative;width:100%;max-width:480px;height:min(88vh,720px);border-radius:22px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.game canvas{display:block;width:100%;height:100%;touch-action:none}
+.game .x{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:18px;cursor:pointer}
 @keyframes fly{0%{left:8%}50%{left:92%}100%{left:8%}}
 .pass .pf{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px dashed #e6e2d6;font-size:12px;color:#6b7094;position:relative}
 .pass .pf::before,.pass .pf::after{content:'';position:absolute;top:-11px;width:20px;height:20px;border-radius:50%;background:var(--bg)}
@@ -131,6 +137,93 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var delay = 0;
   var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
 
+
+  // ===== Mini oyun: uçağı bulutlardan geçir, 12 bulutta varış noktasına in =====
+  var openGame = function (from, to, toCity) {
+    var GOAL = 12, BEST_KEY = 'paydos_oyun_best';
+    var best = 0; try { best = +localStorage.getItem(BEST_KEY) || 0; } catch (e) {}
+    var ov = el('div', 'game'), gw = el('div', 'gw'), cv = el('canvas'), x = el('button', 'x', '✕');
+    x.type = 'button'; x.setAttribute('aria-label', 'Oyunu kapat');
+    gw.appendChild(cv); gw.appendChild(x); ov.appendChild(gw); document.body.appendChild(ov);
+    var prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    var ctx = cv.getContext('2d'), W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var size = function () { var r = gw.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    size(); window.addEventListener('resize', size);
+    var state = 'ready', py, vy, obs, passed, t0, spawnT, raf, last;
+    var reset = function () { py = H * 0.45; vy = 0; obs = []; passed = 0; spawnT = 0; };
+    reset();
+    var flap = function () {
+      if (state === 'ready') { state = 'play'; }
+      else if (state === 'over' || state === 'win') { reset(); state = 'play'; }
+      vy = -H * 0.0105;
+    };
+    var close = function () { cancelAnimationFrame(raf); window.removeEventListener('resize', size); document.removeEventListener('keydown', key); document.body.style.overflow = prevOverflow; ov.remove(); };
+    var key = function (e) { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); flap(); } else if (e.code === 'Escape') close(); };
+    cv.addEventListener('pointerdown', function (e) { e.preventDefault(); flap(); });
+    x.addEventListener('click', close); document.addEventListener('keydown', key);
+
+    // Bulut sütunu: gövde + boşluğa bakan kenarda kabarık bulut şişkinlikleri
+    var cloud = function (cx, cy, w, h, edgeY) {
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.fillRect(cx + 6, cy, w - 12, h);
+      var r = w * 0.32;
+      [[0.22, 0], [0.5, -0.35], [0.78, 0]].forEach(function (b) {
+        ctx.beginPath(); ctx.arc(cx + w * b[0], edgeY + (edgeY > cy + h / 2 ? -1 : 1) * r * b[1] * -1, r, 0, Math.PI * 2); ctx.fill();
+      });
+    };
+    var txt = function (t, y, sz, col) { ctx.fillStyle = col || '#fff'; ctx.font = '700 ' + sz + 'px DM Sans, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(t, W / 2, y); };
+    var end = function (win) {
+      state = win ? 'win' : 'over';
+      if (passed > best) { best = passed; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} }
+    };
+    var step = function (now) {
+      raf = requestAnimationFrame(step);
+      var dt = Math.min(32, now - (last || now)) / 16.67; last = now;
+      var gap = H * 0.30, ow = Math.max(56, W * 0.16), speed = W * 0.0065 * (1 + passed * 0.03);
+      if (state === 'play') {
+        vy += H * 0.00055 * dt; py += vy * dt;
+        spawnT -= dt;
+        if (spawnT <= 0 && obs.length + passed < GOAL) { obs.push({ x: W + 10, gy: H * 0.2 + Math.random() * (H * 0.6 - gap), done: false }); spawnT = 95; }
+        obs.forEach(function (o) {
+          o.x -= speed * dt;
+          if (!o.done && o.x + ow < W * 0.25) { o.done = true; passed++; }
+        });
+        obs = obs.filter(function (o) { return o.x > -ow - 10; });
+        // çarpışma (uçak ~ çember)
+        var px = W * 0.25, rad = 14;
+        if (py < rad || py > H - rad) end(false);
+        obs.forEach(function (o) {
+          if (px + rad > o.x && px - rad < o.x + ow && (py - rad < o.gy || py + rad > o.gy + gap)) end(false);
+        });
+        if (passed >= GOAL && !obs.length) end(true);
+      }
+      // gökyüzü
+      var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1d3fa8'); g.addColorStop(0.6, '#6a2bd6'); g.addColorStop(1, '#e0457b');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      obs.forEach(function (o) {
+        var r = ow * 0.32;
+        cloud(o.x, -20, ow, o.gy + 20 - r, o.gy - r);              // üst bulut, alt kenarı kabarık
+        cloud(o.x, o.gy + gap + r, ow, H - o.gy - gap, o.gy + gap + r); // alt bulut, üst kenarı kabarık
+      });
+      // ilerleme: KALKIŞ ──✈── VARIŞ
+      var pr = Math.min(1, passed / GOAL), bx = 60, bw = W - 120, by = H - 26; // altta: ✕ ve uçakla çakışmasın
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + bw, by); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = '700 14px DM Sans, sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'right'; ctx.fillText(from || '', bx - 8, by + 5);
+      ctx.textAlign = 'left'; ctx.fillText(to || '', bx + bw + 8, by + 5);
+      ctx.font = '18px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✈️', bx + bw * pr, by + 6);
+      // uçak
+      ctx.save(); ctx.translate(W * 0.25, py); ctx.rotate(Math.PI / 4 + Math.max(-0.5, Math.min(0.8, vy / (H * 0.02)))); // ✈️ emojisi çapraz çizilir; +45° ile sağa baksın
+      ctx.font = '34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✈️', 0, 0); ctx.restore();
+      ctx.textBaseline = 'alphabetic';
+      if (state === 'play') txt(String(passed), 90, 40);
+      if (state === 'ready') { txt('Dokun ve uç!', H * 0.62, 26); txt(GOAL + ' bulutu geç, ' + (toCity || to || 'hedefe') + ' iniş yap', H * 0.62 + 30, 15, 'rgba(255,255,255,.85)'); }
+      if (state === 'over') { txt('Türbülans! 😅', H * 0.42, 30); txt('Skor: ' + passed + '   •   En iyi: ' + best, H * 0.42 + 34, 16); txt('Tekrar denemek için dokun', H * 0.42 + 64, 14, 'rgba(255,255,255,.8)'); }
+      if (state === 'win') { txt('İniş başarılı! 🎉', H * 0.42, 30); txt((toCity || to || '') + ' sizi bekliyor', H * 0.42 + 34, 17); txt('İyi yolculuklar — Paydos Turizm', H * 0.42 + 64, 14, 'rgba(255,255,255,.85)'); }
+    };
+    raf = requestAnimationFrame(step);
+  };
+
   fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
@@ -167,6 +260,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Uçuşlar (biniş kartı) ---
       if (flights.length) {
         add(box, el('div', 'sec', 'Uçuşlarınız'));
+        add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun!'));
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
           var ph = el('div', 'ph');
@@ -177,7 +271,11 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           if (d.iata && r.iata) {
             var pb = el('div', 'pb');
             var L = el('div', 'pt'); L.appendChild(el('div', 'iata', d.iata)); L.appendChild(el('div', 'city', d.city)); if (d.time) L.appendChild(el('div', 'time', d.time));
-            var P = el('div', 'path'); P.appendChild(el('span', 'plane', '✈️'));
+            // Uçağın uçtuğu çizgiye dokunmak oyunu açar (hareketli uçağı tutturmak zor olduğu için
+            // tüm çizgi dokunma alanı); kartın geri kalanı uçuş takibine gider
+            var P = el('button', 'path'); P.type = 'button'; P.title = 'Oyna!'; P.setAttribute('aria-label', 'Uçak oyununu aç');
+            P.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openGame(d.iata, r.iata, r.city); });
+            P.appendChild(el('span', 'plane', '✈️'));
             var R = el('div', 'pt r'); R.appendChild(el('div', 'iata', r.iata)); R.appendChild(el('div', 'city', r.city)); if (r.time) R.appendChild(el('div', 'time', r.time));
             pb.appendChild(L); pb.appendChild(P); pb.appendChild(R); a.appendChild(pb);
           } else if (x.dep || x.arr) {
