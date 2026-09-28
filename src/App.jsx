@@ -9255,11 +9255,11 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Teklif/Proforma Başlık
     doc.setFontSize(24);
     doc.setTextColor(220, 53, 69);
-    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 150, 20);
+    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 190, 20, { align: 'right' });
     
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(quote.number, 150, 28);
+    doc.text(quote.number, 190, 28, { align: 'right' });
     
     // Bilgiler
     doc.setFontSize(10);
@@ -9323,27 +9323,32 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.setTextColor(255);
     doc.text(toTurkishChars('HİZMET'), 22, currentY + 5);
     doc.text(toTurkishChars('AÇIKLAMA'), 62, currentY + 5);
-    doc.text('ADET', 125, currentY + 5);
-    doc.text(toTurkishChars('BİRİM'), 145, currentY + 5);
-    doc.text('TOPLAM', 170, currentY + 5);
+    doc.text('ADET', 132, currentY + 5, { align: 'center' });
+    doc.text(toTurkishChars('BİRİM'), 162, currentY + 5, { align: 'right' });
+    doc.text('TOPLAM', 188, currentY + 5, { align: 'right' });
     currentY += 8;
     
-    // Tablo satırları
+    // Tablo satırları — uzun hizmet/açıklama kesilmez, satır içinde alt satıra geçer
     doc.setTextColor(0);
     quote.items.forEach((item, idx) => {
+      const svc = doc.splitTextToSize(toTurkishChars(String(item.service || '')), 38);
+      const desc = doc.splitTextToSize(toTurkishChars(String(item.description || '')), 60);
+      const rowH = Math.max(svc.length, desc.length, 1) * 4.2 + 3;
+      if (currentY + rowH > 275) { doc.addPage(); currentY = 20; }
       if (idx % 2 === 0) {
         doc.setFillColor(245, 245, 245);
-        doc.rect(20, currentY, 170, 7, 'F');
+        doc.rect(20, currentY, 170, rowH, 'F');
       }
-      doc.text(toTurkishChars(String(item.service || '').substring(0, 15)), 22, currentY + 5);
-      doc.text(toTurkishChars(String(item.description || '').substring(0, 25)), 62, currentY + 5);
-      doc.text(item.quantity.toString(), 130, currentY + 5);
-      doc.text(item.unitPrice.toFixed(2), 150, currentY + 5);
-      doc.text((item.quantity * item.unitPrice).toFixed(2), 175, currentY + 5);
-      currentY += 7;
+      doc.text(svc, 22, currentY + 5);
+      doc.text(desc, 62, currentY + 5);
+      doc.text(String(item.quantity), 132, currentY + 5, { align: 'center' });
+      doc.text(Number(item.unitPrice).toFixed(2), 162, currentY + 5, { align: 'right' });
+      doc.text((item.quantity * item.unitPrice).toFixed(2), 188, currentY + 5, { align: 'right' });
+      currentY += rowH;
     });
     
-    // Hesaplamalar
+    // Hesaplamalar — toplam + banka + notlar sığmıyorsa yeni sayfaya geç
+    if (currentY + (quote.type === 'proforma' ? 75 : 40) > 280) { doc.addPage(); currentY = 20; }
     const finalY = currentY + 10;
     
     doc.setFontSize(10);
@@ -9399,7 +9404,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     
     // Notlar
     if (quote.notes) {
-      const notesY = quote.type === 'proforma' ? totalY + 50 : totalY + 15;
+      let notesY = quote.type === 'proforma' ? totalY + 50 : totalY + 15;
+      if (notesY + 20 > 280) { doc.addPage(); notesY = 20; }
       doc.setFontSize(11);
       doc.setTextColor(220, 53, 69);
       doc.text('NOTLAR', 20, notesY);
