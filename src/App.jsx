@@ -4216,6 +4216,39 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [visaCountryFilter, setVisaCountryFilter] = useState('all');
   const [visaSort, setVisaSort] = useState('appointmentDesc'); // sıralama: başvuru/randevu tarihi
+  // Toplu seçim: birden çok başvuruyu seçip ödeme/durum güncelle
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleSelected = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds([]); };
+  const bulkUpdateVisas = async (patch, label) => {
+    const ids = new Set(selectedIds);
+    const targets = visaApplications.filter(v => ids.has(v.id));
+    if (!targets.length || bulkBusy) return;
+    if (!window.confirm(`${targets.length} başvuru "${label}" olarak işaretlenecek. Devam edilsin mi?`)) return;
+    setBulkBusy(true);
+    const before = targets.map(v => ({ ...v }));
+    const now = new Date().toISOString();
+    try {
+      // Firestore'a tek seferde yaz (400'lük gruplar)
+      for (let i = 0; i < targets.length; i += 400) {
+        const batch = writeBatch(db);
+        targets.slice(i, i + 400).forEach(v => batch.set(doc(db, 'visa_applications', v._docId || String(v.id)), { ...patch, updatedAt: now }, { merge: true }));
+        await batch.commit();
+      }
+      setVisaApplications(prev => prev.map(v => ids.has(v.id) ? { ...v, ...patch } : v));
+      addToUndo?.({ type: 'update', undo: () => {
+        const map = new Map(before.map(v => [v.id, v]));
+        setVisaApplications(prev => prev.map(v => map.get(v.id) || v));
+      } });
+      logActivity('status', 'Vize', `${targets.length} başvuru → ${label} (toplu)`, currentUser);
+      showToast?.(`✅ ${targets.length} başvuru "${label}" yapıldı`, 'success');
+      exitSelectMode();
+    } catch (e) {
+      showToast?.('❌ Toplu güncelleme başarısız: ' + e.message, 'error');
+    } finally { setBulkBusy(false); }
+  };
   const [idataInfoModal, setIdataInfoModal] = useState(null); // {visa, customer} — iDATA hazır bilgi paneli
   // Bir vize başvurusundan görünen ülke etiketini çöz (filtre + dropdown ortak kullanır)
   const extractVisaCountry = (v) => {
@@ -5761,15 +5794,44 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {/* TÜM BAŞVURULAR */}
       {activeTab === 'all' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Toplu seçim çubuğu */}
+          {filteredVisaApplications.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', padding: selectMode ? '10px 12px' : 0, borderRadius: '10px', background: selectMode ? 'rgba(59,130,246,0.1)' : 'transparent', border: selectMode ? '1px solid rgba(59,130,246,0.3)' : 'none', position: selectMode ? 'sticky' : 'static', top: isMobile ? '60px' : '8px', zIndex: 5, backdropFilter: selectMode ? 'blur(8px)' : 'none' }}>
+              {!selectMode ? (
+                <button onClick={() => setSelectMode(true)} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>☑️ Seç</button>
+              ) : (() => {
+                const visibleIds = filteredVisaApplications.map(v => v.id);
+                const allOn = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+                const btn = (bg, col) => ({ padding: '7px 12px', borderRadius: '8px', border: 'none', background: bg, color: col, cursor: bulkBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, opacity: selectedIds.length ? 1 : 0.5 });
+                return (<>
+                  <button onClick={() => setSelectedIds(allOn ? selectedIds.filter(id => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])])} style={{ ...btn('rgba(255,255,255,0.1)', '#e8f1f8'), opacity: 1 }}>
+                    {allOn ? '☐ Seçimi kaldır' : `☑️ Tümünü seç (${visibleIds.length})`}
+                  </button>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#93c5fd' }}>{selectedIds.length} seçili</span>
+                  <div style={{ flex: 1 }} />
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödendi' }, 'Ödendi')} style={btn('#10b981', '#fff')}>💰 Ödendi</button>
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödenmedi' }, 'Ödenmedi')} style={btn('rgba(239,68,68,0.2)', '#ef4444')}>Ödenmedi</button>
+                  <select disabled={!selectedIds.length || bulkBusy} value="" onChange={e => { if (e.target.value) bulkUpdateVisas({ status: e.target.value }, e.target.value); }} style={{ ...btn('rgba(255,255,255,0.08)', '#e8f1f8'), border: '1px solid rgba(255,255,255,0.15)' }}>
+                    <option value="" style={{ background: '#0c1929' }}>Durum değiştir…</option>
+                    {visaStatuses.map(st => <option key={st} value={st} style={{ background: '#0c1929' }}>{st}</option>)}
+                  </select>
+                  <button onClick={exitSelectMode} style={{ ...btn('transparent', '#94a3b8'), opacity: 1 }}>✕ Kapat</button>
+                </>);
+              })()}
+            </div>
+          )}
           {filteredVisaApplications.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>{visaSearchQuery ? 'Sonuç bulunamadı' : 'Henüz başvuru yok'}</p>
           ) : (
             filteredVisaApplications.map(v => {
               const cat = getCategoryInfo(v.category);
               return (
-                <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <div>
+                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '10px' }}>
+                    {selectMode && (
+                      <span style={{ flexShrink: 0, width: '22px', height: '22px', marginTop: '1px', borderRadius: '6px', border: selectedIds.includes(v.id) ? 'none' : '2px solid rgba(255,255,255,0.3)', background: selectedIds.includes(v.id) ? '#3b82f6' : 'transparent', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>{selectedIds.includes(v.id) ? '✓' : ''}</span>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
