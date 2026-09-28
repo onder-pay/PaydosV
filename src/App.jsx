@@ -4905,7 +4905,19 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     'Evrak Topluyor': '#f59e0b', 'Evrak Tamamlandı': '#3b82f6', 'Randevu Alındı': '#8b5cf6',
     'Atama Bekliyor': '#a855f7', 'Randevu Bekliyor': '#c084fc',
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
-  }[status] || '#94a3b8');
+  }[status] || (() => {
+    // Ayarlardan eklenen durumlar için anahtar kelimeye göre renk (hepsi gri kalmasın)
+    const t = String(status || '').toLocaleLowerCase('tr-TR');
+    if (/onay/.test(t)) return '#10b981';
+    if (/iptal/.test(t)) return '#64748b';
+    if (/\bred\b|redd/.test(t)) return '#ef4444';
+    if (/konsolos/.test(t)) return '#06b6d4';
+    if (/gönderil|gonderil/.test(t)) return '#3b82f6';
+    if (/topluyor|evrak/.test(t)) return '#f59e0b';
+    if (/atama|bekliyor/.test(t)) return '#a855f7';
+    if (/data|vfs|başvuru|basvuru/.test(t)) return '#6366f1';
+    return '#94a3b8';
+  })());
 
   const getCategoryInfo = (catId) => visaCategories.find(c => c.id === catId) || visaCategories.find(c => c.id === 'other'); // eskiden [5] = Çin idi: kategorisi olmayan başvuru Çin bayrağıyla görünüyordu
 
@@ -5642,53 +5654,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         </button>
         {/* Ayırıcı */}
         <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
-        {/* Durum filtre dropdown */}
-        {(() => {
-          const totalCount = visaApplications.length;
-          const unpaidCount = visaApplications.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length;
-          const currentValue = activeTab !== 'all' ? '__noop__' : visaStatusFilter;
-          const currentColor = visaStatusFilter === 'all' ? '#3b82f6'
-            : visaStatusFilter === '__odenmedi__' ? '#ef4444'
-            : getStatusColor(visaStatusFilter);
-          return (
-            <select
-              value={currentValue}
-              onChange={e => {
-                const val = e.target.value;
-                if (val === '__noop__') return;
-                setActiveTab('all');
-                setVisaStatusFilter(val);
-              }}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '600',
-                border: `1px solid ${currentColor}40`,
-                background: `${currentColor}20`,
-                color: currentColor,
-                outline: 'none',
-                minWidth: '180px',
-                appearance: 'auto'
-              }}
-            >
-              {activeTab !== 'all' && <option value="__noop__" hidden>{activeTab === 'calendar' ? '📅 Takvim görünümü' : '🔔 Hatırlatıcılar'}</option>}
-              <option value="all" style={{ background: '#0c1929', color: '#fff' }}>📋 Tümü ({totalCount})</option>
-              {visaStatuses.map(s => {
-                const count = visaApplications.filter(v => v.status === s).length;
-                return (
-                  <option key={s} value={s} style={{ background: '#0c1929', color: '#fff' }}>
-                    {s} ({count})
-                  </option>
-                );
-              })}
-              <option value="__odenmedi__" style={{ background: '#0c1929', color: '#fff' }}>
-                💸 Ödenmedi ({unpaidCount})
-              </option>
-            </select>
-          );
-        })()}
         {/* Ülke filtresi — her görünümde. Önce categoryId, sonra country, sonra visaDuration metninden çözülür */}
         {(() => {
           const countries = [...new Set(visaApplications.map(extractVisaCountry).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
@@ -5713,6 +5678,42 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
           <option value="nameAsc" style={{ background: '#0c1929', color: '#fff' }}>🔤 İsme göre (A-Z)</option>
         </select>
       </div>
+
+      {/* Durum filtresi: tek bakışta görünen renkli etiketler (önceden açılır menü içindeydi).
+          Sayılar seçili ülke filtresine göre; seçili etikete tekrar tıklamak "Tümü"ne döner. */}
+      {(() => {
+        const base = visaCountryFilter === 'all' ? visaApplications : visaApplications.filter(v => extractVisaCountry(v) === visaCountryFilter);
+        const chips = [
+          { key: 'all', label: '📋 Tümü', count: base.length, color: '#3b82f6' },
+          ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st).length, color: getStatusColor(st) })),
+          { key: '__odenmedi__', label: '💸 Ödenmedi', count: base.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length, color: '#ef4444' },
+        ];
+        const current = activeTab === 'all' ? visaStatusFilter : null;
+        return (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', padding: '2px 0 12px', marginBottom: '4px', WebkitOverflowScrolling: 'touch' }}>
+            {chips.map(c => {
+              const active = current === c.key;
+              return (
+                <button key={c.key}
+                  onClick={() => { setActiveTab('all'); setVisaStatusFilter(active && c.key !== 'all' ? 'all' : c.key); }}
+                  style={{
+                    flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 10px 6px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                    border: `1px solid ${active ? c.color : c.color + '40'}`,
+                    background: active ? c.color : c.color + '14',
+                    color: active ? '#fff' : c.color,
+                    opacity: c.count === 0 && !active ? 0.45 : 1,
+                    whiteSpace: 'nowrap'
+                  }}>
+                  {c.label}
+                  <span style={{ minWidth: '20px', padding: '1px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, textAlign: 'center',
+                    background: active ? 'rgba(255,255,255,0.25)' : c.color + '26', color: active ? '#fff' : c.color }}>{c.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* TAKVİM */}
       {activeTab === 'calendar' && (
