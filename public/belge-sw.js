@@ -2,8 +2,8 @@
 // Sayfa ve belge listesi (Firestore cevabı) önce ağdan alınır, olmazsa son kayıtlı kopya gösterilir
 // (yurt dışında roaming kapalıyken de uçuş/belge listesi görünür). PDF'ler başka alan adında olduğu
 // için burada saklanmaz — onlar için "İndir" kullanılmalı.
-const CACHE = 'paydos-belge-v1';
-const SHELL = ['/belgeler.html', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'paydos-belge-v2';
+const SHELL = ['/belgeler.html', '/icons/logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
