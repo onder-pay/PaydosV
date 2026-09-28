@@ -6586,17 +6586,26 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
       }
       if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
+      // Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
+      const flights = [];
+      const o = tour.offerData || {};
+      [[o.flightOut, 'Gidiş'], [o.flightRet, 'Dönüş']].forEach(([f, dir]) => {
+        (f?.legs || []).forEach(l => {
+          const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
+          if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
+        });
+      });
       if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
-      if (!docs.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
+      if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       await setDoc(doc(db, 'paylasimlar', token), {
         customerName: res.customerName || '', tourName: tour.name || '',
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
-        docs, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || ''
+        docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || ''
       });
       if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
       const link = `${window.location.origin}/b/${token}`;
-      const text = `Sayın ${res.customerName || ''},\n\n${tour.name || 'Tur'} için belgeleriniz (${docs.map(d => d.label.split(' — ')[0]).join(', ')}):\n${link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm`;
-      setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length });
+      const text = `Sayın ${res.customerName || ''},\n\n${tour.name || 'Tur'} için belgeleriniz (${[...docs.map(d => d.label.split(' — ')[0]), ...(flights.length ? ['Uçuş Takibi'] : [])].join(', ')}):\n${link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm`;
+      setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length + (flights.length ? 1 : 0) });
     } catch (e) {
       showToast?.('Link hazırlanamadı: ' + e.message, 'error');
     } finally { setShareBusy(''); }

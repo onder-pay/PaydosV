@@ -22,6 +22,14 @@ body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a)
 .doc .t{flex:1;font-size:15px;font-weight:500}
 .doc .a{font-size:13px;color:#e2b04a;font-weight:700;white-space:nowrap}
 .msg{text-align:center;color:#8888aa;font-size:14px;padding:30px 10px;line-height:1.6}
+.sec{font-size:13px;color:#e2b04a;font-weight:700;margin:22px 0 2px;letter-spacing:.3px}
+.fl{display:block;padding:13px 16px;margin-top:10px;border-radius:12px;border:1px solid #2a2a4a;background:#0d0d1a;color:#e0e0e0;text-decoration:none}
+.fl:hover,.fl:active{border-color:#e2b04a;background:rgba(226,176,74,.06)}
+.fl .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fl .code{font-size:16px;font-weight:700}
+.fl .dir{font-size:12px;color:#8888aa;margin-left:6px;font-weight:400}
+.fl .route{font-size:13px;color:#c0c0d0;margin-top:5px}
+.fl .a{font-size:13px;color:#e2b04a;font-weight:700;white-space:nowrap}
 .foot{text-align:center;font-size:12px;color:#666680;margin-top:22px;line-height:1.7}
 .foot a{color:#8888aa}
 </style>
@@ -68,7 +76,9 @@ body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a)
       var dates = [trDate(f.startDate), trDate(f.endDate)].filter(Boolean).join(' – ');
       add('div', 'meta', [place, dates].filter(Boolean).join('  •  '));
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
-      if (!docs.length) { add('div', 'msg', 'Henüz paylaşılmış belge yok.'); return; }
+      // Uçuş kodu sadece harf+rakam; takip adresi sayfada kurulur (dışarıdan adres alınmaz)
+      var flights = (f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); });
+      if (!docs.length && !flights.length) { add('div', 'msg', 'Henüz paylaşılmış belge yok.'); return; }
       docs.forEach(function (d) {
         var a = document.createElement('a');
         a.className = 'doc'; a.href = safeUrl(d.url); a.target = '_blank'; a.rel = 'noopener';
@@ -77,6 +87,21 @@ body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a)
         var o = document.createElement('span'); o.className = 'a'; o.textContent = 'Aç ›';
         a.appendChild(i); a.appendChild(t); a.appendChild(o); box.appendChild(a);
       });
+      if (flights.length) {
+        add('div', 'sec', '✈️ UÇUŞ TAKİBİ');
+        flights.forEach(function (x) {
+          var a = document.createElement('a');
+          a.className = 'fl'; a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
+          var top = document.createElement('div'); top.className = 'top';
+          var c = document.createElement('span'); c.className = 'code'; c.textContent = x.code.replace(/^(..)/, '$1 ');
+          var d = document.createElement('span'); d.className = 'dir'; d.textContent = [x.dir, x.date].filter(Boolean).join(' · ');
+          c.appendChild(d);
+          var o = document.createElement('span'); o.className = 'a'; o.textContent = 'Canlı takip ›';
+          top.appendChild(c); top.appendChild(o); a.appendChild(top);
+          if (x.dep || x.arr) { var r = document.createElement('div'); r.className = 'route'; r.textContent = [x.dep, x.arr].filter(Boolean).join('  →  '); a.appendChild(r); }
+          box.appendChild(a);
+        });
+      }
     })
     .catch(function (e) { show(e.message === '404' ? 'Bu bağlantı bulunamadı veya kaldırılmış.' : 'Belgeler yüklenemedi. Lütfen daha sonra tekrar deneyin.'); });
 })();
