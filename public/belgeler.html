@@ -2,49 +2,97 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0b1020">
 <title>Paydos Turizm - Seyahat Belgeleriniz</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a);font-family:'DM Sans',sans-serif;color:#e0e0e0}
-.c{max-width:560px;margin:0 auto;padding:28px 16px 48px}
-.logo{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;background:linear-gradient(135deg,#e2b04a,#f0c96e);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
-.sub{color:#8888aa;font-size:14px;text-align:center;margin:4px 0 22px}
-.card{background:#16162a;border-radius:16px;border:1px solid #2a2a4a;padding:22px}
-.hi{font-size:15px;color:#c0c0d0;margin-bottom:4px}
-.tour{font-family:'Playfair Display',serif;color:#e2b04a;font-size:21px;margin-bottom:4px}
-.meta{font-size:13px;color:#8888aa;margin-bottom:18px}
-.doc{display:flex;align-items:center;gap:14px;padding:15px 16px;margin-top:10px;border-radius:12px;border:1px solid #2a2a4a;background:#0d0d1a;color:#e0e0e0;text-decoration:none;transition:border-color .2s,background .2s}
-.doc:hover,.doc:active{border-color:#e2b04a;background:rgba(226,176,74,.06)}
-.doc .i{font-size:26px;flex-shrink:0}
-.doc .t{flex:1;font-size:15px;font-weight:500}
-.doc .a{font-size:13px;color:#e2b04a;font-weight:700;white-space:nowrap}
-.msg{text-align:center;color:#8888aa;font-size:14px;padding:30px 10px;line-height:1.6}
-.sec{font-size:13px;color:#e2b04a;font-weight:700;margin:22px 0 2px;letter-spacing:.3px}
-.fl{display:block;padding:13px 16px;margin-top:10px;border-radius:12px;border:1px solid #2a2a4a;background:#0d0d1a;color:#e0e0e0;text-decoration:none}
-.fl:hover,.fl:active{border-color:#e2b04a;background:rgba(226,176,74,.06)}
-.fl .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.fl .code{font-size:16px;font-weight:700}
-.fl .dir{font-size:12px;color:#8888aa;margin-left:6px;font-weight:400}
-.fl .route{font-size:13px;color:#c0c0d0;margin-top:5px}
-.fl .a{font-size:13px;color:#e2b04a;font-weight:700;white-space:nowrap}
-.foot{text-align:center;font-size:12px;color:#666680;margin-top:22px;line-height:1.7}
-.foot a{color:#8888aa}
+:root{--bg:#0b1020;--card:#141a33;--line:#262e52;--muted:#9aa3c7;--text:#eef1ff;--gold:#f5b942;--gold2:#ffd98a}
+body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2350 0%,var(--bg) 60%);font-family:'DM Sans',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+.c{max-width:560px;margin:0 auto;padding:20px 16px 48px}
+.brand{display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Playfair Display',serif;font-weight:700;font-size:18px;letter-spacing:1px;color:var(--gold);margin-bottom:16px}
+.brand small{font-family:'DM Sans',sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;color:var(--muted)}
+
+/* Hero */
+.hero{position:relative;overflow:hidden;border-radius:24px;padding:26px 22px 22px;background:linear-gradient(135deg,#1d3fa8 0%,#6a2bd6 55%,#e0457b 100%);box-shadow:0 20px 50px -20px rgba(106,43,214,.6)}
+.hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(2px);opacity:.35}
+.hero::before{width:220px;height:220px;right:-70px;top:-80px;background:radial-gradient(circle,#ffd98a 0%,transparent 70%)}
+.hero::after{width:180px;height:180px;left:-60px;bottom:-90px;background:radial-gradient(circle,#5ee7ff 0%,transparent 70%)}
+.hero>*{position:relative}
+.hello{font-size:15px;opacity:.9}
+.dest{font-family:'Playfair Display',serif;font-size:40px;line-height:1.05;font-weight:700;margin:6px 0 2px;text-shadow:0 2px 20px rgba(0,0,0,.2)}
+.country{font-size:14px;opacity:.85;letter-spacing:.5px}
+.tname{margin-top:14px;font-size:15px;font-weight:700}
+.dates{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;opacity:.9}
+.count{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:9px 14px;border-radius:999px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font-size:14px;font-weight:700;border:1px solid rgba(255,255,255,.25)}
+.count b{font-size:20px;color:#fff}
+
+/* Bölüm başlığı */
+.sec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--muted);margin:26px 4px 10px;text-transform:uppercase}
+.sec::after{content:'';flex:1;height:1px;background:var(--line)}
+
+/* Belge kutucukları */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line);color:var(--text);text-decoration:none;transition:transform .15s,border-color .15s}
+.tile:active{transform:scale(.97)}
+.tile:hover{border-color:var(--c,#f5b942)}
+.tile.wide{grid-column:1/-1;flex-direction:row;align-items:center}
+.tile .ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--bgc,rgba(245,185,66,.15));flex-shrink:0}
+.tile .tt{font-size:15px;font-weight:700;line-height:1.25}
+.tile .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.tile .go{margin-top:auto;font-size:13px;font-weight:700;color:var(--c,#f5b942)}
+.tile.wide .go{margin:0 0 0 auto}
+
+/* Biniş kartı */
+.pass{position:relative;display:block;margin-bottom:12px;border-radius:20px;background:#fffaf0;color:#1b1f3b;text-decoration:none;overflow:hidden;box-shadow:0 12px 30px -15px rgba(0,0,0,.6)}
+.pass .ph{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(90deg,#1d3fa8,#6a2bd6);color:#fff;font-size:12px;font-weight:700;letter-spacing:1px}
+.pass .ph .fn{font-size:15px;letter-spacing:.5px}
+.pass .pb{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 18px 14px}
+.pass .pt{min-width:0}
+.pass .pt.r{text-align:right}
+.pass .iata{font-size:34px;font-weight:700;letter-spacing:1px;line-height:1}
+.pass .city{font-size:12px;color:#6b7094;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.pass .pt.r .city{margin-left:auto}
+.pass .time{font-size:16px;font-weight:700;margin-top:6px}
+.pass .path{flex:1;position:relative;height:30px;min-width:60px}
+.pass .path::before{content:'';position:absolute;left:0;right:0;top:50%;border-top:2px dashed #c9cce0}
+.pass .plane{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);font-size:20px;animation:fly 3.2s ease-in-out infinite}
+@keyframes fly{0%{left:8%}50%{left:92%}100%{left:8%}}
+.pass .pf{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px dashed #e6e2d6;font-size:12px;color:#6b7094;position:relative}
+.pass .pf::before,.pass .pf::after{content:'';position:absolute;top:-11px;width:20px;height:20px;border-radius:50%;background:var(--bg)}
+.pass .pf::before{left:-10px}.pass .pf::after{right:-10px}
+.pass .live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#e0457b;font-size:13px}
+.pass .live i{width:8px;height:8px;border-radius:50%;background:#e0457b;animation:pulse 1.4s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(224,69,123,.6)}100%{box-shadow:0 0 0 10px rgba(224,69,123,0)}}
+.pass .raw{padding:16px 18px;font-size:14px}
+
+/* İletişim */
+.contact{display:flex;align-items:center;gap:12px;margin-top:26px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
+.contact .ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(245,185,66,.15);font-size:20px}
+.contact .tx{flex:1;font-size:13px;color:var(--muted)}
+.contact .tx b{display:block;color:var(--text);font-size:14px;margin-bottom:2px}
+.contact a{padding:10px 16px;border-radius:12px;background:var(--gold);color:#1b1f3b;font-weight:700;font-size:14px;text-decoration:none}
+.foot{text-align:center;font-size:11px;color:#5d6591;margin-top:20px;letter-spacing:1px}
+
+.msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
+.in{opacity:0;transform:translateY(12px);animation:up .5s ease forwards}
+@keyframes up{to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.in{animation:none;opacity:1;transform:none}.pass .plane{animation:none;left:50%}.pass .live i{animation:none}}
+@media (max-width:360px){.dest{font-size:32px}.pass .iata{font-size:28px}}
 </style>
 </head>
 <body>
 <div class="c">
-  <div class="logo">PAYDOS TURİZM</div>
-  <div class="sub">Seyahat Belgeleriniz</div>
-  <div class="card" id="box"><div class="msg">Yükleniyor…</div></div>
-  <div class="foot">Sorularınız için: <a href="tel:+902582637176">+90 258 263 71 76</a><br>www.paydosturizm.com</div>
+  <div class="brand">✈ PAYDOS TURİZM</div>
+  <div id="box"><div class="msg">Yükleniyor…</div></div>
 </div>
 <script>
 (function () {
   var box = document.getElementById('box');
-  var show = function (t) { box.innerHTML = ''; var d = document.createElement('div'); d.className = 'msg'; d.textContent = t; box.appendChild(d); };
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  var show = function (t) { box.innerHTML = ''; box.appendChild(el('div', 'msg', t)); };
   // Link biçimi: /b/<kod>  (eski/yedek: belgeler.html?k=<kod>)
   var m = location.pathname.match(/\/b\/([A-Za-z0-9]{8,40})\/?$/);
   var code = m ? m[1] : (new URLSearchParams(location.search).get('k') || '');
@@ -60,48 +108,111 @@ body{min-height:100vh;background:linear-gradient(145deg,#0a0a1a,#12122a,#0d0d1a)
     if ('mapValue' in v) { var o = {}, f = v.mapValue.fields || {}; for (var k in f) o[k] = val(f[k]); return o; }
     return null;
   };
-  var trDate = function (s) { var p = String(s || '').split('-'); return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : ''; };
+  var AY = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  var parseD = function (s) { var p = String(s || '').split('-'); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null; };
+  var fmtD = function (d) { return d ? d.getDate() + ' ' + AY[d.getMonth()] : ''; };
   // Sadece Firebase Storage adreslerine bağlantı verilir
   var safeUrl = function (u) { try { var x = new URL(u); return x.protocol === 'https:' && /(^|\.)(firebasestorage\.googleapis\.com|storage\.googleapis\.com)$/.test(x.hostname) ? x.href : ''; } catch (e) { return ''; } };
+  // "Ankara ESB · 12:15" → { city: 'Ankara', iata: 'ESB', time: '12:15' }
+  var parsePt = function (s) {
+    s = String(s || '');
+    var iata = (s.match(/\b([A-Z]{3})\b/) || [])[1] || '';
+    var time = (s.match(/(\d{1,2}:\d{2}(?:\s*\(\+\d\))?)/) || [])[1] || '';
+    var city = s.split(iata || '·')[0].replace(/[·|,]/g, ' ').trim();
+    return { city: city, iata: iata, time: time };
+  };
+  // Belge türüne göre renk
+  var STYLE = {
+    '🗺️': ['#34d3c4', 'rgba(52,211,196,.14)', 'Günlük program ve detaylar'],
+    '🏨': ['#f5b942', 'rgba(245,185,66,.15)', 'Otel girişinde gösterin'],
+    '✈️': ['#6aa8ff', 'rgba(106,168,255,.15)', 'E-bilet'],
+    '🎫': ['#ff7aa8', 'rgba(255,122,168,.15)', 'Fuar girişinde gösterin']
+  };
+  var delay = 0;
+  var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
 
   fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
       var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
       box.innerHTML = '';
-      var add = function (tag, cls, text) { var e = document.createElement(tag); e.className = cls; e.textContent = text; box.appendChild(e); return e; };
-      if (f.customerName) add('div', 'hi', 'Sayın ' + f.customerName + ',');
-      add('div', 'tour', f.tourName || 'Turunuz');
-      var place = [f.city, f.country].filter(Boolean).join(', ');
-      var dates = [trDate(f.startDate), trDate(f.endDate)].filter(Boolean).join(' – ');
-      add('div', 'meta', [place, dates].filter(Boolean).join('  •  '));
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
       // Uçuş kodu sadece harf+rakam; takip adresi sayfada kurulur (dışarıdan adres alınmaz)
       var flights = (f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); });
-      if (!docs.length && !flights.length) { add('div', 'msg', 'Henüz paylaşılmış belge yok.'); return; }
-      docs.forEach(function (d) {
-        var a = document.createElement('a');
-        a.className = 'doc'; a.href = safeUrl(d.url); a.target = '_blank'; a.rel = 'noopener';
-        var i = document.createElement('span'); i.className = 'i'; i.textContent = d.icon || '📄';
-        var t = document.createElement('span'); t.className = 't'; t.textContent = d.label || 'Belge';
-        var o = document.createElement('span'); o.className = 'a'; o.textContent = 'Aç ›';
-        a.appendChild(i); a.appendChild(t); a.appendChild(o); box.appendChild(a);
-      });
+
+      // --- Üst bölüm ---
+      var hero = add(box, el('div', 'hero'));
+      var nm = String(f.customerName || '').trim().split(/\s+/); var first = nm.length > 1 ? nm.slice(0, -1).join(' ') : nm[0]; // soyadı hariç
+      hero.appendChild(el('div', 'hello', first ? 'Merhaba ' + first + ' 👋' : 'Merhaba 👋'));
+      hero.appendChild(el('div', 'dest', f.city || f.tourName || 'Seyahatiniz'));
+      if (f.country) hero.appendChild(el('div', 'country', f.country));
+      if (f.tourName && f.city) hero.appendChild(el('div', 'tname', f.tourName));
+      var s = parseD(f.startDate), e = parseD(f.endDate);
+      if (s) hero.appendChild(el('div', 'dates', '📅 ' + fmtD(s) + (e ? ' – ' + fmtD(e) : '') + ' ' + s.getFullYear()));
+      if (s) {
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var days = Math.round((s - today) / 86400000);
+        var endD = e || s;
+        var cnt = el('div', 'count');
+        if (days > 1) { cnt.appendChild(document.createTextNode('✈️ Yolculuğunuza ')); cnt.appendChild(el('b', '', String(days))); cnt.appendChild(document.createTextNode(' gün kaldı')); }
+        else if (days === 1) cnt.textContent = '✈️ Yarın yola çıkıyorsunuz!';
+        else if (days === 0) cnt.textContent = '✈️ Bugün yola çıkıyorsunuz, iyi yolculuklar!';
+        else if (today <= endD) cnt.textContent = '🌍 İyi eğlenceler, keyifli bir seyahat dileriz!';
+        else cnt.textContent = '💛 Umarız harika geçmiştir!';
+        hero.appendChild(cnt);
+      }
+
+      if (!docs.length && !flights.length) { add(box, el('div', 'msg', 'Henüz paylaşılmış belge yok.')); return; }
+
+      // --- Uçuşlar (biniş kartı) ---
       if (flights.length) {
-        add('div', 'sec', '✈️ UÇUŞ TAKİBİ');
+        add(box, el('div', 'sec', 'Uçuşlarınız'));
         flights.forEach(function (x) {
-          var a = document.createElement('a');
-          a.className = 'fl'; a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
-          var top = document.createElement('div'); top.className = 'top';
-          var c = document.createElement('span'); c.className = 'code'; c.textContent = x.code.replace(/^(..)/, '$1 ');
-          var d = document.createElement('span'); d.className = 'dir'; d.textContent = [x.dir, x.date].filter(Boolean).join(' · ');
-          c.appendChild(d);
-          var o = document.createElement('span'); o.className = 'a'; o.textContent = 'Canlı takip ›';
-          top.appendChild(c); top.appendChild(o); a.appendChild(top);
-          if (x.dep || x.arr) { var r = document.createElement('div'); r.className = 'route'; r.textContent = [x.dep, x.arr].filter(Boolean).join('  →  '); a.appendChild(r); }
-          box.appendChild(a);
+          var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
+          var ph = el('div', 'ph');
+          ph.appendChild(el('span', '', (x.dir || 'UÇUŞ').toLocaleUpperCase('tr-TR') + (x.date ? ' · ' + x.date.replace(/\s+\d{4}.*$/, '') : '')));
+          ph.appendChild(el('span', 'fn', x.code.replace(/^(..)/, '$1 ')));
+          a.appendChild(ph);
+          var d = parsePt(x.dep), r = parsePt(x.arr);
+          if (d.iata && r.iata) {
+            var pb = el('div', 'pb');
+            var L = el('div', 'pt'); L.appendChild(el('div', 'iata', d.iata)); L.appendChild(el('div', 'city', d.city)); if (d.time) L.appendChild(el('div', 'time', d.time));
+            var P = el('div', 'path'); P.appendChild(el('span', 'plane', '✈️'));
+            var R = el('div', 'pt r'); R.appendChild(el('div', 'iata', r.iata)); R.appendChild(el('div', 'city', r.city)); if (r.time) R.appendChild(el('div', 'time', r.time));
+            pb.appendChild(L); pb.appendChild(P); pb.appendChild(R); a.appendChild(pb);
+          } else if (x.dep || x.arr) {
+            a.appendChild(el('div', 'raw', [x.dep, x.arr].filter(Boolean).join('  →  ')));
+          }
+          var pf = el('div', 'pf');
+          pf.appendChild(el('span', '', 'Rötar, kapı ve canlı konum'));
+          var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
+          pf.appendChild(live); a.appendChild(pf);
+          add(box, a);
         });
       }
+
+      // --- Belgeler ---
+      if (docs.length) {
+        add(box, el('div', 'sec', 'Belgeleriniz'));
+        var grid = add(box, el('div', 'grid'));
+        docs.forEach(function (dc, i) {
+          var st = STYLE[dc.icon] || ['#f5b942', 'rgba(245,185,66,.15)', ''];
+          var parts = String(dc.label || 'Belge').split(' — ');
+          var a = el('a', 'tile' + (docs.length % 2 === 1 && i === docs.length - 1 ? ' wide' : '')); a.href = safeUrl(dc.url); a.target = '_blank'; a.rel = 'noopener';
+          a.style.setProperty('--c', st[0]); a.style.setProperty('--bgc', st[1]);
+          a.appendChild(el('div', 'ic', dc.icon || '📄'));
+          var tx = el('div'); tx.appendChild(el('div', 'tt', parts[0])); tx.appendChild(el('div', 'sub', parts[1] || st[2])); a.appendChild(tx);
+          a.appendChild(el('div', 'go', 'Aç ›'));
+          grid.appendChild(a);
+        });
+      }
+
+      // --- İletişim ---
+      var ct = add(box, el('div', 'contact'));
+      ct.appendChild(el('div', 'ic', '📞'));
+      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Yardıma mı ihtiyacınız var?')); ctx.appendChild(document.createTextNode('Paydos Turizm ekibi yanınızda.')); ct.appendChild(ctx);
+      var call = el('a', '', 'Ara'); call.href = 'tel:+902582637176'; ct.appendChild(call);
+      add(box, el('div', 'foot', 'www.paydosturizm.com'));
     })
     .catch(function (e) { show(e.message === '404' ? 'Bu bağlantı bulunamadı veya kaldırılmış.' : 'Belgeler yüklenemedi. Lütfen daha sonra tekrar deneyin.'); });
 })();
