@@ -4216,6 +4216,39 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
   const [visaCountryFilter, setVisaCountryFilter] = useState('all');
   const [visaSort, setVisaSort] = useState('appointmentDesc'); // sıralama: başvuru/randevu tarihi
+  // Toplu seçim: birden çok başvuruyu seçip ödeme/durum güncelle
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleSelected = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds([]); };
+  const bulkUpdateVisas = async (patch, label) => {
+    const ids = new Set(selectedIds);
+    const targets = visaApplications.filter(v => ids.has(v.id));
+    if (!targets.length || bulkBusy) return;
+    if (!window.confirm(`${targets.length} başvuru "${label}" olarak işaretlenecek. Devam edilsin mi?`)) return;
+    setBulkBusy(true);
+    const before = targets.map(v => ({ ...v }));
+    const now = new Date().toISOString();
+    try {
+      // Firestore'a tek seferde yaz (400'lük gruplar)
+      for (let i = 0; i < targets.length; i += 400) {
+        const batch = writeBatch(db);
+        targets.slice(i, i + 400).forEach(v => batch.set(doc(db, 'visa_applications', v._docId || String(v.id)), { ...patch, updatedAt: now }, { merge: true }));
+        await batch.commit();
+      }
+      setVisaApplications(prev => prev.map(v => ids.has(v.id) ? { ...v, ...patch } : v));
+      addToUndo?.({ type: 'update', undo: () => {
+        const map = new Map(before.map(v => [v.id, v]));
+        setVisaApplications(prev => prev.map(v => map.get(v.id) || v));
+      } });
+      logActivity('status', 'Vize', `${targets.length} başvuru → ${label} (toplu)`, currentUser);
+      showToast?.(`✅ ${targets.length} başvuru "${label}" yapıldı`, 'success');
+      exitSelectMode();
+    } catch (e) {
+      showToast?.('❌ Toplu güncelleme başarısız: ' + e.message, 'error');
+    } finally { setBulkBusy(false); }
+  };
   const [idataInfoModal, setIdataInfoModal] = useState(null); // {visa, customer} — iDATA hazır bilgi paneli
   // Bir vize başvurusundan görünen ülke etiketini çöz (filtre + dropdown ortak kullanır)
   const extractVisaCountry = (v) => {
@@ -4905,7 +4938,19 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     'Evrak Topluyor': '#f59e0b', 'Evrak Tamamlandı': '#3b82f6', 'Randevu Alındı': '#8b5cf6',
     'Atama Bekliyor': '#a855f7', 'Randevu Bekliyor': '#c084fc',
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
-  }[status] || '#94a3b8');
+  }[status] || (() => {
+    // Ayarlardan eklenen durumlar için anahtar kelimeye göre renk (hepsi gri kalmasın)
+    const t = String(status || '').toLocaleLowerCase('tr-TR');
+    if (/onay/.test(t)) return '#10b981';
+    if (/iptal/.test(t)) return '#64748b';
+    if (/\bred\b|redd/.test(t)) return '#ef4444';
+    if (/konsolos/.test(t)) return '#06b6d4';
+    if (/gönderil|gonderil/.test(t)) return '#3b82f6';
+    if (/topluyor|evrak/.test(t)) return '#f59e0b';
+    if (/atama|bekliyor/.test(t)) return '#a855f7';
+    if (/data|vfs|başvuru|basvuru/.test(t)) return '#6366f1';
+    return '#94a3b8';
+  })());
 
   const getCategoryInfo = (catId) => visaCategories.find(c => c.id === catId) || visaCategories.find(c => c.id === 'other'); // eskiden [5] = Çin idi: kategorisi olmayan başvuru Çin bayrağıyla görünüyordu
 
@@ -5642,53 +5687,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         </button>
         {/* Ayırıcı */}
         <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
-        {/* Durum filtre dropdown */}
-        {(() => {
-          const totalCount = visaApplications.length;
-          const unpaidCount = visaApplications.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length;
-          const currentValue = activeTab !== 'all' ? '__noop__' : visaStatusFilter;
-          const currentColor = visaStatusFilter === 'all' ? '#3b82f6'
-            : visaStatusFilter === '__odenmedi__' ? '#ef4444'
-            : getStatusColor(visaStatusFilter);
-          return (
-            <select
-              value={currentValue}
-              onChange={e => {
-                const val = e.target.value;
-                if (val === '__noop__') return;
-                setActiveTab('all');
-                setVisaStatusFilter(val);
-              }}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '600',
-                border: `1px solid ${currentColor}40`,
-                background: `${currentColor}20`,
-                color: currentColor,
-                outline: 'none',
-                minWidth: '180px',
-                appearance: 'auto'
-              }}
-            >
-              {activeTab !== 'all' && <option value="__noop__" hidden>{activeTab === 'calendar' ? '📅 Takvim görünümü' : '🔔 Hatırlatıcılar'}</option>}
-              <option value="all" style={{ background: '#0c1929', color: '#fff' }}>📋 Tümü ({totalCount})</option>
-              {visaStatuses.map(s => {
-                const count = visaApplications.filter(v => v.status === s).length;
-                return (
-                  <option key={s} value={s} style={{ background: '#0c1929', color: '#fff' }}>
-                    {s} ({count})
-                  </option>
-                );
-              })}
-              <option value="__odenmedi__" style={{ background: '#0c1929', color: '#fff' }}>
-                💸 Ödenmedi ({unpaidCount})
-              </option>
-            </select>
-          );
-        })()}
         {/* Ülke filtresi — her görünümde. Önce categoryId, sonra country, sonra visaDuration metninden çözülür */}
         {(() => {
           const countries = [...new Set(visaApplications.map(extractVisaCountry).filter(Boolean))].sort((a,b) => a.localeCompare(b,'tr'));
@@ -5713,6 +5711,42 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
           <option value="nameAsc" style={{ background: '#0c1929', color: '#fff' }}>🔤 İsme göre (A-Z)</option>
         </select>
       </div>
+
+      {/* Durum filtresi: tek bakışta görünen renkli etiketler (önceden açılır menü içindeydi).
+          Sayılar seçili ülke filtresine göre; seçili etikete tekrar tıklamak "Tümü"ne döner. */}
+      {(() => {
+        const base = visaCountryFilter === 'all' ? visaApplications : visaApplications.filter(v => extractVisaCountry(v) === visaCountryFilter);
+        const chips = [
+          { key: 'all', label: '📋 Tümü', count: base.length, color: '#3b82f6' },
+          ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st).length, color: getStatusColor(st) })),
+          { key: '__odenmedi__', label: '💸 Ödenmedi', count: base.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length, color: '#ef4444' },
+        ];
+        const current = activeTab === 'all' ? visaStatusFilter : null;
+        return (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', padding: '2px 0 12px', marginBottom: '4px', WebkitOverflowScrolling: 'touch' }}>
+            {chips.map(c => {
+              const active = current === c.key;
+              return (
+                <button key={c.key}
+                  onClick={() => { setActiveTab('all'); setVisaStatusFilter(active && c.key !== 'all' ? 'all' : c.key); }}
+                  style={{
+                    flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 10px 6px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                    border: `1px solid ${active ? c.color : c.color + '40'}`,
+                    background: active ? c.color : c.color + '14',
+                    color: active ? '#fff' : c.color,
+                    opacity: c.count === 0 && !active ? 0.45 : 1,
+                    whiteSpace: 'nowrap'
+                  }}>
+                  {c.label}
+                  <span style={{ minWidth: '20px', padding: '1px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, textAlign: 'center',
+                    background: active ? 'rgba(255,255,255,0.25)' : c.color + '26', color: active ? '#fff' : c.color }}>{c.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* TAKVİM */}
       {activeTab === 'calendar' && (
@@ -5760,15 +5794,44 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {/* TÜM BAŞVURULAR */}
       {activeTab === 'all' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Toplu seçim çubuğu */}
+          {filteredVisaApplications.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', padding: selectMode ? '10px 12px' : 0, borderRadius: '10px', background: selectMode ? 'rgba(59,130,246,0.1)' : 'transparent', border: selectMode ? '1px solid rgba(59,130,246,0.3)' : 'none', position: selectMode ? 'sticky' : 'static', top: isMobile ? '60px' : '8px', zIndex: 5, backdropFilter: selectMode ? 'blur(8px)' : 'none' }}>
+              {!selectMode ? (
+                <button onClick={() => setSelectMode(true)} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>☑️ Seç</button>
+              ) : (() => {
+                const visibleIds = filteredVisaApplications.map(v => v.id);
+                const allOn = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+                const btn = (bg, col) => ({ padding: '7px 12px', borderRadius: '8px', border: 'none', background: bg, color: col, cursor: bulkBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, opacity: selectedIds.length ? 1 : 0.5 });
+                return (<>
+                  <button onClick={() => setSelectedIds(allOn ? selectedIds.filter(id => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])])} style={{ ...btn('rgba(255,255,255,0.1)', '#e8f1f8'), opacity: 1 }}>
+                    {allOn ? '☐ Seçimi kaldır' : `☑️ Tümünü seç (${visibleIds.length})`}
+                  </button>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#93c5fd' }}>{selectedIds.length} seçili</span>
+                  <div style={{ flex: 1 }} />
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödendi' }, 'Ödendi')} style={btn('#10b981', '#fff')}>💰 Ödendi</button>
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödenmedi' }, 'Ödenmedi')} style={btn('rgba(239,68,68,0.2)', '#ef4444')}>Ödenmedi</button>
+                  <select disabled={!selectedIds.length || bulkBusy} value="" onChange={e => { if (e.target.value) bulkUpdateVisas({ status: e.target.value }, e.target.value); }} style={{ ...btn('rgba(255,255,255,0.08)', '#e8f1f8'), border: '1px solid rgba(255,255,255,0.15)' }}>
+                    <option value="" style={{ background: '#0c1929' }}>Durum değiştir…</option>
+                    {visaStatuses.map(st => <option key={st} value={st} style={{ background: '#0c1929' }}>{st}</option>)}
+                  </select>
+                  <button onClick={exitSelectMode} style={{ ...btn('transparent', '#94a3b8'), opacity: 1 }}>✕ Kapat</button>
+                </>);
+              })()}
+            </div>
+          )}
           {filteredVisaApplications.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>{visaSearchQuery ? 'Sonuç bulunamadı' : 'Henüz başvuru yok'}</p>
           ) : (
             filteredVisaApplications.map(v => {
               const cat = getCategoryInfo(v.category);
               return (
-                <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <div>
+                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '10px' }}>
+                    {selectMode && (
+                      <span style={{ flexShrink: 0, width: '22px', height: '22px', marginTop: '1px', borderRadius: '6px', border: selectedIds.includes(v.id) ? 'none' : '2px solid rgba(255,255,255,0.3)', background: selectedIds.includes(v.id) ? '#3b82f6' : 'transparent', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>{selectedIds.includes(v.id) ? '✓' : ''}</span>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
@@ -16587,6 +16650,33 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       }
     })();
   }, [visaApplications, dataReady]);
+  // 🏛️ Randevu günü gelen başvurular otomatik "Konsoloslukta" olur.
+  // Sadece randevu öncesi durumlardan (onay/red/iptal/konsolosluk hariç), son 30 günün randevuları,
+  // her başvuruda bir kez (autoKonsolosluk işareti) — elle geri alınan durum tekrar ezilmez.
+  // Ayarlarda "Konsoloslukta" durumu yoksa hiçbir şey yapılmaz. Uygulama açık kalırsa saatte bir kontrol eder.
+  const [clockTick, setClockTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setClockTick(x => x + 1), 60 * 60 * 1000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    if (!dataReady) return;
+    const target = (appSettings?.visaStatuses || []).find(st => /konsolos/i.test(st));
+    if (!target) return;
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const minD = new Date(d); minD.setDate(minD.getDate() - 30);
+    const minStr = `${minD.getFullYear()}-${String(minD.getMonth() + 1).padStart(2, '0')}-${String(minD.getDate()).padStart(2, '0')}`;
+    const skip = /iptal|red|onay|konsolos|sonu[çc]|teslim/;
+    const due = (visaApplications || []).filter(v =>
+      /^\d{4}-\d{2}-\d{2}$/.test(v.appointmentDate || '') &&
+      v.appointmentDate <= todayStr && v.appointmentDate >= minStr &&
+      !v.autoKonsolosluk && !skip.test(String(v.status || '').toLocaleLowerCase('tr-TR')) // 'İptal' → 'iptal' (Türkçe İ)
+    );
+    if (!due.length) return;
+    const ids = new Set(due.map(v => v.id));
+    const now = new Date().toISOString();
+    setVisaApplications(prev => prev.map(v => ids.has(v.id) ? { ...v, status: target, autoKonsolosluk: now } : v));
+    showToast(`🏛️ Randevu günü gelen ${due.length} başvuru "${target}" durumuna alındı`, 'info');
+  }, [dataReady, visaApplications, appSettings?.visaStatuses, clockTick]);
+
   // 🧹 TEK SEFERLİK: users kayıtlarındaki düz metin şifreleri sil (giriş Firebase Auth ile yapılıyor,
   // bu alan hiçbir işe yaramıyordu ama giriş yapan herkes okuyabiliyordu)
   const pwCleanupDone = useRef(false);
