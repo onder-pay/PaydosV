@@ -42,8 +42,15 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .tile .ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--bgc,rgba(245,185,66,.15));flex-shrink:0}
 .tile .tt{font-size:15px;font-weight:700;line-height:1.25}
 .tile .sub{font-size:12px;color:var(--muted);margin-top:2px}
-.tile .go{margin-top:auto;font-size:13px;font-weight:700;color:var(--c,#f5b942)}
-.tile.wide .go{margin:0 0 0 auto}
+.tile .acts{margin-top:auto;display:flex;gap:6px}
+.tile.wide .acts{margin:0 0 0 auto}
+.tile .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 10px;border-radius:10px;font:700 13px 'DM Sans',sans-serif;text-decoration:none;cursor:pointer;border:1px solid var(--c,#f5b942);white-space:nowrap}
+.tile .btn.o{background:transparent;color:var(--c,#f5b942)}
+.tile .btn.d{background:var(--c,#f5b942);color:#141a33}
+.tile .btn:active{transform:scale(.96)}
+.all{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;padding:14px;border-radius:16px;border:1px dashed var(--line);background:transparent;color:var(--text);font:700 14px 'DM Sans',sans-serif;cursor:pointer}
+.all:active{transform:scale(.98)}
+.note{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(245,185,66,.1);border:1px solid rgba(245,185,66,.25);color:var(--gold2);font-size:12px;line-height:1.5;display:none}
 
 /* Biniş kartı */
 .pass{position:relative;display:block;margin-bottom:12px;border-radius:20px;background:#fffaf0;color:#1b1f3b;text-decoration:none;overflow:hidden;box-shadow:0 12px 30px -15px rgba(0,0,0,.6)}
@@ -224,10 +231,70 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     raf = requestAnimationFrame(step);
   };
 
+
+  // ===== İndirme =====
+  // Belgeler Firebase Storage'da (başka alan adı): tarayıcı <a download>'ı yok sayar. Bu yüzden dosya
+  // önce çekilip (fetch) blob olarak kaydedilir. Storage buna izin vermezse (CORS) belge açılır,
+  // müşteri telefonun kendi indir/paylaş düğmesiyle kaydeder — kullanıcıya not gösterilir.
+  var noteEl = null, meta = {};
+  // Dosya adı ASCII: Türkçe karakterli 'download' adları bazı tarayıcılarda yok sayılıyor ('download' olarak iniyor)
+  var TRMAP = { 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U' };
+  var slug = function (t) {
+    return String(t || '').trim().replace(/[çÇğĞıİöÖşŞüÜ]/g, function (c) { return TRMAP[c]; })
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'Belge';
+  };
+  var extOf = function (blob, url) {
+    var t = (blob && blob.type) || '';
+    if (/pdf/.test(t)) return '.pdf'; if (/png/.test(t)) return '.png'; if (/jpe?g/.test(t)) return '.jpg';
+    var m = decodeURIComponent(String(url).split('?')[0]).match(/\.(pdf|png|jpe?g)$/i); return m ? '.' + m[1].toLowerCase() : '.pdf';
+  };
+  var nameFor = function (dc, blob) { return slug(meta.prefix) + '_' + slug(String(dc.label || 'Belge').split(' — ')[0]) + extOf(blob, dc.url); };
+  var getBlob = function (url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.blob(); }); };
+  var saveBlob = function (blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+  };
+  var fallbackNote = function () {
+    if (!noteEl) return;
+    noteEl.textContent = 'ℹ️ Tarayıcınız doğrudan indirmeye izin vermedi. Belgeyi "Aç" ile açıp telefonunuzun paylaş / indir düğmesiyle kaydedebilirsiniz.';
+    noteEl.style.display = 'block';
+  };
+  var downloadOne = function (dc, btn) {
+    var url = safeUrl(dc.url); if (!url) return;
+    var old = btn.textContent; btn.textContent = '⏳'; btn.disabled = true;
+    getBlob(url).then(function (b) { saveBlob(b, nameFor(dc, b)); })
+      .catch(function () { fallbackNote(); })
+      .then(function () { btn.textContent = old; btn.disabled = false; });
+  };
+  var loadZip = function () {
+    return new Promise(function (res, rej) {
+      if (window.JSZip) return res(window.JSZip);
+      var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      sc.onload = function () { res(window.JSZip); }; sc.onerror = function () { rej(new Error('zip')); }; document.head.appendChild(sc);
+    });
+  };
+  var downloadAll = function (docs, btn) {
+    var old = btn.textContent; btn.textContent = '⏳ Hazırlanıyor…'; btn.disabled = true;
+    Promise.all([loadZip()].concat(docs.map(function (dc) { return getBlob(safeUrl(dc.url)).then(function (b) { return { dc: dc, b: b }; }); })))
+      .then(function (r) {
+        var zip = new r[0](), used = {};
+        r.slice(1).forEach(function (x) {
+          var n = nameFor(x.dc, x.b); if (used[n]) n = n.replace(/(\.\w+)$/, '_' + (++used[n]) + '$1'); else used[n] = 1;
+          zip.file(n, x.b);
+        });
+        return zip.generateAsync({ type: 'blob' });
+      })
+      .then(function (z) { saveBlob(z, slug(meta.prefix) + '_Belgeler.zip'); })
+      .catch(function () { fallbackNote(); })
+      .then(function () { btn.textContent = old; btn.disabled = false; });
+  };
+
   fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
       var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
+      meta.prefix = f.city || f.tourName || 'Paydos';
       box.innerHTML = '';
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
       // Uçuş kodu sadece harf+rakam; takip adresi sayfada kurulur (dışarıdan adres alınmaz)
@@ -296,13 +363,22 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         docs.forEach(function (dc, i) {
           var st = STYLE[dc.icon] || ['#f5b942', 'rgba(245,185,66,.15)', ''];
           var parts = String(dc.label || 'Belge').split(' — ');
-          var a = el('a', 'tile' + (docs.length % 2 === 1 && i === docs.length - 1 ? ' wide' : '')); a.href = safeUrl(dc.url); a.target = '_blank'; a.rel = 'noopener';
+          var a = el('div', 'tile' + (docs.length % 2 === 1 && i === docs.length - 1 ? ' wide' : ''));
           a.style.setProperty('--c', st[0]); a.style.setProperty('--bgc', st[1]);
           a.appendChild(el('div', 'ic', dc.icon || '📄'));
           var tx = el('div'); tx.appendChild(el('div', 'tt', parts[0])); tx.appendChild(el('div', 'sub', parts[1] || st[2])); a.appendChild(tx);
-          a.appendChild(el('div', 'go', 'Aç ›'));
+          var acts = el('div', 'acts');
+          var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
+          var dl = el('button', 'btn d', '⬇ İndir'); dl.type = 'button';
+          dl.addEventListener('click', function () { downloadOne(dc, dl); });
+          acts.appendChild(op); acts.appendChild(dl); a.appendChild(acts);
           grid.appendChild(a);
         });
+        if (docs.length > 1) {
+          var allBtn = add(box, el('button', 'all', '⬇ Tümünü indir (' + docs.length + ' belge, ZIP)')); allBtn.type = 'button';
+          allBtn.addEventListener('click', function () { downloadAll(docs, allBtn); });
+        }
+        noteEl = add(box, el('div', 'note'));
       }
 
       // --- İletişim ---
