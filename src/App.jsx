@@ -451,6 +451,13 @@ const greenPassportStatus = (passports, tourEndStr) => {
   if (exp < need) return { green: true, ok: false, exp, reason: '3months' };
   return { green: true, ok: true, exp, reason: 'ok' };
 };
+// Yeşil (hususi) pasaport o ülkede vizeden muaf mı? Dışişleri tablosundaki (VIZE_DURUM) 'y' alanından;
+// tabloda olmayan ülkede eski davranış: Schengen ise muaf. (ABD, İngiltere, Kanada vb. yeşil pasaporta da vize ister.)
+const greenExemptIn = (country) => {
+  const d = country && VIZE_DURUM[country];
+  if (d && d.y && d.y !== '?') return d.y === 'muaf' || d.y === 'yurtici';
+  return schengenCountries.includes(country);
+};
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
@@ -7171,8 +7178,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       let hasVisa = false;
       let visaEndDate = '';
       // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 3 ay geçerliyse
-      const gpOk = hasGreenPassport && greenPassportStatus(passports, selectedTour?.endDate || selectedTour?.startDate).ok;
-      if (isSchengen && gpOk) {
+      const gpOk = hasGreenPassport && greenExemptIn(selectedTour?.country) && greenPassportStatus(passports, selectedTour?.endDate || selectedTour?.startDate).ok;
+      if (gpOk) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT'; // özel işaret
       } else if (isSchengen) {
@@ -7257,7 +7264,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
       // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 3 ay geçerliyse
-      if (isSchengen && hasGreenPassport && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) {
+      if (hasGreenPassport && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT';
       } else if (isSchengen) {
@@ -7902,7 +7909,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                           // Yeşil pasaport kontrolü — Schengen'den muaf
                           const cPassports = safeParseJSON(customer.passports);
                           const gp = greenPassportStatus(cPassports, tour.endDate || tour.startDate);
-                          if (gp.green) {
+                          // Yeşil pasaport sadece ülke muafiyet tanıyorsa sayılır (ABD, İngiltere vb. tanımaz)
+                          if (gp.green && !greenExemptIn(tour.country)) { /* normal vize kontrolüne devam */ }
+                          else if (gp.green) {
                             const expStr = gp.exp ? formatDate(`${gp.exp.getFullYear()}-${String(gp.exp.getMonth() + 1).padStart(2, '0')}-${String(gp.exp.getDate()).padStart(2, '0')}`) : '';
                             if (gp.reason === 'nodate') return { label: '🟠 Yeşil Pasaport — tarih yok', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                             if (gp.reason === 'expires') return { label: `🔴 Yeşil Pasaport Bitiyor (${expStr})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
