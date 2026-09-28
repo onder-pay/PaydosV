@@ -437,6 +437,20 @@ const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) re
 const onDocImgError = (e) => { const t = e.currentTarget; t.style.minHeight = '60px'; t.style.background = 'rgba(239,68,68,0.12)'; t.style.color = '#ef4444'; t.style.fontSize = '12px'; };
 const safeParseObj = (val) => { if (!val) return {}; if (typeof val === 'object') return val; try { const o = JSON.parse(val); return o && typeof o === 'object' ? o : {}; } catch { return {}; } };
 const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
+// Yeşil (hususi) pasaport muafiyeti: pasaport tur bitişinden sonra en az 3 ay geçerli olmalı
+// (Schengen kuralı, vizeden muaf yolcular için de geçerli). Birden fazla yeşil pasaportta en geç biten esas.
+// Döner: { green, ok, exp (Date|null), reason: 'ok'|'nodate'|'expires'|'3months' }
+const greenPassportStatus = (passports, tourEndStr) => {
+  const greens = (passports || []).filter(p => p.passportType === 'Yeşil Pasaport (Hususi)' || p.passportType?.includes('Yeşil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
+  if (!greens.length) return { green: false, ok: false, exp: null, reason: '' };
+  const exp = greens.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
+  if (!exp) return { green: true, ok: false, exp: null, reason: 'nodate' };
+  const end = safeParseDate(tourEndStr) || new Date();
+  const need = new Date(end); need.setMonth(need.getMonth() + 3);
+  if (exp < end) return { green: true, ok: false, exp, reason: 'expires' };
+  if (exp < need) return { green: true, ok: false, exp, reason: '3months' };
+  return { green: true, ok: true, exp, reason: 'ok' };
+};
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
@@ -7156,8 +7170,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       );
       let hasVisa = false;
       let visaEndDate = '';
-      // Yeşil pasaport sahibi Schengen'den muaf
-      if (isSchengen && hasGreenPassport) {
+      // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 3 ay geçerliyse
+      const gpOk = hasGreenPassport && greenPassportStatus(passports, selectedTour?.endDate || selectedTour?.startDate).ok;
+      if (isSchengen && gpOk) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT'; // özel işaret
       } else if (isSchengen) {
@@ -7241,8 +7256,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       // Vize durumu - tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
-      // Yeşil pasaport sahibi Schengen'den muaf
-      if (isSchengen && hasGreenPassport) {
+      // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 3 ay geçerliyse
+      if (isSchengen && hasGreenPassport && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT';
       } else if (isSchengen) {
@@ -7886,12 +7901,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
                           // Yeşil pasaport kontrolü — Schengen'den muaf
                           const cPassports = safeParseJSON(customer.passports);
-                          const hasGreenPassport = cPassports.some(p =>
-                            p.passportType === 'Yeşil Pasaport (Hususi)' ||
-                            p.passportType?.includes('Yeşil') ||
-                            (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-                          );
-                          if (hasGreenPassport) {
+                          const gp = greenPassportStatus(cPassports, tour.endDate || tour.startDate);
+                          if (gp.green) {
+                            const expStr = gp.exp ? formatDate(`${gp.exp.getFullYear()}-${String(gp.exp.getMonth() + 1).padStart(2, '0')}-${String(gp.exp.getDate()).padStart(2, '0')}`) : '';
+                            if (gp.reason === 'nodate') return { label: '🟠 Yeşil Pasaport — tarih yok', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                            if (gp.reason === 'expires') return { label: `🔴 Yeşil Pasaport Bitiyor (${expStr})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (gp.reason === '3months') return { label: `🟠 Yeşil Pasaport — 3 ay kuralı (${expStr})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                             return { label: '🟢 Yeşil Pasaport Muaf', color: '#059669', bg: 'rgba(5,150,105,0.15)' };
                           }
 
