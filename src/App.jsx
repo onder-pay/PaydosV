@@ -496,6 +496,13 @@ const claudeRequest = async ({ headers = {}, ...opts }) => {
   return fetch('/.netlify/functions/claude-proxy', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
 };
 
+// Müşteri maillerinin gövdesi — beyaz kart + üstte Paydos logosu. Mail istemcileri göreli yolu çözemez, adres tam olmalı.
+const MAIL_LOGO_URL = 'https://crm.paydostur.com/icons/paydos-wordmark.png';
+const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+<div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
+<pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
+
 const sendMailRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
   return fetch('/.netlify/functions/send-mail', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
@@ -896,7 +903,7 @@ function LoginScreen({ onLogin, users }) {
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 50%, #0d2137 100%)', fontFamily: "'Segoe UI', sans-serif", padding: '20px' }}>
       <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '40px', width: '100%', maxWidth: '380px' }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>✈️</div>
+          <img src="/icons/logo.png" alt="Paydos" style={{ width: '88px', height: '88px', borderRadius: '50%', display: 'block', margin: '0 auto 12px' }} />
           <h1 style={{ margin: 0, fontSize: '24px', color: '#e8f1f8', fontWeight: '700' }}>Paydos Turizm</h1>
           <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#94a3b8' }}>Giriş yapın</p>
         </div>
@@ -3950,7 +3957,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             const rep = (s) => (s || '').replace(/{isim}/g, 'Örnek Katılımcı').replace(/{tur}/g, 'Örnek Turu').replace(/{tarih}/g, new Date().toLocaleDateString('tr-TR'));
             const subject = rep(tpl.subject) || 'Tur Bilgilendirme';
             const bodyText = rep(tpl.body);
-            const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+            const html = mailHtml(bodyText);
             try {
               const resp = await sendMailRequest({
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4078,7 +4085,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
 
     const subject = replace(template.subject || '');
     const bodyText = replace(template.body || '');
-    const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+    const html = mailHtml(bodyText);
 
     // Vize türüne bağlı ekleri bul
     const allAttachments = appSettings?.attachments || [];
@@ -6943,7 +6950,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const r = recipients[i];
       const subject = bulkMailSubject.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
       const bodyText = bulkMailBody.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
-      const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+      const html = mailHtml(bodyText);
       // Bu kişiye gidecek ekler = ortak elle ekler + ortak program + KİŞİYE ÖZEL sözleşme
       const perAttachments = [...baseAttachments];
       if (programAttach) perAttachments.push(programAttach);
@@ -16810,7 +16817,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       
       {isMobile && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100 }} />}
       <aside style={{ position: 'fixed', left: isMobile ? (sidebarOpen ? 0 : '-280px') : 0, top: 0, bottom: 0, width: '260px', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 200, transition: 'left 0.3s ease', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
+        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><img src="/icons/logo.png" alt="Paydos" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }} /><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
         <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { if (item.external) { window.open(item.external, '_blank', 'noopener'); if (isMobile) setSidebarOpen(false); return; } setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>{item.external ? '↗' : (SHORTCUT_MODULES[idx]?.[0] === item.id ? `⌘${idx+1}` : '')}</span>}</button>))}</nav>
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}><div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px' }}>{currentUser?.name?.[0] || 'U'}</div><div><p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>{currentUser?.name}</p><p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p></div></div><button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🚪 Çıkış Yap</button></div>
       </aside>
