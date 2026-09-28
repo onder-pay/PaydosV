@@ -16587,6 +16587,33 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       }
     })();
   }, [visaApplications, dataReady]);
+  // 🏛️ Randevu günü gelen başvurular otomatik "Konsoloslukta" olur.
+  // Sadece randevu öncesi durumlardan (onay/red/iptal/konsolosluk hariç), son 30 günün randevuları,
+  // her başvuruda bir kez (autoKonsolosluk işareti) — elle geri alınan durum tekrar ezilmez.
+  // Ayarlarda "Konsoloslukta" durumu yoksa hiçbir şey yapılmaz. Uygulama açık kalırsa saatte bir kontrol eder.
+  const [clockTick, setClockTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setClockTick(x => x + 1), 60 * 60 * 1000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    if (!dataReady) return;
+    const target = (appSettings?.visaStatuses || []).find(st => /konsolos/i.test(st));
+    if (!target) return;
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const minD = new Date(d); minD.setDate(minD.getDate() - 30);
+    const minStr = `${minD.getFullYear()}-${String(minD.getMonth() + 1).padStart(2, '0')}-${String(minD.getDate()).padStart(2, '0')}`;
+    const skip = /iptal|red|onay|konsolos|sonu[çc]|teslim/;
+    const due = (visaApplications || []).filter(v =>
+      /^\d{4}-\d{2}-\d{2}$/.test(v.appointmentDate || '') &&
+      v.appointmentDate <= todayStr && v.appointmentDate >= minStr &&
+      !v.autoKonsolosluk && !skip.test(String(v.status || '').toLocaleLowerCase('tr-TR')) // 'İptal' → 'iptal' (Türkçe İ)
+    );
+    if (!due.length) return;
+    const ids = new Set(due.map(v => v.id));
+    const now = new Date().toISOString();
+    setVisaApplications(prev => prev.map(v => ids.has(v.id) ? { ...v, status: target, autoKonsolosluk: now } : v));
+    showToast(`🏛️ Randevu günü gelen ${due.length} başvuru "${target}" durumuna alındı`, 'info');
+  }, [dataReady, visaApplications, appSettings?.visaStatuses, clockTick]);
+
   // 🧹 TEK SEFERLİK: users kayıtlarındaki düz metin şifreleri sil (giriş Firebase Auth ile yapılıyor,
   // bu alan hiçbir işe yaramıyordu ama giriş yapan herkes okuyabiliyordu)
   const pwCleanupDone = useRef(false);
