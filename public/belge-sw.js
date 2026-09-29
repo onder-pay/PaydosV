@@ -39,7 +39,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   // Hava / konum / kur — yurt dışında internet yokken son bilinen değer gösterilsin
-  if (/(^|\.)open-meteo\.com$/.test(url.hostname) || url.hostname === 'open.er-api.com') {
+  if (/(^|\.)open-meteo\.com$/.test(url.hostname) || url.hostname === 'open.er-api.com' || (url.origin === location.origin && url.pathname === '/.netlify/functions/kur')) {
     e.respondWith(networkFirst(e.request));
     return;
   }

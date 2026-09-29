@@ -76,10 +76,24 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .pass .plane{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);font-size:20px;animation:fly 3.2s ease-in-out infinite;line-height:1;pointer-events:none}
 .hint{display:inline-block;margin:0 0 10px 4px;font-size:12px;color:var(--gold2);opacity:.85}
 /* Mini oyun */
-.game{position:fixed;inset:0;z-index:50;background:rgba(5,8,20,.92);display:flex;align-items:center;justify-content:center;padding:12px}
-.game .gw{position:relative;width:100%;max-width:480px;height:min(88vh,720px);border-radius:22px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6)}
-.game canvas{display:block;width:100%;height:100%;touch-action:none}
-.game .x{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:none;background:rgba(0,0,0,.35);color:#fff;font-size:18px;cursor:pointer}
+.game{position:fixed;inset:0;z-index:50;background:rgba(5,8,20,.94);display:flex;align-items:center;justify-content:center;padding:10px}
+.game .gb{position:relative;width:100%;max-width:400px;height:min(94vh,760px);display:flex;flex-direction:column;align-items:center;padding:16px 16px 12px;border-radius:14px 14px 56px 14px;background:linear-gradient(160deg,#dcd8d0,#c9c4ba);box-shadow:inset 0 -6px 0 rgba(0,0,0,.08),0 20px 60px rgba(0,0,0,.6);font-family:'Courier New',monospace}
+.game .scr{position:relative;width:100%;flex:1;min-height:0;border-radius:8px 8px 28px 8px;background:#555a66;padding:12px;box-shadow:inset 0 0 0 2px #444}
+.game canvas{display:block;width:100%;height:100%;touch-action:none;border-radius:3px;image-rendering:pixelated}
+.game .gbl{margin:8px 0 2px;color:#2b2f85;font:italic 700 15px Arial,sans-serif;letter-spacing:1px}.game .gbl span{color:#9a2257;font-style:normal}
+.game .pad{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.game .dpad{position:relative;width:118px;height:118px}
+.game .k{position:absolute;width:40px;height:40px;border:none;background:#222;color:#666;font-size:14px;border-radius:5px;touch-action:none;cursor:pointer}
+.game .k:active,.game .rb:active,.game .pill:active{filter:brightness(1.6)}
+.game .k.u{left:39px;top:0}.game .k.l{left:0;top:39px}.game .k.r{right:0;top:39px}.game .k.d{left:39px;bottom:0}
+.game .ab{display:flex;gap:14px;transform:rotate(-20deg);margin-right:4px}
+.game .rb{width:54px;height:54px;border-radius:50%;border:none;background:#9a2257;color:#e8c9d6;font:700 18px Arial,sans-serif;box-shadow:0 3px 0 #6d1740;touch-action:none;cursor:pointer}
+.game .ss{display:flex;gap:18px;margin-top:6px}
+.game .pill{padding:6px 12px;border:none;border-radius:10px;background:#7d7a75;color:#2b2f85;font:700 10px Arial,sans-serif;letter-spacing:1px;transform:rotate(-20deg);cursor:pointer}
+.game .gbh{margin-top:6px;font-size:10px;color:#6b675f;text-align:center}
+.game .x{position:absolute;top:-6px;right:-6px;width:36px;height:36px;border-radius:50%;border:none;background:#222;color:#fff;font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.tet{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#306230,#0f380f);border:1px solid #8bac0f;color:#9bbc0f;cursor:pointer;width:100%;text-align:left;font:inherit}
+.tet .ic{font-size:26px}.tet b{display:block;font:700 15px 'Courier New',monospace;letter-spacing:1px}.tet span{font-size:12px;color:#c7dc6f}
 @keyframes fly{0%{left:8%}50%{left:92%}100%{left:8%}}
 .pass .pf{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px dashed #e6e2d6;font-size:12px;color:#6b7094;position:relative}
 .pass .pf::before,.pass .pf::after{content:'';position:absolute;top:-11px;width:20px;height:20px;border-radius:50%;background:var(--bg)}
@@ -214,89 +228,150 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
 
 
-  // ===== Mini oyun: uçağı bulutlardan geçir, 12 bulutta varış noktasına in =====
-  var openGame = function (from, to, toCity) {
-    var GOAL = 12, BEST_KEY = 'paydos_oyun_best';
-    var best = 0; try { best = +localStorage.getItem(BEST_KEY) || 0; } catch (e) {}
-    var ov = el('div', 'game'), gw = el('div', 'gw'), cv = el('canvas'), x = el('button', 'x', '✕');
+  // ===== Nostaljik Tetris (Game Boy görünümü) — tamamen sayfanın içinde, internetsiz de oynanır =====
+  var openGame = function () {
+    var BEST_KEY = 'paydos_tetris_best', best = 0;
+    try { best = +localStorage.getItem(BEST_KEY) || 0; } catch (e) {}
+    var C0 = '#9bbc0f', C1 = '#8bac0f', C2 = '#306230', C3 = '#0f380f'; // Game Boy yeşilleri
+    var ov = el('div', 'game'), gb = el('div', 'gb'), scr = el('div', 'scr'), cv = el('canvas'), x = el('button', 'x', '✕');
     x.type = 'button'; x.setAttribute('aria-label', 'Oyunu kapat');
-    gw.appendChild(cv); gw.appendChild(x); ov.appendChild(gw); document.body.appendChild(ov);
+    var brand = el('div', 'gbl', 'PAYDOS BOY'); brand.appendChild(el('span', '', ' TETRIS'));
+    scr.appendChild(cv); gb.appendChild(scr); gb.appendChild(brand);
+    var pad = el('div', 'pad');
+    var dp = el('div', 'dpad'), mk = function (cls, t, lbl) { var b = el('button', cls, t); b.type = 'button'; b.setAttribute('aria-label', lbl); return b; };
+    var bL = mk('k l', '◀', 'Sola'), bR = mk('k r', '▶', 'Sağa'), bD = mk('k d', '▼', 'Aşağı'), bU = mk('k u', '▲', 'Döndür');
+    dp.appendChild(bU); dp.appendChild(bL); dp.appendChild(bR); dp.appendChild(bD);
+    var ab = el('div', 'ab'), bB = mk('rb', 'B', 'Hemen indir'), bA = mk('rb', 'A', 'Döndür');
+    ab.appendChild(bB); ab.appendChild(bA);
+    pad.appendChild(dp); pad.appendChild(ab); gb.appendChild(pad);
+    var ss = el('div', 'ss'), bSel = mk('pill', 'SELECT', 'Duraklat'), bSt = mk('pill', 'START', 'Başlat');
+    ss.appendChild(bSel); ss.appendChild(bSt); gb.appendChild(ss);
+    gb.appendChild(el('div', 'gbh', 'A / ▲ döndür · B hemen indir · ekranda kaydır da olur'));
+    gb.appendChild(x); ov.appendChild(gb); document.body.appendChild(ov);
     var prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    var ctx = cv.getContext('2d'), W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var size = function () { var r = gw.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
-    size(); window.addEventListener('resize', size);
-    var state = 'ready', py, vy, obs, passed, t0, spawnT, raf, last;
-    var reset = function () { py = H * 0.45; vy = 0; obs = []; passed = 0; spawnT = 0; };
-    reset();
-    var flap = function () {
-      if (state === 'ready') { state = 'play'; }
-      else if (state === 'over' || state === 'win') { reset(); state = 'play'; }
-      vy = -H * 0.0105;
-    };
-    var close = function () { cancelAnimationFrame(raf); window.removeEventListener('resize', size); document.removeEventListener('keydown', key); document.body.style.overflow = prevOverflow; ov.remove(); };
-    var key = function (e) { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); flap(); } else if (e.code === 'Escape') close(); };
-    cv.addEventListener('pointerdown', function (e) { e.preventDefault(); flap(); });
-    x.addEventListener('click', close); document.addEventListener('keydown', key);
 
-    // Bulut sütunu: gövde + boşluğa bakan kenarda kabarık bulut şişkinlikleri
-    var cloud = function (cx, cy, w, h, edgeY) {
-      ctx.fillStyle = 'rgba(255,255,255,.95)';
-      ctx.fillRect(cx + 6, cy, w - 12, h);
-      var r = w * 0.32;
-      [[0.22, 0], [0.5, -0.35], [0.78, 0]].forEach(function (b) {
-        ctx.beginPath(); ctx.arc(cx + w * b[0], edgeY + (edgeY > cy + h / 2 ? -1 : 1) * r * b[1] * -1, r, 0, Math.PI * 2); ctx.fill();
-      });
+    var ctx = cv.getContext('2d'), W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2), cs = 16, ox = 0, oy = 0;
+    var size = function () {
+      var r = scr.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cs = Math.floor(Math.min((H - 8) / 20, (W - 8) / 16)); ox = Math.floor((W - cs * 16) / 2) + 2; oy = Math.floor((H - cs * 20) / 2);
     };
-    var txt = function (t, y, sz, col) { ctx.fillStyle = col || '#fff'; ctx.font = '700 ' + sz + 'px DM Sans, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(t, W / 2, y); };
-    var end = function (win) {
-      state = win ? 'win' : 'over';
-      if (passed > best) { best = passed; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} }
+    size(); window.addEventListener('resize', size);
+
+    var SH = { I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], O: [[1,1],[1,1]], T: [[0,1,0],[1,1,1],[0,0,0]],
+      S: [[0,1,1],[1,1,0],[0,0,0]], Z: [[1,1,0],[0,1,1],[0,0,0]], J: [[1,0,0],[1,1,1],[0,0,0]], L: [[0,0,1],[1,1,1],[0,0,0]] };
+    var bag = [], nextKey = function () { if (!bag.length) { bag = Object.keys(SH); for (var i = bag.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = bag[i]; bag[i] = bag[j]; bag[j] = t; } } return bag.pop(); };
+    var rot = function (m) { var n = m.length, r = []; for (var i = 0; i < n; i++) { r.push([]); for (var j = 0; j < n; j++) r[i].push(m[n - 1 - j][i]); } return r; };
+    var board, cur, nxt, score, lines, level, state = 'ready', acc = 0, last = 0, raf, flash = 0;
+    var hit = function (m, px, py) {
+      for (var i = 0; i < m.length; i++) for (var j = 0; j < m[i].length; j++) if (m[i][j]) {
+        var bx = px + j, by = py + i; if (bx < 0 || bx >= 10 || by >= 20) return true; if (by >= 0 && board[by][bx]) return true;
+      } return false;
+    };
+    var spawn = function () {
+      var k = nxt || nextKey(); nxt = nextKey();
+      cur = { m: SH[k].map(function (r) { return r.slice(); }), x: k === 'O' ? 4 : 3, y: k === 'I' ? -1 : 0 };
+      if (hit(cur.m, cur.x, cur.y)) over();
+    };
+    var reset = function () { board = []; for (var i = 0; i < 20; i++) board.push(new Array(10).fill(0)); score = 0; lines = 0; level = 0; nxt = null; bag = []; spawn(); acc = 0; };
+    var speed = function () { return Math.max(70, 800 - level * 70); };
+    var over = function () { state = 'over'; if (score > best) { best = score; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} } };
+    var lock = function () {
+      cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && cur.y + i >= 0) board[cur.y + i][cur.x + j] = 1; }); });
+      var n = 0;
+      for (var y = 19; y >= 0; y--) if (board[y].every(function (v) { return v; })) { board.splice(y, 1); board.unshift(new Array(10).fill(0)); n++; y++; }
+      if (n) { score += [0, 40, 100, 300, 1200][n] * (level + 1); lines += n; level = Math.floor(lines / 10); flash = 8; try { navigator.vibrate && navigator.vibrate(n === 4 ? [40, 30, 40] : 25); } catch (e) {} }
+      spawn();
+    };
+    var move = function (dx) { if (state === 'play' && !hit(cur.m, cur.x + dx, cur.y)) cur.x += dx; };
+    var down = function (soft) { if (state !== 'play') return; if (!hit(cur.m, cur.x, cur.y + 1)) { cur.y++; if (soft) score++; } else lock(); acc = 0; };
+    var drop = function () { if (state !== 'play') return; while (!hit(cur.m, cur.x, cur.y + 1)) { cur.y++; score += 2; } lock(); acc = 0; };
+    var turn = function () {
+      if (state !== 'play') return; var m = rot(cur.m);
+      var kicks = [0, -1, 1, -2, 2]; for (var i = 0; i < kicks.length; i++) if (!hit(m, cur.x + kicks[i], cur.y)) { cur.m = m; cur.x += kicks[i]; return; }
+    };
+    var start = function () { if (state === 'ready' || state === 'over') { reset(); state = 'play'; } else if (state === 'pause') state = 'play'; else if (state === 'play') state = 'pause'; };
+
+    // --- çizim ---
+    var cell = function (px, py, col, s) {
+      s = s || cs; ctx.fillStyle = col === 'ghost' ? 'transparent' : C3; if (col !== 'ghost') ctx.fillRect(px, py, s - 1, s - 1);
+      if (col === 'ghost') { ctx.strokeStyle = C2; ctx.lineWidth = 1; ctx.strokeRect(px + 1.5, py + 1.5, s - 4, s - 4); return; }
+      ctx.fillStyle = C1; ctx.fillRect(px + 2, py + 2, s - 5, s - 5); ctx.fillStyle = C2; ctx.fillRect(px + 4, py + 4, s - 9, s - 9);
+    };
+    var txt = function (t, px, py, sz, al, col) { ctx.fillStyle = col || C3; ctx.font = '700 ' + sz + 'px "Courier New", monospace'; ctx.textAlign = al || 'left'; ctx.fillText(t, px, py); };
+    var draw = function () {
+      ctx.fillStyle = C0; ctx.fillRect(0, 0, W, H);
+      // oyun alanı
+      ctx.fillStyle = flash > 0 && flash % 2 ? C1 : '#a7c61a'; ctx.fillRect(ox, oy, cs * 10, cs * 20);
+      ctx.strokeStyle = C3; ctx.lineWidth = 2; ctx.strokeRect(ox - 1, oy - 1, cs * 10 + 2, cs * 20 + 2);
+      for (var y = 0; y < 20; y++) for (var x2 = 0; x2 < 10; x2++) if (board && board[y][x2]) cell(ox + x2 * cs, oy + y * cs);
+      if (cur && state !== 'ready') {
+        var gy = cur.y; while (!hit(cur.m, cur.x, gy + 1)) gy++;
+        cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && gy + i >= 0) cell(ox + (cur.x + j) * cs, oy + (gy + i) * cs, 'ghost'); }); });
+        cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && cur.y + i >= 0) cell(ox + (cur.x + j) * cs, oy + (cur.y + i) * cs); }); });
+      }
+      // yan panel
+      var sx = ox + cs * 10 + cs * 0.6, pw = cs * 5.2, fs = Math.max(10, Math.round(cs * 0.62));
+      var row = function (lbl, v, py) { txt(lbl, sx, py, fs); txt(String(v), sx + pw - 4, py + fs * 1.25, Math.round(fs * 1.1), 'right'); };
+      txt('NEXT', sx, oy + fs, fs);
+      ctx.strokeStyle = C3; ctx.lineWidth = 2; ctx.strokeRect(sx, oy + fs * 1.4, pw - 4, cs * 3.2);
+      if (nxt) { var nm = SH[nxt], ns = Math.floor(cs * 0.75), nw = nm[0].length * ns, nh = nm.length * ns;
+        nm.forEach(function (r, i) { r.forEach(function (v, j) { if (v) cell(sx + (pw - 4 - nw) / 2 + j * ns, oy + fs * 1.4 + (cs * 3.2 - nh) / 2 + i * ns, null, ns); }); }); }
+      var by0 = oy + fs * 1.4 + cs * 3.2 + fs * 1.8;
+      row('SCORE', score || 0, by0); row('LEVEL', level || 0, by0 + fs * 3.2); row('LINES', lines || 0, by0 + fs * 6.4); row('HI', best, by0 + fs * 9.6);
+      // durum ekranları
+      var cx = ox + cs * 5, cy = oy + cs * 9;
+      if (state !== 'play') { ctx.fillStyle = 'rgba(155,188,15,.88)'; ctx.fillRect(ox, cy - cs * 2.2, cs * 10, cs * 4.6); ctx.strokeStyle = C3; ctx.strokeRect(ox, cy - cs * 2.2, cs * 10, cs * 4.6); }
+      if (state === 'ready') { txt('TETRIS', cx, cy, Math.round(cs * 1.1), 'center'); txt('START\'a bas', cx, cy + cs * 1.4, fs, 'center'); }
+      if (state === 'pause') { txt('PAUSE', cx, cy + cs * 0.4, Math.round(cs * 1.1), 'center'); }
+      if (state === 'over') { txt('GAME OVER', cx, cy, Math.round(cs * 0.95), 'center'); txt('START: tekrar', cx, cy + cs * 1.4, fs, 'center'); }
     };
     var step = function (now) {
       raf = requestAnimationFrame(step);
-      var dt = Math.min(32, now - (last || now)) / 16.67; last = now;
-      var gap = H * 0.30, ow = Math.max(56, W * 0.16), speed = W * 0.0065 * (1 + passed * 0.03);
-      if (state === 'play') {
-        vy += H * 0.00055 * dt; py += vy * dt;
-        spawnT -= dt;
-        if (spawnT <= 0 && obs.length + passed < GOAL) { obs.push({ x: W + 10, gy: H * 0.2 + Math.random() * (H * 0.6 - gap), done: false }); spawnT = 95; }
-        obs.forEach(function (o) {
-          o.x -= speed * dt;
-          if (!o.done && o.x + ow < W * 0.25) { o.done = true; passed++; }
-        });
-        obs = obs.filter(function (o) { return o.x > -ow - 10; });
-        // çarpışma (uçak ~ çember)
-        var px = W * 0.25, rad = 14;
-        if (py < rad || py > H - rad) end(false);
-        obs.forEach(function (o) {
-          if (px + rad > o.x && px - rad < o.x + ow && (py - rad < o.gy || py + rad > o.gy + gap)) end(false);
-        });
-        if (passed >= GOAL && !obs.length) end(true);
-      }
-      // gökyüzü
-      var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1d3fa8'); g.addColorStop(0.6, '#6a2bd6'); g.addColorStop(1, '#e0457b');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      obs.forEach(function (o) {
-        var r = ow * 0.32;
-        cloud(o.x, -20, ow, o.gy + 20 - r, o.gy - r);              // üst bulut, alt kenarı kabarık
-        cloud(o.x, o.gy + gap + r, ow, H - o.gy - gap, o.gy + gap + r); // alt bulut, üst kenarı kabarık
-      });
-      // ilerleme: KALKIŞ ──✈── VARIŞ
-      var pr = Math.min(1, passed / GOAL), bx = 60, bw = W - 120, by = H - 26; // altta: ✕ ve uçakla çakışmasın
-      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([6, 6]); ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + bw, by); ctx.stroke(); ctx.setLineDash([]);
-      ctx.font = '700 14px DM Sans, sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'right'; ctx.fillText(from || '', bx - 8, by + 5);
-      ctx.textAlign = 'left'; ctx.fillText(to || '', bx + bw + 8, by + 5);
-      ctx.font = '18px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✈️', bx + bw * pr, by + 6);
-      // uçak
-      ctx.save(); ctx.translate(W * 0.25, py); ctx.rotate(Math.PI / 4 + Math.max(-0.5, Math.min(0.8, vy / (H * 0.02)))); // ✈️ emojisi çapraz çizilir; +45° ile sağa baksın
-      ctx.font = '34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✈️', 0, 0); ctx.restore();
-      ctx.textBaseline = 'alphabetic';
-      if (state === 'play') txt(String(passed), 90, 40);
-      if (state === 'ready') { txt('Dokun ve uç!', H * 0.62, 26); txt(GOAL + ' bulutu geç, ' + (toCity || to || 'hedefe') + ' iniş yap', H * 0.62 + 30, 15, 'rgba(255,255,255,.85)'); }
-      if (state === 'over') { txt('Türbülans! 😅', H * 0.42, 30); txt('Skor: ' + passed + '   •   En iyi: ' + best, H * 0.42 + 34, 16); txt('Tekrar denemek için dokun', H * 0.42 + 64, 14, 'rgba(255,255,255,.8)'); }
-      if (state === 'win') { txt('İniş başarılı! 🎉', H * 0.42, 30); txt((toCity || to || '') + ' sizi bekliyor', H * 0.42 + 34, 17); txt('İyi yolculuklar — Paydos Turizm', H * 0.42 + 64, 14, 'rgba(255,255,255,.85)'); }
+      var dt = Math.min(100, now - (last || now)); last = now;
+      if (state === 'play') { acc += dt; if (acc >= speed()) down(false); }
+      if (flash > 0) flash--;
+      draw();
     };
+
+    // --- kontroller ---
+    var reps = [];
+    var hold = function (btn, fn, repeat) {
+      btn.addEventListener('pointerdown', function (e) {
+        e.preventDefault(); if (state === 'ready' || state === 'over') { if (btn === bSt) return; }
+        fn(); if (!repeat) return;
+        var t = setTimeout(function () { var iv = setInterval(fn, 55); reps.push(iv); }, 170); reps.push(t);
+      });
+    };
+    var stopRep = function () { reps.forEach(function (t) { clearTimeout(t); clearInterval(t); }); reps = []; };
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { [bL, bR, bD].forEach(function (b) { b.addEventListener(ev, stopRep); }); });
+    hold(bL, function () { move(-1); }, true); hold(bR, function () { move(1); }, true); hold(bD, function () { down(true); }, true);
+    hold(bU, turn); hold(bA, turn); hold(bB, drop);
+    bSt.addEventListener('click', start); bSel.addEventListener('click', function () { if (state === 'play' || state === 'pause') start(); });
+    // Ekranda kaydırma: dokun = döndür, sağa/sola kaydır = hareket, aşağı hızlı kaydır = indir
+    var tx0 = 0, ty0 = 0, tt0 = 0, moved = 0;
+    cv.addEventListener('pointerdown', function (e) { e.preventDefault(); if (state !== 'play') { start(); return; } tx0 = e.clientX; ty0 = e.clientY; tt0 = Date.now(); moved = 0; });
+    cv.addEventListener('pointermove', function (e) {
+      if (!tt0 || state !== 'play') return; var dx = e.clientX - tx0;
+      while (Math.abs(dx) >= cs) { move(dx > 0 ? 1 : -1); tx0 += dx > 0 ? cs : -cs; dx = e.clientX - tx0; moved = 1; }
+    });
+    cv.addEventListener('pointerup', function (e) {
+      if (!tt0) return; var dy = e.clientY - ty0, dtm = Date.now() - tt0; tt0 = 0;
+      if (dy > cs * 3 && dtm < 350) drop(); else if (!moved && Math.abs(dy) < cs) turn();
+    });
+    var key = function (e) {
+      var k = e.code;
+      if (k === 'Escape') { close(); return; }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space', 'KeyX', 'KeyP', 'Enter'].indexOf(k) < 0) return;
+      e.preventDefault();
+      if (k === 'Enter' || k === 'KeyP') start(); else if (k === 'ArrowLeft') move(-1); else if (k === 'ArrowRight') move(1);
+      else if (k === 'ArrowDown') down(true); else if (k === 'ArrowUp' || k === 'KeyX') turn(); else if (k === 'Space') { if (state === 'play') drop(); else start(); }
+    };
+    document.addEventListener('keydown', key);
+    var vis = function () { if (document.hidden && state === 'play') state = 'pause'; };
+    document.addEventListener('visibilitychange', vis);
+    var close = function () { cancelAnimationFrame(raf); stopRep(); window.removeEventListener('resize', size); document.removeEventListener('keydown', key); document.removeEventListener('visibilitychange', vis); document.body.style.overflow = prevOverflow; ov.remove(); };
+    x.addEventListener('click', close);
+    reset(); state = 'ready';
     raf = requestAnimationFrame(step);
   };
 
@@ -461,13 +536,20 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Kur ---
       var cur = CUR[cc];
       if (cur) {
-        getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) {
-          var tr = r && r.rates && r.rates.TRY; if (!tr) return;
+        // Önce TCMB efektif satış (kendi fonksiyonumuz), olmazsa yedek servis
+        var src = '';
+        getJSON('/.netlify/functions/kur').then(function (k) {
+          var v = k && k.rates && k.rates[cur]; if (!v) throw new Error('yok');
+          src = 'TCMB efektif satış' + (k.date ? ' · ' + k.date : ''); return v;
+        }).catch(function () {
+          return getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) { src = 'Güncel kur · ' + new Date().toLocaleDateString('tr-TR'); return r && r.rates && r.rates.TRY; });
+        }).then(function (tr) {
+          if (!tr) return;
           var box3 = el('div', 'ib' + (grid.children.length % 2 === 0 ? ' wide' : '')); box3.appendChild(el('div', 'h', '💱 Para birimi'));
           var big = tr >= 1 ? '1 ' + cur + ' = ' + tr.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
-          box3.appendChild(el('div', 's', 'Güncel kur (' + new Date().toLocaleDateString('tr-TR') + ')' + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
           grid.appendChild(box3); reveal();
         }).catch(function () {});
       }
@@ -566,7 +648,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Uçuşlar (biniş kartı) ---
       if (flights.length) {
         add(box, el('div', 'sec', 'Uçuşlarınız'));
-        add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun!'));
+        add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun, Tetris açılsın!'));
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
           var ph = el('div', 'ph');
@@ -579,8 +661,8 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
             var L = el('div', 'pt'); L.appendChild(el('div', 'iata', d.iata)); L.appendChild(el('div', 'city', d.city)); if (d.time) L.appendChild(el('div', 'time', d.time));
             // Uçağın uçtuğu çizgiye dokunmak oyunu açar (hareketli uçağı tutturmak zor olduğu için
             // tüm çizgi dokunma alanı); kartın geri kalanı uçuş takibine gider
-            var P = el('button', 'path'); P.type = 'button'; P.title = 'Oyna!'; P.setAttribute('aria-label', 'Uçak oyununu aç');
-            P.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openGame(d.iata, r.iata, r.city); });
+            var P = el('button', 'path'); P.type = 'button'; P.title = 'Tetris oyna!'; P.setAttribute('aria-label', 'Tetris oyununu aç');
+            P.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openGame(); });
             P.appendChild(el('span', 'plane', '✈️'));
             var R = el('div', 'pt r'); R.appendChild(el('div', 'iata', r.iata)); R.appendChild(el('div', 'city', r.city)); if (r.time) R.appendChild(el('div', 'time', r.time));
             pb.appendChild(L); pb.appendChild(P); pb.appendChild(R); a.appendChild(pb);
@@ -623,6 +705,12 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Seyahat bilgileri (hava, saat, kur, priz, otel) — iletişim kartından önce yerini ayırır ---
       var infoSlot = el('div'); box.appendChild(infoSlot);
       try { renderInfo(f, infoSlot); } catch (x) {}
+
+      // --- Oyun (her zaman erişilebilir, internetsiz çalışır) ---
+      var tg = add(box, el('button', 'tet')); tg.type = 'button';
+      tg.appendChild(el('div', 'ic', '🎮'));
+      var tgx = el('div'); tgx.appendChild(el('b', '', 'NOSTALJİK TETRİS')); tgx.appendChild(el('span', '', 'Havalimanında, uçakta — internet olmadan da oynanır')); tg.appendChild(tgx);
+      tg.addEventListener('click', function () { openGame(); });
 
       // --- İletişim ---
       var cf = f.contact || {};
