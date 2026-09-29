@@ -131,6 +131,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
 .hotel .b a.p{background:var(--gold);color:#1b1f3b}
 .contact .bt{display:flex;gap:6px}
+.disc{display:none;margin:10px 4px 0;font-size:11px;line-height:1.5;color:#6f78a3}
 .contact a.wa{background:#25d366;color:#fff}
 
 .ig{display:flex;align-items:center;gap:12px;margin-top:12px;padding:14px 16px;border-radius:18px;text-decoration:none;color:#fff;background:linear-gradient(135deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 80%,#4f5bd5 100%);box-shadow:0 10px 30px -12px rgba(214,41,118,.6)}
@@ -513,6 +514,11 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       hc.appendChild(hb); wrap.appendChild(hc); reveal();
     }
 
+    // Sorumluluk reddi — hava/kur kartı gösterilince görünür
+    var disc = el('div', 'disc', 'ℹ️ Hava durumu ve döviz kuru bilgileri bilgilendirme amaçlıdır; Open-Meteo ve TCMB gibi üçüncü taraf kaynaklardan otomatik alınır, değişebilir ve doğruluğu garanti edilmez. Paydos Turizm bu bilgilere dayanılarak yapılan planlama ve işlemlerden sorumlu tutulamaz. Döviz alım-satımında banka / döviz bürosunun güncel kuru geçerlidir.');
+    wrap.appendChild(disc);
+    var showDisc = function () { disc.style.display = 'block'; };
+
     var place = f.city || (hotel && hotel.city) || '';
     if (!place || !s) return;
     getJSON('https://geocoding-api.open-meteo.com/v1/search?count=5&language=tr&name=' + encodeURIComponent(place)).then(function (g) {
@@ -551,12 +557,12 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           return getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) { src = 'Güncel kur · ' + new Date().toLocaleDateString('tr-TR'); return r && r.rates && r.rates.TRY; });
         }).then(function (tr) {
           if (!tr) return;
-          var box3 = el('div', 'ib' + (grid.children.length % 2 === 0 ? ' wide' : '')); box3.appendChild(el('div', 'h', '💱 Para birimi'));
+          var box3 = el('div', 'ib wide'); box3.appendChild(el('div', 'h', '💱 Para birimi'));
           var big = tr >= 1 ? '1 ' + cur + ' = ' + tr.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
           box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
-          grid.appendChild(box3); reveal();
+          grid.appendChild(box3); reveal(); showDisc();
         }).catch(function () {});
       }
 
@@ -586,7 +592,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           wbox.appendChild(el('div', 's', 'Seyahat günleriniz için tahmin'));
           wbox.appendChild(days);
           wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
-          grid.appendChild(wbox); reveal();
+          grid.appendChild(wbox); reveal(); showDisc();
         }).catch(function () {});
       } else {
         // Henüz tahmin yok → son 2 yılın aynı tarihlerindeki ortalama
@@ -607,7 +613,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
           wbox.appendChild(el('div', 's', AY[s.getMonth()] + ' ayında ' + (loc.name || place) + ' için ortalama' + (wet ? ' · genelde yağışlı' : '') + (snow ? ' · kar yağabilir' : '') + '. Gerçek tahmin seyahatinizden 2 hafta önce burada görünecek.'));
           wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
-          grid.appendChild(wbox); reveal();
+          grid.appendChild(wbox); reveal(); showDisc();
         });
       }
     }).catch(function () {});
