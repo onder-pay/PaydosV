@@ -6638,7 +6638,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.text(T('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
     doc.text(`Tel: +90 258 263 71 76 | Email: ${T(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
     doc.setTextColor(150);
-    doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
+    doc.text(`www.paydostur.com | ${vno}`, 105, 294, { align: 'center' });
 
     const guestName = ascii(room[0]?.customerName || `Room${roomNo}`).replace(/\s+/g, '_');
     const fileName = `Voucher_${ascii(tour.name||'').replace(/\s+/g,'_')}_Oda${roomNo}_${guestName}.pdf`;
@@ -9459,7 +9459,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
       ? '• Bu teklif opsiyon tarihine kadar geçerlidir. • Fiyatlar döviz kuruna göre değişiklik gösterebilir.'
       : 'Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.';
     doc.text(toTurkishChars(footerText), 105, 285, { align: 'center' });
-    doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
+    doc.text('www.paydostur.com', 105, 290, { align: 'center' });
     
     return doc;
     } catch (error) {
@@ -12008,7 +12008,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8);
       doc.setTextColor(150);
       doc.text(tr('Bu proforma fatura bilgi amaçlıdır ve yasal belge niteliği taşımaz.'), 105, 285, { align: 'center' });
-      doc.text('www.paydosturizm.com', 105, 290, { align: 'center' });
+      doc.text('www.paydostur.com', 105, 290, { align: 'center' });
 
       // Kaydet
       const fileName = reservations.length === 1
@@ -12268,7 +12268,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(ascii('Mehmetçik Mah. Ulus Cad. No: 124/1 Denizli / Turkey'), 105, 286, { align: 'center' });
       doc.text(`Tel: +90 258 263 71 76 | Email: ${ascii(currentUser?.email || 'vize@paydostur.com')}`, 105, 290, { align: 'center' });
       doc.setTextColor(150);
-      doc.text(`www.paydosturizm.com | ${vno}`, 105, 294, { align: 'center' });
+      doc.text(`www.paydostur.com | ${vno}`, 105, 294, { align: 'center' });
 
       // Kaydet
       const fileName = `Voucher_${asciiTr(hotel.name || '').replace(/\s/g,'_')}_${asciiTr(r.customerName || '').replace(/\s/g,'_')}.pdf`;
