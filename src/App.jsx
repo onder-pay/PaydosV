@@ -6836,7 +6836,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
         // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
         hotel: hi.name ? { name: hi.name || '', address: hi.address || '', city: hi.city || '', country: hi.country || '', phone: hi.phone || '' } : null,
-        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '' }
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram || '' }
       });
       if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
       const link = `${window.location.origin}/b/${token}`;
@@ -16253,6 +16253,8 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
               <input value={appSettings?.shareContact?.phone ?? '+90 258 263 71 76'} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), phone: e.target.value } })} placeholder="+90 258 263 71 76" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
             <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>WhatsApp numarası (boşsa WhatsApp butonu çıkmaz)</label>
               <input value={appSettings?.shareContact?.whatsapp || ''} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), whatsapp: e.target.value } })} placeholder="+90 5xx xxx xx xx" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
+            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>Instagram kullanıcı adı (boşsa "Takip et" butonu çıkmaz)</label>
+              <input value={appSettings?.shareContact?.instagram || ''} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), instagram: e.target.value.replace(/^.*instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#\s].*$/, '') } })} placeholder="paydosturizm" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
           </div>
         </div>
       )}
