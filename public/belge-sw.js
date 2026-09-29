@@ -38,6 +38,11 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(networkFirst(e.request));
     return;
   }
+  // Hava / konum / kur — yurt dışında internet yokken son bilinen değer gösterilsin
+  if (/(^|\.)open-meteo\.com$/.test(url.hostname) || url.hostname === 'open.er-api.com') {
+    e.respondWith(networkFirst(e.request));
+    return;
+  }
   // İkonlar
   if (url.origin === location.origin && url.pathname.startsWith('/icons/')) {
     e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request)));

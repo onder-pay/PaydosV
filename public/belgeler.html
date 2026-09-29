@@ -97,6 +97,28 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .contact a{padding:10px 16px;border-radius:12px;background:var(--gold);color:#1b1f3b;font-weight:700;font-size:14px;text-decoration:none}
 .foot{text-align:center;font-size:11px;color:#5d6591;margin-top:20px;letter-spacing:1px}
 
+/* Seyahat bilgileri */
+.info{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ib{padding:14px;border-radius:18px;background:var(--card);border:1px solid var(--line);min-width:0}
+.ib.wide{grid-column:1/-1}
+.ib .h{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.ib .v{font-size:20px;font-weight:700;line-height:1.2}
+.ib .s{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}
+.days{display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:0 0 auto;min-width:62px;text-align:center;padding:8px 6px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:12px}
+.day .e{font-size:22px;line-height:1.3}
+.day b{display:block;font-size:13px}
+.wear{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(94,231,255,.08);border:1px solid rgba(94,231,255,.22);font-size:13px;line-height:1.5}
+.hotel{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
+.hotel .n{font-size:16px;font-weight:700}
+.hotel .a{font-size:13px;color:var(--muted);line-height:1.45}
+.hotel .b{display:flex;gap:8px}
+.hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
+.hotel .b a.p{background:var(--gold);color:#1b1f3b}
+.contact .bt{display:flex;gap:6px}
+.contact a.wa{background:#25d366;color:#fff}
+
 .inst{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px;border-radius:18px;background:linear-gradient(135deg,rgba(245,185,66,.14),rgba(106,43,214,.14));border:1px solid rgba(245,185,66,.3)}
 .inst .ic{font-size:26px}
 .inst .tx{flex:1;font-size:13px;line-height:1.45;color:var(--text)}
@@ -337,6 +359,172 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       .then(function () { btn.textContent = old; btn.disabled = false; });
   };
 
+
+  // ===== Seyahat bilgileri: hava, giyim, saat farkı, kur, priz, otel =====
+  // Harici servisler (anahtarsız, ücretsiz): Open-Meteo (konum + hava), open.er-api.com (kur).
+  // Biri çalışmazsa sadece o kart gizlenir; sayfanın geri kalanı etkilenmez.
+  var getJSON = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); }); };
+  var ymd = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  var WMO = function (c) {
+    if (c === 0) return ['☀️', 'Güneşli']; if (c <= 2) return ['🌤️', 'Parçalı bulutlu']; if (c === 3) return ['☁️', 'Bulutlu'];
+    if (c <= 48) return ['🌫️', 'Sisli']; if (c <= 57) return ['🌦️', 'Çisenti']; if (c <= 67) return ['🌧️', 'Yağmurlu'];
+    if (c <= 77) return ['🌨️', 'Karlı']; if (c <= 82) return ['🌧️', 'Sağanak']; if (c <= 86) return ['🌨️', 'Kar sağanağı']; return ['⛈️', 'Fırtına'];
+  };
+  var wearTip = function (mn, mx, wet, snow) {
+    var t = [];
+    if (mx <= 5) t.push('kalın mont, bere, eldiven ve bot'); else if (mx <= 12) t.push('mont veya kaban, kazak'); else if (mx <= 19) t.push('hafif ceket veya hırka');
+    else if (mx <= 26) t.push('tişört, akşamlar için ince bir üst'); else t.push('ince ve açık renkli kıyafetler, güneş gözlüğü, şapka');
+    if (mn <= 0 && mx > 5) t.push('sabahlar için kalın bir üst');
+    if (snow) t.push('kaymayan ayakkabı'); if (wet) t.push('şemsiye veya yağmurluk');
+    t.push('rahat yürüyüş ayakkabısı');
+    return t.join(', ');
+  };
+  // Ülke kodu → para birimi
+  var CUR = { DE:'EUR',FR:'EUR',IT:'EUR',ES:'EUR',NL:'EUR',BE:'EUR',AT:'EUR',PT:'EUR',GR:'EUR',FI:'EUR',IE:'EUR',LU:'EUR',SK:'EUR',SI:'EUR',EE:'EUR',LV:'EUR',LT:'EUR',MT:'EUR',CY:'EUR',HR:'EUR',MC:'EUR',SM:'EUR',VA:'EUR',AD:'EUR',ME:'EUR',XK:'EUR',
+    GB:'GBP',CH:'CHF',LI:'CHF',CZ:'CZK',PL:'PLN',HU:'HUF',RO:'RON',BG:'BGN',DK:'DKK',SE:'SEK',NO:'NOK',IS:'ISK',RS:'RSD',BA:'BAM',MK:'MKD',AL:'ALL',UA:'UAH',RU:'RUB',BY:'BYN',MD:'MDL',GE:'GEL',AZ:'AZN',AM:'AMD',
+    US:'USD',CA:'CAD',MX:'MXN',BR:'BRL',AR:'ARS',CL:'CLP',CO:'COP',PE:'PEN',AE:'AED',SA:'SAR',QA:'QAR',KW:'KWD',BH:'BHD',OM:'OMR',JO:'JOD',LB:'LBP',IL:'ILS',EG:'EGP',MA:'MAD',TN:'TND',DZ:'DZD',IR:'IRR',IQ:'IQD',
+    CN:'CNY',HK:'HKD',TW:'TWD',JP:'JPY',KR:'KRW',IN:'INR',TH:'THB',VN:'VND',SG:'SGD',MY:'MYR',ID:'IDR',PH:'PHP',LK:'LKR',MV:'MVR',NP:'NPR',PK:'PKR',BD:'BDT',KZ:'KZT',UZ:'UZS',KG:'KGS',TM:'TMT',TJ:'TJS',
+    ZA:'ZAR',KE:'KES',TZ:'TZS',ET:'ETB',NG:'NGN',AU:'AUD',NZ:'NZD',CU:'CUP' };
+  // Ülke kodu → priz (Türkiye: C/F, 230V)
+  var PLUG = function (cc) {
+    if (/^(DE|FR|NL|BE|AT|ES|PT|GR|FI|SE|NO|DK|IS|PL|CZ|SK|HU|RO|BG|HR|SI|EE|LV|LT|LU|RS|BA|ME|MK|AL|XK|UA|RU|BY|MD|GE|AZ|AM|KZ|UZ|KG|TJ|TM|IR|EG|MA|TN|DZ|ID|KR|MC|AD|SM|VA|IT|CH|LI)$/.test(cc))
+      return ['Türkiye ile aynı', 'Adaptör gerekmez' + (cc === 'CH' ? ' (İsviçre J tipi — ince fişler uyar, kalın fişler için adaptör alın)' : cc === 'IT' ? ' (bazı prizler L tipi olabilir)' : cc === 'DK' ? ' (bazı prizler K tipi olabilir)' : '')];
+    if (/^(GB|IE|MT|CY|AE|SA|QA|KW|BH|OM|HK|SG|MY|MV|LK|KE|TZ|NG)$/.test(cc)) return ['G tipi (3 köşeli)', 'Adaptör gerekli'];
+    if (/^(US|CA|MX|JP|TW|CU|PH|CO|PE|TH|VN)$/.test(cc)) return ['A/B tipi' + (/^(US|CA|MX|JP|TW)$/.test(cc) ? ' · 110–120V' : ''), 'Adaptör gerekli' + (/^(TH|VN|PE|PH)$/.test(cc) ? ' (bazı prizler Türk fişine uyar)' : '')];
+    if (/^(AU|NZ|CN|AR)$/.test(cc)) return ['I tipi (eğik uçlu)', 'Adaptör gerekli'];
+    if (cc === 'ZA') return ['M/N tipi', 'Adaptör gerekli'];
+    if (/^(IN|NP|PK|BD)$/.test(cc)) return ['C/D/M tipi', 'Çoğu yerde uyar, adaptör almanız önerilir'];
+    if (cc === 'IL') return ['H/C tipi', 'Çoğu prize uyar'];
+    if (cc === 'BR') return ['N/C tipi', 'İnce fişler uyar, adaptör önerilir'];
+    if (cc === 'JO' || cc === 'LB' || cc === 'IQ') return ['C/D/G karışık', 'Adaptör almanız önerilir'];
+    return null;
+  };
+  // Saat dilimi farkı (dakika): hedef − İstanbul, verilen tarihte (yaz saati dahil)
+  var tzOffset = function (tz, at) {
+    var part = function (z) {
+      var o = {}; new Intl.DateTimeFormat('en-US', { timeZone: z, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        .formatToParts(at).forEach(function (p) { o[p.type] = p.value; });
+      return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute);
+    };
+    return Math.round((part(tz) - part('Europe/Istanbul')) / 60000);
+  };
+
+  var renderInfo = function (f, parent) {
+    var s = parseD(f.startDate), e = parseD(f.endDate) || s;
+    var hotel = f.hotel && f.hotel.name ? f.hotel : null;
+    var wrap = el('div'); var head = el('div', 'sec', 'Seyahat Bilgileri');
+    var grid = el('div', 'info'); var shown = false;
+    var reveal = function () { if (!shown) { shown = true; add(parent, head); add(parent, wrap); } };
+    wrap.appendChild(grid);
+
+    // Otel kartı (veri linkte, dış servise gerek yok)
+    if (hotel) {
+      var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
+      hc.appendChild(el('div', 'n', '🏨 ' + hotel.name));
+      var adr = [hotel.address, hotel.city, hotel.country].filter(Boolean).join(', ');
+      if (adr) hc.appendChild(el('div', 'a', adr));
+      var hb = el('div', 'b');
+      var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
+      var go = el('a', 'p', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; hb.appendChild(go);
+      var mp = el('a', '', '🗺️ Harita'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; hb.appendChild(mp);
+      var tel = String(hotel.phone || '').replace(/[^\d+]/g, '');
+      if (tel.length >= 7) { var hp = el('a', '', '📞 Otel'); hp.href = 'tel:' + tel; hb.appendChild(hp); }
+      hc.appendChild(hb); wrap.appendChild(hc); reveal();
+    }
+
+    var place = f.city || (hotel && hotel.city) || '';
+    if (!place || !s) return;
+    getJSON('https://geocoding-api.open-meteo.com/v1/search?count=5&language=tr&name=' + encodeURIComponent(place)).then(function (g) {
+      var list = (g && g.results) || [];
+      var want = String(f.country || '').toLocaleLowerCase('tr-TR');
+      var loc = list.filter(function (r) { return want && String(r.country || '').toLocaleLowerCase('tr-TR') === want; })[0] || list[0];
+      if (!loc) return;
+      var cc = String(loc.country_code || '').toUpperCase();
+
+      // --- Saat farkı ---
+      if (loc.timezone) {
+        try {
+          var off = tzOffset(loc.timezone, s);
+          var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', '🕐 Saat farkı'));
+          var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
+          box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
+          var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
+          box1.appendChild(el('div', 's', (off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')) + ' · Şu an orada ' + nowStr));
+          grid.appendChild(box1); reveal();
+        } catch (x) {}
+      }
+
+      // --- Priz ---
+      var pl = PLUG(cc);
+      if (pl) { var box2 = el('div', 'ib'); box2.appendChild(el('div', 'h', '🔌 Priz')); box2.appendChild(el('div', 'v', pl[0])); box2.appendChild(el('div', 's', pl[1])); grid.appendChild(box2); reveal(); }
+
+      // --- Kur ---
+      var cur = CUR[cc];
+      if (cur) {
+        getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) {
+          var tr = r && r.rates && r.rates.TRY; if (!tr) return;
+          var box3 = el('div', 'ib' + (grid.children.length % 2 === 0 ? ' wide' : '')); box3.appendChild(el('div', 'h', '💱 Para birimi'));
+          var big = tr >= 1 ? '1 ' + cur + ' = ' + tr.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
+                            : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
+          box3.appendChild(el('div', 'v', big));
+          box3.appendChild(el('div', 's', 'Güncel kur (' + new Date().toLocaleDateString('tr-TR') + ')' + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          grid.appendChild(box3); reveal();
+        }).catch(function () {});
+      }
+
+      // --- Hava durumu ---
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      var toStart = Math.round((s - today) / 86400000), toEnd = Math.round((e - today) / 86400000);
+      if (toEnd < 0) return; // seyahat bitti
+      var wbox = el('div', 'ib wide'); wbox.appendChild(el('div', 'h', '🌤️ Hava — ' + (loc.name || place)));
+      var common = '&latitude=' + loc.latitude + '&longitude=' + loc.longitude + '&timezone=auto';
+      if (toStart <= 14) {
+        // Gerçek tahmin (en fazla 16 gün ileri)
+        var from = toStart < 0 ? today : s, to = new Date(Math.min(e.getTime(), today.getTime() + 15 * 86400000));
+        getJSON('https://api.open-meteo.com/v1/forecast?daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&start_date=' + ymd(from) + '&end_date=' + ymd(to) + common).then(function (w) {
+          var d = w && w.daily; if (!d || !d.time || !d.time.length) return;
+          var days = el('div', 'days'), mn = 99, mx = -99, wet = false, snow = false;
+          d.time.forEach(function (t, i) {
+            var c = WMO(d.weather_code[i]), lo = Math.round(d.temperature_2m_min[i]), hi = Math.round(d.temperature_2m_max[i]);
+            mn = Math.min(mn, lo); mx = Math.max(mx, hi);
+            if ((d.precipitation_probability_max[i] || 0) >= 50) wet = true; if (d.weather_code[i] >= 71 && d.weather_code[i] <= 86) snow = true;
+            var dd = parseD(t), cell = el('div', 'day');
+            cell.appendChild(el('div', '', dd.getDate() + ' ' + AY[dd.getMonth()].slice(0, 3)));
+            var em = el('div', 'e', c[0]); em.title = c[1]; cell.appendChild(em);
+            cell.appendChild(el('b', '', hi + '°')); cell.appendChild(el('span', '', lo + '°'));
+            days.appendChild(cell);
+          });
+          wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
+          wbox.appendChild(el('div', 's', 'Seyahat günleriniz için tahmin'));
+          wbox.appendChild(days);
+          wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
+          grid.appendChild(wbox); reveal();
+        }).catch(function () {});
+      } else {
+        // Henüz tahmin yok → son 2 yılın aynı tarihlerindeki ortalama
+        var yrs = [1, 2].map(function (k) {
+          var a = new Date(s), b = new Date(e); a.setFullYear(a.getFullYear() - k); b.setFullYear(b.getFullYear() - k);
+          return getJSON('https://archive-api.open-meteo.com/v1/archive?daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&start_date=' + ymd(a) + '&end_date=' + ymd(b) + common).catch(function () { return null; });
+        });
+        Promise.all(yrs).then(function (rs) {
+          var mxs = [], mns = [], rainDays = 0, snowDays = 0, n = 0;
+          rs.forEach(function (w) { var d = w && w.daily; if (!d || !d.time) return; d.time.forEach(function (t, i) {
+            if (d.temperature_2m_max[i] == null) return; n++;
+            mxs.push(d.temperature_2m_max[i]); mns.push(d.temperature_2m_min[i]);
+            if ((d.precipitation_sum[i] || 0) >= 1) rainDays++; if ((d.snowfall_sum[i] || 0) > 0) snowDays++;
+          }); });
+          if (!n) return;
+          var avg = function (a) { return Math.round(a.reduce(function (x, y) { return x + y; }, 0) / a.length); };
+          var mn = avg(mns), mx = avg(mxs), wet = rainDays / n >= 0.3, snow = snowDays / n >= 0.15;
+          wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
+          wbox.appendChild(el('div', 's', AY[s.getMonth()] + ' ayında ' + (loc.name || place) + ' için ortalama' + (wet ? ' · genelde yağışlı' : '') + (snow ? ' · kar yağabilir' : '') + '. Gerçek tahmin seyahatinizden 2 hafta önce burada görünecek.'));
+          wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
+          grid.appendChild(wbox); reveal();
+        });
+      }
+    }).catch(function () {});
+  };
+
   fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
@@ -432,11 +620,21 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         noteEl = add(box, el('div', 'note'));
       }
 
+      // --- Seyahat bilgileri (hava, saat, kur, priz, otel) — iletişim kartından önce yerini ayırır ---
+      var infoSlot = el('div'); box.appendChild(infoSlot);
+      try { renderInfo(f, infoSlot); } catch (x) {}
+
       // --- İletişim ---
+      var cf = f.contact || {};
+      var ph = String(cf.phone || '+90 258 263 71 76').replace(/[^\d+]/g, ''), wa = String(cf.whatsapp || '').replace(/\D/g, '');
+      if (wa && wa.charAt(0) === '0') wa = '90' + wa.slice(1); else if (wa && wa.length === 10) wa = '90' + wa;
       var ct = add(box, el('div', 'contact'));
       ct.appendChild(el('div', 'ic', '📞'));
       var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Yardıma mı ihtiyacınız var?')); ctx.appendChild(document.createTextNode('Paydos Turizm ekibi yanınızda.')); ct.appendChild(ctx);
-      var call = el('a', '', 'Ara'); call.href = 'tel:+902582637176'; ct.appendChild(call);
+      var bt = el('div', 'bt');
+      if (wa.length >= 11) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Merhaba, ' + (f.tourName || 'turum') + ' hakkında yardım almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; bt.appendChild(w); }
+      var call = el('a', '', 'Ara'); call.href = 'tel:' + (ph.length >= 7 ? ph : '+902582637176'); bt.appendChild(call);
+      ct.appendChild(bt);
       add(box, el('div', 'foot', 'www.paydostur.com'));
     })
     .catch(function (e) { show(e.message === '404' ? 'Bu bağlantı bulunamadı veya kaldırılmış.' : 'Belgeler yüklenemedi. Lütfen daha sonra tekrar deneyin.'); });
