@@ -212,7 +212,7 @@ function genPDF(){
     // Footer
     doc.setFontSize(8);doc.setTextColor(150);
     var dt=new Date().toLocaleDateString("tr-TR");
-    doc.text("Olusturma: "+dt+" | www.paydosturizm.com",105,290,{align:"center"});
+    doc.text("Olusturma: "+dt+" | www.paydostur.com",105,290,{align:"center"});
     var fn="DS160_"+(nm.replace(/\s+/g,"_")||"Basvuru")+".pdf";
     // Ofis bildirim mailine eklenmek üzere base64 kopyası
     try{var du=doc.output("datauristring");lastPdfB64=du.slice(du.indexOf("base64,")+7)}catch(e){lastPdfB64=""}
