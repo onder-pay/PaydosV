@@ -4645,10 +4645,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
       return {
         'Müşteri Adı': v.customerName || '',
-        'Telefon': v.customerPhone || '',
+        // Kayıtta boşsa müşteri kartından / "Almanya Ticari" gibi vize süresi yazısından tamamla
+        'Telefon': v.customerPhone || (customers || []).find(c => String(c.id) === String(v.customerId))?.phone || '',
         'Kategori': getCategoryInfo(v.category)?.label || v.category || '',
-        'Ülke': v.country || '',
-        'Vize Türü': v.visaType || '',
+        'Ülke': extractVisaCountry(v) || '',
+        'Vize Türü': v.visaType || (() => {
+          const ulke = extractVisaCountry(v);
+          const rest = String(v.visaDuration || '').replace(new RegExp(ulke ? ulke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '^$', 'i'), '').trim();
+          return rest && rest !== v.visaDuration ? rest : '';
+        })(),
         'Vize Süresi': v.visaDuration || '',
         'Başvuru Tarihi': formatDate(v.applicationDate) || '',
         'Randevu Tarihi': formatDate(v.appointmentDate) || '',
