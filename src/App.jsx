@@ -78,6 +78,55 @@ const nameWords = (text) => {
   return words;
 };
 
+// jsPDF: metni verilen genişliğe sığdırır — önce yazı boyutunu minSize'a kadar küçültür, yine sığmazsa "…" ile kısaltır.
+const pdfFit = (doc, text, maxW, size, minSize = size) => {
+  let t = String(text || ''), fs = size;
+  doc.setFontSize(fs);
+  while (fs > minSize && doc.getTextWidth(t) > maxW) { fs -= 0.5; doc.setFontSize(fs); }
+  if (doc.getTextWidth(t) <= maxW) return t;
+  while (t.length > 1 && doc.getTextWidth(t + '...') > maxW) t = t.slice(0, -1);
+  return t.trimEnd() + '...';
+};
+
+// Uzun bir canvas'ı A4 sayfalara böler. Kesim noktası, sayfa sonuna yakın "boş" (tek renk) bir piksel satırına
+// kaydırılır; böylece yazı satırları iki sayfa arasında ortadan bölünmez. 2. sayfadan itibaren üstte küçük boşluk bırakır.
+const addCanvasPaged = (pdf, canvas, quality = 0.92) => {
+  const W = canvas.width, H = canvas.height;
+  const pxPerMm = W / 210;
+  const pageH = Math.floor(297 * pxPerMm);
+  const topPad = Math.round(10 * pxPerMm), botPad = Math.round(8 * pxPerMm);
+  const ctx = canvas.getContext('2d');
+  const blankRow = (data, rowIdx) => {
+    const o = rowIdx * W * 4, r = data[o], g = data[o + 1], b = data[o + 2];
+    for (let x = 0; x < W; x += 3) {
+      const i = o + x * 4;
+      if (Math.abs(data[i] - r) > 12 || Math.abs(data[i + 1] - g) > 12 || Math.abs(data[i + 2] - b) > 12) return false;
+    }
+    return true;
+  };
+  let start = 0, page = 0;
+  while (start < H - 2) {
+    const usable = pageH - (page ? topPad : 0) - (H - start > pageH - (page ? topPad : 0) ? botPad : 0);
+    let end = Math.min(start + usable, H);
+    if (end < H) {
+      const look = Math.floor(usable * 0.3);
+      const from = end - look;
+      try {
+        const data = ctx.getImageData(0, from, W, look).data;
+        for (let y = look - 1; y >= 0; y--) { if (blankRow(data, y)) { end = from + y; break; } }
+      } catch { /* okunamazsa düz kes */ }
+    }
+    const part = document.createElement('canvas');
+    part.width = W; part.height = end - start;
+    const pc = part.getContext('2d');
+    pc.fillStyle = '#ffffff'; pc.fillRect(0, 0, W, part.height);
+    pc.drawImage(canvas, 0, start, W, part.height, 0, 0, W, part.height);
+    if (page) pdf.addPage();
+    pdf.addImage(part.toDataURL('image/jpeg', quality), 'JPEG', 0, page ? 10 : 0, 210, part.height / pxPerMm);
+    start = end; page++;
+  }
+};
+
 // Bir HTML string'ini A4 PDF'e çevirip indir (Türkçe %100 düzgün — tarayıcı render eder)
 const htmlToPdfDownload = async (innerHTML, filename, styleCSS = '') => {
   const html2canvas = await loadHtml2Canvas();
@@ -88,13 +137,8 @@ const htmlToPdfDownload = async (innerHTML, filename, styleCSS = '') => {
   try {
     await new Promise(r => setTimeout(r, 260));
     const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-    const img = canvas.toDataURL('image/jpeg', 0.94);
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pw = 210, ph = 297, ih = (canvas.height * pw) / canvas.width;
-    let left = ih, pos = 0;
-    pdf.addImage(img, 'JPEG', 0, pos, pw, ih);
-    left -= ph;
-    while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, pw, ih); left -= ph; }
+    addCanvasPaged(pdf, canvas, 0.94);
     pdf.save(filename);
   } finally { document.body.removeChild(holder); }
 };
@@ -437,6 +481,41 @@ const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) re
 const onDocImgError = (e) => { const t = e.currentTarget; t.style.minHeight = '60px'; t.style.background = 'rgba(239,68,68,0.12)'; t.style.color = '#ef4444'; t.style.fontSize = '12px'; };
 const safeParseObj = (val) => { if (!val) return {}; if (typeof val === 'object') return val; try { const o = JSON.parse(val); return o && typeof o === 'object' ? o : {}; } catch { return {}; } };
 const safeParseDate = (dateStr) => { if (!dateStr || typeof dateStr !== 'string') return null; const parts = dateStr.split('-'); if (parts.length !== 3) return null; const [year, month, day] = parts.map(Number); if (isNaN(year) || isNaN(month) || isNaN(day)) return null; const date = new Date(year, month - 1, day, 12, 0, 0); if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null; return date; };
+// Pasaport, seyahat bitiş tarihinden itibaren en az 6 ay geçerli olmalı (yeşil pasaport dahil herkes için).
+const PASSPORT_MIN_MONTHS = 6;
+// Yeşil (hususi) pasaport muafiyeti ancak pasaport bu kurala uyuyorsa. Birden fazla yeşil pasaportta en geç biten esas.
+// Döner: { green, ok, exp (Date|null), reason: 'ok'|'nodate'|'expires'|'months' }
+const greenPassportStatus = (passports, tourEndStr) => {
+  const greens = (passports || []).filter(p => p.passportType === 'Yeşil Pasaport (Hususi)' || p.passportType?.includes('Yeşil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
+  if (!greens.length) return { green: false, ok: false, exp: null, reason: '' };
+  const exp = greens.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
+  if (!exp) return { green: true, ok: false, exp: null, reason: 'nodate' };
+  const end = safeParseDate(tourEndStr) || new Date();
+  const need = new Date(end); need.setMonth(need.getMonth() + PASSPORT_MIN_MONTHS);
+  if (exp < end) return { green: true, ok: false, exp, reason: 'expires' };
+  if (exp < need) return { green: true, ok: false, exp, reason: 'months' };
+  return { green: true, ok: true, exp, reason: 'ok' };
+};
+// Herhangi bir pasaport (en geç biteni) seyahat bitişi + 6 ay kuralına uyuyor mu?
+// Döner: { exp (Date|null), reason: 'ok'|'nodate'|'expires'|'months'|'none' }
+const passportValidityFor = (passports, tourEndStr) => {
+  const list = (passports || []).filter(p => p.passportNo || p.expiryDate);
+  if (!list.length) return { exp: null, reason: 'none' };
+  const exp = list.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
+  if (!exp) return { exp: null, reason: 'nodate' };
+  const end = safeParseDate(tourEndStr) || new Date();
+  const need = new Date(end); need.setMonth(need.getMonth() + PASSPORT_MIN_MONTHS);
+  if (exp < end) return { exp, reason: 'expires' };
+  if (exp < need) return { exp, reason: 'months' };
+  return { exp, reason: 'ok' };
+};
+// Yeşil (hususi) pasaport o ülkede vizeden muaf mı? Dışişleri tablosundaki (VIZE_DURUM) 'y' alanından;
+// tabloda olmayan ülkede eski davranış: Schengen ise muaf. (ABD, İngiltere, Kanada vb. yeşil pasaporta da vize ister.)
+const greenExemptIn = (country) => {
+  const d = country && VIZE_DURUM[country];
+  if (d && d.y && d.y !== '?') return d.y === 'muaf' || d.y === 'yurtici';
+  return schengenCountries.includes(country);
+};
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
@@ -460,6 +539,13 @@ const claudeRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
   return fetch('/.netlify/functions/claude-proxy', { ...opts, headers: { ...headers, Authorization: `Bearer ${token}` } });
 };
+
+// Müşteri maillerinin gövdesi — beyaz kart + üstte Paydos logosu. Mail istemcileri göreli yolu çözemez, adres tam olmalı.
+const MAIL_LOGO_URL = 'https://crm.paydostur.com/icons/paydos-wordmark.png';
+const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+<div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
+<pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
 
 const sendMailRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
@@ -861,7 +947,7 @@ function LoginScreen({ onLogin, users }) {
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 50%, #0d2137 100%)', fontFamily: "'Segoe UI', sans-serif", padding: '20px' }}>
       <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '40px', width: '100%', maxWidth: '380px' }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>✈️</div>
+          <img src="/icons/logo.png" alt="Paydos" style={{ width: '88px', height: '88px', borderRadius: '50%', display: 'block', margin: '0 auto 12px' }} />
           <h1 style={{ margin: 0, fontSize: '24px', color: '#e8f1f8', fontWeight: '700' }}>Paydos Turizm</h1>
           <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#94a3b8' }}>Giriş yapın</p>
         </div>
@@ -3915,7 +4001,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
             const rep = (s) => (s || '').replace(/{isim}/g, 'Örnek Katılımcı').replace(/{tur}/g, 'Örnek Turu').replace(/{tarih}/g, new Date().toLocaleDateString('tr-TR'));
             const subject = rep(tpl.subject) || 'Tur Bilgilendirme';
             const bodyText = rep(tpl.body);
-            const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+            const html = mailHtml(bodyText);
             try {
               const resp = await sendMailRequest({
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -4043,7 +4129,7 @@ async function sendVisaEmail({ visa, customer, appSettings }) {
 
     const subject = replace(template.subject || '');
     const bodyText = replace(template.body || '');
-    const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+    const html = mailHtml(bodyText);
 
     // Vize türüne bağlı ekleri bul
     const allAttachments = appSettings?.attachments || [];
@@ -6237,13 +6323,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       document.body.appendChild(holder);
       await new Promise(r => setTimeout(r, 320));
       const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      const img = canvas.toDataURL('image/jpeg', 0.92);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pw = 210, ph = 297, iw = pw, ih = (canvas.height * pw) / canvas.width;
-      let left = ih, pos = 0;
-      pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
-      left -= ph;
-      while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
+      addCanvasPaged(pdf, canvas, 0.92);
       const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
       if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
       pdf.save(`${ad}.pdf`);
@@ -6469,19 +6550,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     doc.rect(20, 45, 175, 35, 'FD');
     doc.setFontSize(9); doc.setTextColor(220, 53, 69);
     doc.text('HOTEL DETAILS', 24, 51);
-    doc.setFontSize(14); doc.setTextColor(40);
-    doc.text(T(hi.name || tour.name || ''), 24, 58);
-    doc.setFontSize(9); doc.setTextColor(80);
-    if (hi.address) doc.text(`Address: ${T(hi.address)}`, 24, 64);
-    const loc = `${T(hi.city || '')}${hi.country ? ', ' + T(hi.country) : ''}`;
-    if (loc.trim()) doc.text(`Location: ${loc}`, 24, 69);
-    if (hi.phone) doc.text(`Phone: ${T(hi.phone)}`, 24, 74);
     const resCode = hi.bookingCode || '';
+    doc.setTextColor(40);
+    doc.text(pdfFit(doc, T(hi.name || tour.name || ''), resCode ? 108 : 166, 14, 10), 24, 58);
+    doc.setTextColor(80);
+    if (hi.address) doc.text(pdfFit(doc, `Address: ${T(hi.address)}`, 166, 9, 7), 24, 64);
+    const loc = `${T(hi.city || '')}${hi.country ? ', ' + T(hi.country) : ''}`;
+    if (loc.trim()) doc.text(pdfFit(doc, `Location: ${loc}`, 166, 9, 7), 24, 69);
+    if (hi.phone) doc.text(pdfFit(doc, `Phone: ${T(hi.phone)}`, 166, 9, 7), 24, 74);
     if (resCode) {
-      doc.setFillColor(220, 53, 69); doc.rect(135, 53, 58, 9, 'F');
+      doc.setFillColor(220, 53, 69); doc.rect(135, 48, 58, 9, 'F');
       doc.setFontSize(7); doc.setTextColor(255,255,255);
-      doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
-      doc.setFontSize(10); doc.text(T(resCode), 164, 61, { align: 'center' });
+      doc.text('RESERVATION CODE', 164, 52, { align: 'center' });
+      doc.text(pdfFit(doc, T(resCode), 55, 10, 7), 164, 56, { align: 'center' });
     }
 
     // GUEST DETAILS (oda misafirleri)
@@ -6492,7 +6573,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     yPos += 8;
     doc.setFontSize(11); doc.setTextColor(40);
     room.forEach((g, i) => {
-      doc.text(`${i+1}. ${T(g.customerName || '')}`, 24, yPos);
+      doc.text(pdfFit(doc, `${i+1}. ${T(g.customerName || '')}`, 166, 11, 8), 24, yPos);
       yPos += 6;
     });
     yPos += 4;
@@ -6506,9 +6587,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     const roomType = room[0]?.roomType || hi.roomType || 'Standard';
     doc.text(`Check-in:  ${fmtEN(checkIn)}`, 24, yPos); yPos += 6;
     doc.text(`Check-out: ${fmtEN(checkOut)}`, 24, yPos); yPos += 6;
-    doc.text(`Nights: ${nights}   |   Room Type: ${T(roomType)}   |   Guests: ${room.length}`, 24, yPos); yPos += 6;
+    doc.text(pdfFit(doc, `Nights: ${nights}   |   Room Type: ${T(roomType)}   |   Guests: ${room.length}`, 166, 10, 8), 24, yPos); doc.setFontSize(10); yPos += 6;
     doc.text(`Meal Plan: ${mealPlan(hi.concept)}`, 24, yPos); yPos += 10;
 
+    // Damga + ödeme notu + koşullar (~84mm) altbilgiye taşacaksa yeni sayfaya geç
+    if (yPos + 84 > 276) { doc.addPage(); yPos = 20; }
     // PAID damgası
     doc.setDrawColor(34,197,94); doc.setLineWidth(1.5);
     doc.roundedRect(145, yPos, 50, 13, 2, 2, 'S');
@@ -6761,13 +6844,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       document.body.appendChild(holder);
       await new Promise(r => setTimeout(r, 320));
       const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      const img = canvas.toDataURL('image/jpeg', 0.9);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pw = 210, ph = 297, iw = pw, ih = (canvas.height * pw) / canvas.width;
-      let left = ih, pos = 0;
-      pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
-      left -= ph;
-      while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
+      addCanvasPaged(pdf, canvas, 0.9);
       const ad = (data.tuketici.name || 'Musteri').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
       if (returnBlob) return { name: `Sozlesme_${ad}.pdf`, blob: pdf.output('blob') };
       pdf.save(`Sozlesme_${ad}.pdf`);
@@ -6908,7 +6986,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       const r = recipients[i];
       const subject = bulkMailSubject.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
       const bodyText = bulkMailBody.replace(/{isim}/g, r.name).replace(/{tur}/g, tour.name).replace(/{tarih}/g, tarih);
-      const html = `<pre style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${bodyText}</pre>`;
+      const html = mailHtml(bodyText);
       // Bu kişiye gidecek ekler = ortak elle ekler + ortak program + KİŞİYE ÖZEL sözleşme
       const perAttachments = [...baseAttachments];
       if (programAttach) perAttachments.push(programAttach);
@@ -7156,8 +7234,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       );
       let hasVisa = false;
       let visaEndDate = '';
-      // Yeşil pasaport sahibi Schengen'den muaf
-      if (isSchengen && hasGreenPassport) {
+      // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 6 ay geçerliyse
+      const gpOk = hasGreenPassport && greenExemptIn(selectedTour?.country) && greenPassportStatus(passports, selectedTour?.endDate || selectedTour?.startDate).ok;
+      if (gpOk) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT'; // özel işaret
       } else if (isSchengen) {
@@ -7241,8 +7320,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       // Vize durumu - tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
-      // Yeşil pasaport sahibi Schengen'den muaf
-      if (isSchengen && hasGreenPassport) {
+      // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 6 ay geçerliyse
+      if (hasGreenPassport && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) {
         hasVisa = true;
         visaEndDate = 'GREEN_PASSPORT';
       } else if (isSchengen) {
@@ -7886,13 +7965,25 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
 
                           // Yeşil pasaport kontrolü — Schengen'den muaf
                           const cPassports = safeParseJSON(customer.passports);
-                          const hasGreenPassport = cPassports.some(p =>
-                            p.passportType === 'Yeşil Pasaport (Hususi)' ||
-                            p.passportType?.includes('Yeşil') ||
-                            (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-                          );
-                          if (hasGreenPassport) {
+                          const gp = greenPassportStatus(cPassports, tour.endDate || tour.startDate);
+                          // Yeşil pasaport sadece ülke muafiyet tanıyorsa sayılır (ABD, İngiltere vb. tanımaz)
+                          if (gp.green && !greenExemptIn(tour.country)) { /* normal vize kontrolüne devam */ }
+                          else if (gp.green) {
+                            const expStr = gp.exp ? formatDate(`${gp.exp.getFullYear()}-${String(gp.exp.getMonth() + 1).padStart(2, '0')}-${String(gp.exp.getDate()).padStart(2, '0')}`) : '';
+                            if (gp.reason === 'nodate') return { label: '🟠 Yeşil Pasaport — tarih yok', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                            if (gp.reason === 'expires') return { label: `🔴 Yeşil Pasaport Bitiyor (${expStr})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (gp.reason === 'months') return { label: `🟠 Yeşil Pasaport — 6 ay kuralı (${expStr})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                             return { label: '🟢 Yeşil Pasaport Muaf', color: '#059669', bg: 'rgba(5,150,105,0.15)' };
+                          }
+
+                          // Vize olsa bile pasaport seyahat bitişinden sonra 6 ay geçerli olmalı — önce bunu uyar
+                          const domestic = VIZE_DURUM[tour.country]?.b === 'yurtici'; // yurt içi turda pasaport aranmaz
+                          const pv = passportValidityFor(cPassports, tour.endDate || tour.startDate);
+                          if (!domestic && (pv.reason === 'expires' || pv.reason === 'months')) {
+                            const pStr = formatDate(`${pv.exp.getFullYear()}-${String(pv.exp.getMonth() + 1).padStart(2, '0')}-${String(pv.exp.getDate()).padStart(2, '0')}`);
+                            return pv.reason === 'expires'
+                              ? { label: `🔴 Pasaport Bitiyor (${pStr})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' }
+                              : { label: `🟠 Pasaport — 6 ay kuralı (${pStr})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                           }
 
                           const visas = safeParseJSON(customer.schengenVisas);
@@ -9200,11 +9291,11 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     // Teklif/Proforma Başlık
     doc.setFontSize(24);
     doc.setTextColor(220, 53, 69);
-    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 150, 20);
+    doc.text(quote.type === 'teklif' ? toTurkishChars('TEKLİF') : 'PROFORMA FATURA', 190, 20, { align: 'right' });
     
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(quote.number, 150, 28);
+    doc.text(quote.number, 190, 28, { align: 'right' });
     
     // Bilgiler
     doc.setFontSize(10);
@@ -9268,27 +9359,32 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     doc.setTextColor(255);
     doc.text(toTurkishChars('HİZMET'), 22, currentY + 5);
     doc.text(toTurkishChars('AÇIKLAMA'), 62, currentY + 5);
-    doc.text('ADET', 125, currentY + 5);
-    doc.text(toTurkishChars('BİRİM'), 145, currentY + 5);
-    doc.text('TOPLAM', 170, currentY + 5);
+    doc.text('ADET', 132, currentY + 5, { align: 'center' });
+    doc.text(toTurkishChars('BİRİM'), 162, currentY + 5, { align: 'right' });
+    doc.text('TOPLAM', 188, currentY + 5, { align: 'right' });
     currentY += 8;
     
-    // Tablo satırları
+    // Tablo satırları — uzun hizmet/açıklama kesilmez, satır içinde alt satıra geçer
     doc.setTextColor(0);
     quote.items.forEach((item, idx) => {
+      const svc = doc.splitTextToSize(toTurkishChars(String(item.service || '')), 38);
+      const desc = doc.splitTextToSize(toTurkishChars(String(item.description || '')), 60);
+      const rowH = Math.max(svc.length, desc.length, 1) * 4.2 + 3;
+      if (currentY + rowH > 275) { doc.addPage(); currentY = 20; }
       if (idx % 2 === 0) {
         doc.setFillColor(245, 245, 245);
-        doc.rect(20, currentY, 170, 7, 'F');
+        doc.rect(20, currentY, 170, rowH, 'F');
       }
-      doc.text(toTurkishChars(String(item.service || '').substring(0, 15)), 22, currentY + 5);
-      doc.text(toTurkishChars(String(item.description || '').substring(0, 25)), 62, currentY + 5);
-      doc.text(item.quantity.toString(), 130, currentY + 5);
-      doc.text(item.unitPrice.toFixed(2), 150, currentY + 5);
-      doc.text((item.quantity * item.unitPrice).toFixed(2), 175, currentY + 5);
-      currentY += 7;
+      doc.text(svc, 22, currentY + 5);
+      doc.text(desc, 62, currentY + 5);
+      doc.text(String(item.quantity), 132, currentY + 5, { align: 'center' });
+      doc.text(Number(item.unitPrice).toFixed(2), 162, currentY + 5, { align: 'right' });
+      doc.text((item.quantity * item.unitPrice).toFixed(2), 188, currentY + 5, { align: 'right' });
+      currentY += rowH;
     });
     
-    // Hesaplamalar
+    // Hesaplamalar — toplam + banka + notlar sığmıyorsa yeni sayfaya geç
+    if (currentY + (quote.type === 'proforma' ? 75 : 40) > 280) { doc.addPage(); currentY = 20; }
     const finalY = currentY + 10;
     
     doc.setFontSize(10);
@@ -9344,7 +9440,8 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     
     // Notlar
     if (quote.notes) {
-      const notesY = quote.type === 'proforma' ? totalY + 50 : totalY + 15;
+      let notesY = quote.type === 'proforma' ? totalY + 50 : totalY + 15;
+      if (notesY + 20 > 280) { doc.addPage(); notesY = 20; }
       doc.setFontSize(11);
       doc.setTextColor(220, 53, 69);
       doc.text('NOTLAR', 20, notesY);
@@ -9956,16 +10053,8 @@ ${flightRaw}`;
       } else if (ih <= ph) {
         pdf.addImage(img, 'JPEG', 0, 0, iw, ih);
       } else {
-        // uzun içerik -> sayfalara böl
-        let left = ih, pos = 0;
-        pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
-        left -= ph;
-        while (left > 0) {
-          pos -= ph;
-          pdf.addPage();
-          pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
-          left -= ph;
-        }
+        // uzun içerik -> sayfalara böl (satırları ortadan kesmeden)
+        addCanvasPaged(pdf, canvas, 0.92);
       }
       const safe = (data.title || 'Tur_Teklifi').replace(/[^\w\sğüşıöçĞÜŞİÖÇ-]/g, '').replace(/\s+/g, '_');
       pdf.save(`${safe}.pdf`);
@@ -10083,13 +10172,8 @@ KURALLAR:
       document.body.appendChild(holder);
       await new Promise(r => setTimeout(r, 350));
       const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      const img = canvas.toDataURL('image/jpeg', 0.9);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pw = 210, ph = 297, iw = pw, ih = (canvas.height * pw) / canvas.width;
-      let left = ih, pos = 0;
-      pdf.addImage(img, 'JPEG', 0, pos, iw, ih);
-      left -= ph;
-      while (left > 0) { pos -= ph; pdf.addPage(); pdf.addImage(img, 'JPEG', 0, pos, iw, ih); left -= ph; }
+      addCanvasPaged(pdf, canvas, 0.9);
       pdf.save(`Sozlesme_${(data.tuketici.name || 'Musteri').replace(/\s+/g,'_')}.pdf`);
       showToast?.('Sözleşme PDF indirildi', 'success');
     } catch (e) { showToast?.('PDF oluşturulamadı: ' + e.message, 'error'); }
@@ -11268,9 +11352,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
-      doc.text(tr(pk.title || 'Seyahat Paketi'), 20, 78);
+      doc.text(pdfFit(doc, tr(pk.title || 'Seyahat Paketi'), 175, 11, 8), 20, 78);
       doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ'), 20, 90); doc.line(20, 92, 195, 92);
-      doc.setFontSize(11); doc.setTextColor(40); doc.text(tr(pk.customerName), 20, 99);
+      doc.setTextColor(40); doc.text(pdfFit(doc, tr(pk.customerName), 175, 11, 8), 20, 99);
       doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('PAKET KALEMLERİ'), 20, 112); doc.line(20, 114, 195, 114);
       doc.setFillColor(245, 245, 245); doc.rect(20, 117, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
@@ -11278,13 +11362,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       let y = 130, subtotal = 0;
       (pk.items || []).forEach((it, i) => {
         const amt = parseFloat(it.amount) || 0; subtotal += amt;
-        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 9, 'F'); }
         doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, '')).trim().substring(0, 70) || tr('Hizmet'), 22, y);
+        const lbl = doc.splitTextToSize(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, '')).trim() || tr('Hizmet'), 135);
+        const rowH = Math.max(9, lbl.length * 4 + 5);
+        if (y + rowH > 270) { doc.addPage(); y = 30; }
+        if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, rowH, 'F'); }
+        doc.text(lbl, 22, y);
         doc.text(`${amt.toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
-        y += 9;
-        if (y > 250) { doc.addPage(); y = 30; }
+        y += rowH;
       });
+      if (y + 35 > 285) { doc.addPage(); y = 30; }
       doc.setDrawColor(180); doc.line(120, y, 195, y); y += 7;
       doc.setFontSize(11); doc.setTextColor(40); doc.text('GENEL TOPLAM', 120, y);
       doc.setFontSize(13); doc.setTextColor(220, 53, 69);
@@ -11656,7 +11743,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(currencyCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
-      doc.text(`${tr(fl.from)} - ${tr(fl.to)} Uçuş Rezervasyonu (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 20, 78);
+      doc.text(pdfFit(doc, `${tr(fl.from)} - ${tr(fl.to)} ${tr('Uçuş Rezervasyonu')} (${tr(fl.airline)} ${tr(fl.flightNo || '')})`, 175, 11, 8), 20, 78);
       doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ BİLGİLERİ'), 20, 90);
       doc.line(20, 92, 195, 92);
       const firstCust = customers.find(c => String(c.id) === String(resList[0].customerId));
@@ -11665,7 +11752,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const baslikAd = birlesik
         ? tr(firstCust?.companyName || `${resList[0].customerName} ve ${resList.length - 1} kişi`)
         : tr(resList[0].customerName);
-      doc.text(baslikAd.substring(0, 55), 20, 105);
+      doc.text(pdfFit(doc, baslikAd, 175, 11, 8), 20, 105);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('Telefon', 20, 113);
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text(tr(resList[0].phone || firstCust?.phone || '-'), 20, 119);
@@ -11678,16 +11765,17 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       resList.forEach((r, i) => {
         const tot = flightResTotal(r); subtotal += tot;
         if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, 10, 'F'); }
-        doc.setFontSize(9); doc.setTextColor(40);
-        doc.text(tr(r.customerName).substring(0, 30), 22, y);
-        doc.setFontSize(8); doc.setTextColor(80);
-        doc.text(`${tr(fl.from)}-${tr(fl.to)} ${formatDate(fl.date)} ${fl.depTime || ''}`, 85, y);
-        doc.text(tr((r.extras || []).map(e => e.type).join(', ')).substring(0, 24) || '-', 135, y);
+        doc.setTextColor(40);
+        doc.text(pdfFit(doc, tr(r.customerName), 60, 9, 7), 22, y);
+        doc.setTextColor(80);
+        doc.text(pdfFit(doc, `${tr(fl.from)}-${tr(fl.to)} ${formatDate(fl.date)} ${fl.depTime || ''}`, 48, 8, 6.5), 85, y);
+        doc.text(pdfFit(doc, tr((r.extras || []).map(e => e.type).join(', ')) || '-', 30, 8, 6.5), 135, y);
         doc.setFontSize(9); doc.setTextColor(40);
         doc.text(`${tot.toLocaleString('tr-TR')} ${currencyCode}`, 193, y, { align: 'right' });
         y += 10;
         if (y > 250) { doc.addPage(); y = 30; }
       });
+      if (y + 45 > 285) { doc.addPage(); y = 30; }
       doc.setDrawColor(180); doc.line(120, y, 195, y); y += 7;
       doc.setFontSize(11); doc.setTextColor(40);
       doc.text('GENEL TOPLAM', 120, y);
@@ -11771,7 +11859,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const konu = reservations.length === 1
         ? `${tr(hotel.name)} - Otel Konaklaması`
         : `${tr(hotel.name)} - Toplu Otel Konaklaması (${reservations.length} rezervasyon)`;
-      doc.text(tr(konu), 20, 78);
+      doc.text(pdfFit(doc, tr(konu), 175, 11, 8), 20, 78);
 
       // MÜŞTERİ BİLGİLERİ
       doc.setFontSize(9);
@@ -11793,8 +11881,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const custName = uniqueCustomers.length === 1
         ? tr(uniqueCustomers[0])
         : tr(`Çeşitli (${uniqueCustomers.length} kişi)`);
-      doc.text(custName, 20, 105);
-      doc.text(tr(firstCustomer?.taxOffice || '-'), 110, 105);
+      doc.text(pdfFit(doc, custName, 86, 11, 8), 20, 105);
+      doc.text(pdfFit(doc, tr(firstCustomer?.taxOffice || '-'), 85, 11, 8), 110, 105);
 
       doc.setFontSize(9);
       doc.setTextColor(120);
@@ -11802,8 +11890,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text('E-posta', 110, 113);
       doc.setFontSize(11);
       doc.setTextColor(40);
-      doc.text(tr(reservations[0].customerPhone || firstCustomer?.phone || '-'), 20, 119);
-      doc.text(tr(reservations[0].customerEmail || firstCustomer?.email || '-'), 110, 119);
+      doc.text(pdfFit(doc, tr(reservations[0].customerPhone || firstCustomer?.phone || '-'), 86, 11, 8), 20, 119);
+      doc.text(pdfFit(doc, tr(reservations[0].customerEmail || firstCustomer?.email || '-'), 85, 11, 8), 110, 119);
 
       // HİZMET KALEMLERİ
       doc.setFontSize(9);
@@ -11848,13 +11936,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
         doc.setFontSize(10);
         doc.setTextColor(40);
-        doc.text(tr(hotel.name).substring(0, 30), 22, yPos);
+        doc.text(doc.splitTextToSize(tr(hotel.name), 55).slice(0, 3), 22, yPos);
 
-        doc.setFontSize(8);
         doc.setTextColor(80);
         const lines = aciklama.split('\n');
         lines.forEach((line, idx) => {
-          doc.text(line.substring(0, 40), 80, yPos + (idx * 4));
+          doc.text(pdfFit(doc, line, 56, 8, 6.5), 80, yPos + (idx * 4));
         });
 
         doc.setFontSize(10);
@@ -11872,6 +11959,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         }
       });
 
+      // Toplam + banka bloğu (~70mm) sayfaya sığmıyorsa yeni sayfa
+      if (yPos + 70 > 280) { doc.addPage(); yPos = 30; }
       // Alt çizgi
       doc.setDrawColor(220, 220, 220);
       doc.line(20, yPos, 195, yPos);
@@ -11994,23 +12083,20 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(9);
       doc.setTextColor(220, 53, 69);
       doc.text('HOTEL DETAILS', 24, 51);
-      doc.setFontSize(14);
-      doc.setTextColor(40);
-      doc.text(ascii(hotel.name || ''), 24, 58);
-      doc.setFontSize(9);
-      doc.setTextColor(80);
-      if (hotel.address) doc.text(`Address: ${ascii(hotel.address)}`, 24, 64);
-      if (hotel.city || hotel.country) doc.text(`Location: ${ascii(hotel.city || '')}${hotel.country ? ', ' + ascii(hotel.country) : ''}`, 24, 69);
-      if (hotel.phone) doc.text(`Phone: ${ascii(hotel.phone)}`, 24, 74);
       const resCode = r.reservationCode || hotel.bookingCode || '';
+      doc.setTextColor(40);
+      doc.text(pdfFit(doc, ascii(hotel.name || ''), resCode ? 108 : 166, 14, 10), 24, 58);
+      doc.setTextColor(80);
+      if (hotel.address) doc.text(pdfFit(doc, `Address: ${ascii(hotel.address)}`, 166, 9, 7), 24, 64);
+      if (hotel.city || hotel.country) doc.text(pdfFit(doc, `Location: ${ascii(hotel.city || '')}${hotel.country ? ', ' + ascii(hotel.country) : ''}`, 166, 9, 7), 24, 69);
+      if (hotel.phone) doc.text(pdfFit(doc, `Phone: ${ascii(hotel.phone)}`, 166, 9, 7), 24, 74);
       if (resCode) {
         doc.setFillColor(220, 53, 69);
-        doc.rect(135, 53, 58, 9, 'F');
+        doc.rect(135, 48, 58, 9, 'F');
         doc.setFontSize(7);
         doc.setTextColor(255, 255, 255);
-        doc.text('RESERVATION CODE', 164, 57, { align: 'center' });
-        doc.setFontSize(10);
-        doc.text(ascii(resCode), 164, 61, { align: 'center' });
+        doc.text('RESERVATION CODE', 164, 52, { align: 'center' });
+        doc.text(pdfFit(doc, ascii(resCode), 55, 10, 7), 164, 56, { align: 'center' });
       }
 
       // GUEST DETAILS
@@ -12026,9 +12112,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(120);
       doc.text('Full Name:', 20, yPos);
       doc.text('Number of Guests:', 110, yPos);
-      doc.setFontSize(12);
       doc.setTextColor(40);
-      doc.text(ascii(r.customerName || ''), 20, yPos + 6);
+      doc.text(pdfFit(doc, ascii(r.customerName || ''), 86, 12, 8), 20, yPos + 6);
+      doc.setFontSize(12);
       doc.text(String(r.guests || 1), 110, yPos + 6);
       yPos += 14;
 
@@ -12038,8 +12124,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.text('Email:', 110, yPos);
       doc.setFontSize(10);
       doc.setTextColor(40);
-      doc.text(ascii(r.customerPhone || '-'), 20, yPos + 6);
-      doc.text(ascii(r.customerEmail || '-'), 110, yPos + 6);
+      doc.text(pdfFit(doc, ascii(r.customerPhone || '-'), 86, 10, 8), 20, yPos + 6);
+      doc.text(pdfFit(doc, ascii(r.customerEmail || '-'), 84, 10, 8), 110, yPos + 6);
       yPos += 16;
 
       // ACCOMMODATION DETAILS
@@ -12086,10 +12172,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setTextColor(120);
       doc.text('Room Type:', 24, yPos + 32);
       doc.text('Meal Plan:', 110, yPos + 32);
-      doc.setFontSize(11);
       doc.setTextColor(40);
-      doc.text(ascii(r.roomType || ''), 24, yPos + 37);
-      doc.text(ascii(mealPlan(r.concept)), 110, yPos + 37);
+      doc.text(pdfFit(doc, ascii(r.roomType || ''), 82, 11, 8), 24, yPos + 37);
+      doc.text(pdfFit(doc, ascii(mealPlan(r.concept)), 80, 11, 8), 110, yPos + 37);
 
       yPos += 50;
 
@@ -12102,11 +12187,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         yPos += 7;
         doc.setFontSize(10);
         doc.setTextColor(40);
-        const noteLines = doc.splitTextToSize(ascii(r.notes), 175);
+        let noteLines = doc.splitTextToSize(ascii(r.notes), 175);
+        if (noteLines.length > 6) noteLines = [...noteLines.slice(0, 5), pdfFit(doc, noteLines.slice(5).join(' '), 175, 10)];
         doc.text(noteLines, 20, yPos);
         yPos += noteLines.length * 5 + 5;
       }
 
+      // Damga + ödeme notu + koşullar (~84mm) altbilgiye taşacaksa yeni sayfaya geç
+      if (yPos + 84 > 276) { doc.addPage(); yPos = 20; }
       // ÖDEME DURUMU DAMGASI (her zaman PAID)
       const pStat = 'PAID', pc = [34,197,94];
       doc.setDrawColor(pc[0], pc[1], pc[2]);
@@ -14708,15 +14796,19 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
 
                         doc2.setFontSize(8);
                         topRows.forEach(([k, v]) => {
-                          if (y > 275) { doc2.addPage(); y = 15; }
+                          doc2.setFontSize(8); doc2.setFont(undefined,'bold');
+                          const kl = doc2.splitTextToSize(clean(k), 52);
+                          doc2.setFont(undefined,'normal');
+                          const lines = doc2.splitTextToSize(clean(v), 120);
+                          const rh = Math.max(8, Math.max(kl.length, lines.length) * 4 + 4);
+                          if (y - 4 + rh > 287) { doc2.addPage(); y = 15; }
                           const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
-                          doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
+                          doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, rh, 'F');
                           doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
-                          doc2.text(clean(k), 17, y+1);
+                          doc2.text(kl, 17, y+1);
                           doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
-                          const lines = doc2.splitTextToSize(clean(v), 125);
                           doc2.text(lines, 72, y+1);
-                          y += Math.max(8, lines.length * 5);
+                          y += rh;
                           rowIdx++;
                         });
 
@@ -14737,15 +14829,19 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           y += 12; rowIdx = 0;
 
                           sectionRows.forEach(([k, v]) => {
-                            if (y > 275) { doc2.addPage(); y = 15; }
+                            doc2.setFontSize(8); doc2.setFont(undefined,'bold');
+                            const kl = doc2.splitTextToSize(clean(k), 52);
+                            doc2.setFont(undefined,'normal');
+                            const lines = doc2.splitTextToSize(clean(v), 120);
+                            const rh = Math.max(8, Math.max(kl.length, lines.length) * 4 + 4);
+                            if (y - 4 + rh > 287) { doc2.addPage(); y = 15; }
                             const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
-                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
-                            doc2.setFontSize(8); doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
-                            doc2.text(clean(k), 17, y+1);
+                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, rh, 'F');
+                            doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
+                            doc2.text(kl, 17, y+1);
                             doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
-                            const lines = doc2.splitTextToSize(clean(v), 125);
                             doc2.text(lines, 72, y+1);
-                            y += Math.max(8, lines.length * 5);
+                            y += rh;
                             rowIdx++;
                           });
                         });
@@ -14764,15 +14860,19 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           doc2.text(clean('DİĞER'), 17, y+4);
                           y += 12; rowIdx = 0;
                           extraRows.forEach(([k, v]) => {
-                            if (y > 275) { doc2.addPage(); y = 15; }
+                            doc2.setFontSize(8); doc2.setFont(undefined,'bold');
+                            const kl = doc2.splitTextToSize(clean(k), 52);
+                            doc2.setFont(undefined,'normal');
+                            const lines = doc2.splitTextToSize(clean(v), 120);
+                            const rh = Math.max(8, Math.max(kl.length, lines.length) * 4 + 4);
+                            if (y - 4 + rh > 287) { doc2.addPage(); y = 15; }
                             const bg = rowIdx % 2 === 0 ? [245, 248, 255] : [255, 255, 255];
-                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, 8, 'F');
-                            doc2.setFontSize(8); doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
-                            doc2.text(clean(k), 17, y+1);
+                            doc2.setFillColor(...bg); doc2.rect(15, y-4, 180, rh, 'F');
+                            doc2.setTextColor(80,80,80); doc2.setFont(undefined,'bold');
+                            doc2.text(kl, 17, y+1);
                             doc2.setTextColor(30,30,30); doc2.setFont(undefined,'normal');
-                            const lines = doc2.splitTextToSize(clean(v), 125);
                             doc2.text(lines, 72, y+1);
-                            y += Math.max(8, lines.length * 5);
+                            y += rh;
                             rowIdx++;
                           });
                         }
@@ -16762,7 +16862,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       
       {isMobile && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100 }} />}
       <aside style={{ position: 'fixed', left: isMobile ? (sidebarOpen ? 0 : '-280px') : 0, top: 0, bottom: 0, width: '260px', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 200, transition: 'left 0.3s ease', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '32px' }}>✈️</span><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
+        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><img src="/icons/logo.png" alt="Paydos" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }} /><div style={{ flex: 1 }}><h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Paydos</h1><p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Turizm CRM</p></div><button onClick={refreshAllData} disabled={refreshing} title="Firebase'den yenile" style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px' }}>{refreshing ? '⏳' : '🔄'}</button></div></div>
         <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>{menuItems.map((item, idx) => (<button key={item.id} onClick={() => { if (item.external) { window.open(item.external, '_blank', 'noopener'); if (isMobile) setSidebarOpen(false); return; } setActiveModule(item.id); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', marginBottom: '3px', background: activeModule === item.id ? 'rgba(245,158,11,0.15)' : 'transparent', border: activeModule === item.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent', borderRadius: '10px', color: activeModule === item.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: activeModule === item.id ? '600' : '400' }}><span style={{ fontSize: '16px' }}>{item.icon}</span>{item.label}{!isMobile && <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#64748b' }}>{item.external ? '↗' : (SHORTCUT_MODULES[idx]?.[0] === item.id ? `⌘${idx+1}` : '')}</span>}</button>))}</nav>
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}><div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px' }}>{currentUser?.name?.[0] || 'U'}</div><div><p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>{currentUser?.name}</p><p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>{currentUser?.role === 'admin' ? 'Yönetici' : 'Kullanıcı'}</p></div></div><button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🚪 Çıkış Yap</button></div>
       </aside>
