@@ -622,6 +622,15 @@ const titleCaseTr = (s) => {
   return lower.replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
 };
 
+// Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
+const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
+const placeTr = (s) => {
+  if (!s) return '';
+  const n = normalizeTr(s);
+  const hit = turkishProvinces.find(p => normalizeTr(p) === n) || PLACE_ALIAS[n];
+  return hit || titleCaseTr(s);
+};
+
 const validatePassportNo = (passportNo) => {
   if (!passportNo) return null;
   const regex = /^[A-Z][0-9]{7,8}$/;
@@ -2111,7 +2120,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                               }
                             }
                             if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
-                            if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: parsed.birthPlace }));
+                            if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: placeTr(parsed.birthPlace) }));
                             if (parsed.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.birthDate)) setFormData(fd => ({ ...fd, birthDate: parsed.birthDate }));
                             if (parsed.tcKimlik && /^\d{11}$/.test(parsed.tcKimlik)) setFormData(fd => ({ ...fd, tcKimlik: fd.tcKimlik || parsed.tcKimlik }));
                             showToast?.('Pasaport okundu', 'success');
@@ -2360,80 +2369,115 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           {/* KİŞİSEL BİLGİLER */}
           {detailTab === 'info' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* İletişim */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(245,158,11,0.02) 100%)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(245,158,11,0.15)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>📞</div>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>İletişim Bilgileri</h3>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                    <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ background: 'rgba(37,211,102,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(37,211,102,0.3)', minWidth: 0 }}>
-                      <span style={{ fontSize: '20px', flexShrink: 0 }}>📱</span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>WhatsApp</p>
-                        <p style={{ margin: 0, fontSize: '13px', color: '#25d366', fontWeight: '600', wordBreak: 'break-all' }}>{c.phone || '-'}</p>
-                      </div>
-                    </a>
-                    {c.email ? (
-                      <a href={`mailto:${c.email}`} style={{ background: 'rgba(59,130,246,0.15)', padding: '12px', borderRadius: '10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(59,130,246,0.3)', minWidth: 0 }}>
-                        <span style={{ fontSize: '20px', flexShrink: 0 }}>✉️</span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>E-posta</p>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#3b82f6', fontWeight: '600', wordBreak: 'break-all' }}>{(c.email || '').toLowerCase()}</p>
+              {(() => {
+                // ---- Özet verileri ----
+                const today = new Date().toISOString().slice(0, 10);
+                const pp = [...cPassports].filter(p => p.passportNo || p.expiryDate).sort((a, b) => String(b.expiryDate || '').localeCompare(String(a.expiryDate || '')))[0];
+                const ppDays = pp?.expiryDate ? getDaysLeft(pp.expiryDate) : null;
+                const ppColor = !pp ? '#64748b' : ppDays == null ? '#f59e0b' : ppDays < 0 ? '#ef4444' : ppDays <= 180 ? '#ef4444' : ppDays <= 365 ? '#f59e0b' : '#10b981';
+                const ppNote = !pp ? 'Pasaport eklenmemiş' : ppDays == null ? 'Geçerlilik tarihi yok' : ppDays < 0 ? 'Süresi dolmuş' : `${ppDays} gün kaldı`;
+                const myApps = (visaApplications || []).filter(v => String(v.customerId) === String(c.id))
+                  .sort((a, b) => String(b.createdAt || b.applicationDate || '').localeCompare(String(a.createdAt || a.applicationDate || '')));
+                const lastApp = myApps[0];
+                const lastSch = [...cSchengen].sort((a, b) => String(b.endDate || '').localeCompare(String(a.endDate || '')))[0];
+                const myTours = (tours || []).filter(t => (t.reservations || []).some(r => String(r.customerId) === String(c.id) && !r.cancelled))
+                  .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')));
+                const nextTour = myTours.find(t => (t.endDate || t.startDate || '') >= today);
+                const lastTour = myTours[myTours.length - 1];
+                const age = (() => { const d = safeParseDate(c.birthDate); if (!d) return null; const n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return a >= 0 && a < 130 ? a : null; })();
+
+                const fields = [
+                  ['TC Kimlik', c.tcKimlik],
+                  ['Doğum', c.birthDate ? `${formatDate(c.birthDate)}${age != null ? ` · ${age} yaş` : ''}` : ''],
+                  ['Doğum Yeri', placeTr(c.birthPlace)],
+                  ['İkametgah', placeTr(c.city)],
+                  ['Firma', titleCaseTr(c.companyName)],
+                  ['Sektör', c.sector],
+                  ['TK Üyelik', c.tkMemberNo],
+                  ['E-posta', (c.email || '').toLowerCase()],
+                ].filter(([, v]) => v && v !== '-');
+                const missing = [!c.tcKimlik && 'TC', !c.birthDate && 'doğum tarihi', !c.email && 'e-posta', !cPassports.length && 'pasaport'].filter(Boolean);
+
+                const chip = { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', textDecoration: 'none', cursor: 'pointer', border: '1px solid', whiteSpace: 'nowrap' };
+                const card = (color) => ({ textAlign: 'left', background: `linear-gradient(135deg, ${color}1f 0%, ${color}08 100%)`, border: `1px solid ${color}40`, borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', color: '#e8f1f8', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, fontFamily: 'inherit' });
+                const cardHead = { fontSize: '11px', color: '#94a3b8', fontWeight: '600', letterSpacing: '0.3px', display: 'flex', justifyContent: 'space-between', gap: '8px' };
+                const big = { fontSize: '15px', fontWeight: '700', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+                const small = { fontSize: '12px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
+                return (<>
+                  {/* Hızlı işlemler */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {c.phone}</a>}
+                    {c.phone && <a href={`tel:${String(c.phone).replace(/[^\d+]/g, '')}`} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8' }}>📞 Ara</a>}
+                    {c.email && <a href={`mailto:${c.email}`} style={{ ...chip, background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.3)', color: '#60a5fa' }}>✉️ E-posta</a>}
+                    {c.tcKimlik && <button type="button" onClick={() => { try { navigator.clipboard.writeText(String(c.tcKimlik)); showToast('TC kopyalandı', 'success'); } catch { /* izin yok */ } }} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8', fontFamily: 'inherit' }}>📋 TC kopyala</button>}
+                  </div>
+
+                  {/* Özet kartları — tıklayınca ilgili sekmeye geçer */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
+                    <button type="button" onClick={() => setDetailTab('passport')} style={card(ppColor)}>
+                      <div style={cardHead}><span>🛂 PASAPORT</span>{cPassports.length > 1 && <span>{cPassports.length} adet</span>}</div>
+                      <div style={big}>{pp ? `${pp.passportType?.includes('Yeşil') ? '🟢 Yeşil' : pp.passportType?.includes('Gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
+                      <div style={{ ...small, color: ppColor, fontWeight: '600' }}>{pp?.expiryDate ? `Bitiş ${formatDate(pp.expiryDate)} · ` : ''}{ppNote}</div>
+                    </button>
+                    <button type="button" onClick={() => setDetailTab(lastApp ? 'timeline' : 'schengen')} style={card(lastApp ? '#f59e0b' : hasGreenPassport ? '#10b981' : '#64748b')}>
+                      <div style={cardHead}><span>📑 VİZE</span>{myApps.length > 0 && <span>{myApps.length} başvuru</span>}</div>
+                      {lastApp ? (<>
+                        <div style={big}>{lastApp.country || 'Başvuru'}{lastApp.visaDuration ? ` · ${lastApp.visaDuration}` : ''}</div>
+                        <div style={{ ...small, color: '#fbbf24', fontWeight: '600' }}>{lastApp.status || 'Durum yok'}{lastApp.appointmentDate ? ` · Randevu ${formatDate(lastApp.appointmentDate)}` : ''}</div>
+                      </>) : hasGreenPassport ? (<>
+                        <div style={big}>Schengen muaf</div>
+                        <div style={small}>Yeşil pasaport</div>
+                      </>) : lastSch ? (<>
+                        <div style={big}>{lastSch.country} vizesi</div>
+                        <div style={{ ...small, color: getDaysLeft(lastSch.endDate) >= 0 ? '#10b981' : '#94a3b8' }}>{lastSch.endDate ? `Bitiş ${formatDate(lastSch.endDate)}${getDaysLeft(lastSch.endDate) < 0 ? ' · süresi dolmuş' : ''}` : 'Tarih yok'}</div>
+                      </>) : (<>
+                        <div style={big}>—</div>
+                        <div style={small}>Başvuru veya vize kaydı yok</div>
+                      </>)}
+                    </button>
+                    <button type="button" onClick={() => setDetailTab('timeline')} style={card(nextTour ? '#10b981' : '#64748b')}>
+                      <div style={cardHead}><span>✈️ TUR</span>{myTours.length > 0 && <span>{myTours.length} tur</span>}</div>
+                      {nextTour || lastTour ? (<>
+                        <div style={big}>{(nextTour || lastTour).name || 'Tur'}</div>
+                        <div style={{ ...small, color: nextTour ? '#10b981' : '#94a3b8', fontWeight: nextTour ? '600' : '400' }}>{nextTour ? 'Yaklaşan · ' : 'Son tur · '}{formatDate((nextTour || lastTour).startDate)}{(nextTour || lastTour).country ? ` · ${(nextTour || lastTour).country}` : ''}</div>
+                      </>) : (<>
+                        <div style={big}>—</div>
+                        <div style={small}>Tur kaydı yok</div>
+                      </>)}
+                    </button>
+                  </div>
+
+                  {/* Kişisel bilgiler — sadece dolu alanlar */}
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '14px 16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '12px 18px' }}>
+                      {fields.map(([k, v]) => (
+                        <div key={k} style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '2px' }}>{k}</div>
+                          <div style={{ fontSize: '14px', color: '#e8f1f8', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: k === 'Firma' || k === 'E-posta' ? 'normal' : 'nowrap', wordBreak: 'break-word' }}>{v}</div>
                         </div>
-                      </a>
-                    ) : (
-                      <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <span style={{ fontSize: '20px', flexShrink: 0 }}>✉️</span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>E-posta</p>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>-</p>
-                        </div>
-                      </div>
+                      ))}
+                    </div>
+                    {missing.length > 0 && (
+                      <button type="button" onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ marginTop: '12px', background: 'rgba(245,158,11,0.08)', border: '1px dashed rgba(245,158,11,0.35)', borderRadius: '8px', padding: '6px 10px', color: '#f59e0b', fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        ⚠️ Eksik: {missing.join(', ')} — tamamla
+                      </button>
                     )}
                   </div>
-                </div>
-              </div>
 
-              {/* Kimlik Bilgileri */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(59,130,246,0.02) 100%)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(59,130,246,0.15)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🪪</div>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>Kimlik Bilgileri</h3>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <InfoBox label="TC Kimlik No" value={c.tcKimlik} />
-                  <InfoBox label="TK Üyelik No" value={c.tkMemberNo} />
-                  <InfoBox label="Doğum Tarihi" value={formatDate(c.birthDate)} />
-                  <InfoBox label="Doğum Yeri" value={titleCaseTr(c.birthPlace)} />
-                  <InfoBox label="İkametgah İli" value={c.city} />
-                </div>
-              </div>
+                  {c.notes && (
+                    <div style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '14px', padding: '12px 16px' }}>
+                      <div style={{ fontSize: '11px', color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>📝 NOTLAR</div>
+                      <div style={{ fontSize: '13px', color: '#e8f1f8', whiteSpace: 'pre-wrap' }}>{c.notes}</div>
+                    </div>
+                  )}
 
-              {/* İş Bilgileri */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(16,185,129,0.02) 100%)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(16,185,129,0.15)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>💼</div>
-                  <h3 style={{ margin: 0, fontSize: '15px', color: '#ffffff', fontWeight: '600' }}>İş Bilgileri</h3>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <InfoBox label="Sektör" value={c.sector} />
-                  <InfoBox label="Firma" value={titleCaseTr(c.companyName)} />
-                </div>
-                {c.notes && (
-                  <div style={{ marginTop: '10px' }}>
-                    <InfoBox label="Notlar" value={c.notes} />
+                  <div style={{ fontSize: '11px', color: '#475569', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                    {c.createdAt && <span>Oluşturulma: {formatDate(c.createdAt)}</span>}
+                    {c.lastEditedAt && <span>Son güncelleme: {new Date(c.lastEditedAt).toLocaleDateString('tr-TR')}</span>}
                   </div>
-                )}
-              </div>
-
-              {/* Kayıt Bilgileri */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-                {c.createdAt && <div><span style={{ fontSize: '10px', color: '#475569' }}>Oluşturulma: </span><span style={{ fontSize: '11px', color: '#64748b' }}>{formatDate(c.createdAt)}</span></div>}
-                {c.lastEditedAt && <div><span style={{ fontSize: '10px', color: '#475569' }}>Son Güncelleme: </span><span style={{ fontSize: '11px', color: '#64748b' }}>{new Date(c.lastEditedAt).toLocaleDateString('tr-TR')}</span></div>}
-                <div><span style={{ fontSize: '10px', color: '#475569' }}>Durum: </span><span style={{ fontSize: '11px', color: c.verified !== true ? '#eab308' : '#10b981', fontWeight: '600' }}>{c.verified === true ? '✓ Doğrulandı' : '⚠️ Kontrol Bekliyor'}</span></div>
-              </div>
+                </>);
+              })()}
 
               {/* Dinamik Alanlar */}
               {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f)).length > 0 && (() => {
@@ -2486,7 +2530,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(p.expiryDate)} gün</span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: 'minmax(0, 1fr) 320px', alignItems: 'start', gap: '12px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           <InfoBox label="Pasaport No" value={p.passportNo} />
                           <InfoBox label="Veriliş Tarihi" value={formatDate(p.issueDate)} />
@@ -2550,7 +2594,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(234,179,8,0.2)', color: '#eab308', fontWeight: '600' }}>⏰ {getDaysLeft(v.endDate)} gün</span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: 'minmax(0, 1fr) 320px', alignItems: 'start', gap: '12px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           <InfoBox label="Başlangıç" value={formatDate(v.startDate)} />
                           <InfoBox label="Bitiş" value={formatDate(v.endDate)} highlight={v.endDate && getDaysLeft(v.endDate) <= 90} />
@@ -2603,7 +2647,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: '600' }}>⚠️ {getDaysLeft(cUsa.endDate)} gün</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: 'minmax(0, 1fr) 320px', alignItems: 'start', gap: '12px' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <InfoBox label="Vize Başlangıç" value={formatDate(cUsa.startDate)} />
                         <InfoBox label="Vize Bitiş" value={formatDate(cUsa.endDate)} highlight={cUsa.endDate && getDaysLeft(cUsa.endDate) <= 30} />
@@ -3495,7 +3539,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         const newPassports = [...existingPassports, ...added];
                         // Pasaporttan okunan kişisel bilgiler: kartta boşsa doldur, doluysa dokunma
                         const filled = {};
-                        if (aiResult.birthPlace && !existing.birthPlace) filled.birthPlace = aiResult.birthPlace;
+                        if (aiResult.birthPlace && !existing.birthPlace) filled.birthPlace = placeTr(aiResult.birthPlace);
                         if (aiResult.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(aiResult.birthDate) && !existing.birthDate) filled.birthDate = aiResult.birthDate;
                         if (aiResult.tcKimlik && /^\d{11}$/.test(aiResult.tcKimlik) && !existing.tcKimlik) filled.tcKimlik = aiResult.tcKimlik;
                         const patch = { ...filled, passports: JSON.stringify(newPassports), verified: false, lastEditedAt: now, updatedAt: now };
@@ -6798,7 +6842,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     if (!cust) cust = customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(res.customerName || ''));
     const pps = cust ? safeParseJSON(cust.passports).filter(p => p.passportNo).map(p => ({
       name: `${cust.firstName} ${cust.lastName}`.trim(), no: p.passportNo,
-      issueDate: p.issueDate, expiryDate: p.expiryDate, birthPlace: cust.birthPlace || ''
+      issueDate: p.issueDate, expiryDate: p.expiryDate, birthPlace: placeTr(cust.birthPlace)
     })) : [];
     const vz = vizeSartiBul(tour.country);
     const kat = [];
@@ -10078,7 +10122,7 @@ ${flightRaw}`;
   const pickCustomer = (cust) => {
     const pps = safeParseJSON(cust.passports).filter(p => p.passportNo).map(p => ({
       name: `${cust.firstName} ${cust.lastName}`.trim(), no: p.passportNo,
-      issueDate: p.issueDate, expiryDate: p.expiryDate, birthPlace: cust.birthPlace || ''
+      issueDate: p.issueDate, expiryDate: p.expiryDate, birthPlace: placeTr(cust.birthPlace)
     }));
     setContract(c => ({ ...c,
       tuketici: { name: `${cust.firstName} ${cust.lastName}`.trim(), tc: cust.tcKimlik || '', address: cust.city || '', phone: cust.phone || '', email: cust.email || '' },
