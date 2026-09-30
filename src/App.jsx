@@ -4371,6 +4371,29 @@ function BankInfoModule({ appSettings, showToast, isMobile }) {
   );
 }
 
+// ===== Vizeci iş listesi: başvuru girildiği günün ertesi iş günü (cumartesi/pazar atlanır) sabah 10:00'da işlenir.
+// İleri tarihte yapılması gereken başvurularda "İşlem tarihi" elle ileri alınır; o güne kadar listede görünmez.
+const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const nextBizDay = (ymd) => {
+  // createdAt ISO (UTC) ise yerel güne çevir: gece 00:30'da girilen kayıt bir önceki güne sayılmasın
+  const d = !ymd ? new Date() : String(ymd).includes('T') ? new Date(ymd) : new Date(String(ymd).slice(0, 10) + 'T12:00:00');
+  if (isNaN(d)) return '';
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  return ymdLocal(d);
+};
+// İşlem tarihi: elle girildiyse o, yoksa kaydın girildiği günün ertesi iş günü
+const visaProcessDate = (v) => v.processDate || nextBizDay(v.createdAt || v.applicationDate);
+// İşlendi mi: vizeci "İşlendi" dediyse, PNR/randevu girildiyse ya da başvuru sonraki bir aşamadaysa
+const visaProcessed = (v) => !!(v.processedAt || v.pnr || v.appointmentDate) ||
+  /başvuru yapıldı|randevu alındı|konsolos|sonu[çc]|onay|red|iptal|teslim/.test(String(v.status || '').toLocaleLowerCase('tr-TR'));
+// Vizeci listesine giren kayıtlar: işlenmemiş + (elle işlem tarihi verilmiş ya da son 45 günde girilmiş) — eski kayıtlar listeyi doldurmasın
+const visaInWorkQueue = (v) => {
+  if (visaProcessed(v)) return false;
+  if (v.processDate) return true;
+  const c = String(v.createdAt || v.applicationDate || '').slice(0, 10);
+  return !!c && c >= ymdLocal(new Date(Date.now() - 45 * 86400000));
+};
+
 function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
@@ -4486,7 +4509,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       normalizeTr(v.pnr).includes(normalizeTr(visaSearchQuery)) ||
       normalizeTr(v.label).includes(normalizeTr(visaSearchQuery))
     );
+    const todayYmd = ymdLocal(new Date());
     const matchStatus = visaStatusFilter === 'all' ? true
+      : visaStatusFilter === '__bugun__' ? (visaInWorkQueue(v) && visaProcessDate(v) <= todayYmd)
+      : visaStatusFilter === '__ileri__' ? (visaInWorkQueue(v) && visaProcessDate(v) > todayYmd)
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
       : v.status === visaStatusFilter;
     const matchCountry = visaCountryFilter === 'all' ? true : extractVisaCountry(v) === visaCountryFilter;
@@ -4804,6 +4830,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       country: '',
       visaType: '',
       applicationDate: today,
+      processDate: nextBizDay(today),
       appointmentDate: '',
       appointmentTime: '',
       pnr: '',
@@ -5399,11 +5426,16 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 );
               })()}
 
-              {/* Başvuru Tarihi ve İşlem */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Başvuru Tarihi, İşlem Tarihi ve İşlem */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Başvuru Tarihi</label>
                   <input type="date" value={formData.applicationDate || ''} onChange={e => setFormData({...formData, applicationDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İşlem Tarihi <span style={{ color: '#64748b' }}>(vizeci 10:00)</span></label>
+                  <input type="date" value={formData.processDate || visaProcessDate(formData) || ''} onChange={e => setFormData({...formData, processDate: e.target.value, processedAt: null})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: `1px solid ${(formData.processDate || '') > nextBizDay() ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.2)'}`, borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                  {(formData.processDate || '') > nextBizDay() && <div style={{ fontSize: '11px', color: '#a855f7', marginTop: '4px' }}>⏳ İleri tarihli — o güne kadar vizeci listesinde görünmez</div>}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İşlem</label>
@@ -5889,6 +5921,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         const base = visaCountryFilter === 'all' ? visaApplications : visaApplications.filter(v => extractVisaCountry(v) === visaCountryFilter);
         const chips = [
           { key: 'all', label: '📋 Tümü', count: base.length, color: '#3b82f6' },
+          { key: '__bugun__', label: '🗓️ Bugün işlenecek (10:00)', count: base.filter(v => visaInWorkQueue(v) && visaProcessDate(v) <= ymdLocal(new Date())).length, color: '#f43f5e' },
+          { key: '__ileri__', label: '⏳ İleri tarihli', count: base.filter(v => visaInWorkQueue(v) && visaProcessDate(v) > ymdLocal(new Date())).length, color: '#a855f7' },
           ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st).length, color: getStatusColor(st) })),
           { key: '__odenmedi__', label: '💸 Ödenmedi', count: base.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length, color: '#ef4444' },
         ];
@@ -5986,6 +6020,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     <option value="" style={{ background: '#0c1929' }}>Durum değiştir…</option>
                     {visaStatuses.map(st => <option key={st} value={st} style={{ background: '#0c1929' }}>{st}</option>)}
                   </select>
+                  <label style={{ ...btn('rgba(168,85,247,0.15)', '#c084fc'), display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(168,85,247,0.35)', opacity: !selectedIds.length || bulkBusy ? 0.5 : 1 }}>📅 İşlem tarihi
+                    <input type="date" disabled={!selectedIds.length || bulkBusy} value="" onChange={e => { if (e.target.value) bulkUpdateVisas({ processDate: e.target.value, processedAt: null }, `İşlem tarihi ${formatDate(e.target.value)}`); }} style={{ background: 'transparent', border: 'none', color: '#c084fc', colorScheme: 'dark', fontSize: '12px', width: '120px' }} />
+                  </label>
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ processedAt: new Date().toISOString() }, 'İşlendi')} style={btn('rgba(244,63,94,0.2)', '#fb7185')}>✓ İşlendi</button>
                   <button onClick={exitSelectMode} style={{ ...btn('transparent', '#94a3b8'), opacity: 1 }}>✕ Kapat</button>
                 </>);
               })()}
@@ -6006,6 +6044,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
+                      {visaInWorkQueue(v) && (() => {
+                        const pd = visaProcessDate(v), due = pd <= ymdLocal(new Date());
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', fontWeight: 600, background: due ? 'rgba(244,63,94,0.15)' : 'rgba(168,85,247,0.15)', color: due ? '#fb7185' : '#c084fc' }}>
+                              {due ? '🗓️ Bugün işlenecek' : `⏳ İşlem ${formatDate(pd)} · ${getDaysLeft(pd)} gün`}
+                            </span>
+                            {due && !selectMode && <button onClick={async (e) => {
+                              e.stopPropagation();
+                              const patch = { processedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+                              try {
+                                await setDoc(doc(db, 'visa_applications', v._docId || String(v.id)), patch, { merge: true });
+                                setVisaApplications(prev => prev.map(x => x.id === v.id ? { ...x, ...patch } : x));
+                                showToast?.(`✓ ${titleCaseTr(v.customerName)} işlendi`, 'success');
+                              } catch (err) { showToast?.('❌ Kaydedilemedi: ' + err.message, 'error'); }
+                            }} style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700, cursor: 'pointer' }}>✓ İşlendi</button>}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                       <span style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
