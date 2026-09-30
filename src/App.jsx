@@ -4507,7 +4507,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const matchStatus = visaStatusFilter === 'all' ? true
       : visaStatusFilter === '__ileri__' ? !!visaFutureDate(v)
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
-      : v.status === visaStatusFilter;
+      // Durum bölümlerinde ileri tarihli başvuru, tarihi gelene kadar görünmez (vizeci "Başvuru Yapılacak"a
+      // bakıyor; 18 Ekim'e ayarlanan kayıt o sabah kendiliğinden bu bölüme düşer). "Tümü" ve "İleri tarihli"de görünür.
+      : v.status === visaStatusFilter && !visaFutureDate(v);
     const matchCountry = visaCountryFilter === 'all' ? true : extractVisaCountry(v) === visaCountryFilter;
     return matchSearch && matchStatus && matchCountry;
   }).sort((a, b) => {
@@ -5914,7 +5916,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         const chips = [
           { key: 'all', label: '📋 Tümü', count: base.length, color: '#3b82f6' },
           { key: '__ileri__', label: '⏳ İleri tarihli', count: base.filter(v => !!visaFutureDate(v)).length, color: '#a855f7' },
-          ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st).length, color: getStatusColor(st) })),
+          ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st && !visaFutureDate(v)).length, color: getStatusColor(st) })),
           { key: '__odenmedi__', label: '💸 Ödenmedi', count: base.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length, color: '#ef4444' },
         ];
         const current = activeTab === 'all' ? visaStatusFilter : null;
