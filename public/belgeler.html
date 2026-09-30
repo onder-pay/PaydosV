@@ -466,7 +466,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     GB:'GBP',CH:'CHF',LI:'CHF',CZ:'CZK',PL:'PLN',HU:'HUF',RO:'RON',BG:'BGN',DK:'DKK',SE:'SEK',NO:'NOK',IS:'ISK',RS:'RSD',BA:'BAM',MK:'MKD',AL:'ALL',UA:'UAH',RU:'RUB',BY:'BYN',MD:'MDL',GE:'GEL',AZ:'AZN',AM:'AMD',
     US:'USD',CA:'CAD',MX:'MXN',BR:'BRL',AR:'ARS',CL:'CLP',CO:'COP',PE:'PEN',AE:'AED',SA:'SAR',QA:'QAR',KW:'KWD',BH:'BHD',OM:'OMR',JO:'JOD',LB:'LBP',IL:'ILS',EG:'EGP',MA:'MAD',TN:'TND',DZ:'DZD',IR:'IRR',IQ:'IQD',
     CN:'CNY',HK:'HKD',TW:'TWD',JP:'JPY',KR:'KRW',IN:'INR',TH:'THB',VN:'VND',SG:'SGD',MY:'MYR',ID:'IDR',PH:'PHP',LK:'LKR',MV:'MVR',NP:'NPR',PK:'PKR',BD:'BDT',KZ:'KZT',UZ:'UZS',KG:'KGS',TM:'TMT',TJ:'TJS',
-    ZA:'ZAR',KE:'KES',TZ:'TZS',ET:'ETB',NG:'NGN',AU:'AUD',NZ:'NZD',CU:'CUP' };
+    ZA:'ZAR',KE:'KES',TZ:'TZS',ET:'ETB',NG:'NGN',AU:'AUD',NZ:'NZD',CU:'CUP',
+    MO:'MOP',MN:'MNT',KH:'KHR',LA:'LAK',MM:'MMK',PA:'USD',DO:'DOP',CR:'CRC',UY:'UYU',PY:'PYG',EC:'USD',BO:'BOB',VE:'VES',JM:'JMD',PS:'ILS',
+    SN:'XOF',MU:'MUR',SC:'SCR',NA:'NAD',BW:'BWP',ZM:'ZMW',ZW:'USD',UG:'UGX',RW:'RWF',GH:'GHS',LY:'LYD',SD:'SDG',FJ:'FJD' };
   // Ülke kodu → priz (Türkiye: C/F, 230V)
   var PLUG = function (cc) {
     if (/^(DE|FR|NL|BE|AT|ES|PT|GR|FI|SE|NO|DK|IS|PL|CZ|SK|HU|RO|BG|HR|SI|EE|LV|LT|LU|RS|BA|ME|MK|AL|XK|UA|RU|BY|MD|GE|AZ|AM|KZ|UZ|KG|TJ|TM|IR|EG|MA|TN|DZ|ID|KR|MC|AD|SM|VA|IT|CH|LI)$/.test(cc))
@@ -491,6 +493,16 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     return Math.round((part(tz) - part('Europe/Istanbul')) / 60000);
   };
 
+  // CRM'deki ülke adı → ISO kodu. Para birimi ve priz doğrudan buradan; şehir araması da bu ülkeyle sınırlanır
+  // (şehir yanlış/eksik yazılsa bile başka ülkeye kaymasın: "Guanco" → Filipinler hatası)
+  var ISO = { 'türkiye':'TR','kktc':'CY','almanya':'DE','avusturya':'AT','belçika':'BE','çekya':'CZ','çek cumhuriyeti':'CZ','danimarka':'DK','estonya':'EE','finlandiya':'FI','fransa':'FR','hırvatistan':'HR','hollanda':'NL','ispanya':'ES','isveç':'SE','isviçre':'CH','italya':'IT','izlanda':'IS','letonya':'LV','liechtenstein':'LI','lihtenştayn':'LI','litvanya':'LT','lüksemburg':'LU','macaristan':'HU','malta':'MT','norveç':'NO','polonya':'PL','portekiz':'PT','slovakya':'SK','slovenya':'SI','yunanistan':'GR',
+    'birleşik krallık':'GB','ingiltere':'GB','irlanda':'IE','romanya':'RO','bulgaristan':'BG','sırbistan':'RS','karadağ':'ME','kuzey makedonya':'MK','bosna hersek':'BA','arnavutluk':'AL','kosova':'XK','ukrayna':'UA','rusya':'RU','belarus':'BY','moldova':'MD','vatikan':'VA','andorra':'AD','monako':'MC','san marino':'SM',
+    'bae':'AE','birleşik arap emirlikleri':'AE','dubai':'AE','suudi arabistan':'SA','katar':'QA','bahreyn':'BH','kuveyt':'KW','umman':'OM','ürdün':'JO','lübnan':'LB','israil':'IL','filistin':'PS','mısır':'EG','iran':'IR','irak':'IQ',
+    'çin halk cumhuriyeti':'CN','çin':'CN','hong kong':'HK','tayvan':'TW','japonya':'JP','güney kore':'KR','hindistan':'IN','tayland':'TH','vietnam':'VN','singapur':'SG','malezya':'MY','endonezya':'ID','filipinler':'PH','sri lanka':'LK','nepal':'NP','pakistan':'PK','bangladeş':'BD','maldivler':'MV','kazakistan':'KZ','özbekistan':'UZ','kırgızistan':'KG','tacikistan':'TJ','türkmenistan':'TM','azerbaycan':'AZ','gürcistan':'GE','ermenistan':'AM','makao':'MO','moğolistan':'MN','kamboçya':'KH','laos':'LA','myanmar':'MM',
+    'amerika birleşik devletleri':'US','abd':'US','amerika':'US','kanada':'CA','meksika':'MX','brezilya':'BR','arjantin':'AR','şili':'CL','peru':'PE','kolombiya':'CO','küba':'CU','panama':'PA','dominik cumhuriyeti':'DO','kosta rika':'CR','uruguay':'UY','paraguay':'PY','ekvador':'EC','bolivya':'BO','venezuela':'VE','jamaika':'JM',
+    'fas':'MA','tunus':'TN','cezayir':'DZ','güney afrika':'ZA','kenya':'KE','tanzanya':'TZ','etiyopya':'ET','nijerya':'NG','senegal':'SN','mauritius':'MU','seyşeller':'SC','namibya':'NA','botsvana':'BW','zambiya':'ZM','zimbabve':'ZW','uganda':'UG','ruanda':'RW','gana':'GH','libya':'LY','sudan':'SD',
+    'avustralya':'AU','yeni zelanda':'NZ','fiji':'FJ','kıbrıs rum kesimi':'CY','kıbrıs':'CY' };
+  var isoOf = function (name) { return ISO[String(name || '').trim().toLocaleLowerCase('tr-TR')] || ''; };
   var renderInfo = function (f, parent) {
     var s = parseD(f.startDate), e = parseD(f.endDate) || s;
     var hotel = f.hotel && f.hotel.name ? f.hotel : null;
@@ -503,7 +515,11 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     if (hotel) {
       var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
       hc.appendChild(el('div', 'n', '🏨 ' + hotel.name));
-      var adr = [hotel.address, hotel.city, hotel.country].filter(Boolean).join(', ');
+      // Adres zaten şehir/ülkeyi içeriyorsa tekrar ekleme
+      var low = String(hotel.address || '').toLocaleLowerCase('tr-TR');
+      var parts = String(hotel.address || '').split(',').map(function (x) { return x.trim(); });
+      var hasCountry = parts.some(function (x) { return isoOf(x) && isoOf(x) === isoOf(hotel.country); });
+      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(String(x).toLocaleLowerCase('tr-TR')) < 0; })).filter(Boolean).join(', ');
       if (adr) hc.appendChild(el('div', 'a', adr));
       var hb = el('div', 'b');
       var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
@@ -519,17 +535,24 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     wrap.appendChild(disc);
     var showDisc = function () { disc.style.display = 'block'; };
 
-    var place = f.city || (hotel && hotel.city) || '';
-    if (!place || !s) return;
-    getJSON('https://geocoding-api.open-meteo.com/v1/search?count=5&language=tr&name=' + encodeURIComponent(place)).then(function (g) {
-      var list = (g && g.results) || [];
-      var want = String(f.country || '').toLocaleLowerCase('tr-TR');
-      var loc = list.filter(function (r) { return want && String(r.country || '').toLocaleLowerCase('tr-TR') === want; })[0] || list[0];
-      if (!loc) return;
-      var cc = String(loc.country_code || '').toUpperCase();
+    var tourCC = isoOf(f.country) || isoOf(hotel && hotel.country);
+    var places = [f.city, hotel && hotel.city].filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    if (!s || (!places.length && !tourCC)) return;
+    // Şehri turun ülkesinde ara (ülke biliniyorsa); bulunamazsa diğer şehir adını dene
+    var geo = function (i) {
+      if (i >= places.length) return Promise.resolve(null);
+      return getJSON('https://geocoding-api.open-meteo.com/v1/search?count=10&language=tr&name=' + encodeURIComponent(places[i]) + (tourCC ? '&countryCode=' + tourCC : ''))
+        .then(function (g) {
+          var list = ((g && g.results) || []).filter(function (r) { return !tourCC || String(r.country_code || '').toUpperCase() === tourCC; });
+          return list[0] || geo(i + 1);
+        }).catch(function () { return geo(i + 1); });
+    };
+    geo(0).then(function (loc) {
+      var cc = tourCC || String((loc && loc.country_code) || '').toUpperCase();
+      if (!cc) return;
 
       // --- Saat farkı ---
-      if (loc.timezone) {
+      if (loc && loc.timezone && cc !== 'TR') {
         try {
           var off = tzOffset(loc.timezone, s);
           var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', '🕐 Saat farkı'));
@@ -566,7 +589,8 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         }).catch(function () {});
       }
 
-      // --- Hava durumu ---
+      // --- Hava durumu --- (konum bulunamadıysa gösterilmez; yanlış şehrin havasını göstermektense hiç göstermemek iyi)
+      if (!loc) return;
       var today = new Date(); today.setHours(0, 0, 0, 0);
       var toStart = Math.round((s - today) / 86400000), toEnd = Math.round((e - today) / 86400000);
       if (toEnd < 0) return; // seyahat bitti

@@ -4371,6 +4371,24 @@ function BankInfoModule({ appSettings, showToast, isMobile }) {
   );
 }
 
+// ===== Vizeci iş listesi: başvuru girildiği günün ertesi iş günü (cumartesi/pazar atlanır) sabah 10:00'da işlenir.
+// İleri tarihte yapılması gereken başvurularda "İşlem tarihi" elle ileri alınır; o güne kadar listede görünmez.
+const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const nextBizDay = (ymd) => {
+  // createdAt ISO (UTC) ise yerel güne çevir: gece 00:30'da girilen kayıt bir önceki güne sayılmasın
+  const d = !ymd ? new Date() : String(ymd).includes('T') ? new Date(ymd) : new Date(String(ymd).slice(0, 10) + 'T12:00:00');
+  if (isNaN(d)) return '';
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  return ymdLocal(d);
+};
+// İleri tarihli: elle ileri bir işlem tarihi verilmiş ve başvuru henüz ilerlememiş (PNR/randevu yok, sonraki aşamada değil)
+const visaFutureDate = (v) => {
+  if (!v.processDate || v.processDate <= ymdLocal(new Date())) return '';
+  if (v.pnr || v.appointmentDate) return '';
+  if (/başvuru yapıldı|randevu alındı|konsolos|sonu[çc]|onay|red|iptal|teslim/.test(String(v.status || '').toLocaleLowerCase('tr-TR'))) return '';
+  return v.processDate;
+};
+
 function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
@@ -4487,6 +4505,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       normalizeTr(v.label).includes(normalizeTr(visaSearchQuery))
     );
     const matchStatus = visaStatusFilter === 'all' ? true
+      : visaStatusFilter === '__ileri__' ? !!visaFutureDate(v)
       : visaStatusFilter === '__odenmedi__' ? (!v.paymentStatus || v.paymentStatus === 'Ödenmedi')
       : v.status === visaStatusFilter;
     const matchCountry = visaCountryFilter === 'all' ? true : extractVisaCountry(v) === visaCountryFilter;
@@ -5399,11 +5418,16 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 );
               })()}
 
-              {/* Başvuru Tarihi ve İşlem */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Başvuru Tarihi, İşlem Tarihi ve İşlem */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Başvuru Tarihi</label>
                   <input type="date" value={formData.applicationDate || ''} onChange={e => setFormData({...formData, applicationDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri Tarihte Başvuru <span style={{ color: '#64748b' }}>(boş = normal)</span></label>
+                  <input type="date" min={nextBizDay()} value={formData.processDate || ''} onChange={e => setFormData({...formData, processDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: `1px solid ${formData.processDate ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.2)'}`, borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                  {formData.processDate && <div style={{ fontSize: '11px', color: '#a855f7', marginTop: '4px' }}>⏳ Vizeci bu başvuruyu {formatDate(formData.processDate)} tarihinde yapacak <button type="button" onClick={() => setFormData({...formData, processDate: ''})} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>× kaldır</button></div>}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İşlem</label>
@@ -5889,6 +5913,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         const base = visaCountryFilter === 'all' ? visaApplications : visaApplications.filter(v => extractVisaCountry(v) === visaCountryFilter);
         const chips = [
           { key: 'all', label: '📋 Tümü', count: base.length, color: '#3b82f6' },
+          { key: '__ileri__', label: '⏳ İleri tarihli', count: base.filter(v => !!visaFutureDate(v)).length, color: '#a855f7' },
           ...visaStatuses.map(st => ({ key: st, label: st, count: base.filter(v => v.status === st).length, color: getStatusColor(st) })),
           { key: '__odenmedi__', label: '💸 Ödenmedi', count: base.filter(v => !v.paymentStatus || v.paymentStatus === 'Ödenmedi').length, color: '#ef4444' },
         ];
@@ -5986,6 +6011,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     <option value="" style={{ background: '#0c1929' }}>Durum değiştir…</option>
                     {visaStatuses.map(st => <option key={st} value={st} style={{ background: '#0c1929' }}>{st}</option>)}
                   </select>
+                  <label style={{ ...btn('rgba(168,85,247,0.15)', '#c084fc'), display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(168,85,247,0.35)', opacity: !selectedIds.length || bulkBusy ? 0.5 : 1 }}>⏳ İleri tarih
+                    <input type="date" disabled={!selectedIds.length || bulkBusy} value="" onChange={e => { if (e.target.value) bulkUpdateVisas({ processDate: e.target.value }, `İleri tarih ${formatDate(e.target.value)}`); }} style={{ background: 'transparent', border: 'none', color: '#c084fc', colorScheme: 'dark', fontSize: '12px', width: '120px' }} />
+                  </label>
                   <button onClick={exitSelectMode} style={{ ...btn('transparent', '#94a3b8'), opacity: 1 }}>✕ Kapat</button>
                 </>);
               })()}
@@ -6006,6 +6034,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
+                      {visaFutureDate(v) && (
+                        <span style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}>
+                          ⏳ Başvuru {formatDate(v.processDate)} tarihinde yapılacak · {getDaysLeft(v.processDate)} gün
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                       <span style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
@@ -6382,7 +6415,7 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -8102,7 +8135,30 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             return days !== null && days > 0;
                           });
 
+                          // Geçerli vize yoksa: bu müşterinin son 12 aydaki Schengen/tur ülkesi başvurusu var mı?
+                          const appBadge = () => {
+                            const lc = (x) => String(x || '').toLocaleLowerCase('tr-TR');
+                            const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+                            const app = (visaApplications || [])
+                              .filter(a => String(a.customerId) === String(customer.id) || (customer._docId && String(a.customerId) === String(customer._docId)))
+                              .filter(a => {
+                                const cat = a.categoryId || a.category;
+                                const txt = lc(`${a.country || ''} ${a.visaDuration || ''}`);
+                                return cat === 'schengen' || txt.includes(lc(tour.country)) || schengenCountries.some(c => txt.includes(lc(c)));
+                              })
+                              .filter(a => String(a.createdAt || a.applicationDate || '9999').slice(0, 10) >= yearAgo)
+                              .sort((a, b) => String(b.createdAt || b.applicationDate || '').localeCompare(String(a.createdAt || a.applicationDate || '')))[0];
+                            if (!app) return null;
+                            const st = lc(app.status);
+                            if (/iptal/.test(st)) return null; // iptal edilen başvuru sayılmaz
+                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (/onay/.test(st)) return { label: '✅ Vize Onaylandı', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+                            const rnd = app.appointmentDate ? ` · Randevu ${formatDate(app.appointmentDate).slice(0, 5)}` : '';
+                            return { label: `📑 Başvuru — ${app.status || 'Açık'}${rnd}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
+                          };
+
                           if (!validVisa) {
+                            const ab = appBadge(); if (ab) return ab;
                             // Süresi bitmiş vize var mı?
                             const expiredVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) !== null && getDaysLeft(v.endDate) <= 0);
                             if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
@@ -16959,7 +17015,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;

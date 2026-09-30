@@ -888,6 +888,44 @@ const countryFromTypeName = (name) => {
   return '';
 };
 
+// ===== İleri tarihli başvuru: Telegram'da takvimden tarih seçimi =====
+// CRM'deki "İleri Tarihte Başvuru" alanına (processDate) yazar; vizeci o güne kadar başvuruyu yapmaz.
+const TR_AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const trToday = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+const ymdOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtTr = (ymd) => { const [y, m, d] = String(ymd).split('-'); return `${d}.${m}.${y}`; };
+// ym: 'YYYY-MM'. Geçmiş günler ve bugün seçilemez (ileri tarih = yarından itibaren)
+// Telegram buton metni boş olamaz; görünmez karakter
+const BLANK = '\u2800';
+const calendarKb = (appId, ym) => {
+  const now = trToday(); const todayYmd = ymdOf(now);
+  const tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1); // varsayılan: yarının ayı (ay sonunda boş takvim açılmasın)
+  let [y, m] = (ym || `${tmr.getFullYear()}-${tmr.getMonth() + 1}`).split('-').map(Number);
+  const first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate();
+  const prev = new Date(y, m - 2, 1), next = new Date(y, m, 1);
+  const pYm = `${prev.getFullYear()}-${prev.getMonth() + 1}`, nYm = `${next.getFullYear()}-${next.getMonth() + 1}`;
+  const canPrev = prev.getFullYear() * 12 + prev.getMonth() >= now.getFullYear() * 12 + now.getMonth();
+  const rows = [[
+    { text: canPrev ? '‹' : BLANK, callback_data: canPrev ? `va|cal|${appId}|${pYm}` : 'va|noop' },
+    { text: `${TR_AYLAR[m - 1]} ${y}`, callback_data: 'va|noop' },
+    { text: '›', callback_data: `va|cal|${appId}|${nYm}` },
+  ], ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'].map(t => ({ text: t, callback_data: 'va|noop' }))];
+  let row = [], lead = (first.getDay() + 6) % 7; // pazartesi başlangıçlı
+  for (let i = 0; i < lead; i++) row.push({ text: BLANK, callback_data: 'va|noop' });
+  for (let d = 1; d <= days; d++) {
+    const ymd = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    row.push(ymd > todayYmd ? { text: String(d), callback_data: `va|setd|${appId}|${ymd}` } : { text: '·', callback_data: 'va|noop' });
+    if (row.length === 7) { rows.push(row); row = []; }
+  }
+  if (row.length) { while (row.length < 7) row.push({ text: BLANK, callback_data: 'va|noop' }); rows.push(row); }
+  rows.push([{ text: '✖️ Vazgeç', callback_data: `va|fdx|${appId}` }]);
+  return { inline_keyboard: rows };
+};
+const futureBtn = (appId, has) => ({ inline_keyboard: [[
+  { text: has ? '📅 İleri tarihi değiştir' : '⏳ İleri tarihte başvurulacak', callback_data: `va|fd|${appId}` },
+  ...(has ? [{ text: '🗑 İleri tarihi kaldır', callback_data: `va|clrd|${appId}` }] : [])
+]] });
+
 // visa_applications'a başvuru kaydet (CRM formData yapısıyla birebir)
 const saveVisaApplication = async (db, cust, catId, typeObj, status) => {
   const cat = VISA_CATS.find(c => c.id === catId);
@@ -1108,8 +1146,41 @@ exports.telegramBot = functions
             await tg(T, 'sendMessage', {
               chat_id: cbChatId,
               text: `✅ *Vize başvurusu oluşturuldu*\n👤 ${cust.name}\n${catLabel}${rec.country ? ` — ${rec.country}` : ''}\n📋 ${typeObj.name} · ${typeObj.price}${typeObj.currency}\n📌 Durum: ${status}\n\n_CRM → Vize Başvuruları'nda görünür._${vizeEvrakMsg}`,
-              parse_mode: 'Markdown'
+              parse_mode: 'Markdown',
+              reply_markup: futureBtn(rec.id, false)
             });
+            return res.status(200).send('OK');
+          }
+
+          // Takvimde tıklanamayan hücreler
+          if (step === 'noop') return res.status(200).send('OK');
+
+          // ⏳ İleri tarih: takvimi aç / ay değiştir
+          if (step === 'fd' || step === 'cal') {
+            const appId = parts[2];
+            await tg(T, 'editMessageReplyMarkup', { chat_id: cbChatId, message_id: cbMsgId, reply_markup: calendarKb(appId, step === 'cal' ? parts[3] : '') });
+            return res.status(200).send('OK');
+          }
+          // Takvimden vazgeç → butonu geri getir
+          if (step === 'fdx') {
+            const appId = parts[2];
+            let has = false; try { const d = await cfg.db.collection('visa_applications').doc(appId).get(); has = !!d.data()?.processDate; } catch (e) {}
+            await tg(T, 'editMessageReplyMarkup', { chat_id: cbChatId, message_id: cbMsgId, reply_markup: futureBtn(appId, has) });
+            return res.status(200).send('OK');
+          }
+          // Tarih seçildi → CRM'e yaz
+          if (step === 'setd' || step === 'clrd') {
+            const appId = parts[2], ymd = step === 'setd' ? parts[3] : '';
+            if (step === 'setd' && !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(200).send('OK');
+            const ref = cfg.db.collection('visa_applications').doc(appId);
+            const snap = await ref.get();
+            if (!snap.exists) { await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Başvuru bulunamadı (CRM\'den silinmiş olabilir).' }); return res.status(200).send('OK'); }
+            await ref.set({ processDate: ymd, updatedAt: new Date().toISOString() }, { merge: true });
+            await tg(T, 'editMessageReplyMarkup', { chat_id: cbChatId, message_id: cbMsgId, reply_markup: futureBtn(appId, !!ymd) });
+            const who = snap.data()?.customerName || '';
+            await tg(T, 'sendMessage', { chat_id: cbChatId, parse_mode: 'Markdown',
+              text: ymd ? `⏳ *İleri tarihli başvuru*\n👤 ${who}\n📅 Başvuru *${fmtTr(ymd)}* tarihinde yapılacak.\n_Vizeci o güne kadar bu başvuruyu yapmaz._`
+                        : `🗑 ${who} — ileri tarih kaldırıldı, başvuru normal sırada (ertesi iş günü) yapılacak.` });
             return res.status(200).send('OK');
           }
 
