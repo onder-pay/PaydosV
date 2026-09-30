@@ -581,7 +581,20 @@ const passportExpiryWarn = (expiryDate) => {
   return '';
 };
 
+// Doğum yeri: pasaporttaki "DENIZLI" gibi büyük harfli ASCII yazımı 81 il listesiyle eşleştirip doğru yazar
+// (CRM'deki placeTr ile aynı mantık). İl değilse (ilçe/yurt dışı) Türkçe başlık biçimine çevrilir.
+const TR_ILLER = ['Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin','Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale','Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum','Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkari','Hatay','Isparta','Mersin','İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli','Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş','Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas','Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak','Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan','Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce'];
+const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
+const normTr = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().trim();
+const placeTr = (x) => {
+  if (!x) return '';
+  const n = normTr(x);
+  return TR_ILLER.find(p => normTr(p) === n) || PLACE_ALIAS[n] || titleCaseTr(String(x).trim());
+};
+
 const savePassport = async (db, custs, json, img) => {
+  if (json.birthPlace) json.birthPlace = placeTr(json.birthPlace);
+  const bpLine = json.birthPlace ? `\n📍 Doğum yeri: ${json.birthPlace}` : '';
   const ref = db.collection('customers');
 
   // İsim temizleme: "İMZA ATAMAZ" gibi geçersiz kelimeler + "TUR" ülke kodu
@@ -635,7 +648,7 @@ const savePassport = async (db, custs, json, img) => {
       passports: JSON.stringify(ps),
       verified: false
     }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
   } else {
     const id = genId();
     await ref.doc(String(id)).set({
@@ -648,7 +661,7 @@ const savePassport = async (db, custs, json, img) => {
       verified: false, createdBy: 'Telegram Bot',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
-    return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}\n📘 ${json.passportNo}${passportExpiryWarn(json.expiryDate)}`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
+    return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}\n📘 ${json.passportNo}${bpLine}${passportExpiryWarn(json.expiryDate)}`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
   }
 };
 

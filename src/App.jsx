@@ -44,6 +44,9 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
 const RES_DOCS = [
   { field: 'fuarTicketUrl', icon: '🎫', label: 'Fuar bileti', color: '#10b981', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.3)' },
   { field: 'flightTicketUrl', icon: '✈️', label: 'Uçak bileti', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.3)' },
+  // Biniş kartları: havayolu çoğu zaman herkesinkini tek PDF'te (kişi başı sayfa) verir → split: sayfalar kişiye ayrılır
+  { field: 'boardingOutUrl', icon: '🛫', label: 'Gidiş biniş kartı', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)', border: 'rgba(6,182,212,0.3)', split: true },
+  { field: 'boardingRetUrl', icon: '🛬', label: 'Dönüş biniş kartı', color: '#a855f7', bg: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.3)', split: true },
 ];
 
 // pdf.js'i CDN'den yükle — PDF içindeki metni tarayıcıda okumak için (toplu bilet eşleştirme)
@@ -56,6 +59,34 @@ const loadPdfJs = () => new Promise((resolve, reject) => {
   s.onerror = () => reject(new Error('pdf.js yüklenemedi'));
   document.head.appendChild(s);
 });
+// Sayfa sayfa metin (biniş kartı gibi kişi başı sayfalı PDF'leri ayırmak için)
+const pdfPagesText = async (file, max = 80) => {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const out = [];
+  for (let i = 1; i <= Math.min(pdf.numPages, max); i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    out.push(tc.items.map(it => it.str).join(' '));
+  }
+  return out;
+};
+// pdf-lib (CDN) — PDF'ten seçili sayfaları yeni PDF olarak çıkarmak için
+const loadPdfLib = () => new Promise((resolve, reject) => {
+  if (window.PDFLib) return resolve(window.PDFLib);
+  const sc = document.createElement('script');
+  sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+  sc.onload = () => window.PDFLib ? resolve(window.PDFLib) : reject(new Error('pdf-lib yüklenemedi'));
+  sc.onerror = () => reject(new Error('pdf-lib yüklenemedi'));
+  document.head.appendChild(sc);
+});
+const pdfExtractPages = async (file, pages) => {
+  const { PDFDocument } = await loadPdfLib();
+  const src = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const out = await PDFDocument.create();
+  (await out.copyPages(src, pages)).forEach(pg => out.addPage(pg));
+  const base = file.name.replace(/\.pdf$/i, '');
+  return new File([await out.save()], `${base}_s${pages.map(p => p + 1).join('-')}.pdf`, { type: 'application/pdf' });
+};
 const pdfFileText = async (file) => {
   const pdfjs = await loadPdfJs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
@@ -6786,6 +6817,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
         docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
       }
       if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
+      if (res.boardingOutUrl) docs.push({ icon: '🛫', label: 'Gidiş Biniş Kartı', url: res.boardingOutUrl });
+      if (res.boardingRetUrl) docs.push({ icon: '🛬', label: 'Dönüş Biniş Kartı', url: res.boardingRetUrl });
       // Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
       const flights = [];
       const o = tour.offerData || {};
@@ -6800,7 +6833,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
       await setDoc(doc(db, 'paylasimlar', token), {
         customerName: res.customerName || '', tourName: tour.name || '',
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
-        docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || ''
+        docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
+        // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
+        hotel: hi.name ? { name: hi.name || '', address: hi.address || '', city: hi.city || '', country: hi.country || '', phone: hi.phone || '' } : null,
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' }
       });
       if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
       const link = `${window.location.origin}/b/${token}`;
@@ -7433,21 +7469,37 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     if (!files.length) { showToast?.('Dosya seçilmedi (en fazla 10MB/dosya)', 'error'); return; }
     const resList = (tour.reservations || []).filter(r => !r.cancelled && r.customerName);
     setBulkTicket({ tourId: tour.id, field, rows: [], busy: true });
+    // Ad-soyadın TÜM kelimeleri metinde geçiyorsa eşleşir; birden fazla kişi geçiyorsa (grup bileti) hepsine atanır
+    // (Bilette ikinci ad yazılmayabilir: ilk ad + soyad geçmesi de yeterli)
+    const matchRes = (words) => resList.filter(r => {
+      const t = [...nameWords(r.customerName)].filter(w => w.length > 1);
+      if (!t.length) return false;
+      return t.every(w => words.has(w)) || (t.length >= 3 && words.has(t[0]) && words.has(t[t.length - 1]));
+    }).map(r => r.id);
+    const split = !!RES_DOCS.find(d => d.field === field)?.split;
     const rows = [];
     for (const [i, file] of files.entries()) {
       let resIds = [], note = '';
       if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
         try {
+          if (split) {
+            // Biniş kartı: her sayfayı ayrı eşleştir; sayfalar farklı kişilere aitse PDF kişi başı bölünür
+            const pages = await pdfPagesText(file);
+            const per = pages.map(t => matchRes(nameWords(t)));
+            const owners = new Set(per.filter(ids => ids.length === 1).map(ids => ids[0]));
+            if (pages.length > 1 && owners.size > 1) {
+              const byRes = new Map();
+              per.forEach((ids, pi) => { if (ids.length === 1) byRes.set(ids[0], [...(byRes.get(ids[0]) || []), pi]); });
+              [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '' }));
+              const rest = per.map((ids, pi) => ids.length === 1 ? -1 : pi).filter(pi => pi >= 0);
+              if (rest.length) rows.push({ key: `${i}_rest_${file.name}`, file, pages: rest, resIds: [], note: `${rest.length} sayfada isim bulunamadı — elle seçin` });
+              continue;
+            }
+          }
           const words = nameWords(await pdfFileText(file));
           if (words.size === 0) note = 'PDF\'de metin yok (taranmış olabilir) — elle seçin';
           else {
-            // Ad-soyadın TÜM kelimeleri PDF'te geçiyorsa eşleşir; birden fazla kişi geçiyorsa (grup bileti) hepsine atanır
-            // (Bilette ikinci ad yazılmayabilir: ilk ad + soyad geçmesi de yeterli)
-            resIds = resList.filter(r => {
-              const t = [...nameWords(r.customerName)].filter(w => w.length > 1);
-              if (!t.length) return false;
-              return t.every(w => words.has(w)) || (t.length >= 3 && words.has(t[0]) && words.has(t[t.length - 1]));
-            }).map(r => r.id);
+            resIds = matchRes(words);
             if (!resIds.length) note = 'İsim bulunamadı — elle seçin';
           }
         } catch (e) { note = 'PDF okunamadı — elle seçin'; }
@@ -7465,13 +7517,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
     const patches = {}; let fail = 0;
     for (const row of todo) {
       try {
-        const { url, path } = await storeResDocFile(tour, `toplu_${bt.field}`, row.file);
+        const f = row.pages ? await pdfExtractPages(row.file, row.pages) : row.file;
+        const { url, path } = await storeResDocFile(tour, `toplu_${bt.field}`, f);
         row.resIds.forEach(id => { patches[id] = { [bt.field]: url, [`${bt.field}Path`]: path }; });
       } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', row.file.name, e.message); }
     }
     try {
       if (Object.keys(patches).length) await patchTourReservations(bt.tourId, patches);
-      showToast?.(`🎫 ${Object.keys(patches).length} kişiye bilet eklendi${fail ? `, ${fail} dosya yüklenemedi` : ''}`, fail ? 'warning' : 'success');
+      const dd = RES_DOCS.find(d => d.field === bt.field) || RES_DOCS[0];
+      showToast?.(`${dd.icon} ${Object.keys(patches).length} kişiye ${dd.label.toLocaleLowerCase('tr-TR')} eklendi${fail ? `, ${fail} dosya yüklenemedi` : ''}`, fail ? 'warning' : 'success');
       setBulkTicket(null);
     } catch (e) {
       showToast?.('❌ Tura kaydedilemedi: ' + e.message, 'error');
@@ -7730,12 +7784,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
               return (
                 <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
                   <h4 style={{ margin: '0 0 4px', fontSize: '15px' }}>{label} — toplu yükleme</h4>
-                  <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>PDF'teki yolcu adıyla otomatik eşleştirildi. Kontrol edin; yanlışsa × ile çıkarın, eksikse listeden ekleyin. Mevcut bileti olan kişide eskisinin yerine geçer.</p>
+                  <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>{dd.split ? 'Çok sayfalı PDF\'ler sayfa sayfa okunup her yolcuya kendi sayfası ayrıldı. ' : ''}PDF'teki yolcu adıyla otomatik eşleştirildi. Kontrol edin; yanlışsa × ile çıkarın, eksikse listeden ekleyin. Mevcut bileti olan kişide eskisinin yerine geçer.</p>
                   {bulkTicket.busy ? <p style={{ fontSize: '13px' }}>⏳ PDF'ler okunuyor...</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto' }}>
                       {bulkTicket.rows.map(row => (
                         <div key={row.key} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px', border: `1px solid ${row.resIds.length ? 'rgba(16,185,129,0.3)' : 'rgba(234,179,8,0.35)'}` }}>
-                          <div style={{ fontSize: '12px', color: '#e8f1f8', wordBreak: 'break-all', marginBottom: '6px' }}>📄 {row.file.name}</div>
+                          <div style={{ fontSize: '12px', color: '#e8f1f8', wordBreak: 'break-all', marginBottom: '6px' }}>📄 {row.file.name}{row.pages && <span style={{ color: '#06b6d4', marginLeft: '6px' }}>· sayfa {row.pages.map(p => p + 1).join(', ')}</span>}</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
                             {row.resIds.map(id => {
                               const r = resList.find(x => x.id === id);
@@ -16186,6 +16240,21 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                 ➕ Ekle
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'tourSettings' && (
+        <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#f59e0b' }}>📞 Belge Linkinde İletişim</h3>
+          <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>Müşteriye gönderilen tur linkinin altındaki "Yardıma mı ihtiyacınız var?" kartında görünür. Değişiklik, link yeniden paylaşılınca yansır.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>Aranacak telefon</label>
+              <input value={appSettings?.shareContact?.phone ?? '+90 258 263 71 76'} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), phone: e.target.value } })} placeholder="+90 258 263 71 76" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
+            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>WhatsApp numarası (boşsa WhatsApp butonu çıkmaz)</label>
+              <input value={appSettings?.shareContact?.whatsapp || ''} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), whatsapp: e.target.value } })} placeholder="+90 5xx xxx xx xx" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
+            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>Instagram kullanıcı adı (boşsa "Takip et" butonu çıkmaz)</label>
+              <input value={appSettings?.shareContact?.instagram ?? 'paydostur'} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), instagram: e.target.value.replace(/^.*instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#\s].*$/, '') } })} placeholder="paydostur" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
           </div>
         </div>
       )}
