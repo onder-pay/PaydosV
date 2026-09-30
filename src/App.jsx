@@ -6422,6 +6422,9 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
+// Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
+const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
+
 function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
@@ -6880,7 +6883,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       });
       if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
       const link = `${window.location.origin}/b/${token}`;
-      const text = `Sayın ${res.customerName || ''},\n\n${tour.name || 'Tur'} için belgeleriniz (${[...docs.map(d => d.label.split(' — ')[0]), ...(flights.length ? ['Uçuş Takibi'] : [])].join(', ')}):\n${link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm`;
+      const belgeler = [...docs.map(d => d.label.split(' — ')[0]), ...(flights.length ? ['Uçuş Takibi'] : [])].join(', ');
+      const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
+      let text = tpl.replace(/\{isim\}/g, res.customerName || '').replace(/\{tur\}/g, tour.name || 'Tur').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
+      if (!text.includes(link)) text += `\n${link}`; // şablonda {link} unutulsa da link gitsin
       setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length + (flights.length ? 1 : 0) });
     } catch (e) {
       showToast?.('Link hazırlanamadı: ' + e.message, 'error');
@@ -7805,9 +7811,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '420px' }}>
                   <h4 style={{ margin: '0 0 6px', fontSize: '16px' }}>🔗 Belge linki hazır</h4>
                   <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>{shareReady.name} — {shareReady.count} belge</p>
-                  <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px', fontSize: '12px', wordBreak: 'break-all', marginBottom: '14px', color: '#e8f1f8' }}>{shareReady.link}</div>
+                  <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>✏️ Gönderilecek mesaj (düzenleyebilirsiniz)</label>
+                  <textarea value={shareReady.text} onChange={e => setShareReady({ ...shareReady, text: e.target.value })} rows={8}
+                    style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '10px', fontSize: '13px', lineHeight: 1.45, color: '#e8f1f8', fontFamily: 'inherit', resize: 'vertical', marginBottom: '6px' }} />
+                  {!shareReady.text.includes(shareReady.link) && <div style={{ fontSize: '11px', color: '#f59e0b', marginBottom: '8px' }}>⚠️ Mesajda link yok — müşteri belgelere ulaşamaz</div>}
+                  <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '12px' }}>Kalıcı değişiklik için: Ayarlar → Tur Ayarları → Belge linki mesajı</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <a href={`https://wa.me/${shareReady.phone || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Mesajı kopyala</button>
                     <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.link); showToast?.('Link kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı — linki elle seçin', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Linki Kopyala</button>
                     <button onClick={() => window.open(shareReady.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
                   </div>
@@ -16309,6 +16320,14 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
 
       {activeTab === 'tourSettings' && (
         <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#f59e0b' }}>💬 Belge Linki Mesajı</h3>
+          <p style={{ margin: '0 0 8px', fontSize: '11px', color: '#64748b' }}>Tur rezervasyonunda 🔗 ile link paylaşırken WhatsApp'a giden hazır metin. Kullanılabilir: <b>{'{isim}'}</b> müşteri adı, <b>{'{tur}'}</b> tur adı, <b>{'{belgeler}'}</b> belge listesi, <b>{'{link}'}</b> link. Her gönderimde pencerede ayrıca düzenlenebilir.</p>
+          <textarea value={appSettings?.shareMessageTemplate || DEFAULT_SHARE_MSG} onChange={e => setAppSettings({ ...appSettings, shareMessageTemplate: e.target.value })} rows={7}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', lineHeight: 1.45, fontFamily: 'inherit', resize: 'vertical', marginBottom: '6px' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            {!(appSettings?.shareMessageTemplate || DEFAULT_SHARE_MSG).includes('{link}') ? <span style={{ fontSize: '11px', color: '#f59e0b' }}>⚠️ {'{link}'} yok — link mesajın sonuna eklenir</span> : <span />}
+            <button onClick={() => setAppSettings({ ...appSettings, shareMessageTemplate: '' })} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>
+          </div>
           <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#f59e0b' }}>📞 Belge Linkinde İletişim</h3>
           <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>Müşteriye gönderilen tur linkinin altındaki "Yardıma mı ihtiyacınız var?" kartında görünür. Değişiklik, link yeniden paylaşılınca yansır.</p>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
