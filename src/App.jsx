@@ -6237,6 +6237,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   <p style={{ margin: '2px 0 0', fontSize: '14px' }}>{selectedVisa.processor || '-'}</p>
                 </div>
               </div>
+              {visaFutureDate(selectedVisa) && (
+                <div style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.45)', padding: '10px 12px', borderRadius: '8px', color: '#c084fc', fontWeight: 700, fontSize: '13px' }}>
+                  ⏳ İleri tarihli — başvuru {formatDate(selectedVisa.processDate)} tarihinde yapılacak ({getDaysLeft(selectedVisa.processDate)} gün). O güne kadar başvuru yapmayın.
+                </div>
+              )}
               {selectedVisa.appointmentDate && (
                 <div style={{ background: 'rgba(59,130,246,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#3b82f6' }}>📅 Randevu</p>
@@ -16412,6 +16417,27 @@ function AppInner() {
   const [openCustomerId, setOpenCustomerId] = useState(null); // dashboard'dan müşteriye git
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Yeni sürüm kontrolü: CRM sekmesi gün boyu açık kalınca deploy sonrası eski kodla çalışmaya devam ediyordu
+  // (ör. vizeci ileri tarih rozetini göremedi). 5 dakikada bir ve sekmeye dönünce index.html'deki
+  // uygulama dosyası adı kontrol edilir; değiştiyse üstte "Yenile" şeridi çıkar.
+  const [newVersion, setNewVersion] = useState(false);
+  useEffect(() => {
+    const mine = document.querySelector('script[type="module"][src*="/assets/"]')?.getAttribute('src');
+    if (!mine) return; // geliştirme ortamı
+    let stop = false;
+    const check = async () => {
+      try {
+        const html = await (await fetch('/index.html?v=' + Date.now(), { cache: 'no-store' })).text();
+        const live = (html.match(/<script[^>]+type="module"[^>]+src="([^"]*\/assets\/[^"]+)"/) || html.match(/src="(\/assets\/index-[^"]+\.js)"/) || [])[1];
+        if (!stop && live && live !== mine) setNewVersion(true);
+      } catch (e) { /* çevrimdışı */ }
+    };
+    const iv = setInterval(check, 5 * 60 * 1000);
+    const onVis = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVis);
+    check();
+    return () => { stop = true; clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
+  }, []);
   const [customers, setCustomers] = useState(defaultCustomers);
   const [visaApplications, setVisaApplications] = useState([]);
   const [ds160Applications, setDs160Applications] = useState([]);
@@ -17031,6 +17057,12 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 50%, #0d2137 100%)', color: '#e8f1f8', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
       {/* Toast Bildirimleri */}
       <Toast toasts={toasts} removeToast={removeToast} />
+      {newVersion && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 16px', background: 'linear-gradient(90deg, #7c3aed, #db2777)', color: '#fff', fontSize: '13px', fontWeight: 600, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+          🆕 CRM'in yeni sürümü yayınlandı — yeni özellikleri görmek için sayfayı yenileyin.
+          <button onClick={() => window.location.reload()} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#fff', color: '#7c3aed', fontWeight: 700, cursor: 'pointer' }}>🔄 Yenile</button>
+        </div>
+      )}
       
       {/* Klavye Kısayolları Bilgisi */}
       {!isMobile && (
