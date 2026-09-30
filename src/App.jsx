@@ -6382,7 +6382,7 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
-function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -8102,7 +8102,30 @@ function ToursModule({ tours, setTours, customers, setCustomers, isMobile, showT
                             return days !== null && days > 0;
                           });
 
+                          // Geçerli vize yoksa: bu müşterinin son 12 aydaki Schengen/tur ülkesi başvurusu var mı?
+                          const appBadge = () => {
+                            const lc = (x) => String(x || '').toLocaleLowerCase('tr-TR');
+                            const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+                            const app = (visaApplications || [])
+                              .filter(a => String(a.customerId) === String(customer.id) || (customer._docId && String(a.customerId) === String(customer._docId)))
+                              .filter(a => {
+                                const cat = a.categoryId || a.category;
+                                const txt = lc(`${a.country || ''} ${a.visaDuration || ''}`);
+                                return cat === 'schengen' || txt.includes(lc(tour.country)) || schengenCountries.some(c => txt.includes(lc(c)));
+                              })
+                              .filter(a => String(a.createdAt || a.applicationDate || '9999').slice(0, 10) >= yearAgo)
+                              .sort((a, b) => String(b.createdAt || b.applicationDate || '').localeCompare(String(a.createdAt || a.applicationDate || '')))[0];
+                            if (!app) return null;
+                            const st = lc(app.status);
+                            if (/iptal/.test(st)) return null; // iptal edilen başvuru sayılmaz
+                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (/onay/.test(st)) return { label: '✅ Vize Onaylandı', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
+                            const rnd = app.appointmentDate ? ` · Randevu ${formatDate(app.appointmentDate).slice(0, 5)}` : '';
+                            return { label: `📑 Başvuru — ${app.status || 'Açık'}${rnd}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
+                          };
+
                           if (!validVisa) {
+                            const ab = appBadge(); if (ab) return ab;
                             // Süresi bitmiş vize var mı?
                             const expiredVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) !== null && getDaysLeft(v.endDate) <= 0);
                             if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
@@ -16959,7 +16982,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
