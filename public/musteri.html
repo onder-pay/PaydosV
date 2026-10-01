@@ -4,165 +4,152 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#0b1020">
+<meta name="theme-color" content="#f4f3ef">
 <!-- Ana ekrana eklenince uygulama gibi açılsın -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Paydos">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
-<title>Paydos Turizm - Seyahat Belgeleriniz</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<title>Paydos Turizm · Seyahat Dosyası</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
+/* Müşteri linki — kurumsal "seyahat dosyası" görünümü. Tek vurgu rengi (Paydos kırmızısı) az kullanılır. */
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0b1020;--card:#141a33;--line:#262e52;--muted:#9aa3c7;--text:#eef1ff;--gold:#f5b942;--gold2:#ffd98a}
-body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2350 0%,var(--bg) 60%);font-family:'DM Sans',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
-.c{max-width:560px;margin:0 auto;padding:20px 16px 48px}
-.brand{display:flex;align-items:center;justify-content:center;gap:10px;font-family:'Playfair Display',serif;font-weight:700;font-size:18px;letter-spacing:1px;color:var(--text);margin-bottom:16px}
-.brand img{width:44px;height:44px;border-radius:50%;box-shadow:0 4px 14px rgba(255,65,65,.35)}
-.brand small{font-family:'DM Sans',sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;color:var(--muted)}
+:root{--bg:#f4f3ef;--card:#fff;--ink:#0f1b2e;--ink2:#2c384c;--muted:#6b7487;--faint:#9aa1b0;--line:#e4e2db;--soft:#f7f6f2;--navy:#13223a;--accent:#d7262f;--ok:#1f8a5b}
+body{min-height:100vh;background:var(--bg);font-family:'Manrope',system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;font-feature-settings:'tnum' 1}
+.c{max-width:560px;margin:0 auto;padding:18px 16px 48px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 2px 16px;font-weight:800;font-size:12px;letter-spacing:3px;color:var(--ink)}
+.brand img{width:30px;height:30px;border-radius:50%}
+.brand small{margin-left:auto;font-weight:600;font-size:11px;letter-spacing:1px;color:var(--muted)}
 
-/* Hero */
-.hero{position:relative;overflow:hidden;border-radius:24px;padding:26px 22px 22px;background:linear-gradient(135deg,#1d3fa8 0%,#6a2bd6 55%,#e0457b 100%);box-shadow:0 20px 50px -20px rgba(106,43,214,.6)}
-.hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(2px);opacity:.35}
-.hero::before{width:220px;height:220px;right:-70px;top:-80px;background:radial-gradient(circle,#ffd98a 0%,transparent 70%)}
-.hero::after{width:180px;height:180px;left:-60px;bottom:-90px;background:radial-gradient(circle,#5ee7ff 0%,transparent 70%)}
+/* Kapak */
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:24px 22px 20px;color:#fff;background:var(--navy)}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(500px 220px at 100% 0%,rgba(255,255,255,.10),transparent 60%),repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 1px,transparent 1px 14px)}
+.hero::after{content:'';position:absolute;left:22px;top:0;width:36px;height:3px;background:var(--accent);border-radius:0 0 2px 2px}
 .hero>*{position:relative}
-.hello{font-size:15px;opacity:.9}
-.dest{font-family:'Playfair Display',serif;font-size:40px;line-height:1.05;font-weight:700;margin:6px 0 2px;text-shadow:0 2px 20px rgba(0,0,0,.2)}
-.country{font-size:14px;opacity:.85;letter-spacing:.5px}
-.tname{margin-top:14px;font-size:15px;font-weight:700}
-.dates{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;opacity:.9}
-.count{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:9px 14px;border-radius:999px;background:rgba(255,255,255,.16);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font-size:14px;font-weight:700;border:1px solid rgba(255,255,255,.25)}
-.count b{font-size:20px;color:#fff}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.name{font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.15;margin:8px 0 18px}
+.stats{display:grid;grid-template-columns:1.4fr 1fr;border-top:1px solid rgba(255,255,255,.14)}
+.st{padding:14px 0 2px}.st+.st{padding-left:16px;border-left:1px solid rgba(255,255,255,.14)}
+.st .k{font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.st .v{font-size:19px;font-weight:700;margin-top:4px}
+.st .s{font-family:'IBM Plex Mono',monospace;font-size:12px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.5px}
+.lead{margin-top:16px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.62)}
 
 /* Bölüm başlığı */
-.sec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--muted);margin:26px 4px 10px;text-transform:uppercase}
-.sec::after{content:'';flex:1;height:1px;background:var(--line)}
+.sec{display:flex;align-items:baseline;gap:8px;margin:30px 2px 12px}
+.sec b{font-size:15px;font-weight:700;letter-spacing:-.1px}
+.sec span{font-size:12px;color:var(--faint);font-weight:600}
+.mon{margin:16px 2px 8px;font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted)}
 
-/* Belge kutucukları */
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.tile{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line);color:var(--text);text-decoration:none;transition:transform .15s,border-color .15s}
-.tile:active{transform:scale(.97)}
-.tile:hover{border-color:var(--c,#f5b942)}
-.tile.wide{grid-column:1/-1;flex-direction:row;align-items:center}
-.tile .ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--bgc,rgba(245,185,66,.15));flex-shrink:0}
-.tile .tt{font-size:15px;font-weight:700;line-height:1.25}
-.tile .sub{font-size:12px;color:var(--muted);margin-top:2px}
-.tile .acts{margin-top:auto;display:flex;gap:6px}
-.tile.wide .acts{margin:0 0 0 auto}
-.tile .btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 10px;border-radius:10px;font:700 13px 'DM Sans',sans-serif;text-decoration:none;cursor:pointer;border:1px solid var(--c,#f5b942);white-space:nowrap}
-.tile .btn.o{background:transparent;color:var(--c,#f5b942)}
-.tile .btn.d{background:var(--c,#f5b942);color:#141a33}
-.tile .btn:active{transform:scale(.96)}
-.all{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;padding:14px;border-radius:16px;border:1px dashed var(--line);background:transparent;color:var(--text);font:700 14px 'DM Sans',sans-serif;cursor:pointer}
-.all:active{transform:scale(.98)}
-.note{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(245,185,66,.1);border:1px solid rgba(245,185,66,.25);color:var(--gold2);font-size:12px;line-height:1.5;display:none}
-
-/* Biniş kartı */
-.pass{position:relative;display:block;margin-bottom:12px;border-radius:20px;background:#fffaf0;color:#1b1f3b;text-decoration:none;overflow:hidden;box-shadow:0 12px 30px -15px rgba(0,0,0,.6)}
-.pass .ph{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(90deg,#1d3fa8,#6a2bd6);color:#fff;font-size:12px;font-weight:700;letter-spacing:1px}
-.pass .ph .fn{font-size:15px;letter-spacing:.5px}
-.pass .pb{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 18px 14px}
-.pass .pt{min-width:0}
-.pass .pt.r{text-align:right}
-.pass .iata{font-size:34px;font-weight:700;letter-spacing:1px;line-height:1}
-.pass .city{font-size:12px;color:#6b7094;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+/* Uçuş */
+.pass{display:block;margin-bottom:10px;border-radius:16px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.pass:hover{border-color:#cfccc2;box-shadow:0 8px 24px -16px rgba(15,27,46,.35)}
+.pass .ptop{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}
+.pass .fno{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink);letter-spacing:1px}
+.pass .route{display:flex;align-items:center;gap:10px;padding:16px 16px 14px}
+.pass .pt{min-width:0}.pass .pt.r{text-align:right}
+.pass .iata{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;letter-spacing:1px;line-height:1}
+.pass .city{font-size:12px;color:var(--muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 .pass .pt.r .city{margin-left:auto}
-.pass .time{font-size:16px;font-weight:700;margin-top:6px}
-.pass .path{flex:1;position:relative;height:44px;min-width:60px;background:none;border:none;padding:0;cursor:pointer;color:inherit;font:inherit}
-.pass .path::before{content:'';position:absolute;left:0;right:0;top:50%;border-top:2px dashed #c9cce0}
-.pass .plane{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);font-size:20px;animation:fly 3.2s ease-in-out infinite;line-height:1;pointer-events:none}
-.hint{display:inline-block;margin:0 0 10px 4px;font-size:12px;color:var(--gold2);opacity:.85}
-/* Mini oyun */
-.game{position:fixed;inset:0;z-index:50;background:rgba(5,8,20,.94);display:flex;align-items:center;justify-content:center;padding:10px}
-.game .gb{position:relative;width:100%;max-width:400px;height:min(94vh,760px);display:flex;flex-direction:column;align-items:center;padding:16px 16px 12px;border-radius:14px 14px 56px 14px;background:linear-gradient(160deg,#dcd8d0,#c9c4ba);box-shadow:inset 0 -6px 0 rgba(0,0,0,.08),0 20px 60px rgba(0,0,0,.6);font-family:'Courier New',monospace}
-.game .scr{position:relative;width:100%;flex:1;min-height:0;border-radius:8px 8px 28px 8px;background:#555a66;padding:12px;box-shadow:inset 0 0 0 2px #444}
-.game canvas{display:block;width:100%;height:100%;touch-action:none;border-radius:3px;image-rendering:pixelated}
-.game .gbl{margin:8px 0 2px;color:#2b2f85;font:italic 700 15px Arial,sans-serif;letter-spacing:1px}.game .gbl span{color:#9a2257;font-style:normal}
-.game .pad{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
-.game .dpad{position:relative;width:118px;height:118px}
-.game .k{position:absolute;width:40px;height:40px;border:none;background:#222;color:#666;font-size:14px;border-radius:5px;touch-action:none;cursor:pointer}
-.game .k:active,.game .rb:active,.game .pill:active{filter:brightness(1.6)}
-.game .k.u{left:39px;top:0}.game .k.l{left:0;top:39px}.game .k.r{right:0;top:39px}.game .k.d{left:39px;bottom:0}
-.game .ab{display:flex;gap:14px;transform:rotate(-20deg);margin-right:4px}
-.game .rb{width:54px;height:54px;border-radius:50%;border:none;background:#9a2257;color:#e8c9d6;font:700 18px Arial,sans-serif;box-shadow:0 3px 0 #6d1740;touch-action:none;cursor:pointer}
-.game .ss{display:flex;gap:18px;margin-top:6px}
-.game .pill{padding:6px 12px;border:none;border-radius:10px;background:#7d7a75;color:#2b2f85;font:700 10px Arial,sans-serif;letter-spacing:1px;transform:rotate(-20deg);cursor:pointer}
-.game .gbh{margin-top:6px;font-size:10px;color:#6b675f;text-align:center}
-.game .x{position:absolute;top:-6px;right:-6px;width:36px;height:36px;border-radius:50%;border:none;background:#222;color:#fff;font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
-.tet{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#306230,#0f380f);border:1px solid #8bac0f;color:#9bbc0f;cursor:pointer;width:100%;text-align:left;font:inherit}
-.tet .ic{font-size:26px}.tet b{display:block;font:700 15px 'Courier New',monospace;letter-spacing:1px}.tet span{font-size:12px;color:#c7dc6f}
-@keyframes fly{0%{left:8%}50%{left:92%}100%{left:8%}}
-.pass .pf{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-top:2px dashed #e6e2d6;font-size:12px;color:#6b7094;position:relative}
-.pass .pf::before,.pass .pf::after{content:'';position:absolute;top:-11px;width:20px;height:20px;border-radius:50%;background:var(--bg)}
-.pass .pf::before{left:-10px}.pass .pf::after{right:-10px}
-.pass .live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#e0457b;font-size:13px}
-.pass .live i{width:8px;height:8px;border-radius:50%;background:#e0457b;animation:pulse 1.4s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(224,69,123,.6)}100%{box-shadow:0 0 0 10px rgba(224,69,123,0)}}
-.pass .raw{padding:16px 18px;font-size:14px}
+.pass .time{font-size:15px;font-weight:700;margin-top:6px}
+.pass .line{flex:1;display:flex;align-items:center;gap:6px;color:var(--faint)}
+.pass .line::before,.pass .line::after{content:'';flex:1;border-top:1px dashed #cdcac0}
+.pass .pf{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--soft);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.pass .live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink);font-size:12.5px}
+.pass .live i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(215,38,47,.15)}
+.pass .raw{padding:16px;font-size:14px}
+
+/* Belgeler */
+.list{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.doc{display:flex;align-items:center;gap:12px;padding:13px 14px}
+.doc+.doc{border-top:1px solid var(--line)}
+.doc .dic{width:40px;height:40px;border-radius:10px;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--navy)}
+.doc .dtx{flex:1;min-width:0}
+.doc .dt{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .ds{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .acts{display:flex;gap:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 12px;border-radius:9px;font:700 13px 'Manrope',sans-serif;text-decoration:none;cursor:pointer;white-space:nowrap;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btn.d{background:var(--navy);border-color:var(--navy);color:#fff;width:36px;padding:0}
+.btn svg.i{width:17px;height:17px}
+.btn:active{transform:scale(.97)}
+.all{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;height:46px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:700 13.5px 'Manrope',sans-serif;cursor:pointer}
+.all:hover{background:var(--card)}
+.note{margin-top:10px;padding:10px 12px;border-radius:10px;background:#fff8e6;border:1px solid #f0dfae;color:#6b5414;font-size:12px;line-height:1.5;display:none}
+
+/* Varış bilgileri */
+.info{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.info:empty{display:none}
+.ib{padding:14px 16px;min-width:0;background:var(--card)}
+.ib.wide{grid-column:1/-1}
+.ib .h{font-size:10.5px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.ib .v{font-size:19px;font-weight:700;line-height:1.25}
+.ib .s{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+.days{display:flex;gap:6px;overflow-x:auto;margin-top:10px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:0 0 auto;min-width:58px;text-align:center;padding:8px 6px;border-radius:10px;background:var(--soft);border:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.day .e{font-size:16px;line-height:1.6;color:var(--ink2)}
+.day b{display:block;font-size:13px;color:var(--ink)}
+.wear{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--ink2)}
+.hotel{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.hotel .n{font-size:15px;font-weight:700}
+.hotel .a{font-size:12.5px;color:var(--muted);line-height:1.5}
+.hotel .b{display:flex;gap:8px;margin-top:4px}
+.hotel .b a{flex:1;display:flex;align-items:center;justify-content:center;height:40px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;border:1px solid var(--line);color:var(--ink)}
+.hotel .b a.p{background:var(--navy);border-color:var(--navy);color:#fff}
+.disc{display:none;margin:10px 2px 0;font-size:10.5px;line-height:1.55;color:var(--faint)}
 
 /* İletişim */
-.contact{display:flex;align-items:center;gap:12px;margin-top:26px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
-.contact .ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(245,185,66,.15);font-size:20px}
-.contact .tx{flex:1;font-size:13px;color:var(--muted)}
-.contact .tx b{display:block;color:var(--text);font-size:14px;margin-bottom:2px}
-.contact a{padding:10px 16px;border-radius:12px;background:var(--gold);color:#1b1f3b;font-weight:700;font-size:14px;text-decoration:none}
-.foot{text-align:center;font-size:11px;color:#5d6591;margin-top:20px;letter-spacing:1px}
-
-/* Seyahat bilgileri */
-.info{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.ib{padding:14px;border-radius:18px;background:var(--card);border:1px solid var(--line);min-width:0}
-.ib.wide{grid-column:1/-1}
-.ib .h{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
-.ib .v{font-size:20px;font-weight:700;line-height:1.2}
-.ib .s{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}
-.days{display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none}
-.days::-webkit-scrollbar{display:none}
-.day{flex:0 0 auto;min-width:62px;text-align:center;padding:8px 6px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:12px}
-.day .e{font-size:22px;line-height:1.3}
-.day b{display:block;font-size:13px}
-.wear{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(94,231,255,.08);border:1px solid rgba(94,231,255,.22);font-size:13px;line-height:1.5}
-.hotel{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
-.hotel .n{font-size:16px;font-weight:700}
-.hotel .a{font-size:13px;color:var(--muted);line-height:1.45}
-.hotel .b{display:flex;gap:8px}
-.hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
-.hotel .b a.p{background:var(--gold);color:#1b1f3b}
+.contact{display:flex;align-items:center;gap:12px;margin-top:30px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.contact .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--soft);border:1px solid var(--line);color:var(--navy)}
+.contact .tx{flex:1;font-size:12.5px;color:var(--muted);line-height:1.45}
+.contact .tx b{display:block;color:var(--ink);font-size:14px;margin-bottom:1px}
 .contact .bt{display:flex;gap:6px}
-.disc{display:none;margin:10px 4px 0;font-size:11px;line-height:1.5;color:#6f78a3}
-.contact a.wa{background:#25d366;color:#fff}
+.contact a{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:10px;background:var(--navy);color:#fff;font-weight:700;font-size:13px;text-decoration:none}
+.contact a.wa{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.ig{display:flex;align-items:center;gap:12px;margin-top:10px;padding:14px 16px;border-radius:16px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line)}
+.ig .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#f58529,#dd2a7b 55%,#8134af)}
+.ig .tx{flex:1;font-size:12px;color:var(--muted)}.ig .tx b{display:block;font-size:14px;color:var(--ink)}
+.ig .go{font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap}
+.foot{text-align:center;font-size:11px;color:var(--faint);margin-top:22px;letter-spacing:1.5px}
 
-.ig{display:flex;align-items:center;gap:12px;margin-top:12px;padding:14px 16px;border-radius:18px;text-decoration:none;color:#fff;background:linear-gradient(135deg,#feda75 0%,#fa7e1e 25%,#d62976 55%,#962fbf 80%,#4f5bd5 100%);box-shadow:0 10px 30px -12px rgba(214,41,118,.6)}
-.ig .ic{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
-.ig .tx{flex:1;font-size:12px;opacity:.95}.ig .tx b{display:block;font-size:15px;opacity:1}
-.ig .go{padding:9px 14px;border-radius:12px;background:#fff;color:#d62976;font-weight:700;font-size:13px;white-space:nowrap}
-.pinc{margin:30px auto 0;max-width:380px;padding:26px 22px;border-radius:22px;background:var(--card);border:1px solid var(--line);text-align:center}
-.pinc .pic{font-size:40px}.pinc .pt{font-family:'Playfair Display',serif;font-size:24px;margin:8px 0 6px}.pinc .ps{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px}
-.pinc .pin{display:block;width:100%;box-sizing:border-box;margin:0 0 10px;padding:14px;border-radius:14px;border:1px solid var(--line);background:#0e1430;color:var(--text);font:700 24px 'DM Sans',sans-serif;letter-spacing:12px;text-align:center}
-.pinc .pin:focus{outline:none;border-color:var(--gold)}
-.pinc .perr{min-height:18px;font-size:13px;color:#ff8a8a;margin-bottom:8px}
-.pinc .pbtn{width:100%;padding:14px;border:none;border-radius:14px;background:var(--gold);color:#1b1f3b;font:700 15px 'DM Sans',sans-serif;cursor:pointer}
-.pinc .pnote{margin-top:12px;font-size:11px;color:#6f78a3}
-.inst{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px;border-radius:18px;background:linear-gradient(135deg,rgba(245,185,66,.14),rgba(106,43,214,.14));border:1px solid rgba(245,185,66,.3)}
-.inst .ic{font-size:26px}
-.inst .tx{flex:1;font-size:13px;line-height:1.45;color:var(--text)}
-.inst .tx b{display:block;font-size:14px;margin-bottom:2px}
-.inst .go{padding:10px 14px;border-radius:12px;border:none;background:var(--gold);color:#1b1f3b;font:700 13px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
-.inst .x{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px}
-.mon{margin:14px 2px 8px;font-size:12px;font-weight:700;color:#f5b942;letter-spacing:.5px}
-.offline{margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(106,168,255,.12);border:1px solid rgba(106,168,255,.3);color:#b9d4ff;font-size:12px;text-align:center}
+/* Ana ekrana ekle */
+.inst{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.inst .ic{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--soft);color:var(--navy)}
+.inst .tx{flex:1;font-size:12px;line-height:1.45;color:var(--muted)}
+.inst .tx b{display:block;font-size:13.5px;color:var(--ink);margin-bottom:1px}
+.inst .go{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--navy);background:transparent;color:var(--navy);font:700 13px 'Manrope',sans-serif;cursor:pointer;white-space:nowrap}
+.inst .x{background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:4px}
+
+/* PIN */
+.pinc{margin:22px auto 0;max-width:400px;padding:28px 22px 22px;border-radius:18px;background:var(--card);border:1px solid var(--line);text-align:center}
+.pinc .pic{width:52px;height:52px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--navy);color:#fff}
+.pinc .pic svg.i{width:22px;height:22px}
+.pinc .pt{font-size:21px;font-weight:700;letter-spacing:-.3px;margin:14px 0 6px}
+.pinc .ps{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:18px}
+.pinc .pin{display:block;width:100%;margin:0 0 10px;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font:600 24px 'IBM Plex Mono',monospace;letter-spacing:14px;text-align:center}
+.pinc .pin::placeholder{color:#b9bdc7;letter-spacing:2px;font-size:14px;font-family:Manrope,sans-serif}
+.pinc .pin:focus{outline:none;border-color:var(--navy);background:#fff}
+.pinc .perr{min-height:18px;font-size:12.5px;color:var(--accent);margin-bottom:8px;font-weight:600}
+.pinc .pbtn{width:100%;height:48px;border:none;border-radius:12px;background:var(--navy);color:#fff;font:700 14.5px 'Manrope',sans-serif;cursor:pointer}
+.pinc .pbtn:disabled{opacity:.6}
+.pinc .pnote{margin-top:14px;font-size:11.5px;color:var(--faint);line-height:1.5}
+
+.offline{margin-top:12px;padding:10px 12px;border-radius:10px;background:#eef3fb;border:1px solid #d6e2f3;color:#2f4a73;font-size:12px;text-align:center}
 .msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
-.in{opacity:0;transform:translateY(12px);animation:up .5s ease forwards}
+.empty{margin-top:14px;padding:28px 18px;border-radius:16px;border:1px dashed #d3d0c6;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
+.in{opacity:0;transform:translateY(8px);animation:up .45s ease forwards}
 @keyframes up{to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.in{animation:none;opacity:1;transform:none}.pass .plane{animation:none;left:50%}.pass .live i{animation:none}}
-@media (max-width:360px){.dest{font-size:32px}.pass .iata{font-size:28px}}
+@media (prefers-reduced-motion:reduce){.in{animation:none;opacity:1;transform:none}}
+@media (max-width:360px){.name{font-size:25px}.pass .iata{font-size:24px}.doc .btn.o{padding:0 10px}}
 </style>
 </head>
 <body>
 <div class="c">
-  <div class="brand"><img src="/icons/logo.png" alt="Paydos">PAYDOS TURİZM</div>
+  <div class="brand"><img src="/icons/logo.png" alt="Paydos">PAYDOS TURİZM<small>Seyahat Dosyası</small></div>
   <div id="box"><div class="msg">Yükleniyor…</div></div>
 </div>
 <script>
@@ -188,9 +175,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var renderInstall = function (parent) {
     if (isStandalone || instDismissed) return;
     instCard = el('div', 'inst');
-    instCard.appendChild(el('div', 'ic', '📲'));
+    var iic = el('div', 'ic'); iic.appendChild(ico('home')); instCard.appendChild(iic);
     var tx = el('div', 'tx'); tx.appendChild(el('b', '', 'Ana ekrana ekleyin'));
-    tx.appendChild(document.createTextNode(isIOS ? 'Alttaki Paylaş ⬆️ düğmesine, sonra "Ana Ekrana Ekle"ye dokunun.' : 'Uygulama gibi açılsın, internet yokken de görünsün.'));
+    tx.appendChild(document.createTextNode(isIOS ? 'Paylaş düğmesine, sonra "Ana Ekrana Ekle"ye dokunun.' : 'Belgelerinize tek dokunuşla, internetsiz de ulaşın.'));
     instCard.appendChild(tx);
     if (!isIOS) {
       var go = el('button', 'go', 'Ekle'); go.type = 'button';
@@ -243,155 +230,26 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     '📄': ['#cbd5e1', 'rgba(203,213,225,.12)', '']
   };
   var delay = 0;
-  var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
-
-
-  // ===== Nostaljik Tetris (Game Boy görünümü) — tamamen sayfanın içinde, internetsiz de oynanır =====
-  var openGame = function () {
-    var BEST_KEY = 'paydos_tetris_best', best = 0;
-    try { best = +localStorage.getItem(BEST_KEY) || 0; } catch (e) {}
-    var C0 = '#9bbc0f', C1 = '#8bac0f', C2 = '#306230', C3 = '#0f380f'; // Game Boy yeşilleri
-    var ov = el('div', 'game'), gb = el('div', 'gb'), scr = el('div', 'scr'), cv = el('canvas'), x = el('button', 'x', '✕');
-    x.type = 'button'; x.setAttribute('aria-label', 'Oyunu kapat');
-    var brand = el('div', 'gbl', 'PAYDOS BOY'); brand.appendChild(el('span', '', ' TETRIS'));
-    scr.appendChild(cv); gb.appendChild(scr); gb.appendChild(brand);
-    var pad = el('div', 'pad');
-    var dp = el('div', 'dpad'), mk = function (cls, t, lbl) { var b = el('button', cls, t); b.type = 'button'; b.setAttribute('aria-label', lbl); return b; };
-    var bL = mk('k l', '◀', 'Sola'), bR = mk('k r', '▶', 'Sağa'), bD = mk('k d', '▼', 'Aşağı'), bU = mk('k u', '▲', 'Döndür');
-    dp.appendChild(bU); dp.appendChild(bL); dp.appendChild(bR); dp.appendChild(bD);
-    var ab = el('div', 'ab'), bB = mk('rb', 'B', 'Hemen indir'), bA = mk('rb', 'A', 'Döndür');
-    ab.appendChild(bB); ab.appendChild(bA);
-    pad.appendChild(dp); pad.appendChild(ab); gb.appendChild(pad);
-    var ss = el('div', 'ss'), bSel = mk('pill', 'SELECT', 'Duraklat'), bSt = mk('pill', 'START', 'Başlat');
-    ss.appendChild(bSel); ss.appendChild(bSt); gb.appendChild(ss);
-    gb.appendChild(el('div', 'gbh', 'A / ▲ döndür · B hemen indir · ekranda kaydır da olur'));
-    gb.appendChild(x); ov.appendChild(gb); document.body.appendChild(ov);
-    var prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
-
-    var ctx = cv.getContext('2d'), W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2), cs = 16, ox = 0, oy = 0;
-    var size = function () {
-      var r = scr.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cs = Math.floor(Math.min((H - 8) / 20, (W - 8) / 16)); ox = Math.floor((W - cs * 16) / 2) + 2; oy = Math.floor((H - cs * 20) / 2);
-    };
-    size(); window.addEventListener('resize', size);
-
-    var SH = { I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], O: [[1,1],[1,1]], T: [[0,1,0],[1,1,1],[0,0,0]],
-      S: [[0,1,1],[1,1,0],[0,0,0]], Z: [[1,1,0],[0,1,1],[0,0,0]], J: [[1,0,0],[1,1,1],[0,0,0]], L: [[0,0,1],[1,1,1],[0,0,0]] };
-    var bag = [], nextKey = function () { if (!bag.length) { bag = Object.keys(SH); for (var i = bag.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = bag[i]; bag[i] = bag[j]; bag[j] = t; } } return bag.pop(); };
-    var rot = function (m) { var n = m.length, r = []; for (var i = 0; i < n; i++) { r.push([]); for (var j = 0; j < n; j++) r[i].push(m[n - 1 - j][i]); } return r; };
-    var board, cur, nxt, score, lines, level, state = 'ready', acc = 0, last = 0, raf, flash = 0;
-    var hit = function (m, px, py) {
-      for (var i = 0; i < m.length; i++) for (var j = 0; j < m[i].length; j++) if (m[i][j]) {
-        var bx = px + j, by = py + i; if (bx < 0 || bx >= 10 || by >= 20) return true; if (by >= 0 && board[by][bx]) return true;
-      } return false;
-    };
-    var spawn = function () {
-      var k = nxt || nextKey(); nxt = nextKey();
-      cur = { m: SH[k].map(function (r) { return r.slice(); }), x: k === 'O' ? 4 : 3, y: k === 'I' ? -1 : 0 };
-      if (hit(cur.m, cur.x, cur.y)) over();
-    };
-    var reset = function () { board = []; for (var i = 0; i < 20; i++) board.push(new Array(10).fill(0)); score = 0; lines = 0; level = 0; nxt = null; bag = []; spawn(); acc = 0; };
-    var speed = function () { return Math.max(70, 800 - level * 70); };
-    var over = function () { state = 'over'; if (score > best) { best = score; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} } };
-    var lock = function () {
-      cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && cur.y + i >= 0) board[cur.y + i][cur.x + j] = 1; }); });
-      var n = 0;
-      for (var y = 19; y >= 0; y--) if (board[y].every(function (v) { return v; })) { board.splice(y, 1); board.unshift(new Array(10).fill(0)); n++; y++; }
-      if (n) { score += [0, 40, 100, 300, 1200][n] * (level + 1); lines += n; level = Math.floor(lines / 10); flash = 8; try { navigator.vibrate && navigator.vibrate(n === 4 ? [40, 30, 40] : 25); } catch (e) {} }
-      spawn();
-    };
-    var move = function (dx) { if (state === 'play' && !hit(cur.m, cur.x + dx, cur.y)) cur.x += dx; };
-    var down = function (soft) { if (state !== 'play') return; if (!hit(cur.m, cur.x, cur.y + 1)) { cur.y++; if (soft) score++; } else lock(); acc = 0; };
-    var drop = function () { if (state !== 'play') return; while (!hit(cur.m, cur.x, cur.y + 1)) { cur.y++; score += 2; } lock(); acc = 0; };
-    var turn = function () {
-      if (state !== 'play') return; var m = rot(cur.m);
-      var kicks = [0, -1, 1, -2, 2]; for (var i = 0; i < kicks.length; i++) if (!hit(m, cur.x + kicks[i], cur.y)) { cur.m = m; cur.x += kicks[i]; return; }
-    };
-    var start = function () { if (state === 'ready' || state === 'over') { reset(); state = 'play'; } else if (state === 'pause') state = 'play'; else if (state === 'play') state = 'pause'; };
-
-    // --- çizim ---
-    var cell = function (px, py, col, s) {
-      s = s || cs; ctx.fillStyle = col === 'ghost' ? 'transparent' : C3; if (col !== 'ghost') ctx.fillRect(px, py, s - 1, s - 1);
-      if (col === 'ghost') { ctx.strokeStyle = C2; ctx.lineWidth = 1; ctx.strokeRect(px + 1.5, py + 1.5, s - 4, s - 4); return; }
-      ctx.fillStyle = C1; ctx.fillRect(px + 2, py + 2, s - 5, s - 5); ctx.fillStyle = C2; ctx.fillRect(px + 4, py + 4, s - 9, s - 9);
-    };
-    var txt = function (t, px, py, sz, al, col) { ctx.fillStyle = col || C3; ctx.font = '700 ' + sz + 'px "Courier New", monospace'; ctx.textAlign = al || 'left'; ctx.fillText(t, px, py); };
-    var draw = function () {
-      ctx.fillStyle = C0; ctx.fillRect(0, 0, W, H);
-      // oyun alanı
-      ctx.fillStyle = flash > 0 && flash % 2 ? C1 : '#a7c61a'; ctx.fillRect(ox, oy, cs * 10, cs * 20);
-      ctx.strokeStyle = C3; ctx.lineWidth = 2; ctx.strokeRect(ox - 1, oy - 1, cs * 10 + 2, cs * 20 + 2);
-      for (var y = 0; y < 20; y++) for (var x2 = 0; x2 < 10; x2++) if (board && board[y][x2]) cell(ox + x2 * cs, oy + y * cs);
-      if (cur && state !== 'ready') {
-        var gy = cur.y; while (!hit(cur.m, cur.x, gy + 1)) gy++;
-        cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && gy + i >= 0) cell(ox + (cur.x + j) * cs, oy + (gy + i) * cs, 'ghost'); }); });
-        cur.m.forEach(function (r, i) { r.forEach(function (v, j) { if (v && cur.y + i >= 0) cell(ox + (cur.x + j) * cs, oy + (cur.y + i) * cs); }); });
-      }
-      // yan panel
-      var sx = ox + cs * 10 + cs * 0.6, pw = cs * 5.2, fs = Math.max(10, Math.round(cs * 0.62));
-      var row = function (lbl, v, py) { txt(lbl, sx, py, fs); txt(String(v), sx + pw - 4, py + fs * 1.25, Math.round(fs * 1.1), 'right'); };
-      txt('NEXT', sx, oy + fs, fs);
-      ctx.strokeStyle = C3; ctx.lineWidth = 2; ctx.strokeRect(sx, oy + fs * 1.4, pw - 4, cs * 3.2);
-      if (nxt) { var nm = SH[nxt], ns = Math.floor(cs * 0.75), nw = nm[0].length * ns, nh = nm.length * ns;
-        nm.forEach(function (r, i) { r.forEach(function (v, j) { if (v) cell(sx + (pw - 4 - nw) / 2 + j * ns, oy + fs * 1.4 + (cs * 3.2 - nh) / 2 + i * ns, null, ns); }); }); }
-      var by0 = oy + fs * 1.4 + cs * 3.2 + fs * 1.8;
-      row('SCORE', score || 0, by0); row('LEVEL', level || 0, by0 + fs * 3.2); row('LINES', lines || 0, by0 + fs * 6.4); row('HI', best, by0 + fs * 9.6);
-      // durum ekranları
-      var cx = ox + cs * 5, cy = oy + cs * 9;
-      if (state !== 'play') { ctx.fillStyle = 'rgba(155,188,15,.88)'; ctx.fillRect(ox, cy - cs * 2.2, cs * 10, cs * 4.6); ctx.strokeStyle = C3; ctx.strokeRect(ox, cy - cs * 2.2, cs * 10, cs * 4.6); }
-      if (state === 'ready') { txt('TETRIS', cx, cy, Math.round(cs * 1.1), 'center'); txt('START\'a bas', cx, cy + cs * 1.4, fs, 'center'); }
-      if (state === 'pause') { txt('PAUSE', cx, cy + cs * 0.4, Math.round(cs * 1.1), 'center'); }
-      if (state === 'over') { txt('GAME OVER', cx, cy, Math.round(cs * 0.95), 'center'); txt('START: tekrar', cx, cy + cs * 1.4, fs, 'center'); }
-    };
-    var step = function (now) {
-      raf = requestAnimationFrame(step);
-      var dt = Math.min(100, now - (last || now)); last = now;
-      if (state === 'play') { acc += dt; if (acc >= speed()) down(false); }
-      if (flash > 0) flash--;
-      draw();
-    };
-
-    // --- kontroller ---
-    var reps = [];
-    var hold = function (btn, fn, repeat) {
-      btn.addEventListener('pointerdown', function (e) {
-        e.preventDefault(); if (state === 'ready' || state === 'over') { if (btn === bSt) return; }
-        fn(); if (!repeat) return;
-        var t = setTimeout(function () { var iv = setInterval(fn, 55); reps.push(iv); }, 170); reps.push(t);
-      });
-    };
-    var stopRep = function () { reps.forEach(function (t) { clearTimeout(t); clearInterval(t); }); reps = []; };
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { [bL, bR, bD].forEach(function (b) { b.addEventListener(ev, stopRep); }); });
-    hold(bL, function () { move(-1); }, true); hold(bR, function () { move(1); }, true); hold(bD, function () { down(true); }, true);
-    hold(bU, turn); hold(bA, turn); hold(bB, drop);
-    bSt.addEventListener('click', start); bSel.addEventListener('click', function () { if (state === 'play' || state === 'pause') start(); });
-    // Ekranda kaydırma: dokun = döndür, sağa/sola kaydır = hareket, aşağı hızlı kaydır = indir
-    var tx0 = 0, ty0 = 0, tt0 = 0, moved = 0;
-    cv.addEventListener('pointerdown', function (e) { e.preventDefault(); if (state !== 'play') { start(); return; } tx0 = e.clientX; ty0 = e.clientY; tt0 = Date.now(); moved = 0; });
-    cv.addEventListener('pointermove', function (e) {
-      if (!tt0 || state !== 'play') return; var dx = e.clientX - tx0;
-      while (Math.abs(dx) >= cs) { move(dx > 0 ? 1 : -1); tx0 += dx > 0 ? cs : -cs; dx = e.clientX - tx0; moved = 1; }
-    });
-    cv.addEventListener('pointerup', function (e) {
-      if (!tt0) return; var dy = e.clientY - ty0, dtm = Date.now() - tt0; tt0 = 0;
-      if (dy > cs * 3 && dtm < 350) drop(); else if (!moved && Math.abs(dy) < cs) turn();
-    });
-    var key = function (e) {
-      var k = e.code;
-      if (k === 'Escape') { close(); return; }
-      if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space', 'KeyX', 'KeyP', 'Enter'].indexOf(k) < 0) return;
-      e.preventDefault();
-      if (k === 'Enter' || k === 'KeyP') start(); else if (k === 'ArrowLeft') move(-1); else if (k === 'ArrowRight') move(1);
-      else if (k === 'ArrowDown') down(true); else if (k === 'ArrowUp' || k === 'KeyX') turn(); else if (k === 'Space') { if (state === 'play') drop(); else start(); }
-    };
-    document.addEventListener('keydown', key);
-    var vis = function () { if (document.hidden && state === 'play') state = 'pause'; };
-    document.addEventListener('visibilitychange', vis);
-    var close = function () { cancelAnimationFrame(raf); stopRep(); window.removeEventListener('resize', size); document.removeEventListener('keydown', key); document.removeEventListener('visibilitychange', vis); document.body.style.overflow = prevOverflow; ov.remove(); };
-    x.addEventListener('click', close);
-    reset(); state = 'ready';
-    raf = requestAnimationFrame(step);
+  // İnce çizgi ikonlar (emoji yerine)
+  var IC = {
+    plane: '<path d="M10.5 13.5 4 11l1.5-1.5 7 1L16.5 6.5a1.8 1.8 0 0 1 2.5 2.5L15 13l1 7-1.5 1.5-2.5-6.5-3 3v2.5L7.5 22l-1-3.5L3 17.5 4.5 16H7l3.5-2.5z"/>',
+    pass: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14M7 10h5M7 14h3"/>',
+    hotel: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/>',
+    visa: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>',
+    shield: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3z"/><path d="m9 12 2 2 4-4"/>',
+    ticket: '<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V7z"/><path d="M14 5v12"/>',
+    map: '<path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2zM9 4v14M15 6v14"/>',
+    doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+    dl: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    home: '<path d="M12 3v12M8 11l4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1"/>',
+    ig: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>'
   };
+  var ico = function (n) { var w = document.createElement('span'); w.style.display = 'inline-flex'; w.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + (IC[n] || IC.doc) + '</svg>'; return w.firstChild; };
+  var DOC_IC = { '✈️': 'plane', '🛫': 'pass', '🛬': 'pass', '🏨': 'hotel', '🛂': 'visa', '🛡️': 'shield', '🎫': 'ticket', '🗺️': 'map' };
+  var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
 
 
   // ===== İndirme =====
@@ -419,15 +277,15 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   };
   var fallbackNote = function () {
     if (!noteEl) return;
-    noteEl.textContent = 'ℹ️ Tarayıcınız doğrudan indirmeye izin vermedi. Belgeyi "Aç" ile açıp telefonunuzun paylaş / indir düğmesiyle kaydedebilirsiniz.';
+    noteEl.textContent = 'Tarayıcınız doğrudan indirmeye izin vermedi. Belgeyi "Aç" ile açıp telefonunuzun paylaş / indir düğmesiyle kaydedebilirsiniz.';
     noteEl.style.display = 'block';
   };
   var downloadOne = function (dc, btn) {
     var url = safeUrl(dc.url); if (!url) return;
-    var old = btn.textContent; btn.textContent = '⏳'; btn.disabled = true;
+    var old = btn.innerHTML; btn.textContent = '…'; btn.disabled = true;
     getBlob(url).then(function (b) { saveBlob(b, nameFor(dc, b)); })
       .catch(function () { fallbackNote(); })
-      .then(function () { btn.textContent = old; btn.disabled = false; });
+      .then(function () { btn.innerHTML = old; btn.disabled = false; });
   };
   var loadZip = function () {
     return new Promise(function (res, rej) {
@@ -437,7 +295,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     });
   };
   var downloadAll = function (docs, btn) {
-    var old = btn.textContent; btn.textContent = '⏳ Hazırlanıyor…'; btn.disabled = true;
+    var old = btn.textContent; btn.textContent = 'Hazırlanıyor…'; btn.disabled = true;
     Promise.all([loadZip()].concat(docs.map(function (dc) { return getBlob(safeUrl(dc.url)).then(function (b) { return { dc: dc, b: b }; }); })))
       .then(function (r) {
         var zip = new r[0](), used = {};
@@ -459,9 +317,10 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var getJSON = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); }); };
   var ymd = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   var WMO = function (c) {
-    if (c === 0) return ['☀️', 'Güneşli']; if (c <= 2) return ['🌤️', 'Parçalı bulutlu']; if (c === 3) return ['☁️', 'Bulutlu'];
-    if (c <= 48) return ['🌫️', 'Sisli']; if (c <= 57) return ['🌦️', 'Çisenti']; if (c <= 67) return ['🌧️', 'Yağmurlu'];
-    if (c <= 77) return ['🌨️', 'Karlı']; if (c <= 82) return ['🌧️', 'Sağanak']; if (c <= 86) return ['🌨️', 'Kar sağanağı']; return ['⛈️', 'Fırtına'];
+    var T = '\uFE0E'; // emoji değil yazı sembolü
+    if (c === 0) return ['☀' + T, 'Güneşli']; if (c <= 2) return ['☼' + T, 'Parçalı bulutlu']; if (c === 3) return ['☁' + T, 'Bulutlu'];
+    if (c <= 48) return ['≋', 'Sisli']; if (c <= 57) return ['☂' + T, 'Çisenti']; if (c <= 67) return ['☂' + T, 'Yağmurlu'];
+    if (c <= 77) return ['❄' + T, 'Karlı']; if (c <= 82) return ['☂' + T, 'Sağanak']; if (c <= 86) return ['❄' + T, 'Kar sağanağı']; return ['ϟ', 'Fırtına'];
   };
   var wearTip = function (mn, mx, wet, snow) {
     var t = [];
@@ -517,7 +376,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var renderInfo = function (f, parent) {
     var s = parseD(f.startDate), e = parseD(f.endDate) || s;
     var hotel = f.hotel && f.hotel.name ? f.hotel : null;
-    var wrap = el('div'); var head = el('div', 'sec', f._infoTitle || 'Seyahat Bilgileri');
+    var wrap = el('div'); var head = el('div', 'sec'); head.appendChild(el('b', '', f._infoTitle || 'Seyahat bilgileri'));
     var grid = el('div', 'info'); var shown = false;
     var reveal = function () { if (!shown) { shown = true; add(parent, head); add(parent, wrap); } };
     wrap.appendChild(grid);
@@ -525,7 +384,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     // Otel kartı (veri linkte, dış servise gerek yok)
     if (hotel) {
       var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
-      hc.appendChild(el('div', 'n', '🏨 ' + hotel.name));
+      hc.appendChild(el('div', 'n', hotel.name));
       // Adres zaten şehir/ülkeyi içeriyorsa tekrar ekleme
       var low = String(hotel.address || '').toLocaleLowerCase('tr-TR');
       var parts = String(hotel.address || '').split(',').map(function (x) { return x.trim(); });
@@ -534,15 +393,15 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       if (adr) hc.appendChild(el('div', 'a', adr));
       var hb = el('div', 'b');
       var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
-      var go = el('a', 'p', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; hb.appendChild(go);
-      var mp = el('a', '', '🗺️ Harita'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; hb.appendChild(mp);
+      var go = el('a', 'p', 'Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; hb.appendChild(go);
+      var mp = el('a', '', 'Harita'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; hb.appendChild(mp);
       var tel = String(hotel.phone || '').replace(/[^\d+]/g, '');
-      if (tel.length >= 7) { var hp = el('a', '', '📞 Otel'); hp.href = 'tel:' + tel; hb.appendChild(hp); }
+      if (tel.length >= 7) { var hp = el('a', '', 'Oteli ara'); hp.href = 'tel:' + tel; hb.appendChild(hp); }
       hc.appendChild(hb); wrap.appendChild(hc); reveal();
     }
 
     // Sorumluluk reddi — hava/kur kartı gösterilince görünür
-    var disc = el('div', 'disc', 'ℹ️ Hava durumu ve döviz kuru bilgileri bilgilendirme amaçlıdır; Open-Meteo ve TCMB gibi üçüncü taraf kaynaklardan otomatik alınır, değişebilir ve doğruluğu garanti edilmez. Paydos Turizm bu bilgilere dayanılarak yapılan planlama ve işlemlerden sorumlu tutulamaz. Döviz alım-satımında banka / döviz bürosunun güncel kuru geçerlidir.');
+    var disc = el('div', 'disc', 'Hava durumu ve döviz kuru bilgileri bilgilendirme amaçlıdır; Open-Meteo ve TCMB gibi üçüncü taraf kaynaklardan otomatik alınır, değişebilir ve doğruluğu garanti edilmez. Paydos Turizm bu bilgilere dayanılarak yapılan planlama ve işlemlerden sorumlu tutulamaz. Döviz alım-satımında banka / döviz bürosunun güncel kuru geçerlidir.');
     wrap.appendChild(disc);
     var showDisc = function () { disc.style.display = 'block'; };
 
@@ -567,7 +426,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       if (loc && loc.timezone && cc !== 'TR') {
         try {
           var off = tzOffset(loc.timezone, s);
-          var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', '🕐 Saat farkı'));
+          var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', 'Saat farkı'));
           var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
           box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
           var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
@@ -578,7 +437,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 
       // --- Priz ---
       var pl = PLUG(cc);
-      if (pl) { var box2 = el('div', 'ib'); box2.appendChild(el('div', 'h', '🔌 Priz')); box2.appendChild(el('div', 'v', pl[0])); box2.appendChild(el('div', 's', pl[1])); grid.appendChild(box2); reveal(); }
+      if (pl) { var box2 = el('div', 'ib'); box2.appendChild(el('div', 'h', 'Priz')); box2.appendChild(el('div', 'v', pl[0])); box2.appendChild(el('div', 's', pl[1])); grid.appendChild(box2); reveal(); }
 
       // --- Kur ---
       var cur = CUR[cc];
@@ -592,7 +451,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           return getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) { src = 'Güncel kur · ' + new Date().toLocaleDateString('tr-TR'); return r && r.rates && r.rates.TRY; });
         }).then(function (tr) {
           if (!tr) return;
-          var box3 = el('div', 'ib wide'); box3.appendChild(el('div', 'h', '💱 Para birimi'));
+          var box3 = el('div', 'ib wide'); box3.appendChild(el('div', 'h', 'Döviz kuru'));
           var big = tr >= 1 ? '1 ' + cur + ' = ' + tr.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
@@ -606,7 +465,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       var today = new Date(); today.setHours(0, 0, 0, 0);
       var toStart = Math.round((s - today) / 86400000), toEnd = Math.round((e - today) / 86400000);
       if (toEnd < 0) return; // seyahat bitti
-      var wbox = el('div', 'ib wide'); wbox.appendChild(el('div', 'h', '🌤️ Hava — ' + (loc.name || place)));
+      var wbox = el('div', 'ib wide'); wbox.appendChild(el('div', 'h', 'Hava · ' + (loc.name || place)));
       var common = '&latitude=' + loc.latitude + '&longitude=' + loc.longitude + '&timezone=auto';
       if (toStart <= 14) {
         // Gerçek tahmin (en fazla 16 gün ileri)
@@ -627,7 +486,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
           wbox.appendChild(el('div', 's', 'Seyahat günleriniz için tahmin'));
           wbox.appendChild(days);
-          wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
+          wbox.appendChild(el('div', 'wear', 'Öneri: ' + wearTip(mn, mx, wet, snow)));
           grid.appendChild(wbox); reveal(); showDisc();
         }).catch(function () {});
       } else {
@@ -648,7 +507,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           var mn = avg(mns), mx = avg(mxs), wet = rainDays / n >= 0.3, snow = snowDays / n >= 0.15;
           wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
           wbox.appendChild(el('div', 's', AY[s.getMonth()] + ' ayında ' + (loc.name || place) + ' için ortalama' + (wet ? ' · genelde yağışlı' : '') + (snow ? ' · kar yağabilir' : '') + '. Gerçek tahmin seyahatinizden 2 hafta önce burada görünecek.'));
-          wbox.appendChild(el('div', 'wear', '👕 Yanınıza alın: ' + wearTip(mn, mx, wet, snow)));
+          wbox.appendChild(el('div', 'wear', 'Öneri: ' + wearTip(mn, mx, wet, snow)));
           grid.appendChild(wbox); reveal(); showDisc();
         });
       }
@@ -686,78 +545,52 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var monthKey = function (iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})/); return m ? m[1] + '-' + m[2] : ''; };
 
   var render = function (f) {
-      meta.prefix = f.city || f.tourName || 'Paydos';
-      box.innerHTML = '';
+      meta.prefix = f.customerName || 'Paydos';
+      box.innerHTML = ''; delay = 0;
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
-      // Uçuş kodu sadece harf+rakam; takip adresi sayfada kurulur (dışarıdan adres alınmaz)
-      var flights = (f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); });
-      var isCust = f.kind === 'customer';
-      var dest = null;
-      if (isCust) { flights = upcomingFlights(flights); dest = nextDestination(flights); }
+      var flights = upcomingFlights((f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); }));
+      var dest = nextDestination(flights);
+      var fullName = String(f.customerName || '').trim();
 
-      // --- Üst bölüm ---
-      var hero = add(box, el('div', 'hero'));
-      var nm = String(f.customerName || '').trim().split(/\s+/); var first = nm.length > 1 ? nm.slice(0, -1).join(' ') : nm[0]; // soyadı hariç
-      hero.appendChild(el('div', 'hello', first ? 'Merhaba ' + first + ' 👋' : 'Merhaba 👋'));
-      if (isCust) {
-        hero.appendChild(el('div', 'dest', 'Belgeleriniz'));
-        hero.appendChild(el('div', 'country', String(f.customerName || '').trim()));
-        if (flights[0]) {
-          var nf = flights[0], nd = flightDay(nf), nr = parsePt(nf.arr);
-          hero.appendChild(el('div', 'dates', '✈️ Sıradaki uçuş: ' + (nd ? fmtD(nd) + ' · ' : '') + (nr.city || nr.iata || nf.code)));
-        }
-        hero.appendChild(el('div', 'tname', 'Biletleriniz, otel ve vize belgeleriniz bu linkte. Yeni belge eklendikçe burada görünür.'));
-      }
-      if (!isCust) hero.appendChild(el('div', 'dest', f.city || f.tourName || 'Seyahatiniz'));
-      if (f.country && !isCust) hero.appendChild(el('div', 'country', f.country));
-      if (f.tourName && f.city && !isCust) hero.appendChild(el('div', 'tname', f.tourName));
-      var s = isCust ? null : parseD(f.startDate), e = isCust ? null : parseD(f.endDate);
-      if (s) hero.appendChild(el('div', 'dates', '📅 ' + fmtD(s) + (e ? ' – ' + fmtD(e) : '') + ' ' + s.getFullYear()));
-      if (s) {
-        var today = new Date(); today.setHours(0, 0, 0, 0);
-        var days = Math.round((s - today) / 86400000);
-        var endD = e || s;
-        var cnt = el('div', 'count');
-        if (days > 1) { cnt.appendChild(document.createTextNode('✈️ Yolculuğunuza ')); cnt.appendChild(el('b', '', String(days))); cnt.appendChild(document.createTextNode(' gün kaldı')); }
-        else if (days === 1) cnt.textContent = '✈️ Yarın yola çıkıyorsunuz!';
-        else if (days === 0) cnt.textContent = '✈️ Bugün yola çıkıyorsunuz, iyi yolculuklar!';
-        else if (today <= endD) cnt.textContent = '🌍 İyi eğlenceler, keyifli bir seyahat dileriz!';
-        else cnt.textContent = '💛 Umarız harika geçmiştir!';
-        hero.appendChild(cnt);
-      }
+      // --- Kapak ---
+      var hero = add(box, el('section', 'hero'));
+      hero.appendChild(el('div', 'eyebrow', 'Yolcu'));
+      hero.appendChild(el('h1', 'name', fullName || 'Belgeleriniz'));
+      var stats = el('div', 'stats');
+      var stat = function (k, v, sub) { var d = el('div', 'st'); d.appendChild(el('div', 'k', k)); d.appendChild(el('div', 'v', v)); if (sub) d.appendChild(el('div', 's', sub)); stats.appendChild(d); };
+      if (flights[0]) {
+        var nf = flights[0], nd = flightDay(nf), a1 = parsePt(nf.dep), a2 = parsePt(nf.arr);
+        stat('Sıradaki uçuş', nd ? fmtD(nd) : nf.code, (a1.iata && a2.iata) ? a1.iata + ' → ' + a2.iata + ' · ' + nf.code.replace(/^(..)/, '$1 ') : nf.code);
+      } else stat('Sıradaki uçuş', '—', 'Planlı uçuş yok');
+      stat('Belgeler', String(docs.length), docs.length ? 'dosya hazır' : 'henüz yok');
+      hero.appendChild(stats);
+      hero.appendChild(el('p', 'lead', 'Biletleriniz, otel ve vize belgeleriniz bu sayfada. Yeni belge eklendikçe güncellenir.'));
 
       renderInstall(box);
-      if (!navigator.onLine) add(box, el('div', 'offline', '📴 İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
-      if (isCust) document.title = 'Paydos · Belgelerim'; else if (f.city) document.title = 'Paydos · ' + f.city;
+      if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
+      document.title = 'Paydos · ' + (fullName || 'Seyahat Dosyası');
 
-      if (!docs.length && !flights.length) { add(box, el('div', 'msg', 'Henüz paylaşılmış belge yok.')); return; }
+      var sec = function (t, n) { var h = el('div', 'sec'); h.appendChild(el('b', '', t)); if (n) h.appendChild(el('span', '', String(n))); return add(box, h); };
 
-      // --- Uçuşlar (biniş kartı) ---
+      if (!docs.length && !flights.length) add(box, el('div', 'empty', 'Henüz paylaşılmış belge yok. Biletiniz veya otel belgeniz hazırlandığında burada görünecek.'));
+
+      // --- Uçuşlar ---
       if (flights.length) {
-        add(box, el('div', 'sec', isCust ? 'Yaklaşan Uçuşlarınız' : 'Uçuşlarınız'));
-        if (!isCust) add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun, Tetris açılsın!'));
+        sec('Yaklaşan uçuşlar', flights.length);
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
-          var ph = el('div', 'ph');
-          var xd = isCust ? flightDay(x) : null;
-          ph.appendChild(el('span', '', (isCust ? 'UÇUŞ' : (x.dir || 'UÇUŞ').toLocaleUpperCase('tr-TR')) + (xd ? ' · ' + fmtD(xd).toLocaleUpperCase('tr-TR') : x.date ? ' · ' + x.date.replace(/\s+\d{4}.*$/, '') : '')));
-          ph.appendChild(el('span', 'fn', x.code.replace(/^(..)/, '$1 ')));
-          a.appendChild(ph);
+          var xd = flightDay(x);
+          var top = el('div', 'ptop');
+          top.appendChild(el('span', 'fno', x.code.replace(/^(..)/, '$1 ')));
+          top.appendChild(el('span', '', xd ? xd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }) : (x.date || '')));
+          a.appendChild(top);
           var d = parsePt(x.dep), r = parsePt(x.arr);
           if (d.iata && r.iata) {
-            var pb = el('div', 'pb');
+            var rt = el('div', 'route');
             var L = el('div', 'pt'); L.appendChild(el('div', 'iata', d.iata)); L.appendChild(el('div', 'city', d.city)); if (d.time) L.appendChild(el('div', 'time', d.time));
-            // Uçağın uçtuğu çizgiye dokunmak oyunu açar (hareketli uçağı tutturmak zor olduğu için
-            // tüm çizgi dokunma alanı); kartın geri kalanı uçuş takibine gider
-            var P;
-            if (isCust) P = el('div', 'path');
-            else {
-              P = el('button', 'path'); P.type = 'button'; P.title = 'Tetris oyna!'; P.setAttribute('aria-label', 'Tetris oyununu aç');
-              P.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openGame(); });
-            }
-            P.appendChild(el('span', 'plane', '✈️'));
+            var ln = el('div', 'line'); ln.appendChild(ico('plane'));
             var R = el('div', 'pt r'); R.appendChild(el('div', 'iata', r.iata)); R.appendChild(el('div', 'city', r.city)); if (r.time) R.appendChild(el('div', 'time', r.time));
-            pb.appendChild(L); pb.appendChild(P); pb.appendChild(R); a.appendChild(pb);
+            rt.appendChild(L); rt.appendChild(ln); rt.appendChild(R); a.appendChild(rt);
           } else if (x.dep || x.arr) {
             a.appendChild(el('div', 'raw', [x.dep, x.arr].filter(Boolean).join('  →  ')));
           }
@@ -769,82 +602,66 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         });
       }
 
-      // --- Belgeler ---
+      // --- Belgeler: aya göre, en yeni üstte ---
       if (docs.length) {
-        add(box, el('div', 'sec', 'Belgeleriniz'));
-        var groups = [{ key: '', list: docs }];
-        if (isCust) {
-          var by = {}, order = [];
-          docs.slice().reverse().forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
-          order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
-          groups = order.map(function (k) { return { key: k, list: by[k] }; });
-        }
-        groups.forEach(function (g) {
-        if (isCust && groups.length > 1) add(box, el('div', 'mon', g.key ? AY[+g.key.slice(5) - 1] + ' ' + g.key.slice(0, 4) : 'Önceki belgeler'));
-        var gdocs = g.list;
-        var grid = add(box, el('div', 'grid'));
-        gdocs.forEach(function (dc, i) {
-          var st = STYLE[dc.icon] || ['#f5b942', 'rgba(245,185,66,.15)', ''];
-          var parts = String(dc.label || 'Belge').split(' — ');
-          var a = el('div', 'tile' + (gdocs.length % 2 === 1 && i === gdocs.length - 1 ? ' wide' : ''));
-          a.style.setProperty('--c', st[0]); a.style.setProperty('--bgc', st[1]);
-          a.appendChild(el('div', 'ic', dc.icon || '📄'));
-          var tx = el('div'); tx.appendChild(el('div', 'tt', parts[0])); tx.appendChild(el('div', 'sub', parts[1] || st[2])); a.appendChild(tx);
-          var acts = el('div', 'acts');
-          var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
-          var dl = el('button', 'btn d', '⬇ İndir'); dl.type = 'button';
-          dl.addEventListener('click', function () { downloadOne(dc, dl); });
-          acts.appendChild(op); acts.appendChild(dl); a.appendChild(acts);
-          grid.appendChild(a);
-        });
+        sec('Belgeler', docs.length);
+        var by = {}, order = [];
+        docs.slice().reverse().forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
+        order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
+        order.forEach(function (k) {
+          if (order.length > 1) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Önceki belgeler'));
+          var list = add(box, el('div', 'list'));
+          by[k].forEach(function (dc) {
+            var st = STYLE[dc.icon] || ['', '', ''];
+            var parts = String(dc.label || 'Belge').split(' — ');
+            var row = el('div', 'doc');
+            var di = el('div', 'dic'); di.appendChild(ico(DOC_IC[dc.icon] || 'doc')); row.appendChild(di);
+            var tx = el('div', 'dtx'); tx.appendChild(el('div', 'dt', parts[0])); var sub = parts[1] || st[2]; if (sub) tx.appendChild(el('div', 'ds', sub)); row.appendChild(tx);
+            var acts = el('div', 'acts');
+            var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
+            var dl = el('button', 'btn d'); dl.type = 'button'; dl.title = 'İndir'; dl.setAttribute('aria-label', parts[0] + ' indir'); dl.appendChild(ico('dl'));
+            dl.addEventListener('click', function () { downloadOne(dc, dl); });
+            acts.appendChild(op); acts.appendChild(dl); row.appendChild(acts);
+            list.appendChild(row);
+          });
         });
         if (docs.length > 1) {
-          var allBtn = add(box, el('button', 'all', '⬇ Tümünü indir (' + docs.length + ' belge, ZIP)')); allBtn.type = 'button';
+          var allBtn = add(box, el('button', 'all')); allBtn.type = 'button';
+          allBtn.appendChild(ico('dl')); allBtn.appendChild(document.createTextNode('Tümünü indir · ' + docs.length + ' belge (ZIP)'));
           allBtn.addEventListener('click', function () { downloadAll(docs, allBtn); });
         }
         noteEl = add(box, el('div', 'note'));
       }
 
-      // --- Seyahat bilgileri (hava, saat, kur, priz, otel) — iletişim kartından önce yerini ayırır ---
+      // --- Varış bilgileri: sıradaki uçuşun gidilen şehri, sadece yurt dışı ---
       var infoSlot = el('div'); box.appendChild(infoSlot);
       try {
-        if (!isCust) renderInfo(f, infoSlot);
-        else if (dest && dest.city) {
+        if (dest && dest.city) {
           var sameCity = String(f.city || '').toLocaleLowerCase('tr-TR') === String(dest.city).toLocaleLowerCase('tr-TR');
           renderInfo({ startDate: ymd(dest.start), endDate: ymd(dest.end), city: dest.city, country: sameCity ? f.country : '',
-            hotel: f.hotel && sameCity ? f.hotel : null, _abroadOnly: true, _infoTitle: dest.city + ' için bilgiler' }, infoSlot);
+            hotel: f.hotel && sameCity ? f.hotel : null, _abroadOnly: true, _infoTitle: dest.city + ' · varış bilgileri' }, infoSlot);
         }
       } catch (x) {}
-
-      // --- Oyun (her zaman erişilebilir, internetsiz çalışır) ---
-      if (!isCust) {
-      var tg = add(box, el('button', 'tet')); tg.type = 'button';
-      tg.appendChild(el('div', 'ic', '🎮'));
-      var tgx = el('div'); tgx.appendChild(el('b', '', 'NOSTALJİK TETRİS')); tgx.appendChild(el('span', '', 'Havalimanında, uçakta — internet olmadan da oynanır')); tg.appendChild(tgx);
-      tg.addEventListener('click', function () { openGame(); });
-      }
 
       // --- İletişim ---
       var cf = f.contact || {};
       var ph = String(cf.phone || '+90 258 263 71 76').replace(/[^\d+]/g, ''), wa = String(cf.whatsapp || '').replace(/\D/g, '');
       if (wa && wa.charAt(0) === '0') wa = '90' + wa.slice(1); else if (wa && wa.length === 10) wa = '90' + wa;
       var ct = add(box, el('div', 'contact'));
-      ct.appendChild(el('div', 'ic', '📞'));
-      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Yardıma mı ihtiyacınız var?')); ctx.appendChild(document.createTextNode('Paydos Turizm ekibi yanınızda.')); ct.appendChild(ctx);
+      var cic = el('div', 'ic'); cic.appendChild(ico('phone')); ct.appendChild(cic);
+      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Paydos Turizm')); ctx.appendChild(document.createTextNode('Seyahatinizle ilgili her konuda yanınızdayız.')); ct.appendChild(ctx);
       var bt = el('div', 'bt');
-      if (wa.length >= 11) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(isCust ? 'Merhaba, belgelerim hakkında yardım almak istiyorum.' : 'Merhaba, ' + (f.tourName || 'turum') + ' hakkında yardım almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; bt.appendChild(w); }
+      if (wa.length >= 11) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Merhaba, belgelerim hakkında yardım almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; bt.appendChild(w); }
       var call = el('a', '', 'Ara'); call.href = 'tel:' + (ph.length >= 7 ? ph : '+902582637176'); bt.appendChild(call);
       ct.appendChild(bt);
-      // Instagram takip — kullanıcı adı sadece harf/rakam/._ (dışarıdan adres alınmaz)
       var ig = String(cf.instagram || '').replace(/^@/, '');
       if (/^[A-Za-z0-9._]{1,30}$/.test(ig)) {
         var ia = add(box, el('a', 'ig')); ia.href = 'https://www.instagram.com/' + ig + '/'; ia.target = '_blank'; ia.rel = 'noopener';
-        var ic = el('div', 'ic'); ic.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff"/></svg>';
-        ia.appendChild(ic);
-        var it = el('div', 'tx'); it.appendChild(el('b', '', '@' + ig)); it.appendChild(document.createTextNode('Yeni turlar ve fırsatlar için bizi takip edin')); ia.appendChild(it);
-        ia.appendChild(el('span', 'go', 'Takip et'));
+        var iic2 = el('div', 'ic'); iic2.appendChild(ico('ig')); ia.appendChild(iic2);
+        var it = el('div', 'tx'); it.appendChild(el('b', '', '@' + ig)); it.appendChild(document.createTextNode('Yeni rotalar ve kampanyalar')); ia.appendChild(it);
+        ia.appendChild(el('span', 'go', 'Takip et →'));
       }
-      add(box, el('div', 'foot', 'www.paydostur.com'));
+      add(box, el('div', 'foot', 'PAYDOSTUR.COM'));
   };
 
   // ===== Veri: PIN korumalı belge API'si (Firebase fonksiyonu) =====
@@ -863,7 +680,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     var c = lsGet(DATA_KEY);
     if (c) {
       try { render(JSON.parse(c)); } catch (e) { return show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.'); }
-      if (!box.querySelector('.offline')) box.appendChild(el('div', 'offline', '📴 İnternet yok — en son açılan bilgiler gösteriliyor.'));
+      if (!box.querySelector('.offline')) box.appendChild(el('div', 'offline', 'İnternet yok — en son açılan bilgiler gösteriliyor.'));
       return;
     }
     show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
@@ -873,16 +690,16 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var pinScreen = function (mode, name, msg) {
     box.innerHTML = '';
     var card = el('div', 'pinc');
-    card.appendChild(el('div', 'pic', '🔐'));
-    card.appendChild(el('div', 'pt', (name ? 'Merhaba ' + name + ' 👋' : 'Merhaba 👋')));
+    var pic = el('div', 'pic'); pic.appendChild(ico('lock')); card.appendChild(pic);
+    card.appendChild(el('div', 'pt', (name ? 'Hoş geldiniz, ' + name : 'Hoş geldiniz')));
     card.appendChild(el('div', 'ps', mode === 'set'
-      ? 'Seyahat belgelerinizi korumak için 4 haneli bir PIN belirleyin. Sonraki açılışlarda bu PIN sorulacak.'
-      : 'Belgelerinizi görmek için 4 haneli PIN\'inizi girin.'));
+      ? 'Seyahat dosyanızı korumak için 4 haneli bir PIN belirleyin. Sonraki girişlerde bu PIN sorulacak.'
+      : 'Seyahat dosyanızı görüntülemek için 4 haneli PIN\'inizi girin.'));
     var mk = function (ph) { var i = document.createElement('input'); i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 4; i.pattern = '[0-9]*'; i.placeholder = ph; i.className = 'pin'; i.addEventListener('input', function () { i.value = i.value.replace(/\D/g, '').slice(0, 4); }); return i; };
-    var p1 = mk('• • • •'), p2 = mode === 'set' ? mk('Tekrar') : null;
+    var p1 = mk('PIN'), p2 = mode === 'set' ? mk('PIN tekrar') : null;
     card.appendChild(p1); if (p2) card.appendChild(p2);
     var err = el('div', 'perr', msg || ''); card.appendChild(err);
-    var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve belgeleri aç' : 'Belgeleri aç'); btn.type = 'button';
+    var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve devam et' : 'Devam et'); btn.type = 'button';
     card.appendChild(btn);
     card.appendChild(el('div', 'pnote', mode === 'set' ? 'PIN\'inizi unutursanız Paydos Turizm\'i arayın.' : 'PIN\'inizi unuttuysanız Paydos Turizm\'i arayın: 0 258 263 71 76'));
     box.appendChild(card);
@@ -891,7 +708,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       var v = p1.value;
       if (!/^\d{4}$/.test(v)) { err.textContent = 'PIN 4 rakam olmalı.'; return; }
       if (p2 && p2.value !== v) { err.textContent = 'İki PIN aynı değil.'; return; }
-      btn.disabled = true; btn.textContent = '⏳';
+      btn.disabled = true; btn.textContent = 'Kontrol ediliyor…';
       call({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }).then(function (j) {
         if (j.state === 'ok') { lsSet(PIN_KEY, v); showData(j.data); return; }
         if (j.state === 'locked') { pinScreen('enter', name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.'); return; }
