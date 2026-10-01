@@ -7594,6 +7594,17 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       setBulkTicket({ ...bt, uploading: false });
     }
   };
+  // Belge ikonu: tıkla = aç, sağ tık = sil. Telefonda sağ tık yok → 600 ms basılı tutunca sil (ardından gelen tıklama açmaz)
+  const docPressHandlers = (onOpen, onDelete) => {
+    let timer = null, fired = false;
+    const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    return {
+      onClick: (e) => { if (fired) { fired = false; e.preventDefault(); return; } onOpen(); },
+      onContextMenu: (e) => { e.preventDefault(); clear(); if (!fired) onDelete(); fired = false; },
+      onPointerDown: (e) => { if (e.pointerType !== 'touch') return; fired = false; clear(); timer = setTimeout(() => { fired = true; timer = null; onDelete(); }, 600); },
+      onPointerUp: clear, onPointerLeave: clear, onPointerCancel: clear,
+    };
+  };
   const removeResDoc = async (tour, res, field) => {
     if (!window.confirm('Bu belgeyi silmek istiyor musunuz?')) return;
     try {
@@ -8284,7 +8295,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 {!res.cancelled && <button onClick={() => openResHotelVoucher(tour, res)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px', opacity: tour.voucherHotel?.name ? 1 : 0.4 }} title={tour.voucherHotel?.name ? `Otel giriş belgesi — ${tour.voucherHotel.name} (odalamadan)` : 'Otel giriş belgesi — önce Odalama\'da otel bilgilerini girin'}>🏨</button>}
                                 {!res.cancelled && RES_DOCS.map(d => res[d.field]
-                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
+                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button {...docPressHandlers(() => window.open(res[d.field], '_blank'), () => removeResDoc(tour, res, d.field))} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px', WebkitTouchCallout: 'none', userSelect: 'none' }} title={`${d.label} — tıkla: aç · sağ tık (telefonda basılı tut): sil`}>{d.icon}</button></span>
                                   : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
                                 )}
                                 {!res.cancelled && <button onClick={() => shareResLink(tour, res)} disabled={!!shareBusy} style={{ background: 'none', border: 'none', color: '#22c55e', cursor: shareBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Belge linkini WhatsApp'tan paylaş (program, otel, uçak, fuar)">{shareBusy === res.id ? '⏳' : '🔗'}</button>}
