@@ -1,9 +1,9 @@
 // ===== Belge linki API (PIN korumalı) =====
-// Müşteri belge sayfası (crm.paydostur.com/b/<kod>) veriyi doğrudan Firestore'dan değil buradan alır.
+// Müşteri linki sayfası (crm.paydostur.com/m/<kod>) veriyi doğrudan Firestore'dan değil buradan alır.
 // Müşteri linklerinde (kind: 'customer') ilk açılışta müşteri 4 haneli PIN belirler; sonraki açılışlarda PIN sorulur.
 // PIN müşteri kartına da yazılır (customers/<id>.linkPin) — kaybederse acenta söyleyebilir / sıfırlayabilir.
-// Tur linkleri (PIN'siz) eskisi gibi açık döner. 5 yanlış denemede 15 dakika kilit.
-// Firestore kuralında paylasimlar herkese kapatılınca PIN atlanamaz (veri sadece bu fonksiyondan çıkar).
+// Sadece müşteri linkleri (kind: 'customer'); tur linkleri bu fonksiyonla hiç ilgilenmez (eskisi gibi /b/ sayfası, PIN'siz).
+// 5 yanlış denemede 15 dakika kilit. Firestore kuralında müşteri dokümanları herkese kapatılınca PIN atlanamaz.
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -43,11 +43,8 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
     if (!snap.exists) return res.status(404).json({ state: 'notfound' });
     const d = snap.data();
 
-    // Ana ekran manifesti için sadece başlık bilgisi (PIN gerekmez)
-    if (action === 'meta') return res.json({ state: 'meta', kind: d.kind || 'tour', city: d.city || '', tourName: d.tourName || '' });
-
-    // Tur linkleri ve PIN'siz eski linkler: açık
-    if (d.kind !== 'customer') return res.json({ state: 'ok', data: publicData(d) });
+    // Tur linkleri buradan verilmez
+    if (d.kind !== 'customer') return res.status(404).json({ state: 'notfound' });
 
     const name = firstName(d.customerName);
 

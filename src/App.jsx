@@ -1315,7 +1315,7 @@ function CompanyPicker({ value, onChange }) {
   );
 }
 
-// ===== MÜŞTERİ LİNKİ: turdan bağımsız, her müşteriye kalıcı tek link (/b/<kod>) =====
+// ===== MÜŞTERİ LİNKİ: turdan bağımsız, her müşteriye kalıcı tek link (/m/<kod>, public/musteri.html) — tur linki (/b/) ayrı =====
 // Kurumsal/bireysel satışlarda bilet, otel belgesi, vize vb. WhatsApp'a tek tek atmak yerine buradan gönderilir.
 // Link tur linkiyle aynı sayfayı kullanır (belgeler, uçuş takibi, hava, kur, saat farkı, otel yol tarifi).
 // Belgeler eklendikçe aynı link güncellenir; müşteriye yeniden göndermek gerekmez.
@@ -1324,7 +1324,7 @@ const newLinkToken = () => {
   const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => abc[b % abc.length]).join('');
 };
-// Okunabilir müşteri linki: /b/onder-tasci-k7m2q — isim + 5 karakterlik gizli ek (≈33 milyon olasılık).
+// Okunabilir müşteri linki: /m/onder-tasci-k7m2q — isim + 5 karakterlik gizli ek (≈33 milyon olasılık).
 // Sadece isim olsaydı herkes başkasının adını yazıp belgelerine ulaşabilirdi (KVKK); ek bunu engeller.
 const customerLinkSlug = (c) => {
   const base = asciiTr(`${c.firstName || ''} ${c.lastName || ''}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'musteri';
@@ -1370,7 +1370,7 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
       }, { merge: true }); // merge: müşterinin belirlediği PIN güncellemede silinmesin
       const shareTrip = JSON.stringify(trip);
       await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token, shareTrip }, { merge: true });
-      const link = `${window.location.origin}/b/${token}`;
+      const link = `${window.location.origin}/m/${token}`;
       const belgeler = [...docs.map(d => d.label), ...(flights.length ? ['Uçuş Takibi'] : [])].filter((x, i, a) => a.indexOf(x) === i).join(', ');
       const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
       let text = tpl.replace(/\{isim\}/g, name).replace(/\{tur\}/g, trip.title || 'Seyahatiniz').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
@@ -1690,7 +1690,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
         const { link, text } = await publishCustomerLink(pc.c, pc.trip, pc.token, appSettings);
         results.push({ c: pc.c, link, text, added: pc.added, isNew: !pc.c.shareToken });
       }
-      const patches = new Map(results.map(r => [String(r.c.id), { shareToken: r.link.split('/b/')[1], shareTrip: JSON.stringify(perCust.get(String(r.c.id)).trip) }]));
+      const patches = new Map(results.map(r => [String(r.c.id), { shareToken: r.link.split('/m/')[1], shareTrip: JSON.stringify(perCust.get(String(r.c.id)).trip) }]));
       setCustomers(prev => prev.map(c => patches.has(String(c.id)) ? { ...c, ...patches.get(String(c.id)) } : c));
       setDone(results);
       showToast?.(`✅ ${todo.length} belge ${results.length} müşterinin linkine eklendi`, 'success');

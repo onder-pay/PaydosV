@@ -25,6 +25,17 @@
   to = "/belgeler.html"
   status = 200
 
+# Müşteri linki (/m/<kod>) — kurumsal, turdan bağımsız, PIN'li belge sayfası (tur linkinden ayrı)
+[[redirects]]
+  from = "/m/*"
+  to = "/musteri.html"
+  status = 200
+
+[[redirects]]
+  from = "/musteri.html"
+  to = "/musteri.html"
+  status = 200
+
 # SPA fallback — diğer tüm yollar React uygulamasına
 [[redirects]]
   from = "/*"
