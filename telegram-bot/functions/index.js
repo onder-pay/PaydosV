@@ -1099,9 +1099,20 @@ exports.telegramBot = functions
               await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Başvuru oluşturulamadı (müşteri/tür bulunamadı).' });
               return res.status(200).send('OK');
             }
+            // Çift dokunma koruması: butonları hemen kaldır; aynı müşteri + aynı tür için son 2 dakikada
+            // bot'un açtığı başvuru varsa ikinciyi açma (Telegram'da hızlı iki dokunuş iki kayıt oluşturuyordu)
+            await tg(T, 'editMessageReplyMarkup', { chat_id: cbChatId, message_id: cbMsgId, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+            try {
+              const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+              const recent = await cfg.db.collection('visa_applications').where('customerId', '==', cust.id).get();
+              const dup = recent.docs.map(d => d.data()).find(v => v.createdBy === 'Telegram Bot' && v.visaDuration === typeObj.name && String(v.createdAt || '') >= since);
+              if (dup) {
+                await tg(T, 'sendMessage', { chat_id: cbChatId, text: `ℹ️ ${cust.name} için "${typeObj.name}" başvurusu az önce zaten açıldı — tekrar açılmadı.` });
+                return res.status(200).send('OK');
+              }
+            } catch (e) { console.warn('[BOT] tekrar kontrolü yapılamadı:', e.message); }
             const rec = await saveVisaApplication(cfg.db, cust, catId, typeObj, status);
             const catLabel = VISA_CATS.find(c => c.id === catId)?.label || catId;
-            await tg(T, 'editMessageReplyMarkup', { chat_id: cbChatId, message_id: cbMsgId, reply_markup: { inline_keyboard: [] } });
 
             // Schengen (Almanya/İtalya/Fransa/Hollanda) → vizeevrak'a da başvuru aç
             let vizeEvrakMsg = '';
