@@ -1339,6 +1339,36 @@ const detectFlights = (text) => {
   return out;
 };
 
+// Müşteri linkini yayınla: paylasimlar/<kod> + müşteri kartına shareToken/shareTrip. Hem tek tek (Müşteri Linki)
+// hem toplu belge yüklemede kullanılır. Döner: { link, text } (WhatsApp mesajı şablondan)
+const publishCustomerLink = async (c, trip, token, appSettings) => {
+      const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')));
+      const flights = fl.map((f, i) => ({
+        dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
+        code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
+        date: f.ymd ? formatDate(f.ymd) : '',
+        dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
+        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
+      }));
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url }));
+      await setDoc(doc(db, 'paylasimlar', token), {
+        kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
+        startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
+        hotel: trip.hotelName ? { name: trip.hotelName, address: trip.hotelAddress || '', city: trip.city || '', country: trip.country || '', phone: '' } : null,
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' },
+        updatedAt: new Date().toISOString(),
+      });
+      const shareTrip = JSON.stringify(trip);
+      await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token, shareTrip }, { merge: true });
+      const link = `${window.location.origin}/b/${token}`;
+      const belgeler = [...docs.map(d => d.label), ...(flights.length ? ['Uçuş Takibi'] : [])].filter((x, i, a) => a.indexOf(x) === i).join(', ');
+      const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
+      let text = tpl.replace(/\{isim\}/g, name).replace(/\{tur\}/g, trip.title || 'Seyahatiniz').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
+      if (!text.includes(link)) text += `\n${link}`;
+  return { link, text };
+};
+
 function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast }) {
   const c = customer;
   const saved = useMemo(() => safeParseObj(c.shareTrip), [c.shareTrip]);
@@ -1398,31 +1428,8 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
     if (!(trip.docs || []).length && !(trip.flights || []).length) { showToast?.('Önce en az bir belge ekleyin', 'warning'); return; }
     setBusy('Kaydediliyor…');
     try {
-      const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
-      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')));
-      const flights = fl.map((f, i) => ({
-        dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
-        code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
-        date: f.ymd ? formatDate(f.ymd) : '',
-        dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
-        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
-      }));
-      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url }));
-      await setDoc(doc(db, 'paylasimlar', token.current), {
-        kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
-        startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
-        hotel: trip.hotelName ? { name: trip.hotelName, address: trip.hotelAddress || '', city: trip.city || '', country: trip.country || '', phone: '' } : null,
-        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' },
-        updatedAt: new Date().toISOString(),
-      });
-      const shareTrip = JSON.stringify(trip);
-      await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token.current, shareTrip }, { merge: true });
-      onSaved?.({ shareToken: token.current, shareTrip });
-      const link = `${window.location.origin}/b/${token.current}`;
-      const belgeler = [...docs.map(d => d.label), ...(flights.length ? ['Uçuş Takibi'] : [])].filter((x, i, a) => a.indexOf(x) === i).join(', ');
-      const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
-      let text = tpl.replace(/\{isim\}/g, name).replace(/\{tur\}/g, trip.title || 'Seyahatiniz').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
-      if (!text.includes(link)) text += `\n${link}`;
+      const { link, text } = await publishCustomerLink(c, trip, token.current, appSettings);
+      onSaved?.({ shareToken: token.current, shareTrip: JSON.stringify(trip) });
       setReady({ link, text, phone: c.phone || '' });
     } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
     finally { setBusy(''); }
@@ -1514,6 +1521,197 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
   );
 }
 
+// ===== TOPLU BELGE YÜKLEME (tek yükleme yeri) =====
+// Biletçi/otelci bilet, biniş kartı, otel belgesi… PDF'lerini buraya bırakır. Sistem her sayfadaki yolcu adını
+// tüm müşterilerle eşleştirir, belge türünü metinden tanır, çok sayfalı PDF'i kişi başı böler ve her kişinin
+// müşteri linkine ekler (link yoksa oluşturur). Biletten uçuşlar ve tarihler de linke işlenir.
+const docTypeOf = (text) => {
+  const t = asciiTr(String(text || '')).toUpperCase();
+  if (/BOARDING\s*PASS|BINIS\s*KART|BOARDING\s*TIME|GATE\s*CLOSES/.test(t)) return 1;          // 🛫 Biniş Kartı
+  if (/E-?\s?TICKET|ELEKTRONIK\s*BILET|TICKET\s*(NUMBER|NO)|BILET\s*NUMARASI|ITINERARY|ETKT/.test(t)) return 0; // ✈️ Uçak Bileti
+  if (/VOUCHER|HOTEL|OTEL|CHECK-?\s?IN|ACCOMMODATION|KONAKLAMA/.test(t)) return 2;              // 🏨 Otel Belgesi
+  if (/INSURANCE|SIGORTA|POLICE\s*NO|POLICY\s*(NUMBER|NO)/.test(t)) return 4;                    // 🛡️ Sigorta
+  if (/\bVISA\b|\bVIZE\b|SCHENGEN/.test(t)) return 3;                                           // 🛂 Vize
+  return 6;                                                                                       // 📄 Diğer
+};
+// Müşteri ad-soyad kelimeleri (eşleştirme dizini) — en az 2 kelime (tek kelimelik isimler yanlış eşleşir)
+const buildNameIndex = (customers) => (customers || []).map(c => ({ c, w: [...nameWords(`${c.firstName || ''} ${c.lastName || ''}`)].filter(x => x.length > 1) })).filter(x => x.w.length >= 2);
+// Metindeki kelimelere göre müşterileri bul; en çok kelimesi tutan(lar) döner
+const matchCustomers = (index, words) => {
+  const hits = index.filter(x => x.w.every(w => words.has(w)) || (x.w.length >= 3 && words.has(x.w[0]) && words.has(x.w[x.w.length - 1])));
+  if (hits.length < 2) return hits.map(h => h.c);
+  const score = (h) => h.w.filter(w => words.has(w)).length;
+  const max = Math.max(...hits.map(score));
+  return hits.filter(h => score(h) === max).map(h => h.c);
+};
+
+function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose }) {
+  const [rows, setRows] = useState([]); // { key, file, pages, type, custIds:[], cands:[], flights:[], note }
+  const [busy, setBusy] = useState('');
+  const [done, setDone] = useState(null); // [{ c, link, text, added }]
+  const index = useMemo(() => buildNameIndex(customers), [customers]);
+  const byId = useMemo(() => new Map((customers || []).map(c => [String(c.id), c])), [customers]);
+  const nameOf = (c) => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+  const listId = useRef('cust-dl-' + Math.random().toString(36).slice(2));
+  const setRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
+
+  const analyze = async (fileList) => {
+    const files = Array.from(fileList || []).filter(f => f.size <= 15 * 1024 * 1024);
+    if (!files.length) return;
+    setBusy('📖 Belgeler okunuyor…');
+    const out = [];
+    for (const [fi, file] of files.entries()) {
+      const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+      if (!isPdf) { out.push({ key: `${fi}_${file.name}`, file, type: 6, custIds: [], cands: [], flights: [], note: 'Görsel — kişiyi seçin' }); continue; }
+      try {
+        const pages = await pdfPagesText(file);
+        const per = pages.map(t => matchCustomers(index, nameWords(t)).map(c => String(c.id)));
+        const owners = new Set(per.filter(ids => ids.length === 1).map(ids => ids[0]));
+        if (pages.length > 1 && owners.size > 1) {
+          // Kişi başı sayfalara böl; isimsiz devam sayfası önceki yolcuya
+          let last = null;
+          for (let i = 0; i < per.length; i++) { if (per[i].length === 1) last = per[i][0]; else if (!per[i].length && last) per[i] = [last]; }
+          const groups = new Map();
+          per.forEach((ids, i) => { if (ids.length === 1) groups.set(ids[0], [...(groups.get(ids[0]) || []), i]); });
+          [...groups.entries()].forEach(([cid, pg], k) => {
+            const txt = pg.map(i => pages[i]).join(' ');
+            out.push({ key: `${fi}_${k}_${file.name}`, file, pages: pg, type: docTypeOf(txt), custIds: [cid], cands: [], flights: detectFlights(txt), note: '' });
+          });
+          const rest = per.map((ids, i) => ids.length === 1 ? -1 : i).filter(i => i >= 0);
+          if (rest.length) out.push({ key: `${fi}_rest_${file.name}`, file, pages: rest, type: docTypeOf(rest.map(i => pages[i]).join(' ')), custIds: [], cands: [...new Set(rest.flatMap(i => per[i]))], flights: [], note: `${rest.length} sayfada kişi net değil — seçin` });
+        } else {
+          const all = pages.join(' ');
+          const ids = matchCustomers(index, nameWords(all)).map(c => String(c.id));
+          // Tek kişi → ona; birkaç kişi aynı sayfada (grup bileti/oda) → hepsine; hiç yoksa elle
+          const many = ids.length > 1 && ids.length <= 12;
+          out.push({ key: `${fi}_${file.name}`, file, type: docTypeOf(all), custIds: ids.length === 1 || many ? ids : [], cands: ids.length > 12 ? ids.slice(0, 12) : [], flights: detectFlights(all),
+            note: !pages.join('').trim() ? 'PDF\'de metin yok (taranmış) — kişiyi seçin' : !ids.length ? 'İsim bulunamadı — kişiyi seçin' : many ? 'Birden fazla kişi — kontrol edin' : '' });
+        }
+      } catch (e) { out.push({ key: `${fi}_${file.name}`, file, type: 6, custIds: [], cands: [], flights: [], note: 'PDF okunamadı — kişiyi seçin' }); }
+    }
+    setRows(rs => [...rs, ...out]);
+    setBusy('');
+  };
+
+  const run = async () => {
+    const todo = rows.filter(r => r.custIds.length);
+    if (!todo.length) return;
+    setBusy('⬆️ Yükleniyor…');
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      // Kişi başı: link (token) + mevcut yolculuk bilgisi
+      const perCust = new Map();
+      for (const r of todo) {
+        const part = r.pages ? await pdfExtractPages(r.file, r.pages) : r.file;
+        for (const cid of r.custIds) {
+          const c = byId.get(cid); if (!c) continue;
+          if (!perCust.has(cid)) perCust.set(cid, { c, token: c.shareToken || newLinkToken(), trip: { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...safeParseObj(c.shareTrip) }, added: [] });
+          const pc = perCust.get(cid);
+          const safe = asciiTr(part.name).replace(/[^\w.\-]+/g, '_').slice(-80);
+          const path = `paylasim/${pc.token}/${Date.now()}_${safe}`;
+          const sr = ref(getStorage(), path);
+          await uploadBytes(sr, part, { contentType: part.type || 'application/pdf' });
+          const [icon, label] = CUST_DOC_TYPES[r.type];
+          pc.trip.docs = [...(pc.trip.docs || []), { id: generateUniqueId(), icon, label, url: await getDownloadURL(sr), path, name: part.name }];
+          pc.added.push(`${icon} ${label}`);
+          // Uçuşlar + boş tarih/şehir/başlık
+          const fl = [...(pc.trip.flights || [])];
+          (r.flights || []).forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push(x); });
+          fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
+          pc.trip.flights = fl;
+          if (fl.length) {
+            if (!pc.trip.startDate) pc.trip.startDate = fl[0].ymd;
+            if (!pc.trip.endDate) pc.trip.endDate = fl[fl.length - 1].ymd;
+            if (!pc.trip.city) pc.trip.city = fl[0].toCity;
+            if (!pc.trip.title) pc.trip.title = `${fl[0].fromCity} → ${fl[0].toCity}`;
+          }
+        }
+      }
+      const results = [];
+      for (const pc of perCust.values()) {
+        const { link, text } = await publishCustomerLink(pc.c, pc.trip, pc.token, appSettings);
+        results.push({ c: pc.c, link, text, added: pc.added, isNew: !pc.c.shareToken });
+      }
+      const patches = new Map(results.map(r => [String(r.c.id), { shareToken: r.link.split('/b/')[1], shareTrip: JSON.stringify(perCust.get(String(r.c.id)).trip) }]));
+      setCustomers(prev => prev.map(c => patches.has(String(c.id)) ? { ...c, ...patches.get(String(c.id)) } : c));
+      setDone(results);
+      showToast?.(`✅ ${todo.length} belge ${results.length} müşterinin linkine eklendi`, 'success');
+    } catch (e) { showToast?.('❌ Yükleme hatası: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+
+  const inS = { padding: '6px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' };
+  const ready = rows.filter(r => r.custIds.length).length;
+  return (
+    <div onClick={busy ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '720px', maxHeight: '92vh', overflowY: 'auto', color: '#e8f1f8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>📤 Belge Yükle — müşteri linklerine</h3>
+          <button onClick={onClose} disabled={!!busy} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+        </div>
+        <p style={{ margin: '4px 0 12px', fontSize: '11px', color: '#64748b' }}>Bilet, biniş kartı, otel belgesi… PDF'leri bırakın. İsimden müşteri, metinden belge türü bulunur; toplu PDF kişi başı bölünür. Kontrol edip yükleyin.</p>
+
+        {done ? (<>
+          <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>✅ {done.length} müşterinin linki güncellendi</div>
+          {done.map(r => (
+            <div key={r.c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', marginBottom: '6px' }}>
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>{nameOf(r.c)} {r.isNew && <span style={{ fontSize: '10px', color: '#22c55e' }}>· yeni link</span>}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.added.join(', ')}</div>
+              </div>
+              <a href={`https://wa.me/${formatWhatsAppPhone(r.c.phone) || ''}?text=${encodeURIComponent(r.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#22c55e', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>💬 Gönder</a>
+              <button onClick={() => window.open(r.link, '_blank')} style={{ ...inS, cursor: 'pointer' }}>👁️</button>
+            </div>
+          ))}
+          <p style={{ fontSize: '11px', color: '#64748b' }}>Linki daha önce gönderilmiş müşterilerde belge aynı linke eklendi — tekrar göndermek şart değil.</p>
+          <button onClick={() => { setDone(null); setRows([]); }} style={{ ...inS, padding: '10px', width: '100%', cursor: 'pointer' }}>➕ Yeni belgeler yükle</button>
+        </>) : (<>
+          <label style={{ display: 'block', padding: '22px', border: '2px dashed rgba(59,130,246,0.45)', borderRadius: '12px', textAlign: 'center', cursor: busy ? 'wait' : 'pointer', background: 'rgba(59,130,246,0.06)' }}
+            onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy) analyze(e.dataTransfer.files); }}>
+            <div style={{ fontSize: '28px' }}>📎</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#60a5fa' }}>{busy || 'PDF\'leri buraya sürükleyin veya seçin'}</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Birden fazla dosya olabilir · toplu bilet PDF'i kişilere ayrılır</div>
+            <input type="file" multiple accept="application/pdf,image/*" disabled={!!busy} style={{ display: 'none' }} onChange={e => { analyze(e.target.files); e.target.value = ''; }} />
+          </label>
+          <datalist id={listId.current}>{(customers || []).map(c => <option key={c.id} value={`${nameOf(c)} · ${c.phone || c.id}`} />)}</datalist>
+
+          {rows.length > 0 && <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {rows.map(r => (
+              <div key={r.key} style={{ padding: '8px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${r.custIds.length ? 'rgba(16,185,129,0.35)' : 'rgba(234,179,8,0.4)'}` }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select value={r.type} onChange={e => setRow(r.key, { type: +e.target.value })} style={inS}>
+                    {CUST_DOC_TYPES.map(([i, l], k) => <option key={l} value={k} style={{ background: '#0c1929' }}>{i} {l}</option>)}
+                  </select>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', flex: 1, minWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {r.file.name}{r.pages ? ` · s.${r.pages.map(p => p + 1).join(',')}` : ''}{r.flights?.length ? ` · ✈️ ${r.flights.map(f => f.code).join(', ')}` : ''}</span>
+                  <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} title="Çıkar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '6px' }}>
+                  {r.custIds.map(id => { const c = byId.get(id); return c && (
+                    <span key={id} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '12px', padding: '3px 8px', fontSize: '12px' }}>
+                      👤 {nameOf(c)}{c.shareToken ? '' : ' · yeni link'}
+                      <button onClick={() => setRow(r.key, { custIds: r.custIds.filter(x => x !== id) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px' }}>×</button>
+                    </span>); })}
+                  {r.cands.filter(id => !r.custIds.includes(id)).map(id => { const c = byId.get(id); return c && (
+                    <button key={id} onClick={() => setRow(r.key, { custIds: [...r.custIds, id] })} style={{ ...inS, cursor: 'pointer', color: '#fbbf24' }}>＋ {nameOf(c)}</button>); })}
+                  <input list={listId.current} placeholder="+ müşteri ara…" onChange={e => {
+                    const v = e.target.value; const c = (customers || []).find(x => `${nameOf(x)} · ${x.phone || x.id}` === v);
+                    if (c) { setRow(r.key, { custIds: r.custIds.includes(String(c.id)) ? r.custIds : [...r.custIds, String(c.id)] }); e.target.value = ''; }
+                  }} style={{ ...inS, width: '170px' }} />
+                  {r.note && !r.custIds.length && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
+                  {r.note && r.custIds.length > 1 && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
+                </div>
+              </div>
+            ))}
+            <button onClick={run} disabled={!!busy || !ready} style={{ marginTop: '6px', padding: '12px', background: ready ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
+              {busy || `⬆️ ${ready} belgeyi müşteri linklerine yükle`}
+            </button>
+          </div>}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
@@ -1547,6 +1745,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
   const [shareCust, setShareCust] = useState(null); // 🔗 Müşteri linki penceresi
+  const [showDocInbox, setShowDocInbox] = useState(false); // 📤 Toplu belge yükleme
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
@@ -3063,6 +3262,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             }
           }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>🔄 Yenile</button>
           <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
+          <button onClick={() => setShowDocInbox(true)} title="Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📤 Belge Yükle</button>
           <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
         </div>
@@ -3965,6 +4165,7 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
+      {showDocInbox && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} onClose={() => setShowDocInbox(false)} />}
       {shareCust && <CustomerShareModal customer={shareCust} appSettings={appSettings} showToast={showToast} onClose={() => setShareCust(null)}
         onSaved={(patch) => {
           setCustomers(prev => prev.map(x => x.id === shareCust.id ? { ...x, ...patch } : x));
