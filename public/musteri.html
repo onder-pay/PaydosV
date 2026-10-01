@@ -67,6 +67,8 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .list{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
 .doc{display:flex;align-items:center;gap:12px;padding:13px 14px}
 .doc+.doc{border-top:1px solid var(--line)}
+.list.cur{border-color:#cfd5df;box-shadow:0 10px 26px -18px rgba(15,27,46,.45)}
+.list.cur .dic{background:var(--navy);border-color:var(--navy);color:#fff}
 .doc .dic{width:40px;height:40px;border-radius:10px;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--navy)}
 .doc .dtx{flex:1;min-width:0}
 .doc .dt{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -574,6 +576,38 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 
       if (!docs.length && !flights.length) add(box, el('div', 'empty', 'Henüz paylaşılmış belge yok. Biletiniz veya otel belgeniz hazırlandığında burada görünecek.'));
 
+      // --- Belge satırı ---
+      var docRow = function (dc, when) {
+        var st = STYLE[dc.icon] || ['', '', ''];
+        var parts = String(dc.label || 'Belge').split(' — ');
+        var row = el('div', 'doc');
+        var di = el('div', 'dic'); di.appendChild(ico(DOC_IC[dc.icon] || 'doc')); row.appendChild(di);
+        var tx = el('div', 'dtx'); tx.appendChild(el('div', 'dt', parts[0]));
+        var sub = [parts[1] || st[2], when].filter(Boolean).join(' · '); if (sub) tx.appendChild(el('div', 'ds', sub)); row.appendChild(tx);
+        var acts = el('div', 'acts');
+        var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
+        var dl = el('button', 'btn d'); dl.type = 'button'; dl.title = 'İndir'; dl.setAttribute('aria-label', parts[0] + ' indir'); dl.appendChild(ico('dl'));
+        dl.addEventListener('click', function () { downloadOne(dc, dl); });
+        acts.appendChild(op); acts.appendChild(dl); row.appendChild(acts);
+        return row;
+      };
+      // En yeniden eskiye (eklenme tarihi; tarihsiz eski kayıtlarda listedeki sıra)
+      var sorted = docs.map(function (d, i) { return { d: d, i: i }; }).sort(function (a, b) {
+        var x = String(a.d.addedAt || ''), y = String(b.d.addedAt || '');
+        return x !== y ? (x < y ? 1 : -1) : b.i - a.i;
+      }).map(function (o) { return o.d; });
+      // Güncel: en son uçak bileti + en son otel belgesi — her zaman en üstte
+      var current = ['✈️', '🏨'].map(function (ic) { return sorted.filter(function (d) { return d.icon === ic; })[0]; }).filter(Boolean);
+      var rest = sorted.filter(function (d) { return current.indexOf(d) < 0; });
+      if (current.length) {
+        sec('Güncel belgeler');
+        var cl = add(box, el('div', 'list cur'));
+        current.forEach(function (dc) {
+          var t = dc.addedAt ? new Date(dc.addedAt) : null;
+          cl.appendChild(docRow(dc, t && !isNaN(t) ? fmtD(t) + ' eklendi' : ''));
+        });
+      }
+
       // --- Uçuşlar ---
       if (flights.length) {
         sec('Yaklaşan uçuşlar', flights.length);
@@ -602,36 +636,24 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
         });
       }
 
-      // --- Belgeler: aya göre, en yeni üstte ---
-      if (docs.length) {
-        sec('Belgeler', docs.length);
+      // --- Önceki belgeler: güncel bilet/otel dışındaki her şey (biniş kartları dahil), aya göre, en yeni üstte ---
+      if (rest.length) {
+        sec(current.length ? 'Önceki belgeler' : 'Belgeler', rest.length);
         var by = {}, order = [];
-        docs.slice().reverse().forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
+        rest.forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
         order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
         order.forEach(function (k) {
-          if (order.length > 1) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Önceki belgeler'));
+          if (order.length > 1 || k) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski'));
           var list = add(box, el('div', 'list'));
-          by[k].forEach(function (dc) {
-            var st = STYLE[dc.icon] || ['', '', ''];
-            var parts = String(dc.label || 'Belge').split(' — ');
-            var row = el('div', 'doc');
-            var di = el('div', 'dic'); di.appendChild(ico(DOC_IC[dc.icon] || 'doc')); row.appendChild(di);
-            var tx = el('div', 'dtx'); tx.appendChild(el('div', 'dt', parts[0])); var sub = parts[1] || st[2]; if (sub) tx.appendChild(el('div', 'ds', sub)); row.appendChild(tx);
-            var acts = el('div', 'acts');
-            var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
-            var dl = el('button', 'btn d'); dl.type = 'button'; dl.title = 'İndir'; dl.setAttribute('aria-label', parts[0] + ' indir'); dl.appendChild(ico('dl'));
-            dl.addEventListener('click', function () { downloadOne(dc, dl); });
-            acts.appendChild(op); acts.appendChild(dl); row.appendChild(acts);
-            list.appendChild(row);
-          });
+          by[k].forEach(function (dc) { list.appendChild(docRow(dc)); });
         });
-        if (docs.length > 1) {
-          var allBtn = add(box, el('button', 'all')); allBtn.type = 'button';
-          allBtn.appendChild(ico('dl')); allBtn.appendChild(document.createTextNode('Tümünü indir · ' + docs.length + ' belge (ZIP)'));
-          allBtn.addEventListener('click', function () { downloadAll(docs, allBtn); });
-        }
-        noteEl = add(box, el('div', 'note'));
       }
+      if (docs.length > 1) {
+        var allBtn = add(box, el('button', 'all')); allBtn.type = 'button';
+        allBtn.appendChild(ico('dl')); allBtn.appendChild(document.createTextNode('Tümünü indir · ' + docs.length + ' belge (ZIP)'));
+        allBtn.addEventListener('click', function () { downloadAll(docs, allBtn); });
+      }
+      if (docs.length) noteEl = add(box, el('div', 'note'));
 
       // --- Varış bilgileri: sıradaki uçuşun gidilen şehri, sadece yurt dışı ---
       var infoSlot = el('div'); box.appendChild(infoSlot);
