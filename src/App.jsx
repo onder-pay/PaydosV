@@ -1355,11 +1355,11 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
       const flights = fl.map((f, i) => ({
         dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
         code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
-        date: f.ymd ? formatDate(f.ymd) : '',
+        date: f.ymd ? formatDate(f.ymd) : '', ymd: f.ymd || '', // ymd: linkte sıradaki uçuşu bulmak için
         dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
         arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
       }));
-      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url }));
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '' })); // addedAt: linkte aya göre gruplama
       await setDoc(doc(db, 'paylasimlar', token), {
         kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
         startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
@@ -1454,7 +1454,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
         const path = `paylasim/${token.current}/${Date.now()}_${safe}`;
         const r = ref(getStorage(), path);
         await uploadBytes(r, f, { contentType: f.type || 'application/octet-stream' });
-        added.push({ id: generateUniqueId(), icon, label, url: await getDownloadURL(r), path, name: f.name });
+        added.push({ id: generateUniqueId(), icon, label, url: await getDownloadURL(r), path, name: f.name, addedAt: new Date().toISOString() });
         if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) { try { found.push(...detectFlights(await pdfFileText(f))); } catch (e) { /* metin yok */ } }
       }
       setTrip(t => {
@@ -1670,7 +1670,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
           const sr = ref(getStorage(), path);
           await uploadBytes(sr, part, { contentType: part.type || 'application/pdf' });
           const [icon, label] = CUST_DOC_TYPES[r.type];
-          pc.trip.docs = [...(pc.trip.docs || []), { id: generateUniqueId(), icon, label, url: await getDownloadURL(sr), path, name: part.name }];
+          pc.trip.docs = [...(pc.trip.docs || []), { id: generateUniqueId(), icon, label, url: await getDownloadURL(sr), path, name: part.name, addedAt: new Date().toISOString() }];
           pc.added.push(`${icon} ${label}`);
           // Uçuşlar + boş tarih/şehir/başlık
           const fl = [...(pc.trip.flights || [])];

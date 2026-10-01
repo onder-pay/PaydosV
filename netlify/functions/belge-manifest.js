@@ -14,8 +14,9 @@ exports.handler = async (event) => {
     const r = await fetch(BELGE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: code, a: 'meta' }) });
     if (r.ok) {
       const j = await r.json();
-      city = j.city || '';
-      tour = j.tourName || '';
+      // Müşteri linki turdan bağımsız: ana ekranda "Belgelerim" olarak görünsün
+      if (j.kind === 'customer') { city = 'Belgelerim'; tour = ''; }
+      else { city = j.city || ''; tour = j.tourName || ''; }
     }
   } catch { /* ad bulunamazsa varsayılan ad kullanılır */ }
 

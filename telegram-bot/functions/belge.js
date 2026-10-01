@@ -44,7 +44,7 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
     const d = snap.data();
 
     // Ana ekran manifesti için sadece başlık bilgisi (PIN gerekmez)
-    if (action === 'meta') return res.json({ state: 'meta', city: d.city || '', tourName: d.tourName || '' });
+    if (action === 'meta') return res.json({ state: 'meta', kind: d.kind || 'tour', city: d.city || '', tourName: d.tourName || '' });
 
     // Tur linkleri ve PIN'siz eski linkler: açık
     if (d.kind !== 'customer') return res.json({ state: 'ok', data: publicData(d) });
