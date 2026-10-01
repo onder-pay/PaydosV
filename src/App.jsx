@@ -7522,7 +7522,17 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (!t.length) return false;
       return t.every(w => words.has(w)) || (t.length >= 3 && words.has(t[0]) && words.has(t[t.length - 1]));
     }).map(r => r.id);
-    const split = !!RES_DOCS.find(d => d.field === field)?.split;
+    // Bir sayfada birden fazla kişi eşleşirse ("Halil Işık" + "Halil İbrahim Işık") en çok kelimesi tutanı seç
+    const bestOf = (ids, words) => {
+      if (ids.length < 2) return ids;
+      const score = (id) => [...nameWords(resList.find(r => r.id === id)?.customerName || '')].filter(w => w.length > 1 && words.has(w)).length;
+      const max = Math.max(...ids.map(score));
+      const top = ids.filter(id => score(id) === max);
+      return top.length === 1 ? top : ids;
+    };
+    // Tüm belge türlerinde: çok sayfalı PDF'te sayfalar farklı yolculara aitse kişi başı bölünür
+    // (havayolu toplu bileti: her yolcu 1-2 sayfa). Tek sayfada herkes yazıyorsa (grup bileti) bölünmez.
+    const split = true;
     const rows = [];
     for (const [i, file] of files.entries()) {
       let resIds = [], note = '';
@@ -7531,9 +7541,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           if (split) {
             // Biniş kartı: her sayfayı ayrı eşleştir; sayfalar farklı kişilere aitse PDF kişi başı bölünür
             const pages = await pdfPagesText(file);
-            const per = pages.map(t => matchRes(nameWords(t)));
+            const per = pages.map(t => { const w = nameWords(t); return bestOf(matchRes(w), w); });
             const owners = new Set(per.filter(ids => ids.length === 1).map(ids => ids[0]));
             if (pages.length > 1 && owners.size > 1) {
+              // İsimsiz sayfa (bagaj kuralları, devam sayfası) bir önceki yolcunun biletine aittir
+              let last = null;
+              for (let pi = 0; pi < per.length; pi++) {
+                if (per[pi].length === 1) last = per[pi][0];
+                else if (per[pi].length === 0 && last != null) per[pi] = [last];
+              }
               const byRes = new Map();
               per.forEach((ids, pi) => { if (ids.length === 1) byRes.set(ids[0], [...(byRes.get(ids[0]) || []), pi]); });
               [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '' }));
@@ -7835,7 +7851,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               return (
                 <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
                   <h4 style={{ margin: '0 0 4px', fontSize: '15px' }}>{label} — toplu yükleme</h4>
-                  <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>{dd.split ? 'Çok sayfalı PDF\'ler sayfa sayfa okunup her yolcuya kendi sayfası ayrıldı. ' : ''}PDF'teki yolcu adıyla otomatik eşleştirildi. Kontrol edin; yanlışsa × ile çıkarın, eksikse listeden ekleyin. Mevcut bileti olan kişide eskisinin yerine geçer.</p>
+                  <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>{'Çok sayfalı PDF\'ler sayfa sayfa okunup her yolcuya kendi sayfaları ayrıldı. '}PDF'teki yolcu adıyla otomatik eşleştirildi. Kontrol edin; yanlışsa × ile çıkarın, eksikse listeden ekleyin. Mevcut bileti olan kişide eskisinin yerine geçer.</p>
                   {bulkTicket.busy ? <p style={{ fontSize: '13px' }}>⏳ PDF'ler okunuyor...</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '50vh', overflowY: 'auto' }}>
                       {bulkTicket.rows.map(row => (
