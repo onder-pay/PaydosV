@@ -20,6 +20,30 @@ const publicData = (d) => {
   const { pinHash, pinSalt, pinFails, pinLockUntil, customerDocId, ...pub } = d || {};
   return pub;
 };
+// Müşteri kartından pasaport/vize bitiş tarihleri — link her açıldığında güncel okunur (CRM'de yenilenince link de güncellenir).
+// Sadece tarih ve tür gider; pasaport numarası, görsel vb. GİTMEZ (KVKK).
+const parseArr = (v) => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } } return []; };
+const parseObj = (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return p && typeof p === 'object' && !Array.isArray(p) ? p : {}; } catch { return {}; } } return {}; };
+const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+const byEndDesc = (k) => (a, b) => String(b[k]).localeCompare(String(a[k]));
+const validityOf = (c) => {
+  const out = [];
+  const pp = parseArr(c.passports).filter(p => isYmd(p.expiryDate)).sort(byEndDesc('expiryDate'))[0];
+  if (pp) out.push({ kind: 'passport', label: 'Pasaport', sub: String(pp.passportType || '').replace(/\s*\(.*\)\s*$/, ''), until: pp.expiryDate });
+  const sv = parseArr(c.schengenVisas).filter(v => v && v.country && isYmd(v.endDate)).sort(byEndDesc('endDate'))[0];
+  if (sv) out.push({ kind: 'visa', label: 'Schengen vizesi', sub: String(sv.country || ''), until: sv.endDate });
+  const us = parseObj(c.usaVisa);
+  if (isYmd(us.endDate)) out.push({ kind: 'visa', label: 'ABD vizesi', sub: '', until: us.endDate });
+  return out;
+};
+const withValidity = async (db, d) => {
+  const pub = publicData(d);
+  if (d.customerDocId) {
+    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) pub.validity = validityOf(c.data() || {}); }
+    catch (e) { console.warn('[belge] geçerlilik okunamadı', e.message); }
+  }
+  return pub;
+};
 const firstName = (n) => String(n || '').trim().split(/\s+/).slice(0, -1).join(' ') || String(n || '').trim();
 
 exports.belge = functions.region('europe-west1').https.onRequest(async (req, res) => {
@@ -64,7 +88,7 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
       if (d.customerDocId) {
         await db.collection('customers').doc(String(d.customerDocId)).set({ linkPin: pin, linkPinSetAt: new Date().toISOString() }, { merge: true }).catch(e => console.warn('[belge] müşteri kartına PIN yazılamadı', e.message));
       }
-      return res.json({ state: 'ok', data: publicData(d) });
+      return res.json({ state: 'ok', data: await withValidity(db, d) });
     }
 
     // Kilitli mi?
@@ -75,7 +99,7 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
 
     if (/^\d{4}$/.test(pin) && hashPin(d.pinSalt, pin) === d.pinHash) {
       if (d.pinFails) await ref.set({ pinFails: 0, pinLockUntil: 0 }, { merge: true });
-      return res.json({ state: 'ok', data: publicData(d) });
+      return res.json({ state: 'ok', data: await withValidity(db, d) });
     }
     const fails = (d.pinFails || 0) + 1;
     const lock = fails >= MAX_FAILS ? Date.now() + LOCK_MS : 0;

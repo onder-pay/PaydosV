@@ -158,6 +158,15 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .sn .pad .c{grid-column:2;grid-row:2;background:#25324a;font:700 11px 'Manrope',sans-serif;letter-spacing:1px}
 .sn .hint{text-align:center;font-size:11px;color:#7f8da8;margin-top:10px}
 .sn .x{position:absolute;top:-8px;right:-8px;width:36px;height:36px;border-radius:50%;border:none;background:#fff;color:var(--ink);font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+/* Pasaport ve vize geçerliliği */
+.vl .row{display:flex;align-items:center;gap:12px;padding:13px 14px}
+.vl .row+.row,.vl .w+.row{border-top:1px solid var(--line)}
+.vl .dic{width:40px;height:40px;border-radius:10px;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--navy);flex-shrink:0}
+.vl .tx{flex:1;min-width:0}.vl .t{font-size:14.5px;font-weight:700}.vl .s{font-size:12px;color:var(--muted);margin-top:2px}
+.vl .dd{text-align:right;flex-shrink:0}.vl .dd b{display:block;font-size:20px;font-weight:800;letter-spacing:-.3px;line-height:1.1}.vl .dd span{font-size:11px;color:var(--muted)}
+.vl .w{margin:0 14px 12px 66px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.45}
+.vl .w.a{background:#fff6e0;color:#7a5a0c;border:1px solid #f1dda6}.vl .w.r{background:#fdecec;color:#9b1c1c;border:1px solid #f5c2c2}
+.vl .row.a .dd b{color:#b7791f}.vl .row.r .dd b{color:var(--accent)}
 .offline{margin-top:12px;padding:10px 12px;border-radius:10px;background:#eef3fb;border:1px solid #d6e2f3;color:#2f4a73;font-size:12px;text-align:center}
 .msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
 .empty{margin-top:14px;padding:28px 18px;border-radius:16px;border:1px dashed #d3d0c6;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
@@ -746,6 +755,34 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
           var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
           pf.appendChild(live); a.appendChild(pf);
           add(box, a);
+        });
+      }
+
+      // --- Pasaport ve vize: bitişe kaç gün (müşteri kartından, link her açıldığında güncel) ---
+      var vals = (f.validity || []).filter(function (v) { return v && parseD(v.until); });
+      if (vals.length) {
+        sec('Pasaport ve vize');
+        var vl = add(box, el('div', 'list vl'));
+        var t0 = todayD();
+        var tripEnd = dest && dest.end ? dest.end : null;
+        vals.forEach(function (v) {
+          var u = parseD(v.until), days = Math.round((u - t0) / 86400000);
+          var warn = '', lvl = '';
+          if (days < 0) { lvl = 'r'; warn = 'Süresi dolmuş. Yenilemek için bizimle iletişime geçin.'; }
+          else if (v.kind === 'passport') {
+            var six = tripEnd ? new Date(tripEnd.getTime() + 182 * 86400000) : null;
+            if (days < 180) { lvl = 'a'; warn = '6 aydan az kaldı — birçok ülke girişte en az 6 ay geçerlilik ister.'; }
+            else if (six && u < six) { lvl = 'a'; warn = 'Dönüşünüzden sonra 6 aydan az geçerli olacak — bazı ülkeler girişte 6 ay ister.'; }
+          } else {
+            if (tripEnd && u < tripEnd) { lvl = 'r'; warn = 'Vize, dönüş tarihinizden önce bitiyor.'; }
+            else if (days <= 30) { lvl = 'a'; warn = 'Vizenizin bitmesine 30 günden az kaldı.'; }
+          }
+          var row = el('div', 'row' + (lvl ? ' ' + lvl : ''));
+          var di = el('div', 'dic'); di.appendChild(ico(v.kind === 'passport' ? 'visa' : 'pass')); row.appendChild(di);
+          var tx = el('div', 'tx'); tx.appendChild(el('div', 't', v.label)); tx.appendChild(el('div', 's', [v.sub, u.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' bitiş'].filter(Boolean).join(' · '))); row.appendChild(tx);
+          var dd = el('div', 'dd'); dd.appendChild(el('b', '', days < 0 ? 'Doldu' : days.toLocaleString('tr-TR'))); dd.appendChild(el('span', '', days < 0 ? Math.abs(days) + ' gün önce' : days === 0 ? 'bugün bitiyor' : 'gün kaldı')); row.appendChild(dd);
+          vl.appendChild(row);
+          if (warn) vl.appendChild(el('div', 'w ' + lvl, warn));
         });
       }
 
