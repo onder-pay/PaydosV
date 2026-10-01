@@ -1315,6 +1315,205 @@ function CompanyPicker({ value, onChange }) {
   );
 }
 
+// ===== MÜŞTERİ LİNKİ: turdan bağımsız, her müşteriye kalıcı tek link (/b/<kod>) =====
+// Kurumsal/bireysel satışlarda bilet, otel belgesi, vize vb. WhatsApp'a tek tek atmak yerine buradan gönderilir.
+// Link tur linkiyle aynı sayfayı kullanır (belgeler, uçuş takibi, hava, kur, saat farkı, otel yol tarifi).
+// Belgeler eklendikçe aynı link güncellenir; müşteriye yeniden göndermek gerekmez.
+const CUST_DOC_TYPES = [['✈️', 'Uçak Bileti'], ['🛫', 'Biniş Kartı'], ['🏨', 'Otel Belgesi'], ['🛂', 'Vize'], ['🛡️', 'Seyahat Sigortası'], ['🎫', 'Fuar / Etkinlik Bileti'], ['📄', 'Diğer']];
+const newLinkToken = () => {
+  const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => abc[b % abc.length]).join('');
+};
+// Bilet PDF metninden uçuşları çıkar: "Ankara (ESB) Baku (GYD) VF-577 14/10/2026 12:15 15:30"
+const detectFlights = (text) => {
+  const out = [], seen = new Set();
+  const re = /([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Z0-9]{2})\s?-?\s?(\d{1,4})\s+(\d{2})[/.](\d{2})[/.](\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g;
+  let m;
+  while ((m = re.exec(String(text || '').replace(/\s+/g, ' ')))) {
+    const code = `${m[5]}${m[6]}`, ymd = `${m[9]}-${m[8]}-${m[7]}`;
+    if (seen.has(code + ymd)) continue; seen.add(code + ymd);
+    // Şehir adının önüne PDF başlıkları ("ARRIVAL TIME Varış Saati Ankara") karışabiliyor → son kelime
+    const city = (x) => String(x).trim().split(/\s+/).pop();
+    out.push({ code, ymd, fromCity: city(m[1]), from: m[2], toCity: city(m[3]), to: m[4], dep: m[10], arr: m[11] });
+  }
+  return out;
+};
+
+function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast }) {
+  const c = customer;
+  const saved = useMemo(() => safeParseObj(c.shareTrip), [c.shareTrip]);
+  const [trip, setTrip] = useState(() => ({ title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...saved }));
+  const [busy, setBusy] = useState('');
+  const [ready, setReady] = useState(null); // { link, text, phone }
+  const [docType, setDocType] = useState(0);
+  const token = useRef(c.shareToken || newLinkToken());
+  const up = (patch) => setTrip(t => ({ ...t, ...patch }));
+  const inS = { width: '100%', boxSizing: 'border-box', padding: '9px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', colorScheme: 'dark' };
+  const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
+  const sec = { fontSize: '12px', fontWeight: 700, color: '#f59e0b', margin: '14px 0 8px', letterSpacing: '0.5px' };
+  const narrow = window.innerWidth < 560;
+
+  const addFiles = async (files) => {
+    const list = Array.from(files || []).filter(f => f.size <= 15 * 1024 * 1024);
+    if (!list.length) { showToast?.('Dosya seçilmedi (en fazla 15MB)', 'error'); return; }
+    setBusy('Yükleniyor…');
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const [icon, label] = CUST_DOC_TYPES[docType];
+      const added = [], found = [];
+      for (const f of list) {
+        const safe = asciiTr(f.name).replace(/[^\w.\-]+/g, '_').slice(-80);
+        const path = `paylasim/${token.current}/${Date.now()}_${safe}`;
+        const r = ref(getStorage(), path);
+        await uploadBytes(r, f, { contentType: f.type || 'application/octet-stream' });
+        added.push({ id: generateUniqueId(), icon, label, url: await getDownloadURL(r), path, name: f.name });
+        if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) { try { found.push(...detectFlights(await pdfFileText(f))); } catch (e) { /* metin yok */ } }
+      }
+      setTrip(t => {
+        const fl = [...(t.flights || [])];
+        found.forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push(x); });
+        fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
+        const patch = { docs: [...(t.docs || []), ...added], flights: fl };
+        // Uçuşlar bulunduysa boş alanları doldur: tarih aralığı ve varış şehri
+        if (fl.length) {
+          if (!t.startDate) patch.startDate = fl[0].ymd;
+          if (!t.endDate) patch.endDate = fl[fl.length - 1].ymd;
+          if (!t.city) patch.city = fl[0].toCity;
+          if (!t.title) patch.title = `${fl[0].fromCity} → ${fl[0].toCity}`;
+        }
+        return { ...t, ...patch };
+      });
+      showToast?.(`📎 ${added.length} belge eklendi${found.length ? ` · ${found.length} uçuş bulundu` : ''}`, 'success');
+    } catch (e) { showToast?.('❌ Yüklenemedi: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+  const removeDoc = async (d) => {
+    if (!window.confirm(`"${d.label}" belgesi linkten kaldırılsın mı?`)) return;
+    up({ docs: trip.docs.filter(x => x.id !== d.id) });
+    try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); if (d.path) await deleteObject(ref(getStorage(), d.path)).catch(() => {}); } catch (e) {}
+  };
+  const setFlight = (i, patch) => up({ flights: trip.flights.map((f, k) => k === i ? { ...f, ...patch } : f) });
+
+  const save = async () => {
+    if (!(trip.docs || []).length && !(trip.flights || []).length) { showToast?.('Önce en az bir belge ekleyin', 'warning'); return; }
+    setBusy('Kaydediliyor…');
+    try {
+      const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')));
+      const flights = fl.map((f, i) => ({
+        dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
+        code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
+        date: f.ymd ? formatDate(f.ymd) : '',
+        dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
+        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
+      }));
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url }));
+      await setDoc(doc(db, 'paylasimlar', token.current), {
+        kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
+        startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
+        hotel: trip.hotelName ? { name: trip.hotelName, address: trip.hotelAddress || '', city: trip.city || '', country: trip.country || '', phone: '' } : null,
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' },
+        updatedAt: new Date().toISOString(),
+      });
+      const shareTrip = JSON.stringify(trip);
+      await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token.current, shareTrip }, { merge: true });
+      onSaved?.({ shareToken: token.current, shareTrip });
+      const link = `${window.location.origin}/b/${token.current}`;
+      const belgeler = [...docs.map(d => d.label), ...(flights.length ? ['Uçuş Takibi'] : [])].filter((x, i, a) => a.indexOf(x) === i).join(', ');
+      const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
+      let text = tpl.replace(/\{isim\}/g, name).replace(/\{tur\}/g, trip.title || 'Seyahatiniz').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
+      if (!text.includes(link)) text += `\n${link}`;
+      setReady({ link, text, phone: c.phone || '' });
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', color: '#e8f1f8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>🔗 Müşteri Linki — {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+        </div>
+        <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Bilet, otel belgesi, vize… tek linkte. Belge ekledikçe aynı link güncellenir.{c.shareToken ? ' Bu müşterinin linki daha önce oluşturuldu.' : ''}</p>
+
+        {ready ? (
+          <div style={{ marginTop: '14px' }}>
+            <label style={lbl}>✏️ Gönderilecek mesaj</label>
+            <textarea value={ready.text} onChange={e => setReady({ ...ready, text: e.target.value })} rows={7} style={{ ...inS, lineHeight: 1.45, fontFamily: 'inherit', resize: 'vertical' }} />
+            <label style={{ ...lbl, marginTop: '8px' }}>📱 WhatsApp numarası (müşteri veya firma yetkilisi)</label>
+            <input value={ready.phone} onChange={e => setReady({ ...ready, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" style={inS} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+              <a href={`https://wa.me/${formatWhatsAppPhone(ready.phone) || ''}?text=${encodeURIComponent(ready.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: '#fff', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}>💬 WhatsApp'tan gönder</a>
+              <button onClick={async () => { try { await navigator.clipboard.writeText(ready.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>📋 Mesajı kopyala</button>
+              <button onClick={() => window.open(ready.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
+              <button onClick={() => setReady(null)} style={{ padding: '8px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '12px' }}>← Belgelere geri dön</button>
+            </div>
+          </div>
+        ) : (<>
+          <div style={sec}>YOLCULUK</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Başlık</label><input value={trip.title} onChange={e => up({ title: e.target.value })} placeholder="Örn. Frankfurt İş Seyahati" style={inS} /></div>
+            <div><label style={lbl}>Şehir</label><input value={trip.city} onChange={e => up({ city: e.target.value })} placeholder="Frankfurt" style={inS} /></div>
+            <div><label style={lbl}>Ülke</label>
+              <select value={trip.country} onChange={e => up({ country: e.target.value })} style={inS}>
+                <option value="" style={{ background: '#0c1929' }}>Seçin…</option>
+                {tourCountries.map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+              </select></div>
+            <div><label style={lbl}>Gidiş</label><input type="date" value={trip.startDate} onChange={e => up({ startDate: e.target.value })} style={inS} /></div>
+            <div><label style={lbl}>Dönüş</label><input type="date" value={trip.endDate} onChange={e => up({ endDate: e.target.value })} style={inS} /></div>
+          </div>
+
+          <div style={sec}>BELGELER</div>
+          {(trip.docs || []).map(d => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', marginBottom: '6px', fontSize: '13px' }}>
+              <span>{d.icon}</span>
+              <select value={d.label} onChange={e => { const t = CUST_DOC_TYPES.find(x => x[1] === e.target.value); up({ docs: trip.docs.map(x => x.id === d.id ? { ...x, label: t[1], icon: t[0] } : x) }); }} style={{ ...inS, width: 'auto', padding: '4px 6px', fontSize: '12px' }}>
+                {CUST_DOC_TYPES.map(([, l]) => <option key={l} value={l} style={{ background: '#0c1929' }}>{l}</option>)}
+              </select>
+              <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 0, color: '#94a3b8', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name || 'belge'}</a>
+              <button onClick={() => removeDoc(d)} title="Linkten kaldır" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={docType} onChange={e => setDocType(+e.target.value)} style={{ ...inS, width: 'auto' }}>
+              {CUST_DOC_TYPES.map(([i, l], k) => <option key={l} value={k} style={{ background: '#0c1929' }}>{i} {l}</option>)}
+            </select>
+            <label style={{ padding: '9px 14px', background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: busy ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
+              {busy || '📎 Dosya ekle (PDF / görsel)'}
+              <input type="file" multiple accept="application/pdf,image/*" disabled={!!busy} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+            </label>
+          </div>
+
+          <div style={sec}>UÇUŞLAR <span style={{ color: '#64748b', fontWeight: 400 }}>(biletten otomatik bulunur — linkte canlı takip)</span></div>
+          {(trip.flights || []).map((f, i) => (
+            <div key={i} style={narrow
+              ? { display: 'grid', gridTemplateColumns: '1fr 1fr auto', gridTemplateAreas: '"c d x" "f t x"', gap: '6px', marginBottom: '12px', alignItems: 'center' }
+              : { display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr auto', gridTemplateAreas: '"c d f t x"', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+              <input value={f.code} onChange={e => setFlight(i, { code: e.target.value.toUpperCase() })} placeholder="TK1590" style={{ ...inS, gridArea: 'c' }} />
+              <input type="date" value={f.ymd || ''} onChange={e => setFlight(i, { ymd: e.target.value })} style={{ ...inS, gridArea: 'd' }} />
+              <input value={`${f.from || ''}${f.dep ? ' ' + f.dep : ''}`} onChange={e => { const [a, b] = e.target.value.split(' '); setFlight(i, { from: (a || '').toUpperCase().slice(0, 3), dep: b || '' }); }} placeholder="Kalkış: IST 08:30" style={{ ...inS, gridArea: 'f' }} />
+              <input value={`${f.to || ''}${f.arr ? ' ' + f.arr : ''}`} onChange={e => { const [a, b] = e.target.value.split(' '); setFlight(i, { to: (a || '').toUpperCase().slice(0, 3), arr: b || '' }); }} placeholder="Varış: FRA 10:45" style={{ ...inS, gridArea: 't' }} />
+              <button onClick={() => up({ flights: trip.flights.filter((_, k) => k !== i) })} style={{ gridArea: 'x', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+            </div>
+          ))}
+          <button onClick={() => up({ flights: [...(trip.flights || []), { code: '', ymd: trip.startDate || '', from: '', to: '', dep: '', arr: '' }] })} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>＋ Uçuş ekle</button>
+
+          <div style={sec}>OTEL <span style={{ color: '#64748b', fontWeight: 400 }}>(linkte adres + yol tarifi)</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <input value={trip.hotelName} onChange={e => up({ hotelName: e.target.value })} placeholder="Otel adı" style={inS} />
+            <input value={trip.hotelAddress} onChange={e => up({ hotelAddress: e.target.value })} placeholder="Adres" style={inS} />
+          </div>
+
+          <button onClick={save} disabled={!!busy} style={{ width: '100%', marginTop: '16px', padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: 700, fontSize: '14px', cursor: busy ? 'wait' : 'pointer' }}>
+            {busy || (c.shareToken ? '💾 Kaydet ve linki güncelle' : '🔗 Linki oluştur')}
+          </button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
@@ -1347,6 +1546,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   }, [selectedKey]);
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
+  const [shareCust, setShareCust] = useState(null); // 🔗 Müşteri linki penceresi
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
@@ -2355,6 +2555,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             }} style={{ background: c.verified === true ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)', border: `1px solid ${c.verified === true ? 'rgba(16,185,129,0.4)' : 'rgba(234,179,8,0.4)'}`, borderRadius: '10px', padding: '10px 16px', color: c.verified === true ? '#10b981' : '#eab308', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
               {c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
             </button>
+            <button onClick={() => setShareCust(c)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '10px', padding: '10px 14px', color: '#22c55e', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }} title="Bilet, otel belgesi, vize… tek linkte gönder">🔗 {isMobile ? 'Link' : 'Müşteri Linki'}</button>
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
           </div>
         </div>
@@ -3764,6 +3965,12 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
+      {shareCust && <CustomerShareModal customer={shareCust} appSettings={appSettings} showToast={showToast} onClose={() => setShareCust(null)}
+        onSaved={(patch) => {
+          setCustomers(prev => prev.map(x => x.id === shareCust.id ? { ...x, ...patch } : x));
+          setSelectedCustomer(sc => sc && sc.id === shareCust.id ? { ...sc, ...patch } : sc);
+          setShareCust(sc => sc ? { ...sc, ...patch } : sc);
+        }} />}
 
       {/* Image Preview */}
       {imagePreview.show && (
