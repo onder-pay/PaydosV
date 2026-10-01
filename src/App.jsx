@@ -1365,8 +1365,9 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
         startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
         hotel: trip.hotelName ? { name: trip.hotelName, address: trip.hotelAddress || '', city: trip.city || '', country: trip.country || '', phone: '' } : null,
         contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' },
+        customerDocId: c._docId || String(c.id), // PIN belirlenince sunucu müşteri kartına yazar (linkPin)
         updatedAt: new Date().toISOString(),
-      });
+      }, { merge: true }); // merge: müşterinin belirlediği PIN güncellemede silinmesin
       const shareTrip = JSON.stringify(trip);
       await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token, shareTrip }, { merge: true });
       const link = `${window.location.origin}/b/${token}`;
@@ -1376,6 +1377,55 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
       if (!text.includes(link)) text += `\n${link}`;
   return { link, text };
 };
+
+// Müşteri linki PIN'i: müşteri ilk açılışta kendisi belirler, sunucu (Firebase fonksiyonu "belge") kartımıza linkPin olarak yazar.
+// Kaybederse buradan söyleriz; "Sıfırla" ile müşteri yeniden belirler, "PIN ver" ile biz koyarız.
+// Hash biçimi sunucuyla aynı: sha256("<salt>:<pin>") hex.
+const sha256Hex = async (str) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)))).map(b => b.toString(16).padStart(2, '0')).join('');
+function LinkPinBar({ c, showToast }) {
+  const docId = c._docId || String(c.id);
+  const [live, setLive] = useState({ linkPin: c.linkPin || '', shareToken: c.shareToken || '' });
+  const [show, setShow] = useState(false);
+  useEffect(() => onSnapshot(doc(db, 'customers', docId), snap => {
+    const d = snap.data() || {};
+    setLive({ linkPin: d.linkPin || '', shareToken: d.shareToken || '' });
+  }, () => {}), [docId]);
+  if (!live.shareToken) return null;
+  const setPin = async (pin) => {
+    const now = new Date().toISOString();
+    const ref = doc(db, 'paylasimlar', live.shareToken);
+    if (pin) {
+      const salt = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+      await setDoc(ref, { pinHash: await sha256Hex(`${salt}:${pin}`), pinSalt: salt, pinFails: 0, pinLockUntil: 0, pinSetAt: now }, { merge: true });
+    } else {
+      await setDoc(ref, { pinHash: deleteField(), pinSalt: deleteField(), pinFails: 0, pinLockUntil: 0 }, { merge: true });
+    }
+    await setDoc(doc(db, 'customers', docId), { linkPin: pin || '', linkPinSetAt: pin ? now : '' }, { merge: true });
+  };
+  const reset = async () => {
+    if (!window.confirm('PIN sıfırlansın mı? Müşteri linki bir sonraki açışında yeni PIN belirleyecek.')) return;
+    try { await setPin(''); showToast?.('PIN sıfırlandı — müşteri yeni PIN belirleyecek', 'success'); } catch (e) { showToast?.('PIN sıfırlanamadı: ' + e.message, 'error'); }
+  };
+  const give = async () => {
+    const pin = (window.prompt('Müşteriye verilecek 4 haneli PIN:', '') || '').trim();
+    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) { showToast?.('PIN 4 rakam olmalı', 'error'); return; }
+    try { await setPin(pin); setShow(true); showToast?.('PIN kaydedildi', 'success'); } catch (e) { showToast?.('PIN kaydedilemedi: ' + e.message, 'error'); }
+  };
+  const btn = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '6px 10px', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' };
+  return (
+    <div style={{ margin: '12px 20px 0', padding: '10px 14px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '13px', color: '#94a3b8' }}>🔐 Link PIN:</span>
+      {live.linkPin
+        ? <b onClick={() => setShow(v => !v)} title="Göster / gizle" style={{ fontSize: '16px', letterSpacing: '4px', color: '#22c55e', cursor: 'pointer', fontFamily: 'monospace' }}>{show ? live.linkPin : '••••'}</b>
+        : <span style={{ fontSize: '12px', color: '#eab308' }}>henüz belirlenmedi — müşteri linki ilk açtığında kendisi belirleyecek</span>}
+      <span style={{ flex: 1 }} />
+      {live.linkPin && <button onClick={() => setShow(v => !v)} style={btn}>{show ? '🙈 Gizle' : '👁 Göster'}</button>}
+      <button onClick={give} style={btn}>✏️ PIN ver</button>
+      {live.linkPin && <button onClick={reset} style={{ ...btn, color: '#f87171', borderColor: 'rgba(239,68,68,0.3)' }}>↺ Sıfırla</button>}
+    </div>
+  );
+}
 
 function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast }) {
   const c = customer;
@@ -1450,7 +1500,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
           <h3 style={{ margin: 0, fontSize: '16px' }}>🔗 Müşteri Linki — {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
         </div>
-        <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Bilet, otel belgesi, vize… tek linkte. Belge ekledikçe aynı link güncellenir.{c.shareToken ? ' Bu müşterinin linki daha önce oluşturuldu.' : ''}</p>
+        <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Bilet, otel belgesi, vize… tek linkte. Belge ekledikçe aynı link güncellenir.{c.shareToken ? ' Bu müşterinin linki daha önce oluşturuldu.' : ''} 🔐 Müşteri ilk açılışta kendi 4 haneli PIN'ini belirler; PIN müşteri kartında görünür.</p>
 
         {ready ? (
           <div style={{ marginTop: '14px' }}>
@@ -2766,6 +2816,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
           </div>
         </div>
+
+        <LinkPinBar key={c._docId || c.id} c={c} showToast={showToast} />
 
         {/* Tab Navigation */}
         <div style={{ padding: '20px 20px 0' }}>

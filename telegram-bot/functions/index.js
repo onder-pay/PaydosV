@@ -1336,3 +1336,6 @@ exports.telegramBot = functions
   }
   return res.status(200).send('OK');
 });
+
+// Belge linki API (PIN korumalı) — ayrı fonksiyon: npx firebase-tools deploy --only functions:belge
+exports.belge = require('./belge').belge;

@@ -138,6 +138,13 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .ig .ic{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center}
 .ig .tx{flex:1;font-size:12px;opacity:.95}.ig .tx b{display:block;font-size:15px;opacity:1}
 .ig .go{padding:9px 14px;border-radius:12px;background:#fff;color:#d62976;font-weight:700;font-size:13px;white-space:nowrap}
+.pinc{margin:30px auto 0;max-width:380px;padding:26px 22px;border-radius:22px;background:var(--card);border:1px solid var(--line);text-align:center}
+.pinc .pic{font-size:40px}.pinc .pt{font-family:'Playfair Display',serif;font-size:24px;margin:8px 0 6px}.pinc .ps{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+.pinc .pin{display:block;width:100%;box-sizing:border-box;margin:0 0 10px;padding:14px;border-radius:14px;border:1px solid var(--line);background:#0e1430;color:var(--text);font:700 24px 'DM Sans',sans-serif;letter-spacing:12px;text-align:center}
+.pinc .pin:focus{outline:none;border-color:var(--gold)}
+.pinc .perr{min-height:18px;font-size:13px;color:#ff8a8a;margin-bottom:8px}
+.pinc .pbtn{width:100%;padding:14px;border:none;border-radius:14px;background:var(--gold);color:#1b1f3b;font:700 15px 'DM Sans',sans-serif;cursor:pointer}
+.pinc .pnote{margin-top:12px;font-size:11px;color:#6f78a3}
 .inst{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px;border-radius:18px;background:linear-gradient(135deg,rgba(245,185,66,.14),rgba(106,43,214,.14));border:1px solid rgba(245,185,66,.3)}
 .inst .ic{font-size:26px}
 .inst .tx{flex:1;font-size:13px;line-height:1.45;color:var(--text)}
@@ -646,10 +653,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     }).catch(function () {});
   };
 
-  fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
-    .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
-    .then(function (j) {
-      var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
+  var render = function (f) {
       meta.prefix = f.city || f.tourName || 'Paydos';
       box.innerHTML = '';
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
@@ -772,8 +776,73 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         ia.appendChild(el('span', 'go', 'Takip et'));
       }
       add(box, el('div', 'foot', 'www.paydostur.com'));
-    })
-    .catch(function (e) { show(e.message === '404' ? 'Bu bağlantı bulunamadı veya kaldırılmış.' : 'Belgeler yüklenemedi. Lütfen daha sonra tekrar deneyin.'); });
+  };
+
+  // ===== Veri: PIN korumalı belge API'si (Firebase fonksiyonu) =====
+  // Müşteri linklerinde ilk açılışta müşteri 4 haneli PIN belirler; sonra bu telefonda hatırlanır.
+  // İnternet yoksa en son açılan veri (bu telefonda) gösterilir.
+  var API = 'https://europe-west1-paydos-crm.cloudfunctions.net/belge';
+  var PIN_KEY = 'paydos_pin_' + code, DATA_KEY = 'paydos_data_' + code;
+  var lsGet = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  var lsSet = function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} };
+  var call = function (body) {
+    return fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ k: code }, body)) })
+      .then(function (r) { return r.json().catch(function () { return { state: 'error' }; }).then(function (j) { j._status = r.status; return j; }); });
+  };
+  var showData = function (data) { lsSet(DATA_KEY, JSON.stringify(data)); render(data); };
+  var offlineFallback = function () {
+    var c = lsGet(DATA_KEY);
+    if (c) {
+      try { render(JSON.parse(c)); } catch (e) { return show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.'); }
+      if (!box.querySelector('.offline')) box.appendChild(el('div', 'offline', '📴 İnternet yok — en son açılan bilgiler gösteriliyor.'));
+      return;
+    }
+    show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
+  };
+
+  // PIN ekranı: mode 'set' (ilk kez belirle) veya 'enter'
+  var pinScreen = function (mode, name, msg) {
+    box.innerHTML = '';
+    var card = el('div', 'pinc');
+    card.appendChild(el('div', 'pic', '🔐'));
+    card.appendChild(el('div', 'pt', (name ? 'Merhaba ' + name + ' 👋' : 'Merhaba 👋')));
+    card.appendChild(el('div', 'ps', mode === 'set'
+      ? 'Seyahat belgelerinizi korumak için 4 haneli bir PIN belirleyin. Sonraki açılışlarda bu PIN sorulacak.'
+      : 'Belgelerinizi görmek için 4 haneli PIN\'inizi girin.'));
+    var mk = function (ph) { var i = document.createElement('input'); i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 4; i.pattern = '[0-9]*'; i.placeholder = ph; i.className = 'pin'; i.addEventListener('input', function () { i.value = i.value.replace(/\D/g, '').slice(0, 4); }); return i; };
+    var p1 = mk('• • • •'), p2 = mode === 'set' ? mk('Tekrar') : null;
+    card.appendChild(p1); if (p2) card.appendChild(p2);
+    var err = el('div', 'perr', msg || ''); card.appendChild(err);
+    var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve belgeleri aç' : 'Belgeleri aç'); btn.type = 'button';
+    card.appendChild(btn);
+    card.appendChild(el('div', 'pnote', mode === 'set' ? 'PIN\'inizi unutursanız Paydos Turizm\'i arayın.' : 'PIN\'inizi unuttuysanız Paydos Turizm\'i arayın: 0 258 263 71 76'));
+    box.appendChild(card);
+    setTimeout(function () { p1.focus(); }, 50);
+    var go = function () {
+      var v = p1.value;
+      if (!/^\d{4}$/.test(v)) { err.textContent = 'PIN 4 rakam olmalı.'; return; }
+      if (p2 && p2.value !== v) { err.textContent = 'İki PIN aynı değil.'; return; }
+      btn.disabled = true; btn.textContent = '⏳';
+      call({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }).then(function (j) {
+        if (j.state === 'ok') { lsSet(PIN_KEY, v); showData(j.data); return; }
+        if (j.state === 'locked') { pinScreen('enter', name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.'); return; }
+        if (j.state === 'pin') { pinScreen('enter', name, j.error === 'wrong' ? 'PIN hatalı.' + (j.left ? ' Kalan deneme: ' + j.left : '') : 'Bu link için PIN zaten belirlenmiş. Lütfen PIN\'inizi girin.'); return; }
+        btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bir hata oluştu.';
+      }).catch(function () { btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bağlantı hatası.'; });
+    };
+    btn.addEventListener('click', go);
+    [p1, p2].forEach(function (i) { if (i) i.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
+  };
+
+  var saved = lsGet(PIN_KEY);
+  call(saved ? { a: 'unlock', pin: saved } : { a: 'get' }).then(function (j) {
+    if (j.state === 'ok') return showData(j.data);
+    if (j.state === 'notfound') { lsSet(DATA_KEY, null); return show('Bu bağlantı bulunamadı veya kaldırılmış.'); }
+    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name); }
+    if (j.state === 'pin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('enter', j.name, saved ? 'PIN değişmiş olabilir, lütfen yeniden girin.' : ''); }
+    if (j.state === 'locked') return pinScreen('enter', j.name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.');
+    offlineFallback();
+  }).catch(offlineFallback);
 })();
 </script>
 </body>

@@ -1,10 +1,9 @@
 // Netlify Function: belge-manifest
 // Müşteri belge linki (/b/<kod>) ana ekrana "uygulama" olarak eklenebilsin diye kişiye özel web app manifest.
 // start_url ve scope o müşterinin linkidir; ad şehir/tur adından gelir (Firestore paylasimlar/<kod>).
-// Girişsiz okunur (kurallar paylasimlar için tekil okumaya izin veriyor); kod doğrulanır.
+// Ad, PIN gerektirmeyen "meta" çağrısıyla Firebase fonksiyonu "belge"den okunur (paylasimlar herkese kapalı); kod doğrulanır.
 
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'paydos-crm';
-const DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || 'paydos';
+const BELGE_API = process.env.BELGE_API_URL || 'https://europe-west1-paydos-crm.cloudfunctions.net/belge';
 
 exports.handler = async (event) => {
   const code = String((event.queryStringParameters || {}).k || '');
@@ -12,11 +11,11 @@ exports.handler = async (event) => {
 
   let city = '', tour = '';
   try {
-    const r = await fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/paylasimlar/${code}`);
+    const r = await fetch(BELGE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: code, a: 'meta' }) });
     if (r.ok) {
-      const f = (await r.json()).fields || {};
-      city = f.city?.stringValue || '';
-      tour = f.tourName?.stringValue || '';
+      const j = await r.json();
+      city = j.city || '';
+      tour = j.tourName || '';
     }
   } catch { /* ad bulunamazsa varsayılan ad kullanılır */ }
 
