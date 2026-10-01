@@ -62,27 +62,6 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .pass .live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink);font-size:12.5px}
 .pass .live i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(215,38,47,.15)}
 .pass .raw{padding:16px;font-size:14px}
-a.pf{text-decoration:none}
-/* Canlı konum (adsb.lol) */
-.trk{border-top:1px solid var(--line)}
-.trk .th{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;font-size:12px;color:var(--muted)}
-.trk .tl{display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.5px;color:var(--ink)}
-.trk .tl i{width:7px;height:7px;border-radius:50%;background:var(--faint)}
-.trk.on .tl i{background:var(--accent);animation:blink 1.6s infinite}
-@keyframes blink{50%{box-shadow:0 0 0 5px rgba(215,38,47,.12)}}
-.trk .map{height:200px;background:#e9e8e3}
-.trk .map .leaflet-tile-pane{filter:saturate(.3) contrast(.95) brightness(1.03)}
-.trk .tst{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
-.trk .tst div{padding:10px 14px;min-width:0}.trk .tst div+div{border-left:1px solid var(--line)}
-.trk .tst b{display:block;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.trk .tst span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint)}
-.trk .tmsg{padding:2px 16px 14px;font-size:12.5px;line-height:1.5;color:var(--muted)}
-.trk .tgo{margin:0 16px 14px;height:38px;width:calc(100% - 32px);border-radius:10px;border:1px solid var(--navy);background:transparent;color:var(--navy);font:700 13px 'Manrope',sans-serif;cursor:pointer}
-.trk .tsrc{padding:6px 16px 8px;font-size:10px;color:var(--faint);border-top:1px solid var(--line)}
-.trk .tsrc a{color:inherit}
-.leaflet-container{font-family:'Manrope',sans-serif}
-.pl{width:30px;height:30px;color:var(--navy);filter:drop-shadow(0 2px 3px rgba(15,27,46,.35))}
-.pl svg{width:30px;height:30px;fill:currentColor;stroke:#fff;stroke-width:1}
 
 /* Belgeler */
 .list{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
@@ -565,90 +544,6 @@ a.pf{text-decoration:none}
   };
   var monthKey = function (iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})/); return m ? m[1] + '-' + m[2] : ''; };
 
-  // ===== Canlı konum: adsb.lol (açık kaynak) — /.netlify/functions/ucak üzerinden =====
-  // Uçak havada uçuş numarasıyla değil çağrı koduyla görünür: TK1975 → THY1975 (THY bazen farklı kod kullanır, o zaman bulunamaz)
-  var ICAO_AIR = { TK:'THY', PC:'PGT', VF:'TKJ', XQ:'SXS', XC:'CAI', J2:'AHY', LH:'DLH', A3:'AEE', OS:'AUA', LX:'SWR', KL:'KLM', AF:'AFR', BA:'BAW',
-    EK:'UAE', QR:'QTR', FZ:'FDB', EY:'ETD', W6:'WZZ', FR:'RYR', U2:'EZY', SU:'AFL', PS:'AUI', KC:'KZR', HY:'UZB', G9:'ABY', J9:'JZR', SV:'SVA',
-    MS:'MSR', RJ:'RJA', ME:'MEA', LO:'LOT', OK:'CSA', RO:'ROT', FB:'LZB', JU:'ASL', IB:'IBE', VY:'VLG', AZ:'ITY', SN:'BEL', TP:'TAP', SK:'SAS',
-    AY:'FIN', WY:'OMA', GF:'GFA', KU:'KAC', LY:'ELY', ET:'ETH', UA:'UAL', DL:'DAL', AA:'AAL', AC:'ACA', EW:'EWG', DE:'CFG', X3:'TUI', A9:'TGZ', '6E':'IGO', AI:'AIC', CA:'CCA', MU:'CES', CZ:'CSN', SQ:'SIA', KE:'KAL', NH:'ANA', JL:'JAL' };
-  var callsignOf = function (code) {
-    var m = String(code || '').toUpperCase().match(/^([A-Z0-9]{2})(\d{1,4})$/);
-    var a = m && ICAO_AIR[m[1]]; return a ? a + String(+m[2]) : '';
-  };
-  var hm = function (t) { var m = String(t || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
-  // Uçuş günü mü, ve uçuş saatlerine yakın mıyız? (saatler yerel; saat dilimi farkı için pencere geniş tutulur)
-  var flightWindow = function (x) {
-    var day = flightDay(x); if (!day) return { today: false, near: false };
-    var dep = hm(parsePt(x.dep).time), arr = hm(parsePt(x.arr).time);
-    var start = new Date(day); if (dep != null) start.setMinutes(dep);
-    var end = new Date(day); if (arr != null) { end.setMinutes(arr); if (dep != null && arr < dep) end.setDate(end.getDate() + 1); } else end.setHours(23, 59);
-    var now = new Date(), t0 = new Date(day), t1 = new Date(end); t1.setHours(23, 59, 59);
-    return { today: now >= t0 && now <= t1, near: now >= start.getTime() - 90 * 60000 && now <= end.getTime() + 150 * 60000 };
-  };
-  var loadLeaflet = function () {
-    return new Promise(function (res, rej) {
-      if (window.L) return res(window.L);
-      var css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
-      var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-      sc.onload = function () { res(window.L); }; sc.onerror = function () { rej(new Error('leaflet')); }; document.head.appendChild(sc);
-    });
-  };
-  var PLANE_SVG = '<svg viewBox="0 0 24 24"><path d="M12 1.5c.8 0 1.4.9 1.4 2.2v5.6l8.1 4.6v2.2l-8.1-2.4v5l2.3 1.7v1.7L12 21.3l-3.7 1.1v-1.7l2.3-1.7v-5l-8.1 2.4v-2.2l8.1-4.6V3.7c0-1.3.6-2.2 1.4-2.2z"/></svg>';
-  var fmtN = function (n) { return n == null ? '—' : n.toLocaleString('tr-TR'); };
-  // Uçuş kartına canlı konum paneli ekler (sadece uçuş günü)
-  var renderTracker = function (card, x) {
-    var cs = callsignOf(x.code), w = flightWindow(x);
-    if (!cs || !w.today) return;
-    var p = el('div', 'trk'); card.appendChild(p);
-    var th = el('div', 'th'); var tl = el('span', 'tl'); tl.appendChild(el('i')); tl.appendChild(document.createTextNode('CANLI KONUM')); th.appendChild(tl);
-    var stt = el('span', '', ''); th.appendChild(stt); p.appendChild(th);
-    var body = el('div'); p.appendChild(body);
-    var src = el('div', 'tsrc'); src.innerHTML = 'Konum: <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> (ODbL, gönüllü alıcılar) · Harita © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>. Bilgi amaçlıdır.';
-    var map = null, mk = null, trail = null, pts = [], timer = null, mapEl = null, stats = null;
-    var msg = function (t) { body.innerHTML = ''; map = null; mk = null; trail = null; pts = []; body.appendChild(el('div', 'tmsg', t)); p.classList.remove('on'); if (src.parentNode) src.remove(); };
-    var tick = function () {
-      fetch('/.netlify/functions/ucak?cs=' + cs).then(function (r) { return r.json(); }).then(function (j) {
-        if (!j || !j.found || j.ground) {
-          stt.textContent = j && j.ground ? 'Yerde' : 'Sinyal yok';
-          if (!map) msg(j && j.ground ? 'Uçak yerde. Havalandığında konumu burada canlı görünecek.' : 'Uçak şu an havada görünmüyor — kalkıştan önce, inişten sonra veya alıcıların olmadığı bir bölgede olabilir. Sayfa açık kaldıkça kendiliğinden yenilenir.');
-          return;
-        }
-        stt.textContent = j.seen > 5 ? j.seen + ' sn önce' : 'Şimdi';
-        p.classList.add('on');
-        return loadLeaflet().then(function (L) {
-          if (!map) {
-            body.innerHTML = '';
-            mapEl = el('div', 'map'); body.appendChild(mapEl);
-            stats = el('div', 'tst'); body.appendChild(stats);
-            p.appendChild(src);
-            map = L.map(mapEl, { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false }).setView([j.lat, j.lon], 5);
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 10 }).addTo(map);
-            trail = L.polyline([], { color: '#13223a', weight: 2, opacity: .55, dashArray: '4 5' }).addTo(map);
-          }
-          pts.push([j.lat, j.lon]); trail.setLatLngs(pts);
-          var icon = L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15], html: '<div class="pl" style="transform:rotate(' + (j.track || 0) + 'deg)">' + PLANE_SVG + '</div>' });
-          if (!mk) mk = L.marker([j.lat, j.lon], { icon: icon, interactive: false }).addTo(map); else { mk.setLatLng([j.lat, j.lon]); mk.setIcon(icon); }
-          map.panTo([j.lat, j.lon], { animate: true });
-          stats.innerHTML = '';
-          [[fmtN(j.altM) + ' m', 'İrtifa'], [fmtN(j.kmh) + ' km/sa', 'Hız'], [j.type || '—', j.reg || 'Uçak']].forEach(function (c) {
-            var d = el('div'); d.appendChild(el('b', '', c[0])); d.appendChild(el('span', '', c[1])); stats.appendChild(d);
-          });
-        });
-      }).catch(function () { stt.textContent = 'Bağlantı yok'; if (!map) msg('Canlı konum şu an alınamıyor. Biraz sonra tekrar denenecek.'); });
-    };
-    var start = function () {
-      if (timer) return; tick(); timer = setInterval(function () { if (!document.hidden) tick(); }, 20000);
-    };
-    if (w.near) start();
-    else {
-      stt.textContent = 'Uçuş günü';
-      body.appendChild(el('div', 'tmsg', 'Uçak havalandığında konumunu, irtifasını ve hızını burada canlı izleyebilirsiniz.'));
-      var go = el('button', 'tgo', 'Canlı konumu göster'); go.type = 'button';
-      go.addEventListener('click', function () { body.innerHTML = ''; body.appendChild(el('div', 'tmsg', 'Konum aranıyor…')); start(); });
-      body.appendChild(go);
-    }
-  };
-
   var render = function (f) {
       meta.prefix = f.customerName || 'Paydos';
       box.innerHTML = ''; delay = 0;
@@ -683,7 +578,7 @@ a.pf{text-decoration:none}
       if (flights.length) {
         sec('Yaklaşan uçuşlar', flights.length);
         flights.forEach(function (x) {
-          var a = el('div', 'pass'); // harita içindeki dokunuşlar dış linke gitmesin diye kart link değil
+          var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
           var xd = flightDay(x);
           var top = el('div', 'ptop');
           top.appendChild(el('span', 'fno', x.code.replace(/^(..)/, '$1 ')));
@@ -699,10 +594,9 @@ a.pf{text-decoration:none}
           } else if (x.dep || x.arr) {
             a.appendChild(el('div', 'raw', [x.dep, x.arr].filter(Boolean).join('  →  ')));
           }
-          try { renderTracker(a, x); } catch (e) {}
-          var pf = el('a', 'pf'); pf.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); pf.target = '_blank'; pf.rel = 'noopener';
-          pf.appendChild(el('span', '', 'Rötar ve kapı bilgisi'));
-          var live = el('span', 'live'); live.appendChild(document.createTextNode('Flightradar24 ↗'));
+          var pf = el('div', 'pf');
+          pf.appendChild(el('span', '', 'Rötar, kapı ve canlı konum'));
+          var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
           pf.appendChild(live); a.appendChild(pf);
           add(box, a);
         });
