@@ -1324,6 +1324,14 @@ const newLinkToken = () => {
   const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => abc[b % abc.length]).join('');
 };
+// Okunabilir müşteri linki: /b/onder-tasci-k7m2q — isim + 5 karakterlik gizli ek (≈33 milyon olasılık).
+// Sadece isim olsaydı herkes başkasının adını yazıp belgelerine ulaşabilirdi (KVKK); ek bunu engeller.
+const customerLinkSlug = (c) => {
+  const base = asciiTr(`${c.firstName || ''} ${c.lastName || ''}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'musteri';
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const tail = Array.from(crypto.getRandomValues(new Uint8Array(5)), x => abc[x % abc.length]).join('');
+  return `${base}-${tail}`;
+};
 // Bilet PDF metninden uçuşları çıkar: "Ankara (ESB) Baku (GYD) VF-577 14/10/2026 12:15 15:30"
 const detectFlights = (text) => {
   const out = [], seen = new Set();
@@ -1376,7 +1384,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
   const [busy, setBusy] = useState('');
   const [ready, setReady] = useState(null); // { link, text, phone }
   const [docType, setDocType] = useState(0);
-  const token = useRef(c.shareToken || newLinkToken());
+  const token = useRef(c.shareToken || customerLinkSlug(c));
   const up = (patch) => setTrip(t => ({ ...t, ...patch }));
   const inS = { width: '100%', boxSizing: 'border-box', padding: '9px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', colorScheme: 'dark' };
   const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
@@ -1605,7 +1613,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
         const part = r.pages ? await pdfExtractPages(r.file, r.pages) : r.file;
         for (const cid of r.custIds) {
           const c = byId.get(cid); if (!c) continue;
-          if (!perCust.has(cid)) perCust.set(cid, { c, token: c.shareToken || newLinkToken(), trip: { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...safeParseObj(c.shareTrip) }, added: [] });
+          if (!perCust.has(cid)) perCust.set(cid, { c, token: c.shareToken || customerLinkSlug(c), trip: { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...safeParseObj(c.shareTrip) }, added: [] });
           const pc = perCust.get(cid);
           const safe = asciiTr(part.name).replace(/[^\w.\-]+/g, '_').slice(-80);
           const path = `paylasim/${pc.token}/${Date.now()}_${safe}`;

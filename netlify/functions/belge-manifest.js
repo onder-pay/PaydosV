@@ -8,7 +8,7 @@ const DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || 'paydos';
 
 exports.handler = async (event) => {
   const code = String((event.queryStringParameters || {}).k || '');
-  if (!/^[A-Za-z0-9]{8,40}$/.test(code)) return { statusCode: 400, body: 'Geçersiz kod' };
+  if (!/^[A-Za-z0-9-]{8,60}$/.test(code)) return { statusCode: 400, body: 'Geçersiz kod' };
 
   let city = '', tour = '';
   try {

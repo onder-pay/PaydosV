@@ -163,9 +163,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
   var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   var show = function (t) { box.innerHTML = ''; box.appendChild(el('div', 'msg', t)); };
   // Link biçimi: /b/<kod>  (eski/yedek: belgeler.html?k=<kod>)
-  var m = location.pathname.match(/\/b\/([A-Za-z0-9]{8,40})\/?$/);
+  var m = location.pathname.match(/\/b\/([A-Za-z0-9-]{8,60})\/?$/);
   var code = m ? m[1] : (new URLSearchParams(location.search).get('k') || '');
-  if (!/^[A-Za-z0-9]{8,40}$/.test(code)) { show('Geçersiz bağlantı.'); return; }
+  if (!/^[A-Za-z0-9-]{8,60}$/.test(code)) { show('Geçersiz bağlantı.'); return; }
 
   // ===== Ana ekrana ekleme (PWA) =====
   // Kişiye özel manifest: ana ekrandan açılınca doğrudan bu müşterinin linki açılır.
