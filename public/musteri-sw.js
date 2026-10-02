@@ -1,9 +1,8 @@
-// Belge linki (/b/<kod>) için service worker: ana ekrana eklenebilirlik + internetsiz açılış.
-// Sayfa ve belge listesi (Firestore cevabı) önce ağdan alınır, olmazsa son kayıtlı kopya gösterilir
-// (yurt dışında roaming kapalıyken de uçuş/belge listesi görünür). PDF'ler başka alan adında olduğu
+// Müşteri linki (/m/<kod>) için service worker (tur linkinin belge-sw.js'inden ayrı): ana ekrana eklenebilirlik + internetsiz açılış.
+// Sayfa önce ağdan alınır, olmazsa son kayıtlı kopya gösterilir. PDF'ler başka alan adında olduğu
 // için burada saklanmaz — onlar için "İndir" kullanılmalı.
-const CACHE = 'paydos-belge-v2';
-const SHELL = ['/belgeler.html', '/icons/logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'paydos-musteri-v1';
+const SHELL = ['/musteri.html', '/icons/logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -28,16 +27,12 @@ const networkFirst = async (req, cacheKey) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // /b/<kod> sayfası → belgeler.html (tek kabuk)
-  if (e.request.mode === 'navigate' && url.origin === location.origin && url.pathname.startsWith('/b/')) {
-    e.respondWith(networkFirst(e.request, '/belgeler.html'));
+  // /m/<kod> sayfası → musteri.html (tek kabuk)
+  if (e.request.mode === 'navigate' && url.origin === location.origin && url.pathname.startsWith('/m/')) {
+    e.respondWith(networkFirst(e.request, '/musteri.html'));
     return;
   }
-  // Belge listesi ve şehir tavsiyeleri (Firestore REST, sadece paylasimlar / tavsiyeler)
-  if (url.hostname === 'firestore.googleapis.com' && (url.pathname.includes('/documents/paylasimlar/') || url.pathname.includes('/documents/tavsiyeler/'))) {
-    e.respondWith(networkFirst(e.request));
-    return;
-  }
+  // Belge verisi PIN'li API'den (POST) gelir; SW saklamaz — internetsizken sayfa son veriyi telefondan gösterir.
   // Hava / konum / kur — yurt dışında internet yokken son bilinen değer gösterilsin
   if (/(^|\.)open-meteo\.com$/.test(url.hostname) || url.hostname === 'open.er-api.com' || (url.origin === location.origin && url.pathname === '/.netlify/functions/kur')) {
     e.respondWith(networkFirst(e.request));

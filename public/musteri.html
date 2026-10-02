@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f4f3ef">
+<!-- Ana ekrana eklenince uygulama gibi açılsın -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Paydos">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<title>Paydos Turizm · Seyahat Dosyası</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Müşteri linki — kurumsal "seyahat dosyası" görünümü. Tek vurgu rengi (Paydos kırmızısı) az kullanılır. */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f4f3ef;--card:#fff;--ink:#0f1b2e;--ink2:#2c384c;--muted:#6b7487;--faint:#9aa1b0;--line:#e4e2db;--soft:#f7f6f2;--navy:#13223a;--accent:#d7262f;--ok:#1f8a5b}
+body{min-height:100vh;background:var(--bg);font-family:'Manrope',system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;font-feature-settings:'tnum' 1}
+.c{max-width:560px;margin:0 auto;padding:18px 16px 48px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 2px 16px;font-weight:800;font-size:12px;letter-spacing:3px;color:var(--ink)}
+.brand img{width:30px;height:30px;border-radius:50%}
+.brand small{margin-left:auto;font-weight:600;font-size:11px;letter-spacing:1px;color:var(--muted)}
+
+/* Kapak */
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:24px 22px 20px;color:#fff;background:var(--navy)}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(500px 220px at 100% 0%,rgba(255,255,255,.10),transparent 60%),repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 1px,transparent 1px 14px)}
+.hero::after{content:'';position:absolute;left:22px;top:0;width:36px;height:3px;background:var(--accent);border-radius:0 0 2px 2px}
+.hero>*{position:relative}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.name{font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.15;margin:8px 0 18px}
+.stats{display:grid;grid-template-columns:1.4fr 1fr;border-top:1px solid rgba(255,255,255,.14)}
+.st{padding:14px 0 2px}.st+.st{padding-left:16px;border-left:1px solid rgba(255,255,255,.14)}
+.st .k{font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.st .v{font-size:19px;font-weight:700;margin-top:4px}
+.st .s{font-family:'IBM Plex Mono',monospace;font-size:12px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.5px}
+.lead{margin-top:16px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.62)}
+
+/* Bölüm başlığı */
+.sec{display:flex;align-items:baseline;gap:8px;margin:30px 2px 12px}
+.sec b{font-size:15px;font-weight:700;letter-spacing:-.1px}
+.sec span{font-size:12px;color:var(--faint);font-weight:600}
+.mon{margin:16px 2px 8px;font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted)}
+
+/* Uçuş */
+.pass{display:block;margin-bottom:10px;border-radius:16px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.pass:hover{border-color:#cfccc2;box-shadow:0 8px 24px -16px rgba(15,27,46,.35)}
+.pass .ptop{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}
+.pass .fno{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink);letter-spacing:1px}
+.pass .route{display:flex;align-items:center;gap:10px;padding:16px 16px 14px}
+.pass .pt{min-width:0}.pass .pt.r{text-align:right}
+.pass .iata{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;letter-spacing:1px;line-height:1}
+.pass .city{font-size:12px;color:var(--muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.pass .pt.r .city{margin-left:auto}
+.pass .time{font-size:15px;font-weight:700;margin-top:6px}
+.pass .line{flex:1;display:flex;align-items:center;gap:6px;color:var(--faint)}
+.pass .line::before,.pass .line::after{content:'';flex:1;border-top:1px dashed #cdcac0}
+.pass .pf{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--soft);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.pass .live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink);font-size:12.5px}
+.pass .live i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(215,38,47,.15)}
+.pass .raw{padding:16px;font-size:14px}
+
+/* Belgeler */
+.list{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.doc{display:flex;align-items:center;gap:12px;padding:13px 14px}
+.doc+.doc{border-top:1px solid var(--line)}
+.list.cur{border-color:#cfd5df;box-shadow:0 10px 26px -18px rgba(15,27,46,.45)}
+.list.cur .dic{background:var(--navy);border-color:var(--navy);color:#fff}
+.doc .dic{width:40px;height:40px;border-radius:10px;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--navy)}
+.doc .dtx{flex:1;min-width:0}
+.doc .dt{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .ds{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .acts{display:flex;gap:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 12px;border-radius:9px;font:700 13px 'Manrope',sans-serif;text-decoration:none;cursor:pointer;white-space:nowrap;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btn.d{background:var(--navy);border-color:var(--navy);color:#fff;width:36px;padding:0}
+.btn svg.i{width:17px;height:17px}
+.btn:active{transform:scale(.97)}
+.all{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;height:46px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:700 13.5px 'Manrope',sans-serif;cursor:pointer}
+.all:hover{background:var(--card)}
+.note{margin-top:10px;padding:10px 12px;border-radius:10px;background:#fff8e6;border:1px solid #f0dfae;color:#6b5414;font-size:12px;line-height:1.5;display:none}
+
+/* Varış bilgileri */
+.info{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.info:empty{display:none}
+.ib{padding:14px 16px;min-width:0;background:var(--card)}
+.ib.wide{grid-column:1/-1}
+.ib .h{font-size:10.5px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.ib .v{font-size:19px;font-weight:700;line-height:1.25}
+.ib .s{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+.days{display:flex;gap:6px;overflow-x:auto;margin-top:10px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:0 0 auto;min-width:58px;text-align:center;padding:8px 6px;border-radius:10px;background:var(--soft);border:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.day .e{font-size:16px;line-height:1.6;color:var(--ink2)}
+.day b{display:block;font-size:13px;color:var(--ink)}
+.wear{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--ink2)}
+.hotel{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.hotel .n{font-size:15px;font-weight:700}
+.hotel .a{font-size:12.5px;color:var(--muted);line-height:1.5}
+.hotel .b{display:flex;gap:8px;margin-top:4px}
+.hotel .b a{flex:1;display:flex;align-items:center;justify-content:center;height:40px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;border:1px solid var(--line);color:var(--ink)}
+.hotel .b a.p{background:var(--navy);border-color:var(--navy);color:#fff}
+.disc{display:none;margin:10px 2px 0;font-size:10.5px;line-height:1.55;color:var(--faint)}
+
+/* İletişim */
+.contact{display:flex;align-items:center;gap:12px;margin-top:10px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.contact .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--soft);border:1px solid var(--line);color:var(--navy)}
+.contact .tx{flex:1;font-size:12.5px;color:var(--muted);line-height:1.45}
+.contact .tx b{display:block;color:var(--ink);font-size:14px;margin-bottom:1px}
+.contact .bt{display:flex;gap:6px}
+.contact a{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:10px;background:var(--navy);color:#fff;font-weight:700;font-size:13px;text-decoration:none}
+.contact a.wa{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.ig{display:flex;align-items:center;gap:12px;margin-top:10px;padding:14px 16px;border-radius:16px;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line)}
+.ig .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#f58529,#dd2a7b 55%,#8134af)}
+.ig .tx{flex:1;font-size:12px;color:var(--muted)}.ig .tx b{display:block;font-size:14px;color:var(--ink)}
+.ig .go{font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap}
+.foot{text-align:center;font-size:11px;color:var(--faint);margin-top:22px;letter-spacing:1.5px}
+
+/* Ana ekrana ekle */
+.inst{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.inst .ic{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--soft);color:var(--navy)}
+.inst .tx{flex:1;font-size:12px;line-height:1.45;color:var(--muted)}
+.inst .tx b{display:block;font-size:13.5px;color:var(--ink);margin-bottom:1px}
+.inst .go{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--navy);background:transparent;color:var(--navy);font:700 13px 'Manrope',sans-serif;cursor:pointer;white-space:nowrap}
+.inst .x{background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:4px}
+
+/* PIN */
+.pinc{margin:22px auto 0;max-width:400px;padding:28px 22px 22px;border-radius:18px;background:var(--card);border:1px solid var(--line);text-align:center}
+.pinc .pic{width:52px;height:52px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--navy);color:#fff}
+.pinc .pic svg.i{width:22px;height:22px}
+.pinc .pt{font-size:21px;font-weight:700;letter-spacing:-.3px;margin:14px 0 6px}
+.pinc .ps{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:18px}
+.pinc .pin{display:block;width:100%;margin:0 0 10px;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font:600 24px 'IBM Plex Mono',monospace;letter-spacing:14px;text-align:center}
+.pinc .pin::placeholder{color:#b9bdc7;letter-spacing:2px;font-size:14px;font-family:Manrope,sans-serif}
+.pinc .pin:focus{outline:none;border-color:var(--navy);background:#fff}
+.pinc .perr{min-height:18px;font-size:12.5px;color:var(--accent);margin-bottom:8px;font-weight:600}
+.pinc .pbtn{width:100%;height:48px;border:none;border-radius:12px;background:var(--navy);color:#fff;font:700 14.5px 'Manrope',sans-serif;cursor:pointer}
+.pinc .pbtn:disabled{opacity:.6}
+.pinc .pnote{margin-top:14px;font-size:11.5px;color:var(--faint);line-height:1.5}
+
+/* Oyun: Yılan (Nokia klasiği) — giriş kartı kurumsal, oyunun kendisi Nokia ekranı */
+.gm{display:flex;align-items:center;gap:12px;width:100%;margin-top:30px;padding:14px 16px;border-radius:16px;background:var(--card);border:1px solid var(--line);font:inherit;color:var(--ink);text-align:left;cursor:pointer}
+.gm .ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#c7d9a8;color:#2d3a1f}
+.gm .tx{flex:1;font-size:12px;color:var(--muted);line-height:1.45}.gm .tx b{display:block;font-size:14px;color:var(--ink)}
+.gm .go{height:34px;padding:0 14px;border-radius:9px;background:var(--navy);color:#fff;font-weight:700;font-size:13px;display:inline-flex;align-items:center}
+.sn{position:fixed;inset:0;z-index:60;background:rgba(10,16,28,.92);display:flex;align-items:center;justify-content:center;padding:12px}
+.sn .ph{position:relative;width:100%;max-width:360px;padding:18px 16px 16px;border-radius:28px;background:linear-gradient(160deg,#2b3a55,#18223a);box-shadow:0 30px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.08)}
+.sn .nk{text-align:center;font:800 12px 'Manrope',sans-serif;letter-spacing:4px;color:#9fb0cc;margin-bottom:10px}
+.sn .lcd{border-radius:10px;padding:8px;background:#9fbf7a;box-shadow:inset 0 2px 6px rgba(0,0,0,.35)}
+.sn .bar{display:flex;justify-content:space-between;font:700 13px 'IBM Plex Mono',monospace;color:#2a3518;padding:0 2px 6px}
+.sn canvas{display:block;margin:0 auto;height:min(50vh,calc((100vw - 72px) * 22 / 18),390px);width:auto;max-width:100%;touch-action:none;image-rendering:pixelated}
+.sn .pad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,52px);gap:6px;justify-content:center;margin-top:14px}
+.sn .pad button{padding:0;min-height:0;border:none;border-radius:12px;background:#33445f;color:#cbd6ea;font-size:18px;cursor:pointer;touch-action:none}
+.sn .pad button:active{background:#46597a}
+.sn .pad .u{grid-column:2;grid-row:1}.sn .pad .l{grid-column:1;grid-row:2}.sn .pad .r{grid-column:3;grid-row:2}.sn .pad .d{grid-column:2;grid-row:3}
+.sn .pad .c{grid-column:2;grid-row:2;background:#25324a;font:700 11px 'Manrope',sans-serif;letter-spacing:1px}
+.sn .hint{text-align:center;font-size:11px;color:#7f8da8;margin-top:10px}
+.sn .x{position:absolute;top:-8px;right:-8px;width:36px;height:36px;border-radius:50%;border:none;background:#fff;color:var(--ink);font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+/* Pasaport ve vize geçerliliği */
+.vl .row{display:flex;align-items:center;gap:12px;padding:13px 14px}
+.vl .row+.row,.vl .w+.row{border-top:1px solid var(--line)}
+.vl .dic{width:40px;height:40px;border-radius:10px;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--navy);flex-shrink:0}
+.vl .tx{flex:1;min-width:0}.vl .t{font-size:14.5px;font-weight:700}.vl .s{font-size:12px;color:var(--muted);margin-top:2px}
+.vl .dd{text-align:right;flex-shrink:0}.vl .dd b{display:block;font-size:20px;font-weight:800;letter-spacing:-.3px;line-height:1.1}.vl .dd span{font-size:11px;color:var(--muted)}
+.vl .w{margin:0 14px 12px 66px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.45}
+.vl .w.a{background:#fff6e0;color:#7a5a0c;border:1px solid #f1dda6}.vl .w.r{background:#fdecec;color:#9b1c1c;border:1px solid #f5c2c2}
+.vl .row.a .dd b{color:#b7791f}.vl .row.r .dd b{color:var(--accent)}
+.offline{margin-top:12px;padding:10px 12px;border-radius:10px;background:#eef3fb;border:1px solid #d6e2f3;color:#2f4a73;font-size:12px;text-align:center}
+.msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
+.empty{margin-top:14px;padding:28px 18px;border-radius:16px;border:1px dashed #d3d0c6;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
+.in{opacity:0;transform:translateY(8px);animation:up .45s ease forwards}
+@keyframes up{to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.in{animation:none;opacity:1;transform:none}}
+@media (max-width:360px){.name{font-size:25px}.pass .iata{font-size:24px}.doc .btn.o{padding:0 10px}}
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="brand"><img src="/icons/logo.png" alt="Paydos">PAYDOS TURİZM<small>Seyahat Dosyası</small></div>
+  <div id="box"><div class="msg">Yükleniyor…</div></div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('box');
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  var show = function (t) { box.innerHTML = ''; box.appendChild(el('div', 'msg', t)); };
+  // Müşteri linki (kurumsal, turdan bağımsız): /m/<kod>  (yedek: musteri.html?k=<kod>). Tur linki ayrı sayfadır (/b/ → belgeler.html).
+  var m = location.pathname.match(/\/m\/([A-Za-z0-9-]{8,60})\/?$/);
+  var code = m ? m[1] : (new URLSearchParams(location.search).get('k') || '');
+  if (!/^[A-Za-z0-9-]{8,60}$/.test(code)) { show('Geçersiz bağlantı.'); return; }
+
+  // ===== Ana ekrana ekleme (PWA) =====
+  // Kişiye özel manifest: ana ekrandan açılınca doğrudan bu müşterinin linki açılır.
+  var ml = document.createElement('link'); ml.rel = 'manifest'; ml.href = '/.netlify/functions/musteri-manifest?k=' + code; document.head.appendChild(ml);
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/musteri-sw.js', { scope: '/m/' }).catch(function () {}); }
+  var deferredPrompt = null, instCard = null;
+  var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var instDismissed = false; try { instDismissed = localStorage.getItem('paydos_inst_x_' + code) === '1'; } catch (e) {}
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (instCard) instCard.style.display = 'flex'; });
+  window.addEventListener('appinstalled', function () { if (instCard) instCard.style.display = 'none'; });
+  var renderInstall = function (parent) {
+    if (isStandalone || instDismissed) return;
+    instCard = el('div', 'inst');
+    var iic = el('div', 'ic'); iic.appendChild(ico('home')); instCard.appendChild(iic);
+    var tx = el('div', 'tx'); tx.appendChild(el('b', '', 'Ana ekrana ekleyin'));
+    tx.appendChild(document.createTextNode(isIOS ? 'Paylaş düğmesine, sonra "Ana Ekrana Ekle"ye dokunun.' : 'Belgelerinize tek dokunuşla, internetsiz de ulaşın.'));
+    instCard.appendChild(tx);
+    if (!isIOS) {
+      var go = el('button', 'go', 'Ekle'); go.type = 'button';
+      go.addEventListener('click', function () {
+        if (!deferredPrompt) { alert('Tarayıcı menüsünden (⋮) "Ana ekrana ekle" / "Uygulamayı yükle" seçeneğine dokunun.'); return; }
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function () { deferredPrompt = null; instCard.style.display = 'none'; });
+      });
+      instCard.appendChild(go);
+    }
+    var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Kapat');
+    x.addEventListener('click', function () { instCard.style.display = 'none'; try { localStorage.setItem('paydos_inst_x_' + code, '1'); } catch (e) {} });
+    instCard.appendChild(x);
+    parent.appendChild(instCard);
+  };
+
+  // Firestore REST değer biçimini düz JS'e çevir
+  var val = function (v) {
+    if (!v) return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return Number(v.integerValue);
+    if ('booleanValue' in v) return v.booleanValue;
+    if ('arrayValue' in v) return (v.arrayValue.values || []).map(val);
+    if ('mapValue' in v) { var o = {}, f = v.mapValue.fields || {}; for (var k in f) o[k] = val(f[k]); return o; }
+    return null;
+  };
+  var AY = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  var parseD = function (s) { var p = String(s || '').split('-'); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null; };
+  var fmtD = function (d) { return d ? d.getDate() + ' ' + AY[d.getMonth()] : ''; };
+  // Sadece Firebase Storage adreslerine bağlantı verilir
+  var safeUrl = function (u) { try { var x = new URL(u); return x.protocol === 'https:' && /(^|\.)(firebasestorage\.googleapis\.com|storage\.googleapis\.com)$/.test(x.hostname) ? x.href : ''; } catch (e) { return ''; } };
+  // "Ankara ESB · 12:15" → { city: 'Ankara', iata: 'ESB', time: '12:15' }
+  var parsePt = function (s) {
+    s = String(s || '');
+    var iata = (s.match(/\b([A-Z]{3})\b/) || [])[1] || '';
+    var time = (s.match(/(\d{1,2}:\d{2}(?:\s*\(\+\d\))?)/) || [])[1] || '';
+    var city = s.split(iata || '·')[0].replace(/[·|,]/g, ' ').trim();
+    return { city: city, iata: iata, time: time };
+  };
+  // Belge türüne göre renk
+  var STYLE = {
+    '🗺️': ['#34d3c4', 'rgba(52,211,196,.14)', 'Günlük program ve detaylar'],
+    '🏨': ['#f5b942', 'rgba(245,185,66,.15)', 'Otel girişinde gösterin'],
+    '✈️': ['#6aa8ff', 'rgba(106,168,255,.15)', 'E-bilet'],
+    '🎫': ['#ff7aa8', 'rgba(255,122,168,.15)', 'Fuar girişinde gösterin'],
+    '🛫': ['#22d3ee', 'rgba(34,211,238,.15)', 'Güvenlik ve kapıda gösterin'],
+    '🛬': ['#c084fc', 'rgba(192,132,252,.15)', 'Dönüşte güvenlik ve kapıda gösterin'],
+    '🛂': ['#34d399', 'rgba(52,211,153,.15)', 'Pasaport kontrolünde gösterin'],
+    '🛡️': ['#93c5fd', 'rgba(147,197,253,.15)', 'Sağlık sorununda gösterin'],
+    '📄': ['#cbd5e1', 'rgba(203,213,225,.12)', '']
+  };
+  var delay = 0;
+  // İnce çizgi ikonlar (emoji yerine)
+  var IC = {
+    plane: '<path d="M10.5 13.5 4 11l1.5-1.5 7 1L16.5 6.5a1.8 1.8 0 0 1 2.5 2.5L15 13l1 7-1.5 1.5-2.5-6.5-3 3v2.5L7.5 22l-1-3.5L3 17.5 4.5 16H7l3.5-2.5z"/>',
+    pass: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14M7 10h5M7 14h3"/>',
+    hotel: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/>',
+    visa: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>',
+    shield: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3z"/><path d="m9 12 2 2 4-4"/>',
+    ticket: '<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V7z"/><path d="M14 5v12"/>',
+    map: '<path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2zM9 4v14M15 6v14"/>',
+    doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+    dl: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    home: '<path d="M12 3v12M8 11l4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1"/>',
+    ig: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>'
+  };
+  var ico = function (n) { var w = document.createElement('span'); w.style.display = 'inline-flex'; w.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + (IC[n] || IC.doc) + '</svg>'; return w.firstChild; };
+  var DOC_IC = { '✈️': 'plane', '🛫': 'pass', '🛬': 'pass', '🏨': 'hotel', '🛂': 'visa', '🛡️': 'shield', '🎫': 'ticket', '🗺️': 'map' };
+  // ===== Yılan (Nokia 3310 klasiği) — sayfanın içinde, internetsiz oynanır =====
+  // Kenarlardan geçilir (karşıdan çıkar); kendine çarpınca biter. Kaydırma, yön tuşları veya klavye ok tuşları.
+  var openSnake = function () {
+    var COLS = 18, ROWS = 22, CELL = 10, BEST_KEY = 'paydos_yilan_best', best = 0;
+    try { best = +localStorage.getItem(BEST_KEY) || 0; } catch (e) {}
+    var ov = el('div', 'sn'), ph = el('div', 'ph'); ov.appendChild(ph);
+    var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Kapat'); ph.appendChild(x);
+    ph.appendChild(el('div', 'nk', 'PAYDOS'));
+    var lcd = el('div', 'lcd'); ph.appendChild(lcd);
+    var bar = el('div', 'bar'); var sc = el('span', '', '0000'), bs = el('span', '', 'EN İYİ ' + String(best).padStart(4, '0'));
+    bar.appendChild(sc); bar.appendChild(bs); lcd.appendChild(bar);
+    var cv = document.createElement('canvas'); cv.width = COLS * CELL; cv.height = ROWS * CELL; lcd.appendChild(cv);
+    var g = cv.getContext('2d');
+    var pad = el('div', 'pad');
+    var mkb = function (cls, t, dir) { var b = el('button', cls, t); b.type = 'button'; b.addEventListener('pointerdown', function (e) { e.preventDefault(); if (dir) turn(dir); else toggle(); }); pad.appendChild(b); };
+    mkb('u', '▲', [0, -1]); mkb('l', '◀', [-1, 0]); mkb('c', 'BAŞLA', null); var cBtn = pad.lastChild; mkb('r', '▶', [1, 0]); mkb('d', '▼', [0, 1]);
+    ph.appendChild(pad);
+    ph.appendChild(el('div', 'hint', 'Ekranı kaydırın veya yön tuşlarına basın'));
+    document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+
+    var snake, dir, next, food, score, state, acc, last, raf, speed;
+    var reset = function () {
+      snake = [[8, 11], [7, 11], [6, 11], [5, 11]]; dir = [1, 0]; next = [1, 0]; score = 0; speed = 150; acc = 0;
+      place(); sc.textContent = '0000'; state = 'ready'; draw();
+    };
+    var place = function () {
+      do { food = [Math.floor(Math.random() * COLS), Math.floor(Math.random() * ROWS)]; }
+      while (snake.some(function (p) { return p[0] === food[0] && p[1] === food[1]; }));
+    };
+    var turn = function (d) {
+      if (state === 'ready' || state === 'over') { if (state === 'over') reset(); state = 'run'; last = performance.now(); }
+      if (d[0] === -dir[0] && d[1] === -dir[1]) return; // geri dönülmez
+      next = d;
+    };
+    var toggle = function () {
+      if (state === 'run') state = 'pause';
+      else { if (state === 'over') reset(); state = 'run'; last = performance.now(); }
+      draw();
+    };
+    var INK = '#2a3518';
+    var px = function (cx, cy, inset) { g.fillRect(cx * CELL + inset, cy * CELL + inset, CELL - inset * 2, CELL - inset * 2); };
+    var text = function (t, y, size) { g.font = '700 ' + (size || 12) + 'px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.fillText(t, cv.width / 2, y); };
+    var draw = function () {
+      cBtn.textContent = state === 'run' ? 'DURDUR' : 'BAŞLA';
+      g.fillStyle = '#9fbf7a'; g.fillRect(0, 0, cv.width, cv.height);
+      g.strokeStyle = INK; g.lineWidth = 2; g.strokeRect(1, 1, cv.width - 2, cv.height - 2);
+      g.fillStyle = INK;
+      snake.forEach(function (p, i) { px(p[0], p[1], i === 0 ? 0.5 : 1); });
+      // yem: Nokia'daki gibi küçük artı
+      g.fillRect(food[0] * CELL + 4, food[1] * CELL + 2, 2, 6); g.fillRect(food[0] * CELL + 2, food[1] * CELL + 4, 6, 2);
+      if (state !== 'run') {
+        g.fillStyle = 'rgba(159,191,122,.85)'; g.fillRect(14, cv.height / 2 - 34, cv.width - 28, 64);
+        g.fillStyle = INK;
+        if (state === 'ready') { text('YILAN', cv.height / 2 - 10, 16); text('Başlamak için', cv.height / 2 + 8, 10); text('kaydırın / BAŞLA', cv.height / 2 + 20, 10); }
+        else if (state === 'pause') { text('DURAKLATILDI', cv.height / 2, 12); }
+        else { text('OYUN BİTTİ', cv.height / 2 - 10, 14); text('Skor ' + score, cv.height / 2 + 8, 11); text('Tekrar: BAŞLA', cv.height / 2 + 22, 10); }
+      }
+    };
+    var step = function (now) {
+      raf = requestAnimationFrame(step);
+      if (state !== 'run') return;
+      acc += now - last; last = now;
+      if (acc < speed) return; acc = 0;
+      dir = next;
+      var h = [(snake[0][0] + dir[0] + COLS) % COLS, (snake[0][1] + dir[1] + ROWS) % ROWS];
+      var grow = h[0] === food[0] && h[1] === food[1];
+      var body = grow ? snake : snake.slice(0, -1);
+      if (body.some(function (p) { return p[0] === h[0] && p[1] === h[1]; })) {
+        state = 'over';
+        if (score > best) { best = score; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} bs.textContent = 'EN İYİ ' + String(best).padStart(4, '0'); }
+        if (navigator.vibrate) try { navigator.vibrate(120); } catch (e) {}
+        draw(); return;
+      }
+      snake = [h].concat(body);
+      if (grow) { score += 9; sc.textContent = String(score).padStart(4, '0'); speed = Math.max(70, speed - 3); place(); }
+      draw();
+    };
+    // Kaydırma
+    var sx = 0, sy = 0;
+    cv.addEventListener('pointerdown', function (e) { sx = e.clientX; sy = e.clientY; });
+    cv.addEventListener('pointerup', function (e) {
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 18) { toggle(); return; }
+      turn(Math.abs(dx) > Math.abs(dy) ? [dx > 0 ? 1 : -1, 0] : [0, dy > 0 ? 1 : -1]);
+    });
+    var KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    var onKey = function (e) { if (KEYS[e.key]) { e.preventDefault(); turn(KEYS[e.key]); } else if (e.key === ' ') { e.preventDefault(); toggle(); } else if (e.key === 'Escape') close(); };
+    var onVis = function () { if (document.hidden && state === 'run') { state = 'pause'; draw(); } };
+    var close = function () { cancelAnimationFrame(raf); document.removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', onVis); ov.remove(); document.body.style.overflow = ''; };
+    x.addEventListener('click', close);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    document.addEventListener('keydown', onKey); document.addEventListener('visibilitychange', onVis);
+    reset(); raf = requestAnimationFrame(step);
+  };
+
+  var add = function (parent, node) { node.classList.add('in'); node.style.animationDelay = (delay += 0.06) + 's'; parent.appendChild(node); return node; };
+
+
+  // ===== İndirme =====
+  // Belgeler Firebase Storage'da (başka alan adı): tarayıcı <a download>'ı yok sayar. Bu yüzden dosya
+  // önce çekilip (fetch) blob olarak kaydedilir. Storage buna izin vermezse (CORS) belge açılır,
+  // müşteri telefonun kendi indir/paylaş düğmesiyle kaydeder — kullanıcıya not gösterilir.
+  var noteEl = null, meta = {};
+  // Dosya adı ASCII: Türkçe karakterli 'download' adları bazı tarayıcılarda yok sayılıyor ('download' olarak iniyor)
+  var TRMAP = { 'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U' };
+  var slug = function (t) {
+    return String(t || '').trim().replace(/[çÇğĞıİöÖşŞüÜ]/g, function (c) { return TRMAP[c]; })
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'Belge';
+  };
+  var extOf = function (blob, url) {
+    var t = (blob && blob.type) || '';
+    if (/pdf/.test(t)) return '.pdf'; if (/png/.test(t)) return '.png'; if (/jpe?g/.test(t)) return '.jpg';
+    var m = decodeURIComponent(String(url).split('?')[0]).match(/\.(pdf|png|jpe?g)$/i); return m ? '.' + m[1].toLowerCase() : '.pdf';
+  };
+  var nameFor = function (dc, blob) { return slug(meta.prefix) + '_' + slug(String(dc.label || 'Belge').split(' — ')[0]) + extOf(blob, dc.url); };
+  var getBlob = function (url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.blob(); }); };
+  var saveBlob = function (blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+  };
+  var fallbackNote = function () {
+    if (!noteEl) return;
+    noteEl.textContent = 'Tarayıcınız doğrudan indirmeye izin vermedi. Belgeyi "Aç" ile açıp telefonunuzun paylaş / indir düğmesiyle kaydedebilirsiniz.';
+    noteEl.style.display = 'block';
+  };
+  var downloadOne = function (dc, btn) {
+    var url = safeUrl(dc.url); if (!url) return;
+    var old = btn.innerHTML; btn.textContent = '…'; btn.disabled = true;
+    getBlob(url).then(function (b) { saveBlob(b, nameFor(dc, b)); })
+      .catch(function () { fallbackNote(); })
+      .then(function () { btn.innerHTML = old; btn.disabled = false; });
+  };
+  var loadZip = function () {
+    return new Promise(function (res, rej) {
+      if (window.JSZip) return res(window.JSZip);
+      var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      sc.onload = function () { res(window.JSZip); }; sc.onerror = function () { rej(new Error('zip')); }; document.head.appendChild(sc);
+    });
+  };
+  var downloadAll = function (docs, btn) {
+    var old = btn.textContent; btn.textContent = 'Hazırlanıyor…'; btn.disabled = true;
+    Promise.all([loadZip()].concat(docs.map(function (dc) { return getBlob(safeUrl(dc.url)).then(function (b) { return { dc: dc, b: b }; }); })))
+      .then(function (r) {
+        var zip = new r[0](), used = {};
+        r.slice(1).forEach(function (x) {
+          var n = nameFor(x.dc, x.b); if (used[n]) n = n.replace(/(\.\w+)$/, '_' + (++used[n]) + '$1'); else used[n] = 1;
+          zip.file(n, x.b);
+        });
+        return zip.generateAsync({ type: 'blob' });
+      })
+      .then(function (z) { saveBlob(z, slug(meta.prefix) + '_Belgeler.zip'); })
+      .catch(function () { fallbackNote(); })
+      .then(function () { btn.textContent = old; btn.disabled = false; });
+  };
+
+
+  // ===== Seyahat bilgileri: hava, giyim, saat farkı, kur, priz, otel =====
+  // Harici servisler (anahtarsız, ücretsiz): Open-Meteo (konum + hava), open.er-api.com (kur).
+  // Biri çalışmazsa sadece o kart gizlenir; sayfanın geri kalanı etkilenmez.
+  var getJSON = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); }); };
+  var ymd = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  var WMO = function (c) {
+    var T = '\uFE0E'; // emoji değil yazı sembolü
+    if (c === 0) return ['☀' + T, 'Güneşli']; if (c <= 2) return ['☼' + T, 'Parçalı bulutlu']; if (c === 3) return ['☁' + T, 'Bulutlu'];
+    if (c <= 48) return ['≋', 'Sisli']; if (c <= 57) return ['☂' + T, 'Çisenti']; if (c <= 67) return ['☂' + T, 'Yağmurlu'];
+    if (c <= 77) return ['❄' + T, 'Karlı']; if (c <= 82) return ['☂' + T, 'Sağanak']; if (c <= 86) return ['❄' + T, 'Kar sağanağı']; return ['ϟ', 'Fırtına'];
+  };
+  var wearTip = function (mn, mx, wet, snow) {
+    var t = [];
+    if (mx <= 5) t.push('kalın mont, bere, eldiven ve bot'); else if (mx <= 12) t.push('mont veya kaban, kazak'); else if (mx <= 19) t.push('hafif ceket veya hırka');
+    else if (mx <= 26) t.push('tişört, akşamlar için ince bir üst'); else t.push('ince ve açık renkli kıyafetler, güneş gözlüğü, şapka');
+    if (mn <= 0 && mx > 5) t.push('sabahlar için kalın bir üst');
+    if (snow) t.push('kaymayan ayakkabı'); if (wet) t.push('şemsiye veya yağmurluk');
+    t.push('rahat yürüyüş ayakkabısı');
+    return t.join(', ');
+  };
+  // Ülke kodu → para birimi
+  var CUR = { DE:'EUR',FR:'EUR',IT:'EUR',ES:'EUR',NL:'EUR',BE:'EUR',AT:'EUR',PT:'EUR',GR:'EUR',FI:'EUR',IE:'EUR',LU:'EUR',SK:'EUR',SI:'EUR',EE:'EUR',LV:'EUR',LT:'EUR',MT:'EUR',CY:'EUR',HR:'EUR',MC:'EUR',SM:'EUR',VA:'EUR',AD:'EUR',ME:'EUR',XK:'EUR',
+    GB:'GBP',CH:'CHF',LI:'CHF',CZ:'CZK',PL:'PLN',HU:'HUF',RO:'RON',BG:'BGN',DK:'DKK',SE:'SEK',NO:'NOK',IS:'ISK',RS:'RSD',BA:'BAM',MK:'MKD',AL:'ALL',UA:'UAH',RU:'RUB',BY:'BYN',MD:'MDL',GE:'GEL',AZ:'AZN',AM:'AMD',
+    US:'USD',CA:'CAD',MX:'MXN',BR:'BRL',AR:'ARS',CL:'CLP',CO:'COP',PE:'PEN',AE:'AED',SA:'SAR',QA:'QAR',KW:'KWD',BH:'BHD',OM:'OMR',JO:'JOD',LB:'LBP',IL:'ILS',EG:'EGP',MA:'MAD',TN:'TND',DZ:'DZD',IR:'IRR',IQ:'IQD',
+    CN:'CNY',HK:'HKD',TW:'TWD',JP:'JPY',KR:'KRW',IN:'INR',TH:'THB',VN:'VND',SG:'SGD',MY:'MYR',ID:'IDR',PH:'PHP',LK:'LKR',MV:'MVR',NP:'NPR',PK:'PKR',BD:'BDT',KZ:'KZT',UZ:'UZS',KG:'KGS',TM:'TMT',TJ:'TJS',
+    ZA:'ZAR',KE:'KES',TZ:'TZS',ET:'ETB',NG:'NGN',AU:'AUD',NZ:'NZD',CU:'CUP',
+    MO:'MOP',MN:'MNT',KH:'KHR',LA:'LAK',MM:'MMK',PA:'USD',DO:'DOP',CR:'CRC',UY:'UYU',PY:'PYG',EC:'USD',BO:'BOB',VE:'VES',JM:'JMD',PS:'ILS',
+    SN:'XOF',MU:'MUR',SC:'SCR',NA:'NAD',BW:'BWP',ZM:'ZMW',ZW:'USD',UG:'UGX',RW:'RWF',GH:'GHS',LY:'LYD',SD:'SDG',FJ:'FJD' };
+  // Ülke kodu → priz (Türkiye: C/F, 230V)
+  var PLUG = function (cc) {
+    if (/^(DE|FR|NL|BE|AT|ES|PT|GR|FI|SE|NO|DK|IS|PL|CZ|SK|HU|RO|BG|HR|SI|EE|LV|LT|LU|RS|BA|ME|MK|AL|XK|UA|RU|BY|MD|GE|AZ|AM|KZ|UZ|KG|TJ|TM|IR|EG|MA|TN|DZ|ID|KR|MC|AD|SM|VA|IT|CH|LI)$/.test(cc))
+      return ['Türkiye ile aynı', 'Adaptör gerekmez' + (cc === 'CH' ? ' (İsviçre J tipi — ince fişler uyar, kalın fişler için adaptör alın)' : cc === 'IT' ? ' (bazı prizler L tipi olabilir)' : cc === 'DK' ? ' (bazı prizler K tipi olabilir)' : '')];
+    if (/^(GB|IE|MT|CY|AE|SA|QA|KW|BH|OM|HK|SG|MY|MV|LK|KE|TZ|NG)$/.test(cc)) return ['G tipi (3 köşeli)', 'Adaptör gerekli'];
+    if (/^(US|CA|MX|JP|TW|CU|PH|CO|PE|TH|VN)$/.test(cc)) return ['A/B tipi' + (/^(US|CA|MX|JP|TW)$/.test(cc) ? ' · 110–120V' : ''), 'Adaptör gerekli' + (/^(TH|VN|PE|PH)$/.test(cc) ? ' (bazı prizler Türk fişine uyar)' : '')];
+    if (/^(AU|NZ|CN|AR)$/.test(cc)) return ['I tipi (eğik uçlu)', 'Adaptör gerekli'];
+    if (cc === 'ZA') return ['M/N tipi', 'Adaptör gerekli'];
+    if (/^(IN|NP|PK|BD)$/.test(cc)) return ['C/D/M tipi', 'Çoğu yerde uyar, adaptör almanız önerilir'];
+    if (cc === 'IL') return ['H/C tipi', 'Çoğu prize uyar'];
+    if (cc === 'BR') return ['N/C tipi', 'İnce fişler uyar, adaptör önerilir'];
+    if (cc === 'JO' || cc === 'LB' || cc === 'IQ') return ['C/D/G karışık', 'Adaptör almanız önerilir'];
+    return null;
+  };
+  // Saat dilimi farkı (dakika): hedef − İstanbul, verilen tarihte (yaz saati dahil)
+  var tzOffset = function (tz, at) {
+    var part = function (z) {
+      var o = {}; new Intl.DateTimeFormat('en-US', { timeZone: z, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        .formatToParts(at).forEach(function (p) { o[p.type] = p.value; });
+      return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute);
+    };
+    return Math.round((part(tz) - part('Europe/Istanbul')) / 60000);
+  };
+
+  // CRM'deki ülke adı → ISO kodu. Para birimi ve priz doğrudan buradan; şehir araması da bu ülkeyle sınırlanır
+  // (şehir yanlış/eksik yazılsa bile başka ülkeye kaymasın: "Guanco" → Filipinler hatası)
+  var ISO = { 'türkiye':'TR','kktc':'CY','almanya':'DE','avusturya':'AT','belçika':'BE','çekya':'CZ','çek cumhuriyeti':'CZ','danimarka':'DK','estonya':'EE','finlandiya':'FI','fransa':'FR','hırvatistan':'HR','hollanda':'NL','ispanya':'ES','isveç':'SE','isviçre':'CH','italya':'IT','izlanda':'IS','letonya':'LV','liechtenstein':'LI','lihtenştayn':'LI','litvanya':'LT','lüksemburg':'LU','macaristan':'HU','malta':'MT','norveç':'NO','polonya':'PL','portekiz':'PT','slovakya':'SK','slovenya':'SI','yunanistan':'GR',
+    'birleşik krallık':'GB','ingiltere':'GB','irlanda':'IE','romanya':'RO','bulgaristan':'BG','sırbistan':'RS','karadağ':'ME','kuzey makedonya':'MK','bosna hersek':'BA','arnavutluk':'AL','kosova':'XK','ukrayna':'UA','rusya':'RU','belarus':'BY','moldova':'MD','vatikan':'VA','andorra':'AD','monako':'MC','san marino':'SM',
+    'bae':'AE','birleşik arap emirlikleri':'AE','dubai':'AE','suudi arabistan':'SA','katar':'QA','bahreyn':'BH','kuveyt':'KW','umman':'OM','ürdün':'JO','lübnan':'LB','israil':'IL','filistin':'PS','mısır':'EG','iran':'IR','irak':'IQ',
+    'çin halk cumhuriyeti':'CN','çin':'CN','hong kong':'HK','tayvan':'TW','japonya':'JP','güney kore':'KR','hindistan':'IN','tayland':'TH','vietnam':'VN','singapur':'SG','malezya':'MY','endonezya':'ID','filipinler':'PH','sri lanka':'LK','nepal':'NP','pakistan':'PK','bangladeş':'BD','maldivler':'MV','kazakistan':'KZ','özbekistan':'UZ','kırgızistan':'KG','tacikistan':'TJ','türkmenistan':'TM','azerbaycan':'AZ','gürcistan':'GE','ermenistan':'AM','makao':'MO','moğolistan':'MN','kamboçya':'KH','laos':'LA','myanmar':'MM',
+    'amerika birleşik devletleri':'US','abd':'US','amerika':'US','kanada':'CA','meksika':'MX','brezilya':'BR','arjantin':'AR','şili':'CL','peru':'PE','kolombiya':'CO','küba':'CU','panama':'PA','dominik cumhuriyeti':'DO','kosta rika':'CR','uruguay':'UY','paraguay':'PY','ekvador':'EC','bolivya':'BO','venezuela':'VE','jamaika':'JM',
+    'fas':'MA','tunus':'TN','cezayir':'DZ','güney afrika':'ZA','kenya':'KE','tanzanya':'TZ','etiyopya':'ET','nijerya':'NG','senegal':'SN','mauritius':'MU','seyşeller':'SC','namibya':'NA','botsvana':'BW','zambiya':'ZM','zimbabve':'ZW','uganda':'UG','ruanda':'RW','gana':'GH','libya':'LY','sudan':'SD',
+    'avustralya':'AU','yeni zelanda':'NZ','fiji':'FJ','kıbrıs rum kesimi':'CY','kıbrıs':'CY' };
+  var isoOf = function (name) { return ISO[String(name || '').trim().toLocaleLowerCase('tr-TR')] || ''; };
+  var renderInfo = function (f, parent) {
+    var s = parseD(f.startDate), e = parseD(f.endDate) || s;
+    var hotel = f.hotel && f.hotel.name ? f.hotel : null;
+    var wrap = el('div'); var head = el('div', 'sec'); head.appendChild(el('b', '', f._infoTitle || 'Seyahat bilgileri'));
+    var grid = el('div', 'info'); var shown = false;
+    var reveal = function () { if (!shown) { shown = true; add(parent, head); add(parent, wrap); } };
+    wrap.appendChild(grid);
+
+    // Otel kartı (veri linkte, dış servise gerek yok)
+    if (hotel) {
+      var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
+      hc.appendChild(el('div', 'n', hotel.name));
+      // Adres zaten şehir/ülkeyi içeriyorsa tekrar ekleme
+      var low = String(hotel.address || '').toLocaleLowerCase('tr-TR');
+      var parts = String(hotel.address || '').split(',').map(function (x) { return x.trim(); });
+      var hasCountry = parts.some(function (x) { return isoOf(x) && isoOf(x) === isoOf(hotel.country); });
+      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(String(x).toLocaleLowerCase('tr-TR')) < 0; })).filter(Boolean).join(', ');
+      if (adr) hc.appendChild(el('div', 'a', adr));
+      var hb = el('div', 'b');
+      var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
+      var go = el('a', 'p', 'Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; hb.appendChild(go);
+      var mp = el('a', '', 'Harita'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; hb.appendChild(mp);
+      var tel = String(hotel.phone || '').replace(/[^\d+]/g, '');
+      if (tel.length >= 7) { var hp = el('a', '', 'Oteli ara'); hp.href = 'tel:' + tel; hb.appendChild(hp); }
+      hc.appendChild(hb); wrap.appendChild(hc); reveal();
+    }
+
+    // Sorumluluk reddi — hava/kur kartı gösterilince görünür
+    var disc = el('div', 'disc', 'Hava durumu ve döviz kuru bilgileri bilgilendirme amaçlıdır; Open-Meteo ve TCMB gibi üçüncü taraf kaynaklardan otomatik alınır, değişebilir ve doğruluğu garanti edilmez. Paydos Turizm bu bilgilere dayanılarak yapılan planlama ve işlemlerden sorumlu tutulamaz. Döviz alım-satımında banka / döviz bürosunun güncel kuru geçerlidir.');
+    wrap.appendChild(disc);
+    var showDisc = function () { disc.style.display = 'block'; };
+
+    var tourCC = isoOf(f.country) || isoOf(hotel && hotel.country);
+    var places = [f.city, hotel && hotel.city].filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    if (!s || (!places.length && !tourCC)) return;
+    // Şehri turun ülkesinde ara (ülke biliniyorsa); bulunamazsa diğer şehir adını dene
+    var geo = function (i) {
+      if (i >= places.length) return Promise.resolve(null);
+      return getJSON('https://geocoding-api.open-meteo.com/v1/search?count=10&language=tr&name=' + encodeURIComponent(places[i]) + (tourCC ? '&countryCode=' + tourCC : ''))
+        .then(function (g) {
+          var list = ((g && g.results) || []).filter(function (r) { return !tourCC || String(r.country_code || '').toUpperCase() === tourCC; });
+          return list[0] || geo(i + 1);
+        }).catch(function () { return geo(i + 1); });
+    };
+    geo(0).then(function (loc) {
+      var cc = tourCC || String((loc && loc.country_code) || '').toUpperCase();
+      if (!cc) return;
+      if (f._abroadOnly && cc === 'TR') return; // müşteri linki: yurt içi uçuşta hava/kur gösterilmez
+
+      // --- Saat farkı ---
+      if (loc && loc.timezone && cc !== 'TR') {
+        try {
+          var off = tzOffset(loc.timezone, s);
+          var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', 'Saat farkı'));
+          var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
+          box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
+          var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
+          box1.appendChild(el('div', 's', (off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')) + ' · Şu an orada ' + nowStr));
+          grid.appendChild(box1); reveal();
+        } catch (x) {}
+      }
+
+      // --- Priz ---
+      var pl = PLUG(cc);
+      if (pl) { var box2 = el('div', 'ib'); box2.appendChild(el('div', 'h', 'Priz')); box2.appendChild(el('div', 'v', pl[0])); box2.appendChild(el('div', 's', pl[1])); grid.appendChild(box2); reveal(); }
+
+      // --- Kur ---
+      var cur = CUR[cc];
+      if (cur) {
+        // Önce TCMB efektif satış (kendi fonksiyonumuz), olmazsa yedek servis
+        var src = '';
+        getJSON('/.netlify/functions/kur').then(function (k) {
+          var v = k && k.rates && k.rates[cur]; if (!v) throw new Error('yok');
+          src = 'TCMB efektif satış' + (k.date ? ' · ' + k.date : ''); return v;
+        }).catch(function () {
+          return getJSON('https://open.er-api.com/v6/latest/' + cur).then(function (r) { src = 'Güncel kur · ' + new Date().toLocaleDateString('tr-TR'); return r && r.rates && r.rates.TRY; });
+        }).then(function (tr) {
+          if (!tr) return;
+          var box3 = el('div', 'ib wide'); box3.appendChild(el('div', 'h', 'Döviz kuru'));
+          var big = tr >= 1 ? '1 ' + cur + ' = ' + tr.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ₺'
+                            : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
+          box3.appendChild(el('div', 'v', big));
+          box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          grid.appendChild(box3); reveal(); showDisc();
+        }).catch(function () {});
+      }
+
+      // --- Hava durumu --- (konum bulunamadıysa gösterilmez; yanlış şehrin havasını göstermektense hiç göstermemek iyi)
+      if (!loc) return;
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      var toStart = Math.round((s - today) / 86400000), toEnd = Math.round((e - today) / 86400000);
+      if (toEnd < 0) return; // seyahat bitti
+      var wbox = el('div', 'ib wide'); wbox.appendChild(el('div', 'h', 'Hava · ' + (loc.name || place)));
+      var common = '&latitude=' + loc.latitude + '&longitude=' + loc.longitude + '&timezone=auto';
+      if (toStart <= 14) {
+        // Gerçek tahmin (en fazla 16 gün ileri)
+        var from = toStart < 0 ? today : s, to = new Date(Math.min(e.getTime(), today.getTime() + 15 * 86400000));
+        getJSON('https://api.open-meteo.com/v1/forecast?daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&start_date=' + ymd(from) + '&end_date=' + ymd(to) + common).then(function (w) {
+          var d = w && w.daily; if (!d || !d.time || !d.time.length) return;
+          var days = el('div', 'days'), mn = 99, mx = -99, wet = false, snow = false;
+          d.time.forEach(function (t, i) {
+            var c = WMO(d.weather_code[i]), lo = Math.round(d.temperature_2m_min[i]), hi = Math.round(d.temperature_2m_max[i]);
+            mn = Math.min(mn, lo); mx = Math.max(mx, hi);
+            if ((d.precipitation_probability_max[i] || 0) >= 50) wet = true; if (d.weather_code[i] >= 71 && d.weather_code[i] <= 86) snow = true;
+            var dd = parseD(t), cell = el('div', 'day');
+            cell.appendChild(el('div', '', dd.getDate() + ' ' + AY[dd.getMonth()].slice(0, 3)));
+            var em = el('div', 'e', c[0]); em.title = c[1]; cell.appendChild(em);
+            cell.appendChild(el('b', '', hi + '°')); cell.appendChild(el('span', '', lo + '°'));
+            days.appendChild(cell);
+          });
+          wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
+          wbox.appendChild(el('div', 's', 'Seyahat günleriniz için tahmin'));
+          wbox.appendChild(days);
+          wbox.appendChild(el('div', 'wear', 'Öneri: ' + wearTip(mn, mx, wet, snow)));
+          grid.appendChild(wbox); reveal(); showDisc();
+        }).catch(function () {});
+      } else {
+        // Henüz tahmin yok → son 2 yılın aynı tarihlerindeki ortalama
+        var yrs = [1, 2].map(function (k) {
+          var a = new Date(s), b = new Date(e); a.setFullYear(a.getFullYear() - k); b.setFullYear(b.getFullYear() - k);
+          return getJSON('https://archive-api.open-meteo.com/v1/archive?daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&start_date=' + ymd(a) + '&end_date=' + ymd(b) + common).catch(function () { return null; });
+        });
+        Promise.all(yrs).then(function (rs) {
+          var mxs = [], mns = [], rainDays = 0, snowDays = 0, n = 0;
+          rs.forEach(function (w) { var d = w && w.daily; if (!d || !d.time) return; d.time.forEach(function (t, i) {
+            if (d.temperature_2m_max[i] == null) return; n++;
+            mxs.push(d.temperature_2m_max[i]); mns.push(d.temperature_2m_min[i]);
+            if ((d.precipitation_sum[i] || 0) >= 1) rainDays++; if ((d.snowfall_sum[i] || 0) > 0) snowDays++;
+          }); });
+          if (!n) return;
+          var avg = function (a) { return Math.round(a.reduce(function (x, y) { return x + y; }, 0) / a.length); };
+          var mn = avg(mns), mx = avg(mxs), wet = rainDays / n >= 0.3, snow = snowDays / n >= 0.15;
+          wbox.appendChild(el('div', 'v', mn + '° / ' + mx + '°C'));
+          wbox.appendChild(el('div', 's', AY[s.getMonth()] + ' ayında ' + (loc.name || place) + ' için ortalama' + (wet ? ' · genelde yağışlı' : '') + (snow ? ' · kar yağabilir' : '') + '. Gerçek tahmin seyahatinizden 2 hafta önce burada görünecek.'));
+          wbox.appendChild(el('div', 'wear', 'Öneri: ' + wearTip(mn, mx, wet, snow)));
+          grid.appendChild(wbox); reveal(); showDisc();
+        });
+      }
+    }).catch(function () {});
+  };
+
+  // ===== Müşteri linki (kurumsal, turdan bağımsız belge cüzdanı) =====
+  // Tur sayfasından farkı: başlık seyahat değil kişi; uçuşlardan sadece yaklaşanlar; belgeler aya göre (en yeni üstte);
+  // seyahat bilgileri sıradaki uçuşun gidilen şehri için ve sadece yurt dışıysa; geri sayım ve Tetris yok.
+  var TR_AIRPORTS = /^(IST|SAW|ESB|ADB|AYT|DLM|BJV|GZP|TZX|GZT|ADA|COV|ASR|VAN|ERZ|ERC|DIY|SZF|KYA|MLX|EZS|NAV|HTY|KCM|KSY|MQM|BAL|BGG|GNY|NKT|IGD|AJI|KFS|ONQ|SFQ|USQ|YEI|EDO|CKZ|TEQ|DNZ|ISE|MSR|OGU|NOP|VAS|TJK|KCO|AOE|AFY|BZI|YKO|RZV|GKD|KZR|CII|BDM|BXN|SXZ|DNZ)$/;
+  var flightDay = function (x) {
+    if (x.ymd) return parseD(x.ymd);
+    var m = String(x.date || '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+  };
+  var todayD = function () { var t = new Date(); t.setHours(0, 0, 0, 0); return t; };
+  // Yaklaşan uçuşlar (bugün ve sonrası; tarihi okunamayan da gösterilir), tarih sırasıyla
+  var upcomingFlights = function (list) {
+    var t = todayD();
+    return list.map(function (x, i) { return { x: x, d: flightDay(x), i: i }; })
+      .filter(function (o) { return !o.d || o.d >= t; })
+      .sort(function (a, b) { return (a.d ? a.d.getTime() : 9e15) - (b.d ? b.d.getTime() : 9e15) || a.i - b.i; })
+      .map(function (o) { return o.x; });
+  };
+  // Müşterinin şu an / sıradaki gideceği yer: sıradaki uçuş Türkiye'ye dönüşse kalkış şehri (zaten oradadır), değilse varış şehri
+  var nextDestination = function (up) {
+    var x = up[0]; if (!x) return null;
+    var d = parsePt(x.dep), r = parsePt(x.arr), day = flightDay(x) || todayD();
+    var home = TR_AIRPORTS.test(r.iata);
+    if (home && TR_AIRPORTS.test(d.iata)) return null; // yurt içi
+    if (home) return { city: d.city, start: todayD(), end: day };
+    var back = up.slice(1).filter(function (y) { return TR_AIRPORTS.test(parsePt(y.arr).iata); })[0];
+    return { city: r.city, start: day, end: (back && flightDay(back)) || day };
+  };
+  var monthKey = function (iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})/); return m ? m[1] + '-' + m[2] : ''; };
+
+  var render = function (f) {
+      meta.prefix = f.customerName || 'Paydos';
+      box.innerHTML = ''; delay = 0;
+      var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
+      var flights = upcomingFlights((f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); }));
+      var dest = nextDestination(flights);
+      var fullName = String(f.customerName || '').trim();
+
+      // --- Kapak ---
+      var hero = add(box, el('section', 'hero'));
+      hero.appendChild(el('div', 'eyebrow', 'Yolcu'));
+      hero.appendChild(el('h1', 'name', fullName || 'Belgeleriniz'));
+      var stats = el('div', 'stats');
+      var stat = function (k, v, sub) { var d = el('div', 'st'); d.appendChild(el('div', 'k', k)); d.appendChild(el('div', 'v', v)); if (sub) d.appendChild(el('div', 's', sub)); stats.appendChild(d); };
+      if (flights[0]) {
+        var nf = flights[0], nd = flightDay(nf), a1 = parsePt(nf.dep), a2 = parsePt(nf.arr);
+        stat('Sıradaki uçuş', nd ? fmtD(nd) : nf.code, (a1.iata && a2.iata) ? a1.iata + ' → ' + a2.iata + ' · ' + nf.code.replace(/^(..)/, '$1 ') : nf.code);
+      } else stat('Sıradaki uçuş', '—', 'Planlı uçuş yok');
+      stat('Belgeler', String(docs.length), docs.length ? 'dosya hazır' : 'henüz yok');
+      hero.appendChild(stats);
+      hero.appendChild(el('p', 'lead', 'Biletleriniz, otel ve vize belgeleriniz bu sayfada. Yeni belge eklendikçe güncellenir.'));
+
+      renderInstall(box);
+      if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
+      document.title = 'Paydos · ' + (fullName || 'Seyahat Dosyası');
+
+      var sec = function (t, n) { var h = el('div', 'sec'); h.appendChild(el('b', '', t)); if (n) h.appendChild(el('span', '', String(n))); return add(box, h); };
+
+      if (!docs.length && !flights.length) add(box, el('div', 'empty', 'Henüz paylaşılmış belge yok. Biletiniz veya otel belgeniz hazırlandığında burada görünecek.'));
+
+      // --- Belge satırı ---
+      var docRow = function (dc, when) {
+        var st = STYLE[dc.icon] || ['', '', ''];
+        var parts = String(dc.label || 'Belge').split(' — ');
+        var row = el('div', 'doc');
+        var di = el('div', 'dic'); di.appendChild(ico(DOC_IC[dc.icon] || 'doc')); row.appendChild(di);
+        var tx = el('div', 'dtx'); tx.appendChild(el('div', 'dt', parts[0]));
+        var sub = [parts[1] || st[2], when].filter(Boolean).join(' · '); if (sub) tx.appendChild(el('div', 'ds', sub)); row.appendChild(tx);
+        var acts = el('div', 'acts');
+        var op = el('a', 'btn o', 'Aç'); op.href = safeUrl(dc.url); op.target = '_blank'; op.rel = 'noopener';
+        var dl = el('button', 'btn d'); dl.type = 'button'; dl.title = 'İndir'; dl.setAttribute('aria-label', parts[0] + ' indir'); dl.appendChild(ico('dl'));
+        dl.addEventListener('click', function () { downloadOne(dc, dl); });
+        acts.appendChild(op); acts.appendChild(dl); row.appendChild(acts);
+        return row;
+      };
+      // En yeniden eskiye (eklenme tarihi; tarihsiz eski kayıtlarda listedeki sıra)
+      var sorted = docs.map(function (d, i) { return { d: d, i: i }; }).sort(function (a, b) {
+        var x = String(a.d.addedAt || ''), y = String(b.d.addedAt || '');
+        return x !== y ? (x < y ? 1 : -1) : b.i - a.i;
+      }).map(function (o) { return o.d; });
+      // Güncel: en son uçak bileti + en son otel belgesi — her zaman en üstte
+      var current = ['✈️', '🏨'].map(function (ic) { return sorted.filter(function (d) { return d.icon === ic; })[0]; }).filter(Boolean);
+      var rest = sorted.filter(function (d) { return current.indexOf(d) < 0; });
+      if (current.length) {
+        sec('Güncel belgeler');
+        var cl = add(box, el('div', 'list cur'));
+        current.forEach(function (dc) {
+          var t = dc.addedAt ? new Date(dc.addedAt) : null;
+          cl.appendChild(docRow(dc, t && !isNaN(t) ? fmtD(t) + ' eklendi' : ''));
+        });
+      }
+
+      // --- Uçuşlar ---
+      if (flights.length) {
+        sec('Yaklaşan uçuşlar', flights.length);
+        flights.forEach(function (x) {
+          var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
+          var xd = flightDay(x);
+          var top = el('div', 'ptop');
+          top.appendChild(el('span', 'fno', x.code.replace(/^(..)/, '$1 ')));
+          top.appendChild(el('span', '', xd ? xd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }) : (x.date || '')));
+          a.appendChild(top);
+          var d = parsePt(x.dep), r = parsePt(x.arr);
+          if (d.iata && r.iata) {
+            var rt = el('div', 'route');
+            var L = el('div', 'pt'); L.appendChild(el('div', 'iata', d.iata)); L.appendChild(el('div', 'city', d.city)); if (d.time) L.appendChild(el('div', 'time', d.time));
+            var ln = el('div', 'line'); ln.appendChild(ico('plane'));
+            var R = el('div', 'pt r'); R.appendChild(el('div', 'iata', r.iata)); R.appendChild(el('div', 'city', r.city)); if (r.time) R.appendChild(el('div', 'time', r.time));
+            rt.appendChild(L); rt.appendChild(ln); rt.appendChild(R); a.appendChild(rt);
+          } else if (x.dep || x.arr) {
+            a.appendChild(el('div', 'raw', [x.dep, x.arr].filter(Boolean).join('  →  ')));
+          }
+          var pf = el('div', 'pf');
+          pf.appendChild(el('span', '', 'Rötar, kapı ve canlı konum'));
+          var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
+          pf.appendChild(live); a.appendChild(pf);
+          add(box, a);
+        });
+      }
+
+      // --- Pasaport ve vize: bitişe kaç gün (müşteri kartından, link her açıldığında güncel) ---
+      var vals = (f.validity || []).filter(function (v) { return v && parseD(v.until); });
+      if (vals.length) {
+        sec('Pasaport ve vize');
+        var vl = add(box, el('div', 'list vl'));
+        var t0 = todayD();
+        var tripEnd = dest && dest.end ? dest.end : null;
+        vals.forEach(function (v) {
+          var u = parseD(v.until), days = Math.round((u - t0) / 86400000);
+          var warn = '', lvl = '';
+          if (days < 0) { lvl = 'r'; warn = 'Süresi dolmuş. Yenilemek için bizimle iletişime geçin.'; }
+          else if (v.kind === 'passport') {
+            var six = tripEnd ? new Date(tripEnd.getTime() + 182 * 86400000) : null;
+            if (days < 180) { lvl = 'a'; warn = '6 aydan az kaldı — birçok ülke girişte en az 6 ay geçerlilik ister.'; }
+            else if (six && u < six) { lvl = 'a'; warn = 'Dönüşünüzden sonra 6 aydan az geçerli olacak — bazı ülkeler girişte 6 ay ister.'; }
+          } else {
+            if (tripEnd && u < tripEnd) { lvl = 'r'; warn = 'Vize, dönüş tarihinizden önce bitiyor.'; }
+            else if (days <= 30) { lvl = 'a'; warn = 'Vizenizin bitmesine 30 günden az kaldı.'; }
+          }
+          var row = el('div', 'row' + (lvl ? ' ' + lvl : ''));
+          var di = el('div', 'dic'); di.appendChild(ico(v.kind === 'passport' ? 'visa' : 'pass')); row.appendChild(di);
+          var tx = el('div', 'tx'); tx.appendChild(el('div', 't', v.label)); tx.appendChild(el('div', 's', [v.sub, u.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' bitiş'].filter(Boolean).join(' · '))); row.appendChild(tx);
+          var dd = el('div', 'dd'); dd.appendChild(el('b', '', days < 0 ? 'Doldu' : days.toLocaleString('tr-TR'))); dd.appendChild(el('span', '', days < 0 ? Math.abs(days) + ' gün önce' : days === 0 ? 'bugün bitiyor' : 'gün kaldı')); row.appendChild(dd);
+          vl.appendChild(row);
+          if (warn) vl.appendChild(el('div', 'w ' + lvl, warn));
+        });
+      }
+
+      // --- Varış bilgileri: sıradaki uçuşun gidilen şehri, sadece yurt dışı ---
+      var infoSlot = el('div'); box.appendChild(infoSlot);
+      try {
+        if (dest && dest.city) {
+          var sameCity = String(f.city || '').toLocaleLowerCase('tr-TR') === String(dest.city).toLocaleLowerCase('tr-TR');
+          renderInfo({ startDate: ymd(dest.start), endDate: ymd(dest.end), city: dest.city, country: sameCity ? f.country : '',
+            hotel: f.hotel && sameCity ? f.hotel : null, _abroadOnly: true, _infoTitle: 'Gideceğiniz yer · ' + dest.city }, infoSlot);
+        }
+      } catch (x) {}
+
+      // --- Önceki belgeler: güncel bilet/otel dışındaki her şey (biniş kartları dahil), aya göre, en yeni üstte ---
+      if (rest.length) {
+        sec(current.length ? 'Önceki belgeler' : 'Belgeler', rest.length);
+        var by = {}, order = [];
+        rest.forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
+        order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
+        order.forEach(function (k) {
+          if (order.length > 1 || k) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski'));
+          var list = add(box, el('div', 'list'));
+          by[k].forEach(function (dc) { list.appendChild(docRow(dc)); });
+        });
+      }
+      if (docs.length > 1) {
+        var allBtn = add(box, el('button', 'all')); allBtn.type = 'button';
+        allBtn.appendChild(ico('dl')); allBtn.appendChild(document.createTextNode('Tümünü indir · ' + docs.length + ' belge (ZIP)'));
+        allBtn.addEventListener('click', function () { downloadAll(docs, allBtn); });
+      }
+      if (docs.length) noteEl = add(box, el('div', 'note'));
+
+      // --- Oyun ---
+      var gm = add(box, el('button', 'gm')); gm.type = 'button';
+      var gic = el('div', 'ic'); gic.innerHTML = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16h6v-4h6V8h4"/><circle cx="20" cy="8" r="1" fill="currentColor"/></svg>'; gm.appendChild(gic);
+      var gtx = el('div', 'tx'); gtx.appendChild(el('b', '', 'Yılan · Nokia klasiği')); gtx.appendChild(document.createTextNode('Uçuş beklerken bir el? İnternetsiz de oynanır.')); gm.appendChild(gtx);
+      gm.appendChild(el('span', 'go', 'Oyna'));
+      gm.addEventListener('click', openSnake);
+
+      // --- İletişim ---
+      var cf = f.contact || {};
+      var ph = String(cf.phone || '+90 258 263 71 76').replace(/[^\d+]/g, ''), wa = String(cf.whatsapp || '').replace(/\D/g, '');
+      if (wa && wa.charAt(0) === '0') wa = '90' + wa.slice(1); else if (wa && wa.length === 10) wa = '90' + wa;
+      var ct = add(box, el('div', 'contact'));
+      var cic = el('div', 'ic'); cic.appendChild(ico('phone')); ct.appendChild(cic);
+      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Paydos Turizm')); ctx.appendChild(document.createTextNode('Seyahatinizle ilgili her konuda yanınızdayız.')); ct.appendChild(ctx);
+      var bt = el('div', 'bt');
+      if (wa.length >= 11) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Merhaba, belgelerim hakkında yardım almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; bt.appendChild(w); }
+      var call = el('a', '', 'Ara'); call.href = 'tel:' + (ph.length >= 7 ? ph : '+902582637176'); bt.appendChild(call);
+      ct.appendChild(bt);
+      var ig = String(cf.instagram || '').replace(/^@/, '');
+      if (/^[A-Za-z0-9._]{1,30}$/.test(ig)) {
+        var ia = add(box, el('a', 'ig')); ia.href = 'https://www.instagram.com/' + ig + '/'; ia.target = '_blank'; ia.rel = 'noopener';
+        var iic2 = el('div', 'ic'); iic2.appendChild(ico('ig')); ia.appendChild(iic2);
+        var it = el('div', 'tx'); it.appendChild(el('b', '', '@' + ig)); it.appendChild(document.createTextNode('Yeni rotalar ve kampanyalar')); ia.appendChild(it);
+        ia.appendChild(el('span', 'go', 'Takip et →'));
+      }
+      add(box, el('div', 'foot', 'PAYDOSTUR.COM'));
+  };
+
+  // ===== Veri: PIN korumalı belge API'si (Firebase fonksiyonu) =====
+  // Müşteri linklerinde ilk açılışta müşteri 4 haneli PIN belirler; sonra bu telefonda hatırlanır.
+  // İnternet yoksa en son açılan veri (bu telefonda) gösterilir.
+  var API = 'https://europe-west1-paydos-crm.cloudfunctions.net/belge';
+  var PIN_KEY = 'paydos_mpin_' + code, DATA_KEY = 'paydos_mdata_' + code;
+  var lsGet = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  var lsSet = function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} };
+  var call = function (body) {
+    return fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ k: code }, body)) })
+      .then(function (r) { return r.json().catch(function () { return { state: 'error' }; }).then(function (j) { j._status = r.status; return j; }); });
+  };
+  var showData = function (data) { lsSet(DATA_KEY, JSON.stringify(data)); render(data); };
+  var offlineFallback = function () {
+    var c = lsGet(DATA_KEY);
+    if (c) {
+      try { render(JSON.parse(c)); } catch (e) { return show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.'); }
+      if (!box.querySelector('.offline')) box.appendChild(el('div', 'offline', 'İnternet yok — en son açılan bilgiler gösteriliyor.'));
+      return;
+    }
+    show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
+  };
+
+  // PIN ekranı: mode 'set' (ilk kez belirle) veya 'enter'
+  var pinScreen = function (mode, name, msg) {
+    box.innerHTML = '';
+    var card = el('div', 'pinc');
+    var pic = el('div', 'pic'); pic.appendChild(ico('lock')); card.appendChild(pic);
+    card.appendChild(el('div', 'pt', (name ? 'Hoş geldiniz, ' + name : 'Hoş geldiniz')));
+    card.appendChild(el('div', 'ps', mode === 'set'
+      ? 'Seyahat dosyanızı korumak için 4 haneli bir PIN belirleyin. Sonraki girişlerde bu PIN sorulacak.'
+      : 'Seyahat dosyanızı görüntülemek için 4 haneli PIN\'inizi girin.'));
+    var mk = function (ph) { var i = document.createElement('input'); i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 4; i.pattern = '[0-9]*'; i.placeholder = ph; i.className = 'pin'; i.addEventListener('input', function () { i.value = i.value.replace(/\D/g, '').slice(0, 4); }); return i; };
+    var p1 = mk('PIN'), p2 = mode === 'set' ? mk('PIN tekrar') : null;
+    card.appendChild(p1); if (p2) card.appendChild(p2);
+    var err = el('div', 'perr', msg || ''); card.appendChild(err);
+    var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve devam et' : 'Devam et'); btn.type = 'button';
+    card.appendChild(btn);
+    card.appendChild(el('div', 'pnote', mode === 'set' ? 'PIN\'inizi unutursanız Paydos Turizm\'i arayın.' : 'PIN\'inizi unuttuysanız Paydos Turizm\'i arayın: 0 258 263 71 76'));
+    box.appendChild(card);
+    setTimeout(function () { p1.focus(); }, 50);
+    var go = function () {
+      var v = p1.value;
+      if (!/^\d{4}$/.test(v)) { err.textContent = 'PIN 4 rakam olmalı.'; return; }
+      if (p2 && p2.value !== v) { err.textContent = 'İki PIN aynı değil.'; return; }
+      btn.disabled = true; btn.textContent = 'Kontrol ediliyor…';
+      call({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }).then(function (j) {
+        if (j.state === 'ok') { lsSet(PIN_KEY, v); showData(j.data); return; }
+        if (j.state === 'locked') { pinScreen('enter', name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.'); return; }
+        if (j.state === 'pin') { pinScreen('enter', name, j.error === 'wrong' ? 'PIN hatalı.' + (j.left ? ' Kalan deneme: ' + j.left : '') : 'Bu link için PIN zaten belirlenmiş. Lütfen PIN\'inizi girin.'); return; }
+        btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bir hata oluştu.';
+      }).catch(function () { btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bağlantı hatası.'; });
+    };
+    btn.addEventListener('click', go);
+    [p1, p2].forEach(function (i) { if (i) i.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); }); });
+  };
+
+  var saved = lsGet(PIN_KEY);
+  call(saved ? { a: 'unlock', pin: saved } : { a: 'get' }).then(function (j) {
+    if (j.state === 'ok') return showData(j.data);
+    if (j.state === 'notfound') { lsSet(DATA_KEY, null); return show('Bu bağlantı bulunamadı veya kaldırılmış.'); }
+    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name); }
+    if (j.state === 'pin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('enter', j.name, saved ? 'PIN değişmiş olabilir, lütfen yeniden girin.' : ''); }
+    if (j.state === 'locked') return pinScreen('enter', j.name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.');
+    offlineFallback();
+  }).catch(offlineFallback);
+})();
+</script>
+</body>
+</html>

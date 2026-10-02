@@ -1315,6 +1315,587 @@ function CompanyPicker({ value, onChange }) {
   );
 }
 
+// ===== MÜŞTERİ LİNKİ: turdan bağımsız, her müşteriye kalıcı tek link (/m/<kod>, public/musteri.html) — tur linki (/b/) ayrı =====
+// Kurumsal/bireysel satışlarda bilet, otel belgesi, vize vb. WhatsApp'a tek tek atmak yerine buradan gönderilir.
+// Link tur linkiyle aynı sayfayı kullanır (belgeler, uçuş takibi, hava, kur, saat farkı, otel yol tarifi).
+// Belgeler eklendikçe aynı link güncellenir; müşteriye yeniden göndermek gerekmez.
+const CUST_DOC_TYPES = [['✈️', 'Uçak Bileti'], ['🛫', 'Biniş Kartı'], ['🏨', 'Otel Belgesi'], ['🛂', 'Vize'], ['🛡️', 'Seyahat Sigortası'], ['🎫', 'Fuar / Etkinlik Bileti'], ['📄', 'Diğer']];
+const newLinkToken = () => {
+  const abc = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => abc[b % abc.length]).join('');
+};
+// Okunabilir müşteri linki: /m/onder-tasci-k7m2q — isim + 5 karakterlik gizli ek (≈33 milyon olasılık).
+// Sadece isim olsaydı herkes başkasının adını yazıp belgelerine ulaşabilirdi (KVKK); ek bunu engeller.
+const customerLinkSlug = (c) => {
+  const base = asciiTr(`${c.firstName || ''} ${c.lastName || ''}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'musteri';
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const tail = Array.from(crypto.getRandomValues(new Uint8Array(5)), x => abc[x % abc.length]).join('');
+  return `${base}-${tail}`;
+};
+// Bilet PDF metninden uçuşları çıkar: "Ankara (ESB) Baku (GYD) VF-577 14/10/2026 12:15 15:30"
+const detectFlights = (text) => {
+  const out = [], seen = new Set();
+  const re = /([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Z0-9]{2})\s?-?\s?(\d{1,4})\s+(\d{2})[/.](\d{2})[/.](\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g;
+  let m;
+  while ((m = re.exec(String(text || '').replace(/\s+/g, ' ')))) {
+    const code = `${m[5]}${m[6]}`, ymd = `${m[9]}-${m[8]}-${m[7]}`;
+    if (seen.has(code + ymd)) continue; seen.add(code + ymd);
+    // Şehir adının önüne PDF başlıkları ("ARRIVAL TIME Varış Saati Ankara") karışabiliyor → son kelime
+    const city = (x) => String(x).trim().split(/\s+/).pop();
+    out.push({ code, ymd, fromCity: city(m[1]), from: m[2], toCity: city(m[3]), to: m[4], dep: m[10], arr: m[11] });
+  }
+  return out;
+};
+
+// Müşteri linkini yayınla: paylasimlar/<kod> + müşteri kartına shareToken/shareTrip. Hem tek tek (Müşteri Linki)
+// hem toplu belge yüklemede kullanılır. Döner: { link, text } (WhatsApp mesajı şablondan)
+const publishCustomerLink = async (c, trip, token, appSettings) => {
+      const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')));
+      const flights = fl.map((f, i) => ({
+        dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
+        code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
+        date: f.ymd ? formatDate(f.ymd) : '', ymd: f.ymd || '', // ymd: linkte sıradaki uçuşu bulmak için
+        dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
+        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
+      }));
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '' })); // addedAt: linkte aya göre gruplama
+      await setDoc(doc(db, 'paylasimlar', token), {
+        kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
+        startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
+        hotel: trip.hotelName ? { name: trip.hotelName, address: trip.hotelAddress || '', city: trip.city || '', country: trip.country || '', phone: '' } : null,
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' },
+        customerDocId: c._docId || String(c.id), // PIN belirlenince sunucu müşteri kartına yazar (linkPin)
+        updatedAt: new Date().toISOString(),
+      }, { merge: true }); // merge: müşterinin belirlediği PIN güncellemede silinmesin
+      const shareTrip = JSON.stringify(trip);
+      await setDoc(doc(db, 'customers', c._docId || String(c.id)), { shareToken: token, shareTrip }, { merge: true });
+      const link = `${window.location.origin}/m/${token}`;
+      const belgeler = [...docs.map(d => d.label), ...(flights.length ? ['Uçuş Takibi'] : [])].filter((x, i, a) => a.indexOf(x) === i).join(', ');
+      const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
+      let text = tpl.replace(/\{isim\}/g, name).replace(/\{tur\}/g, trip.title || 'Seyahatiniz').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
+      if (!text.includes(link)) text += `\n${link}`;
+  return { link, text };
+};
+
+// Müşteri linki PIN'i: müşteri ilk açılışta kendisi belirler, sunucu (Firebase fonksiyonu "belge") kartımıza linkPin olarak yazar.
+// Kaybederse buradan söyleriz; "Sıfırla" ile müşteri yeniden belirler, "PIN ver" ile biz koyarız.
+// Hash biçimi sunucuyla aynı: sha256("<salt>:<pin>") hex.
+const sha256Hex = async (str) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)))).map(b => b.toString(16).padStart(2, '0')).join('');
+function LinkPinBar({ c, showToast }) {
+  const docId = c._docId || String(c.id);
+  const [live, setLive] = useState({ linkPin: c.linkPin || '', shareToken: c.shareToken || '' });
+  const [show, setShow] = useState(false);
+  useEffect(() => onSnapshot(doc(db, 'customers', docId), snap => {
+    const d = snap.data() || {};
+    setLive({ linkPin: d.linkPin || '', shareToken: d.shareToken || '' });
+  }, () => {}), [docId]);
+  if (!live.shareToken) return null;
+  const setPin = async (pin) => {
+    const now = new Date().toISOString();
+    const ref = doc(db, 'paylasimlar', live.shareToken);
+    if (pin) {
+      const salt = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+      await setDoc(ref, { pinHash: await sha256Hex(`${salt}:${pin}`), pinSalt: salt, pinFails: 0, pinLockUntil: 0, pinSetAt: now }, { merge: true });
+    } else {
+      await setDoc(ref, { pinHash: deleteField(), pinSalt: deleteField(), pinFails: 0, pinLockUntil: 0 }, { merge: true });
+    }
+    await setDoc(doc(db, 'customers', docId), { linkPin: pin || '', linkPinSetAt: pin ? now : '' }, { merge: true });
+  };
+  const reset = async () => {
+    if (!window.confirm('PIN sıfırlansın mı? Müşteri linki bir sonraki açışında yeni PIN belirleyecek.')) return;
+    try { await setPin(''); showToast?.('PIN sıfırlandı — müşteri yeni PIN belirleyecek', 'success'); } catch (e) { showToast?.('PIN sıfırlanamadı: ' + e.message, 'error'); }
+  };
+  const give = async () => {
+    const pin = (window.prompt('Müşteriye verilecek 4 haneli PIN:', '') || '').trim();
+    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) { showToast?.('PIN 4 rakam olmalı', 'error'); return; }
+    try { await setPin(pin); setShow(true); showToast?.('PIN kaydedildi', 'success'); } catch (e) { showToast?.('PIN kaydedilemedi: ' + e.message, 'error'); }
+  };
+  const btn = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '6px 10px', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' };
+  return (
+    <div style={{ margin: '12px 20px 0', padding: '10px 14px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '13px', color: '#94a3b8' }}>🔐 Link PIN:</span>
+      {live.linkPin
+        ? <b onClick={() => setShow(v => !v)} title="Göster / gizle" style={{ fontSize: '16px', letterSpacing: '4px', color: '#22c55e', cursor: 'pointer', fontFamily: 'monospace' }}>{show ? live.linkPin : '••••'}</b>
+        : <span style={{ fontSize: '12px', color: '#eab308' }}>henüz belirlenmedi — müşteri linki ilk açtığında kendisi belirleyecek</span>}
+      <span style={{ flex: 1 }} />
+      {live.linkPin && <button onClick={() => setShow(v => !v)} style={btn}>{show ? '🙈 Gizle' : '👁 Göster'}</button>}
+      <button onClick={give} style={btn}>✏️ PIN ver</button>
+      {live.linkPin && <button onClick={reset} style={{ ...btn, color: '#f87171', borderColor: 'rgba(239,68,68,0.3)' }}>↺ Sıfırla</button>}
+    </div>
+  );
+}
+
+// ===== TAVSİYELER: şehir bazlı tavsiye restoranlar (Firestore: tavsiyeler/<şehir-anahtarı>) =====
+// Bir şehir bir kez girilir; o şehre giden her turun linki (/b/) açıldığında güncel haliyle okur — tekrar paylaşım gerekmez.
+// Şehir anahtarı: "Bakü" / "Baku" / "BAKU" → "baku" (belgeler.html'deki cityKey ile aynı olmalı)
+const cityKey = (s) => String(s || '').trim().toLocaleLowerCase('tr-TR')
+  .replace(/[çğıöşü]/g, ch => ({ 'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u' }[ch]))
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+// Tur şehri birden fazla olabilir: "Milano, Venedik" / "Paris - Brüksel"
+const tourCities = (str) => String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(x => x.trim()).filter(Boolean);
+const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '' };
+function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity }) {
+  const [cities, setCities] = useState(null); // [{ key, city, country, restaurants, dirty }]
+  const [sel, setSel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [newCity, setNewCity] = useState({ city: '', country: '' });
+  useEffect(() => {
+    getDocs(collection(db, 'tavsiyeler')).then(snap => {
+      const list = snap.docs.map(d => ({ key: d.id, city: d.data().city || d.id, country: d.data().country || '', restaurants: Array.isArray(d.data().restaurants) ? d.data().restaurants : [], dirty: false }))
+        .sort((a, b) => a.city.localeCompare(b.city, 'tr'));
+      setCities(list);
+      const fk = tourCities(focusCity).map(cityKey)[0];
+      if (fk && list.some(c => c.key === fk)) setSel(fk);
+      else if (focusCity && tourCities(focusCity)[0]) setNewCity({ city: tourCities(focusCity)[0], country: '' });
+      if (!fk || !list.some(c => c.key === fk)) setSel(list[0]?.key || '');
+    }).catch(e => { setCities([]); showToast?.('Tavsiyeler okunamadı: ' + e.message, 'error'); });
+  }, []);
+  const cur = (cities || []).find(c => c.key === sel);
+  const patchCur = (fn) => setCities(cs => cs.map(c => c.key === sel ? { ...fn(c), dirty: true } : c));
+  const updR = (i, f, v) => patchCur(c => ({ ...c, restaurants: c.restaurants.map((r, j) => j === i ? { ...r, [f]: v } : r) }));
+  const moveR = (i, d) => patchCur(c => { const n = [...c.restaurants]; const j = i + d; if (j < 0 || j >= n.length) return c; [n[i], n[j]] = [n[j], n[i]]; return { ...c, restaurants: n }; });
+  const addCity = () => {
+    const name = newCity.city.trim(); const key = cityKey(name);
+    if (!key) { showToast?.('Şehir adı girin', 'warning'); return; }
+    if ((cities || []).some(c => c.key === key)) { setSel(key); showToast?.('Bu şehir zaten var', 'info'); return; }
+    setCities(cs => [...cs, { key, city: titleCaseTr(name), country: newCity.country.trim(), restaurants: [{ ...EMPTY_REST }], dirty: true }].sort((a, b) => a.city.localeCompare(b.city, 'tr')));
+    setSel(key); setNewCity({ city: '', country: '' });
+  };
+  const save = async () => {
+    if (!cur) return;
+    const restaurants = cur.restaurants.map(r => ({ name: String(r.name || '').trim(), cuisine: String(r.cuisine || '').trim(), price: String(r.price || ''), note: String(r.note || '').trim(), address: String(r.address || '').trim() })).filter(r => r.name);
+    setBusy(true);
+    try {
+      await setDoc(doc(db, 'tavsiyeler', cur.key), { city: cur.city, country: cur.country || '', restaurants, updatedAt: new Date().toISOString(), updatedBy: currentUser?.name || '' });
+      setCities(cs => cs.map(c => c.key === cur.key ? { ...c, restaurants, dirty: false } : c));
+      showToast?.(`${cur.city} kaydedildi — bu şehre giden tur linklerinde hemen görünür`, 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  const removeCity = async () => {
+    if (!cur || !window.confirm(`${cur.city} ve tüm tavsiyeleri silinsin mi?`)) return;
+    try { await deleteDoc(doc(db, 'tavsiyeler', cur.key)); } catch (e) { showToast?.('Silinemedi: ' + e.message, 'error'); return; }
+    const rest = cities.filter(c => c.key !== cur.key); setCities(rest); setSel(rest[0]?.key || '');
+  };
+  const close = () => { if ((cities || []).some(c => c.dirty) && !window.confirm('Kaydedilmemiş değişiklik var. Kapatılsın mı?')) return; onClose(); };
+  const fs = { padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%', boxSizing: 'border-box' };
+  const small = { padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'center', padding: isMobile ? 0 : '20px' }} onClick={close}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(249,115,22,0.35)', borderRadius: isMobile ? 0 : '16px', width: '100%', maxWidth: '980px', maxHeight: isMobile ? '100vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px' }}>⭐ Tavsiyeler</h3>
+            <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#94a3b8' }}>Şehir bazlı tavsiye restoranlar. Turun şehriyle eşleşen tavsiyeler o turun linkinde otomatik görünür.</p>
+          </div>
+          <button onClick={close} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        </div>
+        {cities === null ? <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>⏳ Yükleniyor...</div> : (
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flex: 1, minHeight: 0 }}>
+            {/* Şehirler */}
+            <div style={{ width: isMobile ? 'auto' : '250px', borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)', borderBottom: isMobile ? '1px solid rgba(255,255,255,0.08)' : 'none', padding: '12px', overflowY: 'auto', flexShrink: 0, maxHeight: isMobile ? '34vh' : 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                <input value={newCity.city} onChange={e => setNewCity({ ...newCity, city: e.target.value })} onKeyDown={e => e.key === 'Enter' && addCity()} placeholder="Şehir (ör. Bakü)" style={fs} />
+                <input value={newCity.country} onChange={e => setNewCity({ ...newCity, country: e.target.value })} onKeyDown={e => e.key === 'Enter' && addCity()} placeholder="Ülke (isteğe bağlı)" style={fs} />
+                <button onClick={addCity} style={{ padding: '8px', background: 'rgba(249,115,22,0.18)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Şehir ekle</button>
+              </div>
+              {cities.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '6px' }}>Henüz şehir yok.</div>}
+              {cities.map(c => (
+                <button key={c.key} onClick={() => setSel(c.key)} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: '6px', padding: '9px 10px', marginBottom: '4px', background: sel === c.key ? 'rgba(249,115,22,0.18)' : 'transparent', border: sel === c.key ? '1px solid rgba(249,115,22,0.4)' : '1px solid transparent', borderRadius: '8px', color: sel === c.key ? '#fb923c' : '#e8f1f8', cursor: 'pointer', fontSize: '13px', textAlign: 'left' }}>
+                  <span>{c.city}{c.country ? <span style={{ color: '#64748b', fontSize: '11px' }}> · {c.country}</span> : ''}{c.dirty ? ' •' : ''}</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{c.restaurants.filter(r => String(r.name || '').trim()).length} 🍽️</span>
+                </button>
+              ))}
+            </div>
+            {/* Seçili şehrin restoranları */}
+            <div style={{ flex: 1, padding: '14px', overflowY: 'auto', minHeight: 0 }}>
+              {!cur ? <div style={{ color: '#64748b', fontSize: '13px', padding: '20px' }}>Soldan bir şehir seçin veya yeni şehir ekleyin.</div> : (
+                <>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <input value={cur.city} onChange={e => patchCur(c => ({ ...c, city: e.target.value }))} style={{ ...fs, flex: 1, minWidth: '140px', fontWeight: '700', fontSize: '15px' }} title="Görünen şehir adı" />
+                    <input value={cur.country} onChange={e => patchCur(c => ({ ...c, country: e.target.value }))} placeholder="Ülke" style={{ ...fs, width: '160px' }} />
+                    <button onClick={removeCity} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑 Şehri sil</button>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#fb923c', fontWeight: '700', marginBottom: '8px' }}>🍽️ Tavsiye Edilen Restoranlar</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {cur.restaurants.map((r, i) => (
+                      <div key={i} style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.4fr 0.9fr', gap: '8px' }}>
+                          <input value={r.name || ''} onChange={e => updR(i, 'name', e.target.value)} placeholder="Restoran adı *" style={{ ...fs, fontWeight: '600' }} />
+                          <input value={r.cuisine || ''} onChange={e => updR(i, 'cuisine', e.target.value)} placeholder="Mutfak (ör. yerel, balık)" style={fs} />
+                          <select value={r.price || ''} onChange={e => updR(i, 'price', e.target.value)} style={fs}>
+                            <option value="">Fiyat —</option><option value="€">€ Uygun</option><option value="€€">€€ Orta</option><option value="€€€">€€€ Pahalı</option>
+                          </select>
+                        </div>
+                        <textarea value={r.note || ''} onChange={e => updR(i, 'note', e.target.value)} placeholder="Tavsiye notu (ör. Plov meşhur, akşam rezervasyon önerilir)" rows={2} style={{ ...fs, marginTop: '8px', resize: 'vertical', fontFamily: 'inherit' }} />
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center' }}>
+                          <input value={r.address || ''} onChange={e => updR(i, 'address', e.target.value)} placeholder="Adres (boşsa haritada isimden bulunur)" style={{ ...fs, flex: 1 }} />
+                          <button onClick={() => moveR(i, -1)} disabled={i === 0} title="Yukarı" style={small}>↑</button>
+                          <button onClick={() => moveR(i, 1)} disabled={i === cur.restaurants.length - 1} title="Aşağı" style={small}>↓</button>
+                          <button onClick={() => patchCur(c => ({ ...c, restaurants: c.restaurants.filter((_, j) => j !== i) }))} title="Sil" style={{ ...small, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>🗑</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', position: 'sticky', bottom: '-14px', background: '#0f2744', padding: '10px 0' }}>
+                    <button onClick={() => patchCur(c => ({ ...c, restaurants: [...c.restaurants, { ...EMPTY_REST }] }))} style={{ padding: '10px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Restoran ekle</button>
+                    <button onClick={save} disabled={busy || !cur.dirty} style={{ flex: 1, padding: '10px 14px', background: cur.dirty ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: cur.dirty ? '#fff' : '#64748b', cursor: busy ? 'wait' : cur.dirty ? 'pointer' : 'default', fontSize: '13px', fontWeight: '700' }}>{busy ? '⏳ Kaydediliyor...' : cur.dirty ? `💾 ${cur.city} kaydet` : '✓ Kaydedildi'}</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast }) {
+  const c = customer;
+  const saved = useMemo(() => safeParseObj(c.shareTrip), [c.shareTrip]);
+  const [trip, setTrip] = useState(() => ({ title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...saved }));
+  const [busy, setBusy] = useState('');
+  const [ready, setReady] = useState(null); // { link, text, phone }
+  const [docType, setDocType] = useState(0);
+  const token = useRef(c.shareToken || customerLinkSlug(c));
+  const up = (patch) => setTrip(t => ({ ...t, ...patch }));
+  const inS = { width: '100%', boxSizing: 'border-box', padding: '9px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', colorScheme: 'dark' };
+  const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' };
+  const sec = { fontSize: '12px', fontWeight: 700, color: '#f59e0b', margin: '14px 0 8px', letterSpacing: '0.5px' };
+  const narrow = window.innerWidth < 560;
+
+  const addFiles = async (files) => {
+    const list = Array.from(files || []).filter(f => f.size <= 15 * 1024 * 1024);
+    if (!list.length) { showToast?.('Dosya seçilmedi (en fazla 15MB)', 'error'); return; }
+    setBusy('Yükleniyor…');
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const [icon, label] = CUST_DOC_TYPES[docType];
+      const added = [], found = [];
+      for (const f of list) {
+        const safe = asciiTr(f.name).replace(/[^\w.\-]+/g, '_').slice(-80);
+        const path = `paylasim/${token.current}/${Date.now()}_${safe}`;
+        const r = ref(getStorage(), path);
+        await uploadBytes(r, f, { contentType: f.type || 'application/octet-stream' });
+        added.push({ id: generateUniqueId(), icon, label, url: await getDownloadURL(r), path, name: f.name, addedAt: new Date().toISOString() });
+        if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) { try { found.push(...detectFlights(await pdfFileText(f))); } catch (e) { /* metin yok */ } }
+      }
+      setTrip(t => {
+        const fl = [...(t.flights || [])];
+        found.forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push(x); });
+        fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
+        const patch = { docs: [...(t.docs || []), ...added], flights: fl };
+        // Uçuşlar bulunduysa boş alanları doldur: tarih aralığı ve varış şehri
+        if (fl.length) {
+          if (!t.startDate) patch.startDate = fl[0].ymd;
+          if (!t.endDate) patch.endDate = fl[fl.length - 1].ymd;
+          if (!t.city) patch.city = fl[0].toCity;
+          if (!t.title) patch.title = `${fl[0].fromCity} → ${fl[0].toCity}`;
+        }
+        return { ...t, ...patch };
+      });
+      showToast?.(`📎 ${added.length} belge eklendi${found.length ? ` · ${found.length} uçuş bulundu` : ''}`, 'success');
+    } catch (e) { showToast?.('❌ Yüklenemedi: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+  const removeDoc = async (d) => {
+    if (!window.confirm(`"${d.label}" belgesi linkten kaldırılsın mı?`)) return;
+    up({ docs: trip.docs.filter(x => x.id !== d.id) });
+    try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); if (d.path) await deleteObject(ref(getStorage(), d.path)).catch(() => {}); } catch (e) {}
+  };
+  const setFlight = (i, patch) => up({ flights: trip.flights.map((f, k) => k === i ? { ...f, ...patch } : f) });
+
+  const save = async () => {
+    if (!(trip.docs || []).length && !(trip.flights || []).length) { showToast?.('Önce en az bir belge ekleyin', 'warning'); return; }
+    setBusy('Kaydediliyor…');
+    try {
+      const { link, text } = await publishCustomerLink(c, trip, token.current, appSettings);
+      onSaved?.({ shareToken: token.current, shareTrip: JSON.stringify(trip) });
+      setReady({ link, text, phone: c.phone || '' });
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', color: '#e8f1f8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>🔗 Müşteri Linki — {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+        </div>
+        <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Bilet, otel belgesi, vize… tek linkte. Belge ekledikçe aynı link güncellenir.{c.shareToken ? ' Bu müşterinin linki daha önce oluşturuldu.' : ''} 🔐 Müşteri ilk açılışta kendi 4 haneli PIN'ini belirler; PIN müşteri kartında görünür.</p>
+
+        {ready ? (
+          <div style={{ marginTop: '14px' }}>
+            <label style={lbl}>✏️ Gönderilecek mesaj</label>
+            <textarea value={ready.text} onChange={e => setReady({ ...ready, text: e.target.value })} rows={7} style={{ ...inS, lineHeight: 1.45, fontFamily: 'inherit', resize: 'vertical' }} />
+            <label style={{ ...lbl, marginTop: '8px' }}>📱 WhatsApp numarası (müşteri veya firma yetkilisi)</label>
+            <input value={ready.phone} onChange={e => setReady({ ...ready, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" style={inS} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+              <a href={`https://wa.me/${formatWhatsAppPhone(ready.phone) || ''}?text=${encodeURIComponent(ready.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: '#fff', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}>💬 WhatsApp'tan gönder</a>
+              <button onClick={async () => { try { await navigator.clipboard.writeText(ready.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>📋 Mesajı kopyala</button>
+              <button onClick={() => window.open(ready.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
+              <button onClick={() => setReady(null)} style={{ padding: '8px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '12px' }}>← Belgelere geri dön</button>
+            </div>
+          </div>
+        ) : (<>
+          <div style={sec}>YOLCULUK</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Başlık</label><input value={trip.title} onChange={e => up({ title: e.target.value })} placeholder="Örn. Frankfurt İş Seyahati" style={inS} /></div>
+            <div><label style={lbl}>Şehir</label><input value={trip.city} onChange={e => up({ city: e.target.value })} placeholder="Frankfurt" style={inS} /></div>
+            <div><label style={lbl}>Ülke</label>
+              <select value={trip.country} onChange={e => up({ country: e.target.value })} style={inS}>
+                <option value="" style={{ background: '#0c1929' }}>Seçin…</option>
+                {tourCountries.map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}
+              </select></div>
+            <div><label style={lbl}>Gidiş</label><input type="date" value={trip.startDate} onChange={e => up({ startDate: e.target.value })} style={inS} /></div>
+            <div><label style={lbl}>Dönüş</label><input type="date" value={trip.endDate} onChange={e => up({ endDate: e.target.value })} style={inS} /></div>
+          </div>
+
+          <div style={sec}>BELGELER</div>
+          {(trip.docs || []).map(d => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', marginBottom: '6px', fontSize: '13px' }}>
+              <span>{d.icon}</span>
+              <select value={d.label} onChange={e => { const t = CUST_DOC_TYPES.find(x => x[1] === e.target.value); up({ docs: trip.docs.map(x => x.id === d.id ? { ...x, label: t[1], icon: t[0] } : x) }); }} style={{ ...inS, width: 'auto', padding: '4px 6px', fontSize: '12px' }}>
+                {CUST_DOC_TYPES.map(([, l]) => <option key={l} value={l} style={{ background: '#0c1929' }}>{l}</option>)}
+              </select>
+              <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 0, color: '#94a3b8', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name || 'belge'}</a>
+              <button onClick={() => removeDoc(d)} title="Linkten kaldır" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={docType} onChange={e => setDocType(+e.target.value)} style={{ ...inS, width: 'auto' }}>
+              {CUST_DOC_TYPES.map(([i, l], k) => <option key={l} value={k} style={{ background: '#0c1929' }}>{i} {l}</option>)}
+            </select>
+            <label style={{ padding: '9px 14px', background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: busy ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
+              {busy || '📎 Dosya ekle (PDF / görsel)'}
+              <input type="file" multiple accept="application/pdf,image/*" disabled={!!busy} style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+            </label>
+          </div>
+
+          <div style={sec}>UÇUŞLAR <span style={{ color: '#64748b', fontWeight: 400 }}>(biletten otomatik bulunur — linkte canlı takip)</span></div>
+          {(trip.flights || []).map((f, i) => (
+            <div key={i} style={narrow
+              ? { display: 'grid', gridTemplateColumns: '1fr 1fr auto', gridTemplateAreas: '"c d x" "f t x"', gap: '6px', marginBottom: '12px', alignItems: 'center' }
+              : { display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr auto', gridTemplateAreas: '"c d f t x"', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+              <input value={f.code} onChange={e => setFlight(i, { code: e.target.value.toUpperCase() })} placeholder="TK1590" style={{ ...inS, gridArea: 'c' }} />
+              <input type="date" value={f.ymd || ''} onChange={e => setFlight(i, { ymd: e.target.value })} style={{ ...inS, gridArea: 'd' }} />
+              <input value={`${f.from || ''}${f.dep ? ' ' + f.dep : ''}`} onChange={e => { const [a, b] = e.target.value.split(' '); setFlight(i, { from: (a || '').toUpperCase().slice(0, 3), dep: b || '' }); }} placeholder="Kalkış: IST 08:30" style={{ ...inS, gridArea: 'f' }} />
+              <input value={`${f.to || ''}${f.arr ? ' ' + f.arr : ''}`} onChange={e => { const [a, b] = e.target.value.split(' '); setFlight(i, { to: (a || '').toUpperCase().slice(0, 3), arr: b || '' }); }} placeholder="Varış: FRA 10:45" style={{ ...inS, gridArea: 't' }} />
+              <button onClick={() => up({ flights: trip.flights.filter((_, k) => k !== i) })} style={{ gridArea: 'x', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+            </div>
+          ))}
+          <button onClick={() => up({ flights: [...(trip.flights || []), { code: '', ymd: trip.startDate || '', from: '', to: '', dep: '', arr: '' }] })} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>＋ Uçuş ekle</button>
+
+          <div style={sec}>OTEL <span style={{ color: '#64748b', fontWeight: 400 }}>(linkte adres + yol tarifi)</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <input value={trip.hotelName} onChange={e => up({ hotelName: e.target.value })} placeholder="Otel adı" style={inS} />
+            <input value={trip.hotelAddress} onChange={e => up({ hotelAddress: e.target.value })} placeholder="Adres" style={inS} />
+          </div>
+
+          <button onClick={save} disabled={!!busy} style={{ width: '100%', marginTop: '16px', padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: 700, fontSize: '14px', cursor: busy ? 'wait' : 'pointer' }}>
+            {busy || (c.shareToken ? '💾 Kaydet ve linki güncelle' : '🔗 Linki oluştur')}
+          </button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ===== TOPLU BELGE YÜKLEME (tek yükleme yeri) =====
+// Biletçi/otelci bilet, biniş kartı, otel belgesi… PDF'lerini buraya bırakır. Sistem her sayfadaki yolcu adını
+// tüm müşterilerle eşleştirir, belge türünü metinden tanır, çok sayfalı PDF'i kişi başı böler ve her kişinin
+// müşteri linkine ekler (link yoksa oluşturur). Biletten uçuşlar ve tarihler de linke işlenir.
+const docTypeOf = (text) => {
+  const t = asciiTr(String(text || '')).toUpperCase();
+  if (/BOARDING\s*PASS|BINIS\s*KART|BOARDING\s*TIME|GATE\s*CLOSES/.test(t)) return 1;          // 🛫 Biniş Kartı
+  if (/E-?\s?TICKET|ELEKTRONIK\s*BILET|TICKET\s*(NUMBER|NO)|BILET\s*NUMARASI|ITINERARY|ETKT/.test(t)) return 0; // ✈️ Uçak Bileti
+  if (/VOUCHER|HOTEL|OTEL|CHECK-?\s?IN|ACCOMMODATION|KONAKLAMA/.test(t)) return 2;              // 🏨 Otel Belgesi
+  if (/INSURANCE|SIGORTA|POLICE\s*NO|POLICY\s*(NUMBER|NO)/.test(t)) return 4;                    // 🛡️ Sigorta
+  if (/\bVISA\b|\bVIZE\b|SCHENGEN/.test(t)) return 3;                                           // 🛂 Vize
+  return 6;                                                                                       // 📄 Diğer
+};
+// Müşteri ad-soyad kelimeleri (eşleştirme dizini) — en az 2 kelime (tek kelimelik isimler yanlış eşleşir)
+const buildNameIndex = (customers) => (customers || []).map(c => ({ c, w: [...nameWords(`${c.firstName || ''} ${c.lastName || ''}`)].filter(x => x.length > 1) })).filter(x => x.w.length >= 2);
+// Metindeki kelimelere göre müşterileri bul; en çok kelimesi tutan(lar) döner
+const matchCustomers = (index, words) => {
+  const hits = index.filter(x => x.w.every(w => words.has(w)) || (x.w.length >= 3 && words.has(x.w[0]) && words.has(x.w[x.w.length - 1])));
+  if (hits.length < 2) return hits.map(h => h.c);
+  const score = (h) => h.w.filter(w => words.has(w)).length;
+  const max = Math.max(...hits.map(score));
+  return hits.filter(h => score(h) === max).map(h => h.c);
+};
+
+function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose }) {
+  const [rows, setRows] = useState([]); // { key, file, pages, type, custIds:[], cands:[], flights:[], note }
+  const [busy, setBusy] = useState('');
+  const [done, setDone] = useState(null); // [{ c, link, text, added }]
+  const index = useMemo(() => buildNameIndex(customers), [customers]);
+  const byId = useMemo(() => new Map((customers || []).map(c => [String(c.id), c])), [customers]);
+  const nameOf = (c) => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+  const listId = useRef('cust-dl-' + Math.random().toString(36).slice(2));
+  const setRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
+
+  const analyze = async (fileList) => {
+    const files = Array.from(fileList || []).filter(f => f.size <= 15 * 1024 * 1024);
+    if (!files.length) return;
+    setBusy('📖 Belgeler okunuyor…');
+    const out = [];
+    for (const [fi, file] of files.entries()) {
+      const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+      if (!isPdf) { out.push({ key: `${fi}_${file.name}`, file, type: 6, custIds: [], cands: [], flights: [], note: 'Görsel — kişiyi seçin' }); continue; }
+      try {
+        const pages = await pdfPagesText(file);
+        const per = pages.map(t => matchCustomers(index, nameWords(t)).map(c => String(c.id)));
+        const owners = new Set(per.filter(ids => ids.length === 1).map(ids => ids[0]));
+        if (pages.length > 1 && owners.size > 1) {
+          // Kişi başı sayfalara böl; isimsiz devam sayfası önceki yolcuya
+          let last = null;
+          for (let i = 0; i < per.length; i++) { if (per[i].length === 1) last = per[i][0]; else if (!per[i].length && last) per[i] = [last]; }
+          const groups = new Map();
+          per.forEach((ids, i) => { if (ids.length === 1) groups.set(ids[0], [...(groups.get(ids[0]) || []), i]); });
+          [...groups.entries()].forEach(([cid, pg], k) => {
+            const txt = pg.map(i => pages[i]).join(' ');
+            out.push({ key: `${fi}_${k}_${file.name}`, file, pages: pg, type: docTypeOf(txt), custIds: [cid], cands: [], flights: detectFlights(txt), note: '' });
+          });
+          const rest = per.map((ids, i) => ids.length === 1 ? -1 : i).filter(i => i >= 0);
+          if (rest.length) out.push({ key: `${fi}_rest_${file.name}`, file, pages: rest, type: docTypeOf(rest.map(i => pages[i]).join(' ')), custIds: [], cands: [...new Set(rest.flatMap(i => per[i]))], flights: [], note: `${rest.length} sayfada kişi net değil — seçin` });
+        } else {
+          const all = pages.join(' ');
+          const ids = matchCustomers(index, nameWords(all)).map(c => String(c.id));
+          // Tek kişi → ona; birkaç kişi aynı sayfada (grup bileti/oda) → hepsine; hiç yoksa elle
+          const many = ids.length > 1 && ids.length <= 12;
+          out.push({ key: `${fi}_${file.name}`, file, type: docTypeOf(all), custIds: ids.length === 1 || many ? ids : [], cands: ids.length > 12 ? ids.slice(0, 12) : [], flights: detectFlights(all),
+            note: !pages.join('').trim() ? 'PDF\'de metin yok (taranmış) — kişiyi seçin' : !ids.length ? 'İsim bulunamadı — kişiyi seçin' : many ? 'Birden fazla kişi — kontrol edin' : '' });
+        }
+      } catch (e) { out.push({ key: `${fi}_${file.name}`, file, type: 6, custIds: [], cands: [], flights: [], note: 'PDF okunamadı — kişiyi seçin' }); }
+    }
+    setRows(rs => [...rs, ...out]);
+    setBusy('');
+  };
+
+  const run = async () => {
+    const todo = rows.filter(r => r.custIds.length);
+    if (!todo.length) return;
+    setBusy('⬆️ Yükleniyor…');
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      // Kişi başı: link (token) + mevcut yolculuk bilgisi
+      const perCust = new Map();
+      for (const r of todo) {
+        const part = r.pages ? await pdfExtractPages(r.file, r.pages) : r.file;
+        for (const cid of r.custIds) {
+          const c = byId.get(cid); if (!c) continue;
+          if (!perCust.has(cid)) perCust.set(cid, { c, token: c.shareToken || customerLinkSlug(c), trip: { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [], ...safeParseObj(c.shareTrip) }, added: [] });
+          const pc = perCust.get(cid);
+          const safe = asciiTr(part.name).replace(/[^\w.\-]+/g, '_').slice(-80);
+          const path = `paylasim/${pc.token}/${Date.now()}_${safe}`;
+          const sr = ref(getStorage(), path);
+          await uploadBytes(sr, part, { contentType: part.type || 'application/pdf' });
+          const [icon, label] = CUST_DOC_TYPES[r.type];
+          pc.trip.docs = [...(pc.trip.docs || []), { id: generateUniqueId(), icon, label, url: await getDownloadURL(sr), path, name: part.name, addedAt: new Date().toISOString() }];
+          pc.added.push(`${icon} ${label}`);
+          // Uçuşlar + boş tarih/şehir/başlık
+          const fl = [...(pc.trip.flights || [])];
+          (r.flights || []).forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push(x); });
+          fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
+          pc.trip.flights = fl;
+          if (fl.length) {
+            if (!pc.trip.startDate) pc.trip.startDate = fl[0].ymd;
+            if (!pc.trip.endDate) pc.trip.endDate = fl[fl.length - 1].ymd;
+            if (!pc.trip.city) pc.trip.city = fl[0].toCity;
+            if (!pc.trip.title) pc.trip.title = `${fl[0].fromCity} → ${fl[0].toCity}`;
+          }
+        }
+      }
+      const results = [];
+      for (const pc of perCust.values()) {
+        const { link, text } = await publishCustomerLink(pc.c, pc.trip, pc.token, appSettings);
+        results.push({ c: pc.c, link, text, added: pc.added, isNew: !pc.c.shareToken });
+      }
+      const patches = new Map(results.map(r => [String(r.c.id), { shareToken: r.link.split('/m/')[1], shareTrip: JSON.stringify(perCust.get(String(r.c.id)).trip) }]));
+      setCustomers(prev => prev.map(c => patches.has(String(c.id)) ? { ...c, ...patches.get(String(c.id)) } : c));
+      setDone(results);
+      showToast?.(`✅ ${todo.length} belge ${results.length} müşterinin linkine eklendi`, 'success');
+    } catch (e) { showToast?.('❌ Yükleme hatası: ' + e.message, 'error'); }
+    finally { setBusy(''); }
+  };
+
+  const inS = { padding: '6px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#e8f1f8', fontSize: '12px' };
+  const ready = rows.filter(r => r.custIds.length).length;
+  return (
+    <div onClick={busy ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '720px', maxHeight: '92vh', overflowY: 'auto', color: '#e8f1f8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>📤 Belge Yükle — müşteri linklerine</h3>
+          <button onClick={onClose} disabled={!!busy} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
+        </div>
+        <p style={{ margin: '4px 0 12px', fontSize: '11px', color: '#64748b' }}>Bilet, biniş kartı, otel belgesi… PDF'leri bırakın. İsimden müşteri, metinden belge türü bulunur; toplu PDF kişi başı bölünür. Kontrol edip yükleyin.</p>
+
+        {done ? (<>
+          <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px' }}>✅ {done.length} müşterinin linki güncellendi</div>
+          {done.map(r => (
+            <div key={r.c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', marginBottom: '6px' }}>
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>{nameOf(r.c)} {r.isNew && <span style={{ fontSize: '10px', color: '#22c55e' }}>· yeni link</span>}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.added.join(', ')}</div>
+              </div>
+              <a href={`https://wa.me/${formatWhatsAppPhone(r.c.phone) || ''}?text=${encodeURIComponent(r.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#22c55e', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>💬 Gönder</a>
+              <button onClick={() => window.open(r.link, '_blank')} style={{ ...inS, cursor: 'pointer' }}>👁️</button>
+            </div>
+          ))}
+          <p style={{ fontSize: '11px', color: '#64748b' }}>Linki daha önce gönderilmiş müşterilerde belge aynı linke eklendi — tekrar göndermek şart değil.</p>
+          <button onClick={() => { setDone(null); setRows([]); }} style={{ ...inS, padding: '10px', width: '100%', cursor: 'pointer' }}>➕ Yeni belgeler yükle</button>
+        </>) : (<>
+          <label style={{ display: 'block', padding: '22px', border: '2px dashed rgba(59,130,246,0.45)', borderRadius: '12px', textAlign: 'center', cursor: busy ? 'wait' : 'pointer', background: 'rgba(59,130,246,0.06)' }}
+            onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy) analyze(e.dataTransfer.files); }}>
+            <div style={{ fontSize: '28px' }}>📎</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#60a5fa' }}>{busy || 'PDF\'leri buraya sürükleyin veya seçin'}</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Birden fazla dosya olabilir · toplu bilet PDF'i kişilere ayrılır</div>
+            <input type="file" multiple accept="application/pdf,image/*" disabled={!!busy} style={{ display: 'none' }} onChange={e => { analyze(e.target.files); e.target.value = ''; }} />
+          </label>
+          <datalist id={listId.current}>{(customers || []).map(c => <option key={c.id} value={`${nameOf(c)} · ${c.phone || c.id}`} />)}</datalist>
+
+          {rows.length > 0 && <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {rows.map(r => (
+              <div key={r.key} style={{ padding: '8px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${r.custIds.length ? 'rgba(16,185,129,0.35)' : 'rgba(234,179,8,0.4)'}` }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select value={r.type} onChange={e => setRow(r.key, { type: +e.target.value })} style={inS}>
+                    {CUST_DOC_TYPES.map(([i, l], k) => <option key={l} value={k} style={{ background: '#0c1929' }}>{i} {l}</option>)}
+                  </select>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', flex: 1, minWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {r.file.name}{r.pages ? ` · s.${r.pages.map(p => p + 1).join(',')}` : ''}{r.flights?.length ? ` · ✈️ ${r.flights.map(f => f.code).join(', ')}` : ''}</span>
+                  <button onClick={() => setRows(rs => rs.filter(x => x.key !== r.key))} title="Çıkar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '6px' }}>
+                  {r.custIds.map(id => { const c = byId.get(id); return c && (
+                    <span key={id} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '12px', padding: '3px 8px', fontSize: '12px' }}>
+                      👤 {nameOf(c)}{c.shareToken ? '' : ' · yeni link'}
+                      <button onClick={() => setRow(r.key, { custIds: r.custIds.filter(x => x !== id) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px' }}>×</button>
+                    </span>); })}
+                  {r.cands.filter(id => !r.custIds.includes(id)).map(id => { const c = byId.get(id); return c && (
+                    <button key={id} onClick={() => setRow(r.key, { custIds: [...r.custIds, id] })} style={{ ...inS, cursor: 'pointer', color: '#fbbf24' }}>＋ {nameOf(c)}</button>); })}
+                  <input list={listId.current} placeholder="+ müşteri ara…" onChange={e => {
+                    const v = e.target.value; const c = (customers || []).find(x => `${nameOf(x)} · ${x.phone || x.id}` === v);
+                    if (c) { setRow(r.key, { custIds: r.custIds.includes(String(c.id)) ? r.custIds : [...r.custIds, String(c.id)] }); e.target.value = ''; }
+                  }} style={{ ...inS, width: '170px' }} />
+                  {r.note && !r.custIds.length && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
+                  {r.note && r.custIds.length > 1 && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
+                </div>
+              </div>
+            ))}
+            <button onClick={run} disabled={!!busy || !ready} style={{ marginTop: '6px', padding: '12px', background: ready ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
+              {busy || `⬆️ ${ready} belgeyi müşteri linklerine yükle`}
+            </button>
+          </div>}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
@@ -1347,6 +1928,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   }, [selectedKey]);
   const [formData, setFormData] = useState({});
   const [detailTab, setDetailTab] = useState('info');
+  const [shareCust, setShareCust] = useState(null); // 🔗 Müşteri linki penceresi
+  const [showDocInbox, setShowDocInbox] = useState(false); // 📤 Toplu belge yükleme
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
@@ -2355,9 +2938,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             }} style={{ background: c.verified === true ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)', border: `1px solid ${c.verified === true ? 'rgba(16,185,129,0.4)' : 'rgba(234,179,8,0.4)'}`, borderRadius: '10px', padding: '10px 16px', color: c.verified === true ? '#10b981' : '#eab308', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
               {c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
             </button>
+            <button onClick={() => setShareCust(c)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '10px', padding: '10px 14px', color: '#22c55e', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }} title="Bilet, otel belgesi, vize… tek linkte gönder">🔗 {isMobile ? 'Link' : 'Müşteri Linki'}</button>
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
           </div>
         </div>
+
+        <LinkPinBar key={c._docId || c.id} c={c} showToast={showToast} />
 
         {/* Tab Navigation */}
         <div style={{ padding: '20px 20px 0' }}>
@@ -2862,6 +3448,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             }
           }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>🔄 Yenile</button>
           <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
+          <button onClick={() => setShowDocInbox(true)} title="Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📤 Belge Yükle</button>
           <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
         </div>
@@ -3764,6 +4351,13 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
+      {showDocInbox && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} onClose={() => setShowDocInbox(false)} />}
+      {shareCust && <CustomerShareModal customer={shareCust} appSettings={appSettings} showToast={showToast} onClose={() => setShareCust(null)}
+        onSaved={(patch) => {
+          setCustomers(prev => prev.map(x => x.id === shareCust.id ? { ...x, ...patch } : x));
+          setSelectedCustomer(sc => sc && sc.id === shareCust.id ? { ...sc, ...patch } : sc);
+          setShareCust(sc => sc ? { ...sc, ...patch } : sc);
+        }} />}
 
       {/* Image Preview */}
       {imagePreview.show && (
@@ -6543,6 +7137,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
+  const [tavsiye, setTavsiye] = useState(null); // ⭐ Tavsiyeler penceresi: { focusCity }
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
@@ -7594,6 +8189,17 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       setBulkTicket({ ...bt, uploading: false });
     }
   };
+  // Belge ikonu: tıkla = aç, sağ tık = sil. Telefonda sağ tık yok → 600 ms basılı tutunca sil (ardından gelen tıklama açmaz)
+  const docPressHandlers = (onOpen, onDelete) => {
+    let timer = null, fired = false;
+    const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    return {
+      onClick: (e) => { if (fired) { fired = false; e.preventDefault(); return; } onOpen(); },
+      onContextMenu: (e) => { e.preventDefault(); clear(); if (!fired) onDelete(); fired = false; },
+      onPointerDown: (e) => { if (e.pointerType !== 'touch') return; fired = false; clear(); timer = setTimeout(() => { fired = true; timer = null; onDelete(); }, 600); },
+      onPointerUp: clear, onPointerLeave: clear, onPointerCancel: clear,
+    };
+  };
   const removeResDoc = async (tour, res, field) => {
     if (!window.confirm('Bu belgeyi silmek istiyor musunuz?')) return;
     try {
@@ -7750,14 +8356,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       </div>
 
       {/* Search */}
-      {!selectedTour && <div style={{ marginBottom: '16px' }}>
+      {tavsiye && <TavsiyelerModal focusCity={tavsiye.focusCity} onClose={() => setTavsiye(null)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+      {!selectedTour && <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
         <input
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder="🔍 Tur ara (isim, ülke, şehir)..."
-          style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
+          style={{ flex: 1, minWidth: 0, width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
         />
+        <button onClick={() => setTavsiye({ focusCity: '' })} title="Şehir bazlı tavsiye restoranlar — tur linklerinde görünür" style={{ padding: '0 16px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '10px', color: '#fb923c', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}>⭐ Tavsiyeler</button>
       </div>}
 
       {/* Tabs */}
@@ -7898,6 +8506,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
+                <button onClick={() => setTavsiye({ focusCity: tour.city || '' })} style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Bu turun şehrine ait tavsiye restoranlar (tur linkinde görünür)">⭐ Tavsiyeler</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
                 {RES_DOCS.map(d => (
@@ -8284,7 +8893,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 {!res.cancelled && <button onClick={() => openResHotelVoucher(tour, res)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: '14px', opacity: tour.voucherHotel?.name ? 1 : 0.4 }} title={tour.voucherHotel?.name ? `Otel giriş belgesi — ${tour.voucherHotel.name} (odalamadan)` : 'Otel giriş belgesi — önce Odalama\'da otel bilgilerini girin'}>🏨</button>}
                                 {!res.cancelled && RES_DOCS.map(d => res[d.field]
-                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button onClick={() => window.open(res[d.field], '_blank')} onContextMenu={(e) => { e.preventDefault(); removeResDoc(tour, res, d.field); }} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px' }} title={`${d.label} (aç) — sağ tık veya ✕: sil`}>{d.icon}</button><button onClick={() => removeResDoc(tour, res, d.field)} title={`${d.label} sil`} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '10px', padding: '0 2px' }}>✕</button></span>
+                                  ? <span key={d.field} style={{ display: 'inline-flex', alignItems: 'center' }}><button {...docPressHandlers(() => window.open(res[d.field], '_blank'), () => removeResDoc(tour, res, d.field))} style={{ background: 'none', border: 'none', color: d.color, cursor: 'pointer', fontSize: '14px', WebkitTouchCallout: 'none', userSelect: 'none' }} title={`${d.label} — tıkla: aç · sağ tık (telefonda basılı tut): sil`}>{d.icon}</button></span>
                                   : <label key={d.field} style={{ cursor: resDocBusy === `${res.id}-${d.field}` ? 'wait' : 'pointer', fontSize: '14px', opacity: 0.4 }} title={`${d.label} yükle`}>{resDocBusy === `${res.id}-${d.field}` ? '⏳' : d.icon}<input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={(e) => uploadResDoc(tour, res, d.field, e.target.files[0])} /></label>
                                 )}
                                 {!res.cancelled && <button onClick={() => shareResLink(tour, res)} disabled={!!shareBusy} style={{ background: 'none', border: 'none', color: '#22c55e', cursor: shareBusy ? 'wait' : 'pointer', fontSize: '14px' }} title="Belge linkini WhatsApp'tan paylaş (program, otel, uçak, fuar)">{shareBusy === res.id ? '⏳' : '🔗'}</button>}
@@ -11847,7 +12456,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // Bir rezervasyon için her geceyi tek tek hesapla
   // Birden fazla fiyat dönemine yayılıyorsa toplar
   const calcReservationPrice = (hotel, checkIn, checkOut, roomType, concept) => {
-    const result = { totalBuy: 0, totalSell: 0, nights: 0, currency: '€', gaps: [], periodsUsed: [] };
+    const result = { totalBuy: 0, totalSell: 0, nights: 0, currency: '€', gaps: [], periodsUsed: [], overlaps: [], missingRate: [] };
     if (!checkIn || !checkOut || !hotel) return result;
     const d1 = new Date(checkIn);
     const d2 = new Date(checkOut);
@@ -11861,20 +12470,26 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     for (let i = 0; i < result.nights; i++) {
       const day = new Date(d1.getTime() + i * 86400000);
       const dayStr = day.toISOString().split('T')[0];
-      const period = periods.find(p => p.startDate <= dayStr && p.endDate > dayStr);
-      if (!period) {
+      // Aynı günü kapsayan birden fazla dönem olabilir (eski/boş kopya dönem): bu oda+konsept için fiyatı olan dönem esas alınır
+      const covering = periods.filter(p => p.startDate <= dayStr && p.endDate > dayStr);
+      if (!covering.length) {
         result.gaps.push(dayStr);
         continue;
       }
+      const rateOf = (p) => {
+        const rate = p.rates?.[roomType]?.[concept];
+        if (rate == null || rate === '') return null;
+        const buy = typeof rate === 'object' ? (parseFloat(rate.buy) || 0) : 0;
+        const sell = typeof rate === 'object' ? (parseFloat(rate.sell) || 0) : (parseFloat(rate) || 0);
+        return buy > 0 || sell > 0 ? { buy, sell } : null;
+      };
+      const period = covering.find(p => rateOf(p)) || covering[0];
+      if (covering.length > 1) result.overlaps.push(dayStr);
       if (!result.periodsUsed.includes(period.id)) result.periodsUsed.push(period.id);
       result.currency = period.currency || result.currency;
-      const rate = period.rates?.[roomType]?.[concept];
-      if (rate) {
-        const buy = typeof rate === 'number' ? 0 : (rate.buy || 0);
-        const sell = typeof rate === 'number' ? rate : (rate.sell || 0);
-        result.totalBuy += buy;
-        result.totalSell += sell;
-      }
+      const r = rateOf(period);
+      if (r) { result.totalBuy += r.buy; result.totalSell += r.sell; }
+      else result.missingRate.push(dayStr);
     }
     return result;
   };
@@ -11889,6 +12504,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     let needsUpdate = false;
     const updated = res.map(r => {
       if (!r.checkIn || !r.checkOut || !r.roomType) return r;
+      // Elle girilen fiyata ve bilerek 0 bırakılan rezervasyona (ör. aynı odadaki 2. kişi) sessizce fiyat yazma
+      if (r.priceManual) return r;
+      if (!(parseFloat(r.price) || 0) && !(parseFloat(r.buyPrice) || 0)) return r;
       const calc = calcReservationPrice(selectedHotel, r.checkIn, r.checkOut, r.roomType, r.concept || 'bb');
       if (calc.totalSell === 0 && calc.totalBuy === 0) return r;
       const cb = parseFloat(r.buyPrice) || 0;
@@ -12479,6 +13097,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   };
 
   const [selectedResIds, setSelectedResIds] = useState([]);
+  const [resSearch, setResSearch] = useState(''); // otel detayı: rezervasyonlarda ad soyad / etiket araması
+  useEffect(() => { setResSearch(''); }, [selectedHotel?.id]);
   const toggleResSelection = (id) => {
     setSelectedResIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -13789,6 +14409,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     const totalPaid = reservations.reduce((s, r) => s + (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0), 0);
     const totalBuy = reservations.reduce((s, r) => s + (parseFloat(r.buyPrice) || 0), 0);
     const totalProfit = totalRevenue - totalBuy;
+    const resWords = normalizeTr(resSearch).split(/\s+/).filter(Boolean);
+    const shownRes = resWords.length ? reservations.filter(r => { const hay = normalizeTr(`${r.customerName || ''} ${r.tag || ''}`); return resWords.every(w => hay.includes(w)); }) : reservations;
 
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
@@ -13980,6 +14602,27 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           })()}
         </div>
 
+        {/* Rezervasyon araması: ad soyad veya etiket (firma). Birden fazla kelime: hepsi geçmeli ("kayteks semanur") */}
+        {reservations.length > 0 && (() => {
+          const words = resWords, shown = shownRes;
+          const sum = (f) => shown.reduce((t, r) => t + f(r), 0);
+          const sell = sum(r => parseFloat(r.price) || 0), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
+          const cur = reservations[0]?.currency || '€';
+          return (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ position: 'relative' }}>
+                <input value={resSearch} onChange={e => setResSearch(e.target.value)} placeholder="🔍 Ad soyad veya etiket ara (ör. Kayteks)" style={{ width: '100%', boxSizing: 'border-box', padding: '10px 36px 10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '13px' }} />
+                {resSearch && <button onClick={() => setResSearch('')} title="Temizle" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>✕</button>}
+              </div>
+              {words.length > 0 && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: shown.length ? '#94a3b8' : '#f59e0b' }}>
+                  {shown.length ? <>{shown.length} / {reservations.length} rezervasyon · Satış {sell.toLocaleString('tr-TR')} {cur} · Tahsil {got.toLocaleString('tr-TR')} {cur} · Kalan {(sell - got).toLocaleString('tr-TR')} {cur}</> : 'Eşleşen rezervasyon yok'}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Rezervasyonlar Tablosu */}
         {reservations.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
@@ -13993,8 +14636,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <th style={{ padding: '10px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px', width: '32px' }}>
                       <input type="checkbox"
-                        checked={reservations.length > 0 && selectedResIds.length === reservations.length}
-                        onChange={e => setSelectedResIds(e.target.checked ? reservations.map(r => r.id) : [])}
+                        checked={shownRes.length > 0 && shownRes.every(r => selectedResIds.includes(r.id))}
+                        onChange={e => setSelectedResIds(e.target.checked ? [...new Set([...selectedResIds, ...shownRes.map(r => r.id)])] : selectedResIds.filter(id => !shownRes.some(r => r.id === id)))}
                         style={{ cursor: 'pointer' }} />
                     </th>
                     {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Tutar', 'Ödeme', ''].map(h => (
@@ -14003,7 +14646,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   </tr>
                 </thead>
                 <tbody>
-                  {reservations.map(r => {
+                  {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                     const total = parseFloat(r.price) || 0;
@@ -14157,6 +14800,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                           </span>
                         )}
                       </div>
+                      {calc.missingRate.length > 0 && !hasGaps && (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24' }}>
+                          ⚠️ {resData.roomType} / {(resData.concept || 'bb').toUpperCase()} için {calc.missingRate.length} gecenin fiyatı dönemde tanımlı değil — bu geceler hesaba dahil edilmedi.
+                        </div>
+                      )}
+                      {calc.overlaps.length > 0 && (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24' }}>
+                          ⚠️ {calc.overlaps.length} gece için birden fazla fiyat dönemi çakışıyor; fiyatı tanımlı olan dönem kullanıldı. Anlaşma Fiyatları'nda eski/boş dönemi silin.
+                        </div>
+                      )}
                       {hasGaps && (
                         <div style={{ marginTop: '6px', fontSize: '11px', color: '#fca5a5' }}>
                           ⚠️ {calc.gaps.length} gün için fiyat dönemi yok: {calc.gaps.slice(0,3).join(', ')}{calc.gaps.length > 3 ? '...' : ''}. Bu günler hesaba dahil EDİLMEDİ. Eksik dönemi otel detayından ekleyin.
