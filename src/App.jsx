@@ -1718,6 +1718,11 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const [body, setBody] = useState('');
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const toggleAuto = async () => {
+    const on = !stats?.auto;
+    try { await bildirimCall({ a: 'auto', on }); setStats(st => ({ ...st, auto: on })); showToast?.(on ? '⏰ Otomatik hatırlatma açıldı' : 'Otomatik hatırlatma kapatıldı', 'success'); }
+    catch (e) { showToast?.('❌ ' + e.message, 'error'); }
+  };
   const load = async () => {
     setErr('');
     try { const [s, l] = await Promise.all([bildirimCall({ a: 'stats' }), bildirimCall({ a: 'log' })]); setStats(s); setLog(l.items || []); }
@@ -1764,6 +1769,15 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
         {[['🔔', 'Bildirim açık cihaz', stats?.total, '#3b82f6'], ['🎁', 'Kampanya onaylı', stats?.marketing, '#f59e0b'], ['👥', 'Müşteri', subCustomers.length, '#10b981']].map(([i, l, v, c]) => (
           <div key={l} style={{ ...card, padding: '14px 16px' }}><div style={{ fontSize: '24px', fontWeight: 700, color: c }}>{stats ? v : '…'}</div><div style={{ fontSize: '12px', color: '#94a3b8' }}>{i} {l}</div></div>
         ))}
+      </div>
+      {/* ⏰ Otomatik hatırlatma — tarihler müşteri kartından (linkte görünen vize/pasaport bilgisiyle aynı) */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', padding: '14px 18px', borderColor: stats?.auto ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.08)' }}>
+        <span style={{ fontSize: '24px' }}>⏰</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: '14px' }}>Otomatik vize ve pasaport hatırlatması</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>Her gün 10:00'da: vize bitimine <b>60 · 30 · 7 gün</b>, pasaport bitimine <b>6 ay · 3 ay</b> kala müşteriye kendiliğinden bildirim gider. Her hatırlatma bir kez gönderilir. Bildirimi açık olan herkese gider (bilgilendirmedir, reklam içermez).</div>
+        </div>
+        <button onClick={toggleAuto} disabled={!stats} style={{ flex: 'none', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', border: 'none', color: '#fff', background: stats?.auto ? '#10b981' : '#475569', opacity: stats ? 1 : 0.5 }}>{stats ? (stats.auto ? '✓ Açık' : 'Kapalı') : '…'}</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', alignItems: 'start' }}>
         <div style={card}>
@@ -1813,7 +1827,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
           {log.length ? log.map(x => (
             <div key={x.id} style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}><b style={{ color: '#e8f1f8' }}>{x.type === 'kampanya' ? '🎁' : 'ℹ️'} {x.title}</b><span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{String(x.at || '').slice(0, 16).replace('T', ' ')}</span></div>
-              <div style={{ color: '#94a3b8' }}>{x.sent}/{x.matched} cihaz · {String(x.by || '').split('@')[0]}</div>
+              <div style={{ color: '#94a3b8' }}>{x.sent}/{x.matched} cihaz · {x.by === 'otomatik' ? '⏰ otomatik' : String(x.by || '').split('@')[0]}</div>
             </div>
           )) : <div style={{ fontSize: '12px', color: '#64748b' }}>Henüz gönderim yok.</div>}
         </div>
