@@ -130,8 +130,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .hotel .b{display:flex;gap:8px}
 .hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
 .hotel .b a.p{background:var(--gold);color:#1b1f3b}
-/* Tavsiye edilen restoranlar (CRM'de tur sayfasından elle girilir) */
+/* Tavsiye edilen restoranlar (CRM → Turlar → ⭐ Tavsiyeler, şehir bazlı) */
 .rest{display:flex;flex-direction:column;gap:10px}
+.rest .rcity{font-size:13px;font-weight:700;color:var(--gold2);margin:6px 4px 0}
 .rest .r{padding:14px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
 .rest .rh{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .rest .rn{font-size:16px;font-weight:700}
@@ -219,6 +220,47 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     if ('arrayValue' in v) return (v.arrayValue.values || []).map(val);
     if ('mapValue' in v) { var o = {}, f = v.mapValue.fields || {}; for (var k in f) o[k] = val(f[k]); return o; }
     return null;
+  };
+  // Şehir anahtarı: "Bakü" / "Baku" → "baku" (CRM'deki cityKey ile aynı)
+  var TRA = { 'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u' };
+  var cityKey = function (s) {
+    return String(s || '').trim().toLocaleLowerCase('tr-TR').replace(/[çğıöşü]/g, function (c) { return TRA[c]; })
+      .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  };
+  var tourCities = function (str) { return String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(function (x) { return x.trim(); }).filter(Boolean); };
+  var renderRestaurants = function (f, slot) {
+    var names = tourCities(f.city); if (!names.length && f.hotel && f.hotel.city) names = [f.hotel.city];
+    var keys = names.map(cityKey).filter(function (k, i, a) { return k && a.indexOf(k) === i; }).slice(0, 5);
+    if (!keys.length) return;
+    Promise.all(keys.map(function (k) {
+      return fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/tavsiyeler/' + k)
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (!j || !j.fields) return null; var o = {}; for (var x in j.fields) o[x] = val(j.fields[x]); return o; })
+        .catch(function () { return null; });
+    })).then(function (docs) {
+      var groups = docs.filter(Boolean).map(function (d) {
+        return { city: d.city || '', country: d.country || f.country || '', list: (d.restaurants || []).filter(function (r) { return r && String(r.name || '').trim(); }) };
+      }).filter(function (g) { return g.list.length; });
+      if (!groups.length) return;
+      // Sonradan (ağdan) geldiği için sayfa animasyon sırasına girmeden, doğrudan eklenir
+      slot.appendChild(el('div', 'sec', 'Tavsiye Edilen Restoranlar'));
+      var rl = el('div', 'rest'); slot.appendChild(rl);
+      groups.forEach(function (g) {
+        if (groups.length > 1) rl.appendChild(el('div', 'rcity', '📍 ' + g.city));
+        g.list.forEach(function (r) {
+          var c = el('div', 'r');
+          var h = el('div', 'rh'); h.appendChild(el('div', 'rn', String(r.name))); if (r.price) h.appendChild(el('div', 'rp', String(r.price))); c.appendChild(h);
+          if (r.cuisine) c.appendChild(el('div', 'rc', String(r.cuisine)));
+          if (r.note) c.appendChild(el('div', 'rt', String(r.note)));
+          if (r.address) c.appendChild(el('div', 'ra', String(r.address)));
+          var q = encodeURIComponent([r.name, r.address, g.city, g.country].filter(Boolean).join(', '));
+          var b = el('div', 'rb');
+          var go = el('a', '', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; b.appendChild(go);
+          var mp = el('a', '', '🗺️ Haritada gör'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; b.appendChild(mp);
+          c.appendChild(b); rl.appendChild(c);
+        });
+      });
+    });
   };
   var AY = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   var parseD = function (s) { var p = String(s || '').split('-'); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null; };
@@ -753,24 +795,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       var infoSlot = el('div'); box.appendChild(infoSlot);
       try { renderInfo(f, infoSlot); } catch (x) {}
 
-      // --- Tavsiye edilen restoranlar (CRM → tur sayfası → Restoranlar) ---
-      var rests = (f.restaurants || []).filter(function (r) { return r && String(r.name || '').trim(); });
-      if (rests.length) {
-        add(box, el('div', 'sec', 'Tavsiye Edilen Restoranlar'));
-        var rl = add(box, el('div', 'rest'));
-        rests.forEach(function (r) {
-          var c = el('div', 'r');
-          var h = el('div', 'rh'); h.appendChild(el('div', 'rn', String(r.name))); if (r.price) h.appendChild(el('div', 'rp', String(r.price))); c.appendChild(h);
-          if (r.cuisine) c.appendChild(el('div', 'rc', String(r.cuisine)));
-          if (r.note) c.appendChild(el('div', 'rt', String(r.note)));
-          if (r.address) c.appendChild(el('div', 'ra', String(r.address)));
-          var q = encodeURIComponent([r.name, r.address, f.city, f.country].filter(Boolean).join(', '));
-          var b = el('div', 'rb');
-          var go = el('a', '', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; b.appendChild(go);
-          var mp = el('a', '', '🗺️ Haritada gör'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; b.appendChild(mp);
-          c.appendChild(b); rl.appendChild(c);
-        });
-      }
+      // --- Tavsiye edilen restoranlar: turun şehrine göre, link her açıldığında güncel (Firestore tavsiyeler/<şehir>) ---
+      var restSlot = el('div'); box.appendChild(restSlot);
+      try { renderRestaurants(f, restSlot); } catch (x) {}
 
       // --- Oyun (her zaman erişilebilir, internetsiz çalışır) ---
       var tg = add(box, el('button', 'tet')); tg.type = 'button';

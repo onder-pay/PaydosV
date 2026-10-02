@@ -1427,6 +1427,132 @@ function LinkPinBar({ c, showToast }) {
   );
 }
 
+// ===== TAVSİYELER: şehir bazlı tavsiye restoranlar (Firestore: tavsiyeler/<şehir-anahtarı>) =====
+// Bir şehir bir kez girilir; o şehre giden her turun linki (/b/) açıldığında güncel haliyle okur — tekrar paylaşım gerekmez.
+// Şehir anahtarı: "Bakü" / "Baku" / "BAKU" → "baku" (belgeler.html'deki cityKey ile aynı olmalı)
+const cityKey = (s) => String(s || '').trim().toLocaleLowerCase('tr-TR')
+  .replace(/[çğıöşü]/g, ch => ({ 'ç': 'c', 'ğ': 'g', 'ı': 'i', 'ö': 'o', 'ş': 's', 'ü': 'u' }[ch]))
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+// Tur şehri birden fazla olabilir: "Milano, Venedik" / "Paris - Brüksel"
+const tourCities = (str) => String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(x => x.trim()).filter(Boolean);
+const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '' };
+function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity }) {
+  const [cities, setCities] = useState(null); // [{ key, city, country, restaurants, dirty }]
+  const [sel, setSel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [newCity, setNewCity] = useState({ city: '', country: '' });
+  useEffect(() => {
+    getDocs(collection(db, 'tavsiyeler')).then(snap => {
+      const list = snap.docs.map(d => ({ key: d.id, city: d.data().city || d.id, country: d.data().country || '', restaurants: Array.isArray(d.data().restaurants) ? d.data().restaurants : [], dirty: false }))
+        .sort((a, b) => a.city.localeCompare(b.city, 'tr'));
+      setCities(list);
+      const fk = tourCities(focusCity).map(cityKey)[0];
+      if (fk && list.some(c => c.key === fk)) setSel(fk);
+      else if (focusCity && tourCities(focusCity)[0]) setNewCity({ city: tourCities(focusCity)[0], country: '' });
+      if (!fk || !list.some(c => c.key === fk)) setSel(list[0]?.key || '');
+    }).catch(e => { setCities([]); showToast?.('Tavsiyeler okunamadı: ' + e.message, 'error'); });
+  }, []);
+  const cur = (cities || []).find(c => c.key === sel);
+  const patchCur = (fn) => setCities(cs => cs.map(c => c.key === sel ? { ...fn(c), dirty: true } : c));
+  const updR = (i, f, v) => patchCur(c => ({ ...c, restaurants: c.restaurants.map((r, j) => j === i ? { ...r, [f]: v } : r) }));
+  const moveR = (i, d) => patchCur(c => { const n = [...c.restaurants]; const j = i + d; if (j < 0 || j >= n.length) return c; [n[i], n[j]] = [n[j], n[i]]; return { ...c, restaurants: n }; });
+  const addCity = () => {
+    const name = newCity.city.trim(); const key = cityKey(name);
+    if (!key) { showToast?.('Şehir adı girin', 'warning'); return; }
+    if ((cities || []).some(c => c.key === key)) { setSel(key); showToast?.('Bu şehir zaten var', 'info'); return; }
+    setCities(cs => [...cs, { key, city: titleCaseTr(name), country: newCity.country.trim(), restaurants: [{ ...EMPTY_REST }], dirty: true }].sort((a, b) => a.city.localeCompare(b.city, 'tr')));
+    setSel(key); setNewCity({ city: '', country: '' });
+  };
+  const save = async () => {
+    if (!cur) return;
+    const restaurants = cur.restaurants.map(r => ({ name: String(r.name || '').trim(), cuisine: String(r.cuisine || '').trim(), price: String(r.price || ''), note: String(r.note || '').trim(), address: String(r.address || '').trim() })).filter(r => r.name);
+    setBusy(true);
+    try {
+      await setDoc(doc(db, 'tavsiyeler', cur.key), { city: cur.city, country: cur.country || '', restaurants, updatedAt: new Date().toISOString(), updatedBy: currentUser?.name || '' });
+      setCities(cs => cs.map(c => c.key === cur.key ? { ...c, restaurants, dirty: false } : c));
+      showToast?.(`${cur.city} kaydedildi — bu şehre giden tur linklerinde hemen görünür`, 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  const removeCity = async () => {
+    if (!cur || !window.confirm(`${cur.city} ve tüm tavsiyeleri silinsin mi?`)) return;
+    try { await deleteDoc(doc(db, 'tavsiyeler', cur.key)); } catch (e) { showToast?.('Silinemedi: ' + e.message, 'error'); return; }
+    const rest = cities.filter(c => c.key !== cur.key); setCities(rest); setSel(rest[0]?.key || '');
+  };
+  const close = () => { if ((cities || []).some(c => c.dirty) && !window.confirm('Kaydedilmemiş değişiklik var. Kapatılsın mı?')) return; onClose(); };
+  const fs = { padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%', boxSizing: 'border-box' };
+  const small = { padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'center', padding: isMobile ? 0 : '20px' }} onClick={close}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(249,115,22,0.35)', borderRadius: isMobile ? 0 : '16px', width: '100%', maxWidth: '980px', maxHeight: isMobile ? '100vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px' }}>⭐ Tavsiyeler</h3>
+            <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#94a3b8' }}>Şehir bazlı tavsiye restoranlar. Turun şehriyle eşleşen tavsiyeler o turun linkinde otomatik görünür.</p>
+          </div>
+          <button onClick={close} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        </div>
+        {cities === null ? <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>⏳ Yükleniyor...</div> : (
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flex: 1, minHeight: 0 }}>
+            {/* Şehirler */}
+            <div style={{ width: isMobile ? 'auto' : '250px', borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)', borderBottom: isMobile ? '1px solid rgba(255,255,255,0.08)' : 'none', padding: '12px', overflowY: 'auto', flexShrink: 0, maxHeight: isMobile ? '34vh' : 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                <input value={newCity.city} onChange={e => setNewCity({ ...newCity, city: e.target.value })} onKeyDown={e => e.key === 'Enter' && addCity()} placeholder="Şehir (ör. Bakü)" style={fs} />
+                <input value={newCity.country} onChange={e => setNewCity({ ...newCity, country: e.target.value })} onKeyDown={e => e.key === 'Enter' && addCity()} placeholder="Ülke (isteğe bağlı)" style={fs} />
+                <button onClick={addCity} style={{ padding: '8px', background: 'rgba(249,115,22,0.18)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Şehir ekle</button>
+              </div>
+              {cities.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '6px' }}>Henüz şehir yok.</div>}
+              {cities.map(c => (
+                <button key={c.key} onClick={() => setSel(c.key)} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: '6px', padding: '9px 10px', marginBottom: '4px', background: sel === c.key ? 'rgba(249,115,22,0.18)' : 'transparent', border: sel === c.key ? '1px solid rgba(249,115,22,0.4)' : '1px solid transparent', borderRadius: '8px', color: sel === c.key ? '#fb923c' : '#e8f1f8', cursor: 'pointer', fontSize: '13px', textAlign: 'left' }}>
+                  <span>{c.city}{c.country ? <span style={{ color: '#64748b', fontSize: '11px' }}> · {c.country}</span> : ''}{c.dirty ? ' •' : ''}</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{c.restaurants.filter(r => String(r.name || '').trim()).length} 🍽️</span>
+                </button>
+              ))}
+            </div>
+            {/* Seçili şehrin restoranları */}
+            <div style={{ flex: 1, padding: '14px', overflowY: 'auto', minHeight: 0 }}>
+              {!cur ? <div style={{ color: '#64748b', fontSize: '13px', padding: '20px' }}>Soldan bir şehir seçin veya yeni şehir ekleyin.</div> : (
+                <>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <input value={cur.city} onChange={e => patchCur(c => ({ ...c, city: e.target.value }))} style={{ ...fs, flex: 1, minWidth: '140px', fontWeight: '700', fontSize: '15px' }} title="Görünen şehir adı" />
+                    <input value={cur.country} onChange={e => patchCur(c => ({ ...c, country: e.target.value }))} placeholder="Ülke" style={{ ...fs, width: '160px' }} />
+                    <button onClick={removeCity} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑 Şehri sil</button>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#fb923c', fontWeight: '700', marginBottom: '8px' }}>🍽️ Tavsiye Edilen Restoranlar</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {cur.restaurants.map((r, i) => (
+                      <div key={i} style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.4fr 0.9fr', gap: '8px' }}>
+                          <input value={r.name || ''} onChange={e => updR(i, 'name', e.target.value)} placeholder="Restoran adı *" style={{ ...fs, fontWeight: '600' }} />
+                          <input value={r.cuisine || ''} onChange={e => updR(i, 'cuisine', e.target.value)} placeholder="Mutfak (ör. yerel, balık)" style={fs} />
+                          <select value={r.price || ''} onChange={e => updR(i, 'price', e.target.value)} style={fs}>
+                            <option value="">Fiyat —</option><option value="€">€ Uygun</option><option value="€€">€€ Orta</option><option value="€€€">€€€ Pahalı</option>
+                          </select>
+                        </div>
+                        <textarea value={r.note || ''} onChange={e => updR(i, 'note', e.target.value)} placeholder="Tavsiye notu (ör. Plov meşhur, akşam rezervasyon önerilir)" rows={2} style={{ ...fs, marginTop: '8px', resize: 'vertical', fontFamily: 'inherit' }} />
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center' }}>
+                          <input value={r.address || ''} onChange={e => updR(i, 'address', e.target.value)} placeholder="Adres (boşsa haritada isimden bulunur)" style={{ ...fs, flex: 1 }} />
+                          <button onClick={() => moveR(i, -1)} disabled={i === 0} title="Yukarı" style={small}>↑</button>
+                          <button onClick={() => moveR(i, 1)} disabled={i === cur.restaurants.length - 1} title="Aşağı" style={small}>↓</button>
+                          <button onClick={() => patchCur(c => ({ ...c, restaurants: c.restaurants.filter((_, j) => j !== i) }))} title="Sil" style={{ ...small, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>🗑</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap', position: 'sticky', bottom: '-14px', background: '#0f2744', padding: '10px 0' }}>
+                    <button onClick={() => patchCur(c => ({ ...c, restaurants: [...c.restaurants, { ...EMPTY_REST }] }))} style={{ padding: '10px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Restoran ekle</button>
+                    <button onClick={save} disabled={busy || !cur.dirty} style={{ flex: 1, padding: '10px 14px', background: cur.dirty ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: cur.dirty ? '#fff' : '#64748b', cursor: busy ? 'wait' : cur.dirty ? 'pointer' : 'default', fontSize: '13px', fontWeight: '700' }}>{busy ? '⏳ Kaydediliyor...' : cur.dirty ? `💾 ${cur.city} kaydet` : '✓ Kaydedildi'}</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast }) {
   const c = customer;
   const saved = useMemo(() => safeParseObj(c.shareTrip), [c.shareTrip]);
@@ -7011,8 +7137,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
-  const [restoTour, setRestoTour] = useState(null); // 🍽️ Restoranlar paneli açık olan tur id
-  const [restoSync, setRestoSync] = useState(false);
+  const [tavsiye, setTavsiye] = useState(null); // ⭐ Tavsiyeler penceresi: { focusCity }
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
@@ -7307,22 +7432,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return Array.from(bytes, b => abc[b % abc.length]).join('');
   };
-  // Tur linkindeki "Tavsiye Edilen Restoranlar": CRM'de turun sayfasından elle girilir (tour.restaurants)
-  const cleanRestaurants = (list) => (Array.isArray(list) ? list : [])
-    .map(r => ({ name: String(r?.name || '').trim(), cuisine: String(r?.cuisine || '').trim(), price: String(r?.price || '').trim(), note: String(r?.note || '').trim(), address: String(r?.address || '').trim() }))
-    .filter(r => r.name);
-  // Daha önce gönderilmiş linklere de yansıt (link paylaşıldığı anda kopyalandığı için)
-  const syncRestaurantsToLinks = async (tour) => {
-    const tokens = (tour.reservations || []).filter(r => r.shareToken).map(r => r.shareToken);
-    if (!tokens.length) { showToast?.('Kaydedildi — bu turda henüz gönderilmiş link yok, yeni linklere otomatik eklenecek', 'success'); return; }
-    setRestoSync(true);
-    try {
-      const restaurants = cleanRestaurants(tour.restaurants);
-      const results = await Promise.allSettled(tokens.map(t => setDoc(doc(db, 'paylasimlar', t), { restaurants, updatedAt: new Date().toISOString() }, { merge: true })));
-      const fail = results.filter(r => r.status === 'rejected').length;
-      showToast?.(fail ? `${tokens.length - fail} linke yansıdı, ${fail} link güncellenemedi` : `${tokens.length} gönderilmiş linke yansıdı`, fail ? 'warning' : 'success');
-    } finally { setRestoSync(false); }
-  };
   const shareResLink = async (tour, res) => {
     if (shareBusy) return;
     setShareBusy(res.id);
@@ -7362,7 +7471,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       await setDoc(doc(db, 'paylasimlar', token), {
         customerName: res.customerName || '', tourName: tour.name || '',
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
-        docs, flights, restaurants: cleanRestaurants(tour.restaurants), updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
+        docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
         // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
         hotel: hi.name ? { name: hi.name || '', address: hi.address || '', city: hi.city || '', country: hi.country || '', phone: hi.phone || '' } : null,
         contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' }
@@ -8247,14 +8356,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       </div>
 
       {/* Search */}
-      {!selectedTour && <div style={{ marginBottom: '16px' }}>
+      {tavsiye && <TavsiyelerModal focusCity={tavsiye.focusCity} onClose={() => setTavsiye(null)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+      {!selectedTour && <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
         <input
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder="🔍 Tur ara (isim, ülke, şehir)..."
-          style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
+          style={{ flex: 1, minWidth: 0, width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }}
         />
+        <button onClick={() => setTavsiye({ focusCity: '' })} title="Şehir bazlı tavsiye restoranlar — tur linklerinde görünür" style={{ padding: '0 16px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '10px', color: '#fb923c', cursor: 'pointer', fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap' }}>⭐ Tavsiyeler</button>
       </div>}
 
       {/* Tabs */}
@@ -8395,7 +8506,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
-                <button onClick={() => setRestoTour(restoTour === tour.id ? null : tour.id)} style={{ padding: '8px 14px', background: restoTour === tour.id ? 'rgba(249,115,22,0.3)' : 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Tur linkinde gösterilecek tavsiye restoranlar">🍽️ Restoranlar{cleanRestaurants(tour.restaurants).length ? ` (${cleanRestaurants(tour.restaurants).length})` : ''}</button>
+                <button onClick={() => setTavsiye({ focusCity: tour.city || '' })} style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Bu turun şehrine ait tavsiye restoranlar (tur linkinde görünür)">⭐ Tavsiyeler</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
                 {RES_DOCS.map(d => (
@@ -8924,48 +9035,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
             })()}
 
             {/* Odalama Bölümü */}
-            {restoTour === tour.id && (() => {
-              const list = Array.isArray(tour.restaurants) ? tour.restaurants : [];
-              const setList = (next) => setTours(prev => prev.map(t => t.id === tour.id ? { ...t, restaurants: next } : t));
-              const upd = (i, field, val) => setList(list.map((r, j) => j === i ? { ...r, [field]: val } : r));
-              const move = (i, d) => { const j = i + d; if (j < 0 || j >= list.length) return; const n = [...list]; [n[i], n[j]] = [n[j], n[i]]; setList(n); };
-              const sent = (tour.reservations || []).filter(r => r.shareToken).length;
-              const fs = { padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '12px', width: '100%', boxSizing: 'border-box' };
-              return (
-                <div style={{ marginBottom: '16px', padding: '14px', background: 'rgba(249,115,22,0.05)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: '14px', color: '#fb923c', fontWeight: '700' }}>🍽️ Tavsiye Edilen Restoranlar</div>
-                    <button onClick={() => setRestoTour(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px' }}>✕</button>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '12px' }}>Bu turun linkinde "Tavsiye Edilen Restoranlar" bölümünde görünür. Yeni gönderilen linklere otomatik eklenir; daha önce gönderilenler için alttaki butona basın.</div>
-                  {list.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px 0' }}>Henüz restoran yok.</div>}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {list.map((r, i) => (
-                      <div key={i} style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.4fr 0.8fr', gap: '8px' }}>
-                          <input value={r.name || ''} onChange={e => upd(i, 'name', e.target.value)} placeholder="Restoran adı *" style={{ ...fs, fontWeight: '600' }} />
-                          <input value={r.cuisine || ''} onChange={e => upd(i, 'cuisine', e.target.value)} placeholder="Mutfak (ör. Azerbaycan mutfağı, balık)" style={fs} />
-                          <select value={r.price || ''} onChange={e => upd(i, 'price', e.target.value)} style={fs}>
-                            <option value="">Fiyat —</option><option value="€">€ Uygun</option><option value="€€">€€ Orta</option><option value="€€€">€€€ Pahalı</option>
-                          </select>
-                        </div>
-                        <textarea value={r.note || ''} onChange={e => upd(i, 'note', e.target.value)} placeholder="Tavsiye notu (ör. Kuzu tandırı meşhur, akşam rezervasyon önerilir)" rows={2} style={{ ...fs, marginTop: '8px', resize: 'vertical', fontFamily: 'inherit' }} />
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
-                          <input value={r.address || ''} onChange={e => upd(i, 'address', e.target.value)} placeholder="Adres (yol tarifi için; boşsa isimden bulunur)" style={{ ...fs, flex: 1 }} />
-                          <button onClick={() => move(i, -1)} disabled={i === 0} title="Yukarı" style={{ padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>↑</button>
-                          <button onClick={() => move(i, 1)} disabled={i === list.length - 1} title="Aşağı" style={{ padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>↓</button>
-                          <button onClick={() => { if (window.confirm(`"${r.name || 'Bu restoran'}" silinsin mi?`)) setList(list.filter((_, j) => j !== i)); }} title="Sil" style={{ padding: '6px 9px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-                    <button onClick={() => setList([...list, { name: '', cuisine: '', price: '', note: '', address: '' }])} style={{ padding: '9px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Restoran ekle</button>
-                    <button onClick={() => syncRestaurantsToLinks(tour)} disabled={restoSync} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: '#fff', cursor: restoSync ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{restoSync ? '⏳ Güncelleniyor...' : `🔗 Gönderilmiş linklere yansıt${sent ? ` (${sent})` : ''}`}</button>
-                  </div>
-                </div>
-              );
-            })()}
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
               const roomTypes = buildRoomTypes(tour);
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);

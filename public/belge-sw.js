@@ -33,8 +33,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(networkFirst(e.request, '/belgeler.html'));
     return;
   }
-  // Belge listesi (Firestore REST, sadece paylasimlar)
-  if (url.hostname === 'firestore.googleapis.com' && url.pathname.includes('/documents/paylasimlar/')) {
+  // Belge listesi ve şehir tavsiyeleri (Firestore REST, sadece paylasimlar / tavsiyeler)
+  if (url.hostname === 'firestore.googleapis.com' && (url.pathname.includes('/documents/paylasimlar/') || url.pathname.includes('/documents/tavsiyeler/'))) {
     e.respondWith(networkFirst(e.request));
     return;
   }
