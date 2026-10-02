@@ -678,7 +678,9 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       meta.prefix = f.customerName || 'Paydos';
       box.innerHTML = ''; delay = 0;
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
-      var flights = upcomingFlights((f.flights || []).filter(function (x) { return x && /^[A-Z0-9]{2}\d{1,4}$/.test(x.code || ''); }));
+      // Uçuş numarası olmayan belgelerden (ör. THY koltuk onayı) okunan uçuşlar da gösterilir
+      var flights = upcomingFlights((f.flights || []).filter(function (x) { return x && (/^[A-Z0-9]{2}\d{1,4}$/.test(x.code || '') || (!x.code && (x.dep || x.arr))); }));
+      var fLabel = function (x) { return x.code ? x.code.replace(/^(..)/, '$1 ') : (x.airline || 'Uçuş'); };
       var dest = nextDestination(flights);
       var fullName = String(f.customerName || '').trim();
 
@@ -690,7 +692,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       var stat = function (k, v, sub) { var d = el('div', 'st'); d.appendChild(el('div', 'k', k)); d.appendChild(el('div', 'v', v)); if (sub) d.appendChild(el('div', 's', sub)); stats.appendChild(d); };
       if (flights[0]) {
         var nf = flights[0], nd = flightDay(nf), a1 = parsePt(nf.dep), a2 = parsePt(nf.arr);
-        stat('Sıradaki uçuş', nd ? fmtD(nd) : nf.code, (a1.iata && a2.iata) ? a1.iata + ' → ' + a2.iata + ' · ' + nf.code.replace(/^(..)/, '$1 ') : nf.code);
+        stat('Sıradaki uçuş', nd ? fmtD(nd) : fLabel(nf), (a1.iata && a2.iata) ? a1.iata + ' → ' + a2.iata + ' · ' + fLabel(nf) : fLabel(nf));
       } else stat('Sıradaki uçuş', '—', 'Planlı uçuş yok');
       stat('Belgeler', String(docs.length), docs.length ? 'dosya hazır' : 'henüz yok');
       hero.appendChild(stats);
@@ -735,10 +737,11 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       if (lastTicket || flights.length) {
         sec('Uçuşunuz', flights.length > 1 ? flights.length + ' uçuş' : '');
         flights.forEach(function (x) {
-          var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
+          var a = el(x.code ? 'a' : 'div', 'pass');
+          if (x.code) { a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener'; }
           var xd = flightDay(x);
           var top = el('div', 'ptop');
-          top.appendChild(el('span', 'fno', x.code.replace(/^(..)/, '$1 ')));
+          top.appendChild(el('span', 'fno', fLabel(x)));
           top.appendChild(el('span', '', xd ? xd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }) : (x.date || '')));
           a.appendChild(top);
           var d = parsePt(x.dep), r = parsePt(x.arr);
@@ -751,10 +754,13 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
           } else if (x.dep || x.arr) {
             a.appendChild(el('div', 'raw', [x.dep, x.arr].filter(Boolean).join('  →  ')));
           }
-          var pf = el('div', 'pf');
-          pf.appendChild(el('span', '', 'Rötar, kapı ve canlı konum'));
-          var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
-          pf.appendChild(live); a.appendChild(pf);
+          // Uçuş numarası yoksa canlı takip linki kurulamaz → alt satır gösterilmez
+          if (x.code) {
+            var pf = el('div', 'pf');
+            pf.appendChild(el('span', '', 'Rötar, kapı ve canlı konum'));
+            var live = el('span', 'live'); live.appendChild(el('i')); live.appendChild(document.createTextNode('Canlı takip'));
+            pf.appendChild(live); a.appendChild(pf);
+          }
           add(box, a);
         });
         if (lastTicket) { var tl = add(box, el('div', 'list cur')); tl.appendChild(docRow(lastTicket, whenOf(lastTicket))); }

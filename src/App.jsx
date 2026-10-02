@@ -1133,22 +1133,6 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
       <h2 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Dashboard</h2>
-      {/* 📤 Belge yükle: bilet / biniş kartı / otel / vize PDF'lerini sürükle-bırak; isimden müşteri bulunur, müşteri linkine eklenir */}
-      <label
-        onDragEnter={e => { e.preventDefault(); setDragOn(true); }}
-        onDragOver={e => { e.preventDefault(); if (!dragOn) setDragOn(true); }}
-        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOn(false); }}
-        onDrop={e => { e.preventDefault(); setDragOn(false); const f = Array.from(e.dataTransfer.files || []); if (f.length) setInboxFiles(f); }}
-        style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: isMobile ? '16px' : '20px 24px', marginBottom: '20px', borderRadius: '14px', cursor: 'pointer',
-          border: `2px dashed ${dragOn ? '#60a5fa' : 'rgba(59,130,246,0.4)'}`, background: dragOn ? 'rgba(59,130,246,0.16)' : 'rgba(59,130,246,0.06)', transition: 'background .15s, border-color .15s' }}>
-        <div style={{ fontSize: isMobile ? '28px' : '34px' }}>{dragOn ? '📥' : '📤'}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#60a5fa' }}>{dragOn ? 'Bırakın, belgeler okunsun' : 'Belge yükle — sürükleyip bırakın'}</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>Uçak bileti, biniş kartı, otel, vize… PDF'teki isimden müşteri bulunur ve müşteri linkine eklenir. Toplu bilet PDF'i kişilere ayrılır.</div>
-        </div>
-        {!isMobile && <span style={{ padding: '9px 16px', borderRadius: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap' }}>Dosya seç</span>}
-        <input type="file" multiple accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) setInboxFiles(f); }} />
-      </label>
       {inboxFiles && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} initialFiles={inboxFiles} onClose={() => setInboxFiles(null)} />}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
         <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6"
@@ -1175,6 +1159,22 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
           <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '4px' }}>🎉 Tıkla ve gör!</div>
         </div>
       </div>
+      {/* 📤 Belge yükle: bilet / biniş kartı / otel / vize PDF'lerini sürükle-bırak; isimden müşteri bulunur, müşteri linkine eklenir */}
+      <label
+        onDragEnter={e => { e.preventDefault(); setDragOn(true); }}
+        onDragOver={e => { e.preventDefault(); if (!dragOn) setDragOn(true); }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOn(false); }}
+        onDrop={e => { e.preventDefault(); setDragOn(false); const f = Array.from(e.dataTransfer.files || []); if (f.length) setInboxFiles(f); }}
+        style={{ display: 'flex', alignItems: 'center', gap: '22px', padding: isMobile ? '28px 18px' : '44px 36px', minHeight: isMobile ? '150px' : '190px', marginBottom: '24px', borderRadius: '16px', cursor: 'pointer',
+          border: `2px dashed ${dragOn ? '#60a5fa' : 'rgba(59,130,246,0.4)'}`, background: dragOn ? 'rgba(59,130,246,0.16)' : 'rgba(59,130,246,0.06)', transition: 'background .15s, border-color .15s' }}>
+        <div style={{ fontSize: isMobile ? '48px' : '64px' }}>{dragOn ? '📥' : '📤'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 700, color: '#60a5fa' }}>{dragOn ? 'Bırakın, belgeler okunsun' : 'Belge yükle — sürükleyip bırakın'}</div>
+          <div style={{ fontSize: isMobile ? '13px' : '14px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.5 }}>Uçak bileti, biniş kartı, otel, vize… PDF'teki isimden müşteri bulunur ve müşteri linkine eklenir. Toplu bilet PDF'i kişilere ayrılır.</div>
+        </div>
+        {!isMobile && <span style={{ padding: '13px 24px', borderRadius: '12px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 700, fontSize: '15px', whiteSpace: 'nowrap' }}>Dosya seç</span>}
+        <input type="file" multiple accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) setInboxFiles(f); }} />
+      </label>
 
       {/* Generic Liste Modal */}
       {modal && (
@@ -1424,7 +1424,7 @@ const nameCheck = (c, text) => {
   const check = (t) => {
     if (doc.has(t)) return { ok: true };
     // Bitişik yazım: "ONDERMR", "AHMETCAN" (iki ad birleşik)
-    if (docW.some(w => w.length > t.length && w.length - t.length <= 7 && (w.startsWith(t) || w.endsWith(t)))) return { ok: true };
+    if (docW.some(w => w.length > t.length && w.length - t.length <= 12 && (w.startsWith(t) || w.endsWith(t)))) return { ok: true };
     let best = null;
     docW.forEach(w => { if (Math.abs(w.length - t.length) > 2) return; const d = lev(w, t); if (!best || d < best.d) best = { w, d }; });
     const lim = t.length >= 6 ? 2 : t.length >= 4 ? 1 : 0;
@@ -1434,7 +1434,7 @@ const nameCheck = (c, text) => {
   const errs = [], warns = [];
   lasts.forEach(t => { const r = check(t); if (r.typo) warns.push(`soyad "${r.typo}" yazılmış, CRM'de "${t}"`); else if (r.missing) errs.push(`soyad "${t}" belgede yok`); });
   firsts.forEach((t, i) => { const r = check(t); if (r.typo) warns.push(`ad "${r.typo}" yazılmış, CRM'de "${t}"`); else if (r.missing) (i === 0 ? errs : warns).push(i === 0 ? `ad "${t}" belgede yok` : `ikinci ad "${t}" belgede yok`); });
-  if (errs.length) return { level: 'err', msg: '⛔ ' + [...errs, ...warns].join(' · ') };
+  if (errs.length) return { level: 'err', msg: '⛔ ' + errs.join(' · ') + ' — belge bu kişiye ait olmayabilir' };
   if (warns.length) return { level: 'warn', msg: '⚠️ ' + warns.join(' · ') };
   return { level: 'ok', msg: '✓ İsim belgeyle aynı' };
 };
@@ -1498,10 +1498,64 @@ const detectFlightsLoose = (text) => {
   return out;
 };
 
+// Uçuş numarası olmayan belgeler (ör. THY koltuk/ek hizmet onayı): "İzmir (ADB) - Guangzhou (CAN) 16 Ekim 2026 21:50 … 16:50"
+const AIRLINE_NAMES = [[/T[üu]rk Hava Yollar[ıi]|Turkish Airlines|\bTHY\b/i, 'THY'], [/Pegasus/i, 'Pegasus'], [/\bAJet\b/i, 'AJet'], [/SunExpress/i, 'SunExpress'], [/Lufthansa/i, 'Lufthansa'], [/Azerbaijan Airlines|AZAL/i, 'AZAL']];
+const detectFlightsRoute = (text) => {
+  const raw = String(text || '').replace(/\s+/g, ' ');
+  const airline = (AIRLINE_NAMES.find(([re]) => re.test(raw)) || [])[1] || '';
+  const re = /([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü.'-]{1,25}(?: [A-Za-zÇĞİÖŞÜçğıöşü.'-]{2,25}){0,2})\s*\(([A-Z]{3})\)\s*[-–—>]+\s*([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü.'-]{1,25}(?: [A-Za-zÇĞİÖŞÜçğıöşü.'-]{2,25}){0,2})\s*\(([A-Z]{3})\)/g;
+  const ms = [...raw.matchAll(re)];
+  const out = [], seen = new Set();
+  ms.forEach((m, k) => {
+    const start = m.index + m[0].length;
+    const seg = raw.slice(start, Math.min(k + 1 < ms.length ? ms[k + 1].index : raw.length, start + 220));
+    const d = datesIn(seg)[0];
+    if (!d || d.idx > 40) return;
+    const times = [...seg.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g)].map(x => x[0]);
+    const cm = seg.match(/\b(TK|PC|VF|XQ|J2|LH|AJ)\s?-?\s?(\d{2,4})\b/);
+    const key = m[2] + m[4] + d.ymd; if (seen.has(key)) return; seen.add(key);
+    const last = (x) => String(x).trim().split(/\s+/).pop();
+    out.push({ code: cm ? cm[1] + cm[2] : '', airline, ymd: d.ymd, fromCity: last(m[1]), from: m[2], toCity: last(m[3]), to: m[4], dep: times[0] || '', arr: times[1] || '' });
+  });
+  return out;
+};
+// Acente / GDS e-bilet tablosu (THY ve çoğu havayolu): "SOFIA/SOF ISTANBUL/IST TK 1032 H 05-10 15:50 05-10 17:20"
+// Tarihte yıl yok → bilet düzenlenme tarihinden ("02OCT26" / "02EKİM26"); uçuş ayı daha önceyse ertesi yıl
+const MON3 = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12, OCA: 1, SUB: 2, NIS: 4, MAY_: 5, HAZ: 6, TEM: 7, AGU: 8, EYL: 9, EKI: 10, KAS: 11, ARA: 12 };
+const detectFlightsGDS = (text) => {
+  const raw = String(text || '').replace(/\s+/g, ' ');
+  const up = asciiTr(raw).toUpperCase();
+  let issueY = new Date().getFullYear(), issueM = new Date().getMonth() + 1;
+  const im = up.match(/\b(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|OCAK|SUBAT|MART|NISAN|MAYIS|HAZIRAN|TEMMUZ|AGUSTOS|EYLUL|EKIM|KASIM|ARALIK)(\d{2})\b/);
+  if (im) { issueY = 2000 + +im[3]; issueM = MON3[im[2].slice(0, 3)] || issueM; }
+  // Şehir: en az 2 harfli kelimeler (önceki satırın sonundaki "W C" gibi tek harfler karışmasın)
+  const re = /\*?([A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ'.-]{1,24}(?: [A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ'.-]{1,24}){0,2})\/([A-Z]{3})\s+\*?([A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ'.-]{1,24}(?: [A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ'.-]{1,24}){0,2})\/([A-Z]{3})\s+([A-Z0-9]{2})\s+(\d{1,4})\s+[A-Z]\s+(\d{2})-?(\d{2}|[A-Z]{3})\s+(\d{1,2}:?\d{2})\s+(?:(\d{2})-?(\d{2}|[A-Z]{3})\s+)?(\d{1,2}:?\d{2})/g;
+  const out = [], seen = new Set();
+  let m;
+  const tm = (t) => t.includes(':') ? t : t.slice(0, -2) + ':' + t.slice(-2);
+  while ((m = re.exec(raw))) {
+    const d = +m[7], mo = /\d/.test(m[8]) ? +m[8] : (MON3[asciiTr(m[8]).toUpperCase()] || 0);
+    if (!mo || d < 1 || d > 31) continue;
+    const y = mo < issueM - 1 ? issueY + 1 : issueY;
+    const ymd = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const code = m[5] + m[6];
+    if (seen.has(code + ymd)) continue; seen.add(code + ymd);
+    // Biletteki şehirler ASCII büyük harf: Türkçe küçültme "SOFIA"yı "Sofıa" yapmasın
+    const tc = (x) => x.trim().toLowerCase().replace(/(^|[\s-])(\S)/g, (q, a, b) => a + b.toUpperCase());
+    out.push({ code, ymd, fromCity: tc(m[1]), from: m[2], toCity: tc(m[3]), to: m[4], dep: tm(m[9]), arr: tm(m[12]) });
+  }
+  return out;
+};
 const detectFlights = (text) => {
   const strict = detectFlightsStrict(text);
-  return strict.length ? strict : detectFlightsLoose(text);
+  if (strict.length) return strict;
+  const gds = detectFlightsGDS(text);
+  if (gds.length) return gds;
+  const loose = detectFlightsLoose(text);
+  return loose.length ? loose : detectFlightsRoute(text);
 };
+// Aynı uçuş mu? (numara yoksa güzergah + tarih)
+const sameFlight = (a, b) => a.ymd === b.ymd && (a.code && b.code ? a.code === b.code : a.from === b.from && a.to === b.to);
 const detectFlightsStrict = (text) => {
   const out = [], seen = new Set();
   const re = /([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü .'-]{1,30}?)\s*\(([A-Z]{3})\)\s+([A-Z0-9]{2})\s?-?\s?(\d{1,4})\s+(\d{2})[/.](\d{2})[/.](\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g;
@@ -1520,10 +1574,10 @@ const detectFlightsStrict = (text) => {
 // hem toplu belge yüklemede kullanılır. Döner: { link, text } (WhatsApp mesajı şablondan)
 const publishCustomerLink = async (c, trip, token, appSettings) => {
       const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
-      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')));
+      const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')) || (!f.code && f.from && f.to && f.ymd));
       const flights = fl.map((f, i) => ({
         dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',
-        code: String(f.code).toUpperCase().replace(/[\s-]/g, ''),
+        code: String(f.code || '').toUpperCase().replace(/[\s-]/g, ''), airline: f.airline || '',
         date: f.ymd ? formatDate(f.ymd) : '', ymd: f.ymd || '', // ymd: linkte sıradaki uçuşu bulmak için
         dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
         arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
@@ -1772,7 +1826,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
       }
       setTrip(t => {
         const fl = [...(t.flights || [])];
-        found.forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push(x); });
+        found.forEach(x => { if (!fl.some(y => sameFlight(y, x))) fl.push(x); });
         fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
         const patch = { docs: [...(t.docs || []), ...added], flights: fl };
         if (hotelFound) {
@@ -1827,7 +1881,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
       } else {
         const fl = detectFlights(txt).map(x => ({ ...x, docId: d.id }));
         if (!fl.length) return;
-        setTrip(tt => { const all = [...(tt.flights || [])]; fl.forEach(x => { if (!all.some(y => y.code === x.code && y.ymd === x.ymd)) all.push(x); }); all.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd))); return { ...tt, flights: all }; });
+        setTrip(tt => { const all = [...(tt.flights || [])]; fl.forEach(x => { if (!all.some(y => sameFlight(y, x))) all.push(x); }); all.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd))); return { ...tt, flights: all }; });
         showToast?.(`✈️ ${fl.length} uçuş okundu`, 'success');
       }
     } catch (e) { showToast?.('Belge yeniden okunamadı: ' + e.message, 'warning'); }
@@ -2059,7 +2113,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
           }
           // Uçuşlar + boş tarih/şehir/başlık
           const fl = [...(pc.trip.flights || [])];
-          if (icon === '✈️') (r.flights || []).forEach(x => { if (!fl.some(y => y.code === x.code && y.ymd === x.ymd)) fl.push({ ...x, docId: newDocId }); });
+          if (icon === '✈️') (r.flights || []).forEach(x => { if (!fl.some(y => sameFlight(y, x))) fl.push({ ...x, docId: newDocId }); });
           fl.sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
           pc.trip.flights = fl;
           if (fl.length) {
