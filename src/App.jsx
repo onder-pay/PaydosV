@@ -7011,6 +7011,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [editingTour, setEditingTour] = useState(null);
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
+  const [restoTour, setRestoTour] = useState(null); // 🍽️ Restoranlar paneli açık olan tur id
+  const [restoSync, setRestoSync] = useState(false);
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
@@ -7305,6 +7307,22 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return Array.from(bytes, b => abc[b % abc.length]).join('');
   };
+  // Tur linkindeki "Tavsiye Edilen Restoranlar": CRM'de turun sayfasından elle girilir (tour.restaurants)
+  const cleanRestaurants = (list) => (Array.isArray(list) ? list : [])
+    .map(r => ({ name: String(r?.name || '').trim(), cuisine: String(r?.cuisine || '').trim(), price: String(r?.price || '').trim(), note: String(r?.note || '').trim(), address: String(r?.address || '').trim() }))
+    .filter(r => r.name);
+  // Daha önce gönderilmiş linklere de yansıt (link paylaşıldığı anda kopyalandığı için)
+  const syncRestaurantsToLinks = async (tour) => {
+    const tokens = (tour.reservations || []).filter(r => r.shareToken).map(r => r.shareToken);
+    if (!tokens.length) { showToast?.('Kaydedildi — bu turda henüz gönderilmiş link yok, yeni linklere otomatik eklenecek', 'success'); return; }
+    setRestoSync(true);
+    try {
+      const restaurants = cleanRestaurants(tour.restaurants);
+      const results = await Promise.allSettled(tokens.map(t => setDoc(doc(db, 'paylasimlar', t), { restaurants, updatedAt: new Date().toISOString() }, { merge: true })));
+      const fail = results.filter(r => r.status === 'rejected').length;
+      showToast?.(fail ? `${tokens.length - fail} linke yansıdı, ${fail} link güncellenemedi` : `${tokens.length} gönderilmiş linke yansıdı`, fail ? 'warning' : 'success');
+    } finally { setRestoSync(false); }
+  };
   const shareResLink = async (tour, res) => {
     if (shareBusy) return;
     setShareBusy(res.id);
@@ -7344,7 +7362,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       await setDoc(doc(db, 'paylasimlar', token), {
         customerName: res.customerName || '', tourName: tour.name || '',
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
-        docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
+        docs, flights, restaurants: cleanRestaurants(tour.restaurants), updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
         // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
         hotel: hi.name ? { name: hi.name || '', address: hi.address || '', city: hi.city || '', country: hi.country || '', phone: hi.phone || '' } : null,
         contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur' }
@@ -8377,6 +8395,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
+                <button onClick={() => setRestoTour(restoTour === tour.id ? null : tour.id)} style={{ padding: '8px 14px', background: restoTour === tour.id ? 'rgba(249,115,22,0.3)' : 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Tur linkinde gösterilecek tavsiye restoranlar">🍽️ Restoranlar{cleanRestaurants(tour.restaurants).length ? ` (${cleanRestaurants(tour.restaurants).length})` : ''}</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
                 {RES_DOCS.map(d => (
@@ -8905,6 +8924,48 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
             })()}
 
             {/* Odalama Bölümü */}
+            {restoTour === tour.id && (() => {
+              const list = Array.isArray(tour.restaurants) ? tour.restaurants : [];
+              const setList = (next) => setTours(prev => prev.map(t => t.id === tour.id ? { ...t, restaurants: next } : t));
+              const upd = (i, field, val) => setList(list.map((r, j) => j === i ? { ...r, [field]: val } : r));
+              const move = (i, d) => { const j = i + d; if (j < 0 || j >= list.length) return; const n = [...list]; [n[i], n[j]] = [n[j], n[i]]; setList(n); };
+              const sent = (tour.reservations || []).filter(r => r.shareToken).length;
+              const fs = { padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '12px', width: '100%', boxSizing: 'border-box' };
+              return (
+                <div style={{ marginBottom: '16px', padding: '14px', background: 'rgba(249,115,22,0.05)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '14px', color: '#fb923c', fontWeight: '700' }}>🍽️ Tavsiye Edilen Restoranlar</div>
+                    <button onClick={() => setRestoTour(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '12px' }}>Bu turun linkinde "Tavsiye Edilen Restoranlar" bölümünde görünür. Yeni gönderilen linklere otomatik eklenir; daha önce gönderilenler için alttaki butona basın.</div>
+                  {list.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px 0' }}>Henüz restoran yok.</div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {list.map((r, i) => (
+                      <div key={i} style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.4fr 0.8fr', gap: '8px' }}>
+                          <input value={r.name || ''} onChange={e => upd(i, 'name', e.target.value)} placeholder="Restoran adı *" style={{ ...fs, fontWeight: '600' }} />
+                          <input value={r.cuisine || ''} onChange={e => upd(i, 'cuisine', e.target.value)} placeholder="Mutfak (ör. Azerbaycan mutfağı, balık)" style={fs} />
+                          <select value={r.price || ''} onChange={e => upd(i, 'price', e.target.value)} style={fs}>
+                            <option value="">Fiyat —</option><option value="€">€ Uygun</option><option value="€€">€€ Orta</option><option value="€€€">€€€ Pahalı</option>
+                          </select>
+                        </div>
+                        <textarea value={r.note || ''} onChange={e => upd(i, 'note', e.target.value)} placeholder="Tavsiye notu (ör. Kuzu tandırı meşhur, akşam rezervasyon önerilir)" rows={2} style={{ ...fs, marginTop: '8px', resize: 'vertical', fontFamily: 'inherit' }} />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
+                          <input value={r.address || ''} onChange={e => upd(i, 'address', e.target.value)} placeholder="Adres (yol tarifi için; boşsa isimden bulunur)" style={{ ...fs, flex: 1 }} />
+                          <button onClick={() => move(i, -1)} disabled={i === 0} title="Yukarı" style={{ padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>↑</button>
+                          <button onClick={() => move(i, 1)} disabled={i === list.length - 1} title="Aşağı" style={{ padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' }}>↓</button>
+                          <button onClick={() => { if (window.confirm(`"${r.name || 'Bu restoran'}" silinsin mi?`)) setList(list.filter((_, j) => j !== i)); }} title="Sil" style={{ padding: '6px 9px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                    <button onClick={() => setList([...list, { name: '', cuisine: '', price: '', note: '', address: '' }])} style={{ padding: '9px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>+ Restoran ekle</button>
+                    <button onClick={() => syncRestaurantsToLinks(tour)} disabled={restoSync} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', color: '#fff', cursor: restoSync ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{restoSync ? '⏳ Güncelleniyor...' : `🔗 Gönderilmiş linklere yansıt${sent ? ` (${sent})` : ''}`}</button>
+                  </div>
+                </div>
+              );
+            })()}
             {roomingTour?.id === tour.id && (tour.reservations || []).filter(r => !r.cancelled).length > 0 && (() => {
               const roomTypes = buildRoomTypes(tour);
               const totalRooms = Object.values(roomTypes).reduce((s, r) => s + r.length, 0);

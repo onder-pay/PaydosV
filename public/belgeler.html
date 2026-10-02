@@ -130,6 +130,17 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .hotel .b{display:flex;gap:8px}
 .hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
 .hotel .b a.p{background:var(--gold);color:#1b1f3b}
+/* Tavsiye edilen restoranlar (CRM'de tur sayfasından elle girilir) */
+.rest{display:flex;flex-direction:column;gap:10px}
+.rest .r{padding:14px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
+.rest .rh{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rest .rn{font-size:16px;font-weight:700}
+.rest .rp{font-size:13px;font-weight:700;color:var(--gold);white-space:nowrap}
+.rest .rc{font-size:12px;color:var(--muted);margin-top:2px}
+.rest .rt{font-size:13px;line-height:1.5;margin-top:8px}
+.rest .ra{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.rest .rb{display:flex;gap:8px;margin-top:10px}
+.rest .rb a{flex:1;text-align:center;padding:9px;border-radius:12px;font-weight:700;font-size:13px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
 .contact .bt{display:flex;gap:6px}
 .disc{display:none;margin:10px 4px 0;font-size:11px;line-height:1.5;color:#6f78a3}
 .contact a.wa{background:#25d366;color:#fff}
@@ -741,6 +752,25 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Seyahat bilgileri (hava, saat, kur, priz, otel) — iletişim kartından önce yerini ayırır ---
       var infoSlot = el('div'); box.appendChild(infoSlot);
       try { renderInfo(f, infoSlot); } catch (x) {}
+
+      // --- Tavsiye edilen restoranlar (CRM → tur sayfası → Restoranlar) ---
+      var rests = (f.restaurants || []).filter(function (r) { return r && String(r.name || '').trim(); });
+      if (rests.length) {
+        add(box, el('div', 'sec', 'Tavsiye Edilen Restoranlar'));
+        var rl = add(box, el('div', 'rest'));
+        rests.forEach(function (r) {
+          var c = el('div', 'r');
+          var h = el('div', 'rh'); h.appendChild(el('div', 'rn', String(r.name))); if (r.price) h.appendChild(el('div', 'rp', String(r.price))); c.appendChild(h);
+          if (r.cuisine) c.appendChild(el('div', 'rc', String(r.cuisine)));
+          if (r.note) c.appendChild(el('div', 'rt', String(r.note)));
+          if (r.address) c.appendChild(el('div', 'ra', String(r.address)));
+          var q = encodeURIComponent([r.name, r.address, f.city, f.country].filter(Boolean).join(', '));
+          var b = el('div', 'rb');
+          var go = el('a', '', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; b.appendChild(go);
+          var mp = el('a', '', '🗺️ Haritada gör'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; b.appendChild(mp);
+          c.appendChild(b); rl.appendChild(c);
+        });
+      }
 
       // --- Oyun (her zaman erişilebilir, internetsiz çalışır) ---
       var tg = add(box, el('button', 'tet')); tg.type = 'button';
