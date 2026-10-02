@@ -210,7 +210,10 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
   var deferredPrompt = null, instCard = null;
   var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
   var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var instDismissed = false; try { instDismissed = localStorage.getItem('paydos_inst_x_' + code) === '1'; } catch (e) {}
+  // Kapatılırsa 7 gün sonra yeniden gösterilir (eskiden kalıcı gizleniyordu — bir kez ✕'e basan bir daha göremiyordu)
+  var instDismissed = false; try { var xs = localStorage.getItem('paydos_inst_x_' + code); instDismissed = !!xs && xs !== '1' && Date.now() - Number(xs) < 7 * 864e5; } catch (e) {}
+  // WhatsApp / Instagram / Facebook içinde açılan sayfada "ana ekrana ekle" yok — gerçek tarayıcıda açılmalı
+  var inApp = /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent);
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (instCard) instCard.style.display = 'flex'; });
   window.addEventListener('appinstalled', function () { if (instCard) instCard.style.display = 'none'; });
   var renderInstall = function (parent) {
@@ -218,19 +221,21 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
     instCard = el('div', 'inst');
     var iic = el('div', 'ic'); iic.appendChild(ico('home')); instCard.appendChild(iic);
     var tx = el('div', 'tx'); tx.appendChild(el('b', '', 'Ana ekrana ekleyin'));
-    tx.appendChild(document.createTextNode(isIOS ? 'Paylaş düğmesine, sonra "Ana Ekrana Ekle"ye dokunun.' : 'Belgelerinize tek dokunuşla, internetsiz de ulaşın.'));
+    tx.appendChild(document.createTextNode(inApp
+      ? (isIOS ? 'Bu sayfa uygulama içinde açıldı. Sağ üstteki menüden "Safari\'de aç"a dokunun, sonra Paylaş → "Ana Ekrana Ekle".' : 'Bu sayfa uygulama içinde açıldı. Menüden (⋮) "Chrome\'da aç"a dokunun, sonra "Ana ekrana ekle".')
+      : isIOS ? 'Alttaki Paylaş düğmesine (□↑), sonra "Ana Ekrana Ekle"ye dokunun.' : 'Belgelerinize tek dokunuşla, internetsiz de ulaşın.'));
     instCard.appendChild(tx);
-    if (!isIOS) {
+    if (!isIOS && !inApp) {
       var go = el('button', 'go', 'Ekle'); go.type = 'button';
       go.addEventListener('click', function () {
-        if (!deferredPrompt) { alert('Tarayıcı menüsünden (⋮) "Ana ekrana ekle" / "Uygulamayı yükle" seçeneğine dokunun.'); return; }
+        if (!deferredPrompt) { alert('Sağ üstteki menüye (⋮) dokunun ve "Ana ekrana ekle" ya da "Uygulamayı yükle"yi seçin.\n\nMenüde yoksa: önce "Chrome\'da aç"a dokunun (WhatsApp içinden açıldıysa).'); return; }
         deferredPrompt.prompt();
         deferredPrompt.userChoice.then(function () { deferredPrompt = null; instCard.style.display = 'none'; });
       });
       instCard.appendChild(go);
     }
     var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Kapat');
-    x.addEventListener('click', function () { instCard.style.display = 'none'; try { localStorage.setItem('paydos_inst_x_' + code, '1'); } catch (e) {} });
+    x.addEventListener('click', function () { instCard.style.display = 'none'; try { localStorage.setItem('paydos_inst_x_' + code, String(Date.now())); } catch (e) {} });
     instCard.appendChild(x);
     parent.appendChild(instCard);
   };
