@@ -61,6 +61,21 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .note{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(245,185,66,.1);border:1px solid rgba(245,185,66,.25);color:var(--gold2);font-size:12px;line-height:1.5;display:none}
 
 /* Biniş kartı */
+/* 🛫 Eski usul kalkış tabelası (split-flap) */
+.fb{margin-bottom:14px;padding:12px 10px 10px;border-radius:14px;background:#111;border:1px solid #2a2a2a;box-shadow:inset 0 2px 10px rgba(0,0,0,.8),0 12px 30px -15px rgba(0,0,0,.7);overflow:hidden}
+.fb .fh{display:flex;align-items:center;justify-content:space-between;color:#ffd400;font:700 12px 'Courier New',monospace;letter-spacing:2px;margin:0 2px 8px}
+.fb .fh .clk{font-size:15px;letter-spacing:1px}
+.fb .cols,.fb .row{display:flex;gap:var(--gp,6px)}
+.fb .cols{color:#8a8a8a;font:700 8.5px 'DM Sans',sans-serif;letter-spacing:.8px;margin:0 0 4px}
+.fb .cols span{flex:none;overflow:hidden;white-space:nowrap}
+.fb .row{margin-top:3px}
+.fb .grp{display:flex;gap:1px;flex:none}
+.fb .fc{position:relative;display:inline-flex;align-items:center;justify-content:center;width:var(--cw,10px);height:calc(var(--cw,10px) * 1.55);background:#1d1d1d;border-radius:2px;color:#ffd400;font:700 calc(var(--cw,10px) * 1.15) 'Courier New',monospace;line-height:1;overflow:hidden}
+.fb .fc::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.85)}
+.fb .fc.w{color:#fff}.fb .fc.r{color:#ff5a4f}.fb .fc.g{color:#3ddc84}
+.fb .sub{margin:3px 0 7px;color:#bdbdbd;font:600 10.5px 'DM Sans',sans-serif;letter-spacing:.3px}
+.fb .sub b{color:#ffd400;font-weight:700}
+.fb .ft{margin-top:6px;color:#6f6f6f;font:600 9.5px 'DM Sans',sans-serif;text-align:right}
 .pass{position:relative;display:block;margin-bottom:12px;border-radius:20px;background:#fffaf0;color:#1b1f3b;text-decoration:none;overflow:hidden;box-shadow:0 12px 30px -15px rgba(0,0,0,.6)}
 .pass .ph{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(90deg,#1d3fa8,#6a2bd6);color:#fff;font-size:12px;font-weight:700;letter-spacing:1px}
 .pass .ph .fn{font-size:15px;letter-spacing:.5px}
@@ -710,6 +725,111 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     }).catch(function () {});
   };
 
+  // ===== 🛫 Kalkış tabelası (eski usul, harfler dönerek yerine oturur) =====
+  // Saat, uçuş, nereye biletten; kapı / durum / kontuar kalkışa 1 gün kala /.netlify/functions/ucus'tan
+  // (AeroDataBox) gelir ve 5 dakikada bir yenilenir. Servis yoksa ilgili hücreler boş kalır.
+  var TR_AY = { ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6, temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12 };
+  var trYmd = function (s) {
+    var t = String(s || '').toLocaleLowerCase('tr-TR').replace(/[çğıöşü]/g, function (c) { return TRA[c]; });
+    var m = t.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/); if (!m || !TR_AY[m[2]]) return '';
+    return m[3] + '-' + String(TR_AY[m[2]]).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  };
+  var addDay = function (ymd, n) { var d = new Date(ymd + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var FLAP = 'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ0123456789:-';
+  var flipTo = function (c, ch, delay) {
+    if (c._v === ch) return; c._v = ch;
+    var tok = c._t = (c._t || 0) + 1; // yeni değer gelirse eski dönüş yarıda kalır
+    var n = 0, max = 6 + Math.floor(Math.random() * 6);
+    setTimeout(function () {
+      var iv = setInterval(function () {
+        if (tok !== c._t) { clearInterval(iv); return; }
+        if (++n >= max) { clearInterval(iv); c.textContent = ch === ' ' ? ' ' : ch; return; }
+        c.textContent = FLAP.charAt(Math.floor(Math.random() * FLAP.length));
+      }, 45);
+    }, delay || 0);
+  };
+  var STAT = { Expected: 'PLANLI', CheckIn: 'CHECK-IN', Boarding: 'BİNİŞ', GateClosed: 'KAPANDI', Departed: 'KALKTI', EnRoute: 'HAVADA', Approaching: 'İNİŞTE', Arrived: 'İNDİ', Delayed: 'RÖTARLI', Canceled: 'İPTAL', CanceledUncertain: 'İPTAL?', Diverted: 'YÖNLENDİ' };
+  var renderBoard = function (flights) {
+    var W = [5, 6, 9, 3, 8], H = ['SAAT', 'UÇUŞ', 'NEREYE', 'KAPI', 'DURUM'];
+    var b = el('div', 'fb');
+    var fh = el('div', 'fh'); fh.appendChild(el('span', '', 'KALKIŞ · DEPARTURES')); var clk = el('span', 'clk', ''); fh.appendChild(clk); b.appendChild(fh);
+    var tickClk = function () { var d = new Date(); clk.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+    tickClk(); setInterval(tickClk, 15000);
+    var cols = el('div', 'cols'); b.appendChild(cols);
+    var colEls = H.map(function (h) { var s = el('span', '', h); cols.appendChild(s); return s; });
+    // Aktarmalı uçuşlarda sonraki bacak gece yarısını geçtiyse tarihi bir gün ileri al
+    var lastDir = '', lastMin = -1, off = 0;
+    var rows = flights.map(function (x) {
+      var d = parsePt(x.dep), r = parsePt(x.arr);
+      var tm = (d.time || '').slice(0, 5), mins = tm ? (+tm.slice(0, 2)) * 60 + (+tm.slice(3, 5)) : -1;
+      if (x.dir !== lastDir) { off = 0; lastMin = -1; } else if (mins >= 0 && lastMin >= 0 && mins < lastMin) off++;
+      lastDir = x.dir; if (mins >= 0) lastMin = mins;
+      var ymd = trYmd(x.date); if (ymd && off) ymd = addDay(ymd, off);
+      return { x: x, ymd: ymd, from: d.iata, time: tm, dest: (r.city || r.iata || '').toLocaleUpperCase('tr-TR') };
+    });
+    var cells = [];
+    rows.forEach(function (rw, ri) {
+      var row = el('div', 'row'), groups = W.map(function (w) { var g = el('div', 'grp'); for (var k = 0; k < w; k++) g.appendChild(el('span', 'fc', ' ')); row.appendChild(g); return g; });
+      b.appendChild(row);
+      var sub = el('div', 'sub', ''); b.appendChild(sub);
+      cells.push({ groups: groups, sub: sub, base: '' });
+      rw.set = function (vals, cls) {
+        vals.forEach(function (v, gi) {
+          var s = String(v || '').toLocaleUpperCase('tr-TR').slice(0, W[gi]); while (s.length < W[gi]) s += ' ';
+          Array.prototype.forEach.call(groups[gi].children, function (c, k) { c.className = 'fc' + (cls && cls[gi] ? ' ' + cls[gi] : ''); flipTo(c, s.charAt(k), ri * 120 + (gi * 4 + k) * 25); });
+        });
+      };
+      var today = new Date().toISOString().slice(0, 10);
+      var base = rw.ymd && rw.ymd < today ? 'UÇTU' : 'PLANLI';
+      rw.set([rw.time, rw.x.code, rw.dest, '', base], [0, 'w', 0, 0, base === 'UÇTU' ? 'g' : 0]);
+      var dt = rw.ymd ? rw.ymd.split('-').reverse().slice(0, 2).join('.') : '';
+      sub.textContent = cells[ri].base = [x2(rw.x.dir), dt, rw.from].filter(Boolean).join(' · ');
+    });
+    function x2(dir) { return dir ? String(dir).toLocaleUpperCase('tr-TR') : ''; }
+    var foot = el('div', 'ft', ''); b.appendChild(foot);
+    // Hücre genişliği: tabelanın genişliğine sığacak şekilde
+    var fit = function () {
+      var total = W.reduce(function (a, n) { return a + n; }, 0), gp = 6;
+      var avail = b.clientWidth - 20 - gp * (W.length - 1) - total; // grp içi 1px boşluklar
+      var cw = Math.max(7, Math.min(16, Math.floor(avail / total)));
+      b.style.setProperty('--cw', cw + 'px'); b.style.setProperty('--gp', gp + 'px');
+      colEls.forEach(function (s, i) { s.style.width = (W[i] * cw + (W[i] - 1)) + 'px'; });
+    };
+    setTimeout(fit, 0); window.addEventListener('resize', fit);
+    // Canlı bilgi: kalkışa 30 saat kala → kalkıştan 6 saat sonrasına kadar, 5 dakikada bir
+    var live = function () {
+      var any = false;
+      rows.forEach(function (rw, ri) {
+        if (!rw.ymd || !rw.x.code) return;
+        var t = Date.parse(rw.ymd + 'T' + (rw.time || '12:00') + ':00');
+        if (!(t - Date.now() < 30 * 3600000 && Date.now() - t < 6 * 3600000)) return;
+        any = true;
+        fetch('/.netlify/functions/ucus?c=' + encodeURIComponent(rw.x.code) + '&d=' + rw.ymd + (rw.from ? '&f=' + rw.from : ''))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) {
+            if (!j || !j.ok) return;
+            var st = STAT[j.status] || 'PLANLI';
+            var nt = (j.revised || '').match(/\d{2}:\d{2}/), sched = (j.sched || '').match(/\d{2}:\d{2}/);
+            var late = nt && sched && nt[0] !== sched[0];
+            if (late && st === 'PLANLI') st = 'RÖTARLI';
+            var red = /RÖTAR|İPTAL|KAPANDI|YÖNLEN/.test(st), green = /BİNİŞ|CHECK|KALKTI|HAVADA|İNDİ/.test(st);
+            rw.set([late ? nt[0] : rw.time, rw.x.code, rw.dest, j.gate || '', st], [late ? 'r' : 0, 'w', 0, j.gate ? 'w' : 0, red ? 'r' : green ? 'g' : 0]);
+            var info = [];
+            if (j.terminal) info.push('Terminal <b>' + esc(j.terminal) + '</b>');
+            if (j.desk) info.push('Kontuar <b>' + esc(j.desk) + '</b>');
+            if (late) info.push('Planlanan ' + sched[0]);
+            if (!j.gate) info.push('Kapı henüz açıklanmadı');
+            cells[ri].sub.innerHTML = esc(cells[ri].base) + (info.length ? ' · ' + info.join(' · ') : '');
+            var u = new Date(j.updated); foot.textContent = 'Canlı bilgi · son güncelleme ' + String(u.getHours()).padStart(2, '0') + ':' + String(u.getMinutes()).padStart(2, '0');
+          }).catch(function () {});
+      });
+      if (any) setTimeout(live, 5 * 60000);
+    };
+    live();
+    return b;
+  };
+
   // ===== 🏆 Canlı bilgi yarışması =====
   // Rehber CRM'den açar/yönetir; burada sadece katılım ve cevap. Gerçek zamanlı olduğu için Firebase SDK
   // yalnızca tur kimliği olan linkte ve tur bitene kadar (bitişten 2 gün sonrasına dek) yüklenir.
@@ -857,6 +977,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Uçuşlar (biniş kartı) ---
       if (flights.length) {
         add(box, el('div', 'sec', 'Uçuşlarınız'));
+        try { add(box, renderBoard(flights)); } catch (x) {}
         add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun, Tetris açılsın!'));
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
