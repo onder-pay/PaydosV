@@ -98,6 +98,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .wear{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--ink2)}
 .hotel{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--line)}
 .hotel .n{font-size:15px;font-weight:700}
+.hotel .hd{font-size:13px;font-weight:600;color:var(--ink2)}
 .hotel .a{font-size:12.5px;color:var(--muted);line-height:1.5}
 .hotel .b{display:flex;gap:8px;margin-top:4px}
 .hotel .b a{flex:1;display:flex;align-items:center;justify-content:center;height:40px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;border:1px solid var(--line);color:var(--ink)}
@@ -167,6 +168,11 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .vl .w{margin:0 14px 12px 66px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.45}
 .vl .w.a{background:#fff6e0;color:#7a5a0c;border:1px solid #f1dda6}.vl .w.r{background:#fdecec;color:#9b1c1c;border:1px solid #f5c2c2}
 .vl .row.a .dd b{color:#b7791f}.vl .row.r .dd b{color:var(--accent)}
+.vl .ppb{display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% - 28px);margin:0 14px 12px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font:700 13px 'Manrope',sans-serif;cursor:pointer}
+.vl .ppb svg.i{width:17px;height:17px}
+.ppv{position:fixed;inset:0;z-index:70;background:rgba(10,16,28,.92);display:flex;align-items:center;justify-content:center;padding:16px}
+.ppv img{max-width:100%;max-height:88vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);background:#fff}
+.ppv .x{position:absolute;top:14px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:#fff;color:var(--ink);font-size:17px;cursor:pointer}
 .offline{margin-top:12px;padding:10px 12px;border-radius:10px;background:#eef3fb;border:1px solid #d6e2f3;color:#2f4a73;font-size:12px;text-align:center}
 .msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
 .empty{margin-top:14px;padding:28px 18px;border-radius:16px;border:1px dashed #d3d0c6;text-align:center;color:var(--muted);font-size:13px;line-height:1.6}
@@ -721,18 +727,13 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       // Güncel: en son uçak bileti + en son otel belgesi — her zaman en üstte
       var current = ['✈️', '🏨'].map(function (ic) { return sorted.filter(function (d) { return d.icon === ic; })[0]; }).filter(Boolean);
       var rest = sorted.filter(function (d) { return current.indexOf(d) < 0; });
-      if (current.length) {
-        sec('Güncel belgeler');
-        var cl = add(box, el('div', 'list cur'));
-        current.forEach(function (dc) {
-          var t = dc.addedAt ? new Date(dc.addedAt) : null;
-          cl.appendChild(docRow(dc, t && !isNaN(t) ? fmtD(t) + ' eklendi' : ''));
-        });
-      }
+      var lastTicket = current.filter(function (d) { return d.icon === '✈️'; })[0];
+      var lastHotel = current.filter(function (d) { return d.icon === '🏨'; })[0];
+      var whenOf = function (dc) { var t = dc.addedAt ? new Date(dc.addedAt) : null; return t && !isNaN(t) ? fmtD(t) + ' eklendi' : ''; };
 
-      // --- Uçuşlar ---
-      if (flights.length) {
-        sec('Yaklaşan uçuşlar', flights.length);
+      // --- ✈️ Uçuşunuz: yaklaşan uçuşlar (biletten okunur) + en son yüklenen uçak bileti ---
+      if (lastTicket || flights.length) {
+        sec('Uçuşunuz', flights.length > 1 ? flights.length + ' uçuş' : '');
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
           var xd = flightDay(x);
@@ -756,6 +757,30 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
           pf.appendChild(live); a.appendChild(pf);
           add(box, a);
         });
+        if (lastTicket) { var tl = add(box, el('div', 'list cur')); tl.appendChild(docRow(lastTicket, whenOf(lastTicket))); }
+      }
+
+      // --- 🏨 Oteliniz: otel giriş belgesinden okunan otel + en son yüklenen otel belgesi (konaklama bitince otel kartı gizlenir) ---
+      var hotel = f.hotel && f.hotel.name ? f.hotel : null;
+      var hIn = hotel && parseD(hotel.checkIn), hOut = hotel && parseD(hotel.checkOut);
+      if (hotel && hOut && hOut < todayD()) hotel = null;
+      if (lastHotel || hotel) {
+        sec('Oteliniz');
+        if (hotel) {
+          var hc = add(box, el('div', 'hotel'));
+          hc.appendChild(el('div', 'n', hotel.name));
+          if (hIn) {
+            var nights = hOut ? Math.round((hOut - hIn) / 86400000) : 0;
+            hc.appendChild(el('div', 'hd', 'Giriş ' + fmtD(hIn) + (hOut ? '  ·  Çıkış ' + fmtD(hOut) : '') + (nights > 0 ? '  ·  ' + nights + ' gece' : '')));
+          }
+          if (hotel.address) hc.appendChild(el('div', 'a', hotel.address));
+          var hq = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
+          var hb = el('div', 'b');
+          var hgo = el('a', 'p', 'Yol tarifi'); hgo.href = 'https://www.google.com/maps/dir/?api=1&destination=' + hq; hgo.target = '_blank'; hgo.rel = 'noopener'; hb.appendChild(hgo);
+          var hmp = el('a', '', 'Harita'); hmp.href = 'https://www.google.com/maps/search/?api=1&query=' + hq; hmp.target = '_blank'; hmp.rel = 'noopener'; hb.appendChild(hmp);
+          hc.appendChild(hb);
+        }
+        if (lastHotel) { var hl = add(box, el('div', 'list cur')); hl.style.marginTop = hotel ? '8px' : '0'; hl.appendChild(docRow(lastHotel, whenOf(lastHotel))); }
       }
 
       // --- Pasaport ve vize: bitişe kaç gün (müşteri kartından, link her açıldığında güncel) ---
@@ -783,6 +808,19 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
           var dd = el('div', 'dd'); dd.appendChild(el('b', '', days < 0 ? 'Doldu' : days.toLocaleString('tr-TR'))); dd.appendChild(el('span', '', days < 0 ? Math.abs(days) + ' gün önce' : days === 0 ? 'bugün bitiyor' : 'gün kaldı')); row.appendChild(dd);
           vl.appendChild(row);
           if (warn) vl.appendChild(el('div', 'w ' + lvl, warn));
+          // Pasaport görseli: dokununca açılır (sayfa PIN'li; sadece Firebase Storage adresi)
+          var img = v.kind === 'passport' ? safeUrl(v.image) : '';
+          if (img) {
+            var pb = el('button', 'ppb'); pb.type = 'button'; pb.appendChild(ico('visa')); pb.appendChild(document.createTextNode('Pasaportu gör'));
+            pb.addEventListener('click', function () {
+              var ov = el('div', 'ppv'); var im = document.createElement('img'); im.src = img; im.alt = 'Pasaport';
+              var cx = el('button', 'x', '✕'); cx.type = 'button'; cx.setAttribute('aria-label', 'Kapat');
+              ov.appendChild(im); ov.appendChild(cx); document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+              var close = function () { ov.remove(); document.body.style.overflow = ''; };
+              ov.addEventListener('click', close);
+            });
+            vl.appendChild(pb);
+          }
         });
       }
 
@@ -792,7 +830,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
         if (dest && dest.city) {
           var sameCity = String(f.city || '').toLocaleLowerCase('tr-TR') === String(dest.city).toLocaleLowerCase('tr-TR');
           renderInfo({ startDate: ymd(dest.start), endDate: ymd(dest.end), city: dest.city, country: sameCity ? f.country : '',
-            hotel: f.hotel && sameCity ? f.hotel : null, _abroadOnly: true, _infoTitle: 'Gideceğiniz yer · ' + dest.city }, infoSlot);
+            hotel: null, _abroadOnly: true, _infoTitle: 'Gideceğiniz yer · ' + dest.city }, infoSlot);
         }
       } catch (x) {}
 

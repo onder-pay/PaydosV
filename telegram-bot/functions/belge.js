@@ -21,7 +21,7 @@ const publicData = (d) => {
   return pub;
 };
 // Müşteri kartından pasaport/vize bitiş tarihleri — link her açıldığında güncel okunur (CRM'de yenilenince link de güncellenir).
-// Sadece tarih ve tür gider; pasaport numarası, görsel vb. GİTMEZ (KVKK).
+// Tarih, tür ve (PIN'li sayfada müşterinin kendisi için) pasaport görseli gider; pasaport numarası vb. GİTMEZ.
 const parseArr = (v) => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } } return []; };
 const parseObj = (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return p && typeof p === 'object' && !Array.isArray(p) ? p : {}; } catch { return {}; } } return {}; };
 const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
@@ -29,7 +29,9 @@ const byEndDesc = (k) => (a, b) => String(b[k]).localeCompare(String(a[k]));
 const validityOf = (c) => {
   const out = [];
   const pp = parseArr(c.passports).filter(p => isYmd(p.expiryDate)).sort(byEndDesc('expiryDate'))[0];
-  if (pp) out.push({ kind: 'passport', label: 'Pasaport', sub: String(pp.passportType || '').replace(/\s*\(.*\)\s*$/, ''), until: pp.expiryDate });
+  // Pasaport görseli: sadece Firebase Storage adresi (base64/diğer adresler gönderilmez). Sayfa PIN'li; müşteri kendi pasaportunu görür.
+  const ppImg = pp && /^https:\/\/firebasestorage\.googleapis\.com\//.test(String(pp.image || '')) ? String(pp.image) : '';
+  if (pp) out.push({ kind: 'passport', label: 'Pasaport', sub: String(pp.passportType || '').replace(/\s*\(.*\)\s*$/, ''), until: pp.expiryDate, image: ppImg });
   const sv = parseArr(c.schengenVisas).filter(v => v && v.country && isYmd(v.endDate)).sort(byEndDesc('endDate'))[0];
   if (sv) out.push({ kind: 'visa', label: 'Schengen vizesi', sub: String(sv.country || ''), until: sv.endDate });
   const us = parseObj(c.usaVisa);
