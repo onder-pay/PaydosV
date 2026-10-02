@@ -2067,16 +2067,19 @@ const shrinkImage = (file, max = 1600) => new Promise((ok, no) => {
   img.onerror = () => { URL.revokeObjectURL(url); no(new Error('görsel açılamadı')); };
   img.src = url;
 });
-function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
-  const empty = { title: '', text: '', link: '', target: 'all', tourId: '', start: '', end: '', active: true };
+// scope: 'customer' (müşteri linkleri) · 'tours' (tüm tur linkleri) · 'onetour' (fixedTour) · yoksa hepsi
+function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, fixedTour, embedded }) {
+  const defTarget = scope === 'customer' ? 'customer' : scope === 'tours' ? 'tour' : scope === 'onetour' ? 'onetour' : 'all';
+  const empty = { title: '', text: '', link: '', target: defTarget, tourId: fixedTour ? String(fixedTour.id) : '', start: '', end: '', active: true };
+  const inScope = (d) => !scope || (scope === 'customer' ? ['customer', 'all'].includes(d.target) : scope === 'tours' ? ['tour', 'all'].includes(d.target) : d.target === 'onetour' && String(d.tourId) === String(fixedTour?.id));
   const [list, setList] = useState(null);
   const [form, setForm] = useState(null); // düzenlenen duyuru
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
-  const load = () => getDocs(collection(db, 'duyurular')).then(q => setList(q.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))))).catch(e => { setList([]); showToast?.('Duyurular okunamadı: ' + e.message, 'error'); });
-  useEffect(() => { load(); }, []);
+  const load = () => getDocs(collection(db, 'duyurular')).then(q => setList(q.docs.map(d => ({ id: d.id, ...d.data() })).filter(inScope).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))))).catch(e => { setList([]); showToast?.('Duyurular okunamadı: ' + e.message, 'error'); });
+  useEffect(() => { load(); }, [scope, fixedTour?.id]);
   const pick = (f) => { if (!f || !/^image\//.test(f.type)) { showToast?.('Görsel dosyası seçin (JPG, PNG)', 'warning'); return; } setFile(f); setPreview(URL.createObjectURL(f)); };
   const upd = (p) => setForm(f => ({ ...f, ...p }));
   const save = async () => {
@@ -2094,7 +2097,7 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
         await uploadBytes(r, await shrinkImage(file), { contentType: 'image/jpeg' });
         image = await getDownloadURL(r);
       }
-      const tour = form.target === 'onetour' ? tours.find(t => String(t.id) === String(form.tourId)) : null;
+      const tour = form.target === 'onetour' ? (tours.find(t => String(t.id) === String(form.tourId)) || (fixedTour && String(fixedTour.id) === String(form.tourId) ? fixedTour : null)) : null;
       await setDoc(doc(db, 'duyurular', id), {
         title: form.title.trim(), text: form.text.trim(), link: form.link.trim(), image, imagePath,
         target: form.target, tourId: tour ? String(tour.id) : '', tourName: tour?.name || '',
@@ -2105,7 +2108,8 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
       if (tour) await Promise.all((tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => setDoc(doc(db, 'paylasimlar', r.shareToken), { tourId: String(tour.id) }, { merge: true }).catch(() => {})));
       // Görsel değiştiyse eskisini sil
       if (file && form.imagePath && form.imagePath !== imagePath) { try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), form.imagePath)); } catch (e) { /* yok */ } }
-      showToast?.('📢 Duyuru kaydedildi', 'success');
+      const where = form.target === 'customer' ? 'müşteri linklerine' : form.target === 'all' ? 'müşteri ve tur linklerine' : tour ? `${tour.name} tur linklerine` : 'bütün tur linklerine';
+      showToast?.(`📢 Duyuru ${where} gönderildi`, 'success');
       setForm(null); setFile(null); setPreview(''); load();
     } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
     setBusy(false);
@@ -2125,12 +2129,13 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
   const activeTours = tours.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   const img = preview || form?.image;
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+    <div style={{ padding: embedded ? 0 : isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px', flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '20px', margin: 0, flex: 1 }}>📢 Duyurular</h2>
+        {embedded ? <h3 style={{ fontSize: '16px', margin: 0, flex: 1 }}>📢 Duyurular</h3> : <h2 style={{ fontSize: '20px', margin: 0, flex: 1 }}>📢 Duyurular</h2>}
         {!form && <button onClick={() => { setForm({ ...empty }); setFile(null); setPreview(''); }} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff', background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>➕ Yeni duyuru</button>}
       </div>
-      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Küçük görsel + başlık + kısa metin + bağlantı — linklerde "Ana ekrana ekleyin" kartı gibi tek satır görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>
+      {!embedded && <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Küçük görsel + başlık + kısa metin + bağlantı — linklerde "Ana ekrana ekleyin" kartı gibi tek satır görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>}
+      {embedded && <div style={{ height: '12px' }} />}
       {form && (
         <div style={{ ...card, marginBottom: '18px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
           <div>
@@ -2149,12 +2154,18 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
             <textarea value={form.text} maxLength={400} rows={3} onChange={e => upd({ text: e.target.value })} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
             <label style={lbl}>Bağlantı <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı — kartta "Aç" butonu)</span></label>
             <input value={form.link} onChange={e => upd({ link: e.target.value })} placeholder="https://paydostur.com/..." style={inp} />
-            <label style={lbl}>Nerede görünsün?</label>
-            <select value={form.target} onChange={e => upd({ target: e.target.value })} style={inp}>{DUYURU_HEDEF.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
-            {form.target === 'onetour' && (
-              <select value={form.tourId} onChange={e => upd({ tourId: e.target.value })} style={{ ...inp, marginTop: '8px' }}>
-                <option value="">Tur seçin…</option>
-                {activeTours.map(t => <option key={t.id} value={t.id}>{t.name} · {formatDate(t.startDate)}</option>)}
+            {/* Hangi linke gidecek: müşteri linki / tur linki (tüm turlar ya da tek tur) / ikisi de */}
+            <label style={lbl}>Hangi linke gidecek?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+              {[['customer', '📱 Müşteri linki'], ['tour', '🎫 Tur linki'], ['all', '📱+🎫 İkisine de']].map(([k, t]) => {
+                const on = k === 'tour' ? ['tour', 'onetour'].includes(form.target) : form.target === k;
+                return <button key={k} type="button" onClick={() => upd(k === 'tour' ? { target: form.tourId ? 'onetour' : 'tour' } : { target: k })} style={{ padding: '10px 6px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '12.5px', color: on ? '#fff' : '#94a3b8', background: on ? 'rgba(59,130,246,0.25)' : 'rgba(0,0,0,0.2)', border: `1px solid ${on ? '#3b82f6' : 'rgba(255,255,255,0.12)'}` }}>{t}</button>;
+              })}
+            </div>
+            {['tour', 'onetour'].includes(form.target) && (
+              <select value={form.target === 'onetour' ? form.tourId : ''} onChange={e => upd(e.target.value ? { target: 'onetour', tourId: e.target.value } : { target: 'tour', tourId: '' })} style={{ ...inp, marginTop: '8px' }}>
+                <option value="">🌐 Bütün turların linklerine</option>
+                {(fixedTour && !activeTours.some(t => String(t.id) === String(fixedTour.id)) ? [fixedTour, ...activeTours] : activeTours).map(t => <option key={t.id} value={String(t.id)}>{t.name} · {formatDate(t.startDate)}</option>)}
               </select>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -2190,6 +2201,81 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
             </div>); })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ===== 📱 Müşteri Linki (sol menü): tüm müşteri linkleri için duyuru + bildirim =====
+function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser }) {
+  const [tab, setTab] = useState('duyuru');
+  const tb = (k, t) => <button onClick={() => setTab(k)} style={{ padding: '9px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: tab === k ? '#fff' : '#94a3b8', background: tab === k ? 'rgba(59,130,246,0.25)' : 'transparent', border: `1px solid ${tab === k ? '#3b82f6' : 'rgba(255,255,255,0.1)'}` }}>{t}</button>;
+  return (
+    <div>
+      <div style={{ padding: isMobile ? '16px 16px 0' : '24px 24px 0' }}>
+        <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>📱 Müşteri Linki</h2>
+        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#64748b' }}>Bütün müşteri linklerinde (/m/) görünenler. Tek müşterinin belgeleri için müşteri kartındaki "Müşteri Linki" butonunu kullanın.</p>
+        <div style={{ display: 'flex', gap: '8px' }}>{tb('duyuru', '📢 Duyurular')}{tb('bildirim', '📣 Bildirimler')}</div>
+      </div>
+      {tab === 'duyuru'
+        ? <div style={{ padding: isMobile ? '16px' : '20px 24px' }}><DuyurularModule scope="customer" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} /></div>
+        : <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />}
+    </div>
+  );
+}
+
+// ===== 🎫 Tur Linki (sol menü): tur seçilir → o turun duyuruları, yarışma, tavsiyeler, link durumu =====
+function TurLinkiModule({ tours = [], showToast, isMobile, currentUser }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [sel, setSel] = useState('');
+  const [q, setQ] = useState('');
+  const [showOld, setShowOld] = useState(false);
+  const [yarisma, setYarisma] = useState(false);
+  const [tavsiye, setTavsiye] = useState(false);
+  const list = tours.filter(t => showOld || !t.endDate || t.endDate >= today)
+    .filter(t => !q || `${t.name} ${t.city} ${t.country}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  const tour = sel && sel !== 'all' ? tours.find(t => String(t.id) === sel) : null;
+  const res = tour ? (tour.reservations || []).filter(r => !r.cancelled) : [];
+  const shared = res.filter(r => r.shareToken).length;
+  const item = (key, title, sub, on) => (
+    <button key={key} onClick={() => setSel(key)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: '#e8f1f8', background: on ? 'rgba(245,158,11,0.15)' : 'transparent', border: `1px solid ${on ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.06)'}`, marginBottom: '6px' }}>
+      <div style={{ fontWeight: 700, fontSize: '13px' }}>{title}</div><div style={{ fontSize: '11.5px', color: '#94a3b8' }}>{sub}</div>
+    </button>
+  );
+  const btn = (bg, bc, c) => ({ padding: '10px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', background: bg, border: `1px solid ${bc}`, color: c });
+  return (
+    <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>🎫 Tur Linki</h2>
+      <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>Tur seçin: o turun yolcularının linkinde (/b/) görünecek duyurular, canlı yarışma ve şehir tavsiyeleri.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', gap: '16px', alignItems: 'start' }}>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '12px', maxHeight: isMobile ? '260px' : '75vh', overflow: 'auto' }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tur ara…" style={{ width: '100%', padding: '8px 10px', marginBottom: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} />
+          {item('all', '🌐 Tüm tur linkleri', 'Her turda görünecek duyurular', sel === 'all')}
+          {list.map(t => item(String(t.id), t.name, `${t.city || t.country || ''} · ${formatDate(t.startDate)}${t.startDate <= today && (!t.endDate || t.endDate >= today) ? ' · 🟢 devam ediyor' : ''}`, sel === String(t.id)))}
+          {!list.length && <div style={{ fontSize: '12px', color: '#64748b', padding: '6px' }}>Tur yok.</div>}
+          <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}><input type="checkbox" checked={showOld} onChange={e => setShowOld(e.target.checked)} /> Biten turları da göster</label>
+        </div>
+        <div>
+          {!sel && <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>{isMobile ? '↑ Yukarıdan' : '← Soldan'} bir tur seçin</div>}
+          {sel === 'all' && <DuyurularModule key="all" scope="tours" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+          {tour && (
+            <>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '17px', fontWeight: 700 }}>{tour.name}</div>
+                <div style={{ fontSize: '12.5px', color: '#94a3b8', margin: '2px 0 12px' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} · 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)} · 🔗 {shared}/{res.length} yolcuya link gönderildi</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
+                  <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
+                </div>
+                {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
+              </div>
+              <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
+              {yarisma && <YarismaModal tour={tour} onClose={() => setYarisma(false)} showToast={showToast} isMobile={isMobile} />}
+              {tavsiye && <TavsiyelerModal focusCity={tour.city || ''} onClose={() => setTavsiye(false)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -18780,8 +18866,8 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
     { id: 'tavsiyeler', icon: '⭐', label: 'Tavsiyeler' },
-    { id: 'bildirimler', icon: '📣', label: 'Bildirimler' },
-    { id: 'duyurular', icon: '📢', label: 'Duyurular' },
+    { id: 'musterilinki', icon: '📱', label: 'Müşteri Linki' },
+    { id: 'turlinki', icon: '🎫', label: 'Tur Linki' },
     { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vize.paydostur.com/#/panel' },
     { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'activitylog', icon: '📋', label: 'İşlemler' },
@@ -18799,6 +18885,8 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'musterilinki': return <MusteriLinkiModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'turlinki': return <TurLinkiModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'duyurular': return <DuyurularModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bildirimler': return <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />;
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
