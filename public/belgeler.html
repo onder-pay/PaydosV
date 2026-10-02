@@ -187,6 +187,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .inst .x{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px}
 .dyc .ic{flex:none;overflow:hidden}.dyc a.ic{width:46px;height:46px;border-radius:12px}.dyc .ic img{width:100%;height:100%;object-fit:cover;display:block}
 .dyc .tx{white-space:pre-line}.dyc a.go{text-decoration:none}
+.dyb{display:block;margin-top:14px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--card)}.dyb img{display:block;width:100%;height:auto}
 .offline{margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(106,168,255,.12);border:1px solid rgba(106,168,255,.3);color:#b9d4ff;font-size:12px;text-align:center}
 .msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
 .in{opacity:0;transform:translateY(12px);animation:up .5s ease forwards}
@@ -744,6 +745,12 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
         // "Ana ekrana ekleyin" kartı gibi: küçük görsel · başlık + kısa metin · bağlantı butonu
         list.forEach(function (d) {
           var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
+          // Görsel varsa sadece görsel (afiş) — dokununca bağlantı, bağlantı yoksa görselin kendisi açılır
+          if (img) {
+            var ban = el('a', 'dyb'); ban.href = link || img; ban.target = '_blank'; ban.rel = 'noopener';
+            var bim = document.createElement('img'); bim.src = img; bim.alt = String(d.title || 'Duyuru'); bim.loading = 'lazy'; ban.appendChild(bim);
+            slot.appendChild(ban); return;
+          }
           var c = el('div', 'inst dyc');
           var ic = el(img ? 'a' : 'div', 'ic');
           if (img) { ic.href = img; ic.target = '_blank'; ic.rel = 'noopener'; ic.title = 'Görseli büyüt'; var im = document.createElement('img'); im.src = img; im.alt = ''; im.loading = 'lazy'; ic.appendChild(im); }

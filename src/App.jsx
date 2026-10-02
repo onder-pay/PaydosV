@@ -2134,7 +2134,7 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
         {embedded ? <h3 style={{ fontSize: '16px', margin: 0, flex: 1 }}>📢 Duyurular</h3> : <h2 style={{ fontSize: '20px', margin: 0, flex: 1 }}>📢 Duyurular</h2>}
         {!form && <button onClick={() => { setForm({ ...empty }); setFile(null); setPreview(''); }} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff', background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>➕ Yeni duyuru</button>}
       </div>
-      {!embedded && <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Küçük görsel + başlık + kısa metin + bağlantı — linklerde "Ana ekrana ekleyin" kartı gibi tek satır görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>}
+      {!embedded && <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Görsel yüklerseniz linkte sadece görsel (afiş) görünür, dokununca bağlantı açılır. Görsel yoksa başlık + metin "Ana ekrana ekleyin" kartı gibi görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>}
       {embedded && <div style={{ height: '12px' }} />}
       {form && (
         <div style={{ ...card, marginBottom: '18px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
