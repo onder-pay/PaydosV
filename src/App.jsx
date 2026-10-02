@@ -11971,12 +11971,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const push = (name, customerId) => {
         const k = normalizeTr(name); if (!k || seen.has(k)) return; seen.add(k);
         const c = customerId ? customers.find(x => String(x.id) === String(customerId)) : customers.find(x => normalizeTr(`${x.firstName || ''} ${x.lastName || ''}`) === k);
-        people.push({ key: k, customerId: c?.id || customerId || '', customerName: titleCaseTr(name), phone: c?.phone || '', tag: r.tag || '', checked: true });
+        people.push({ key: k, customerId: c?.id || customerId || '', customerName: titleCaseTr(name), phone: c?.phone || '', tag: r.tag || '', checked: true, resId: r.id });
       };
       push(r.customerName, r.customerId);
       (r.guestNames || []).filter(n => n && n.trim()).forEach(n => push(n.trim(), ''));
     });
-    setFlightPick({ hotel, people });
+    setFlightPick({ hotel, people, makePkg: true });
     setNameMenu(null);
   };
   const addPeopleToFlight = (fl) => {
@@ -11997,8 +11997,38 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       sellPrice: fl.sellPrice || '', buyPrice: fl.buyPrice || '', currency: fl.currency || '€',
       packageHotelId: hotel.id, packageHotelName: hotel.name || '' }));
     setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: [...(x.reservations || []), ...added] } : x));
-    showToast(`✈️ ${added.length} kişi ${fl.airline || ''} ${fl.from || ''}→${fl.to || ''} uçuşuna eklendi${dup ? ` (${dup} kişi zaten vardı)` : ''}`, 'success');
-    setFlightPick(null);
+    const msg = `✈️ ${added.length} kişi ${fl.airline || ''} ${fl.from || ''}→${fl.to || ''} uçuşuna eklendi${dup ? ` (${dup} kişi zaten vardı)` : ''}`;
+    // 📦 Paket: her otel rezervasyonu (oda) için otel + odadakilerin bu uçuştaki biletleri. Oda için paket varsa ona eklenir.
+    const pkgs = [];
+    if (flightPick.makePkg) {
+      const flightRes = [...active, ...added];
+      const byRoom = {};
+      chosen.forEach(p => { (byRoom[p.resId] = byRoom[p.resId] || []).push(p); });
+      const next = [...(packages || [])];
+      Object.entries(byRoom).forEach(([resId, ppl], ri) => {
+        const hr = (hotel.reservations || []).find(x => String(x.id) === String(resId));
+        if (!hr) return;
+        const hotelRef = `${hotel.id}-${hr.id}`;
+        const hotelItem = { kind: 'hotel', refId: hotelRef, label: `🏨 ${hotel.name} · ${formatDate(hr.checkIn)} – ${formatDate(hr.checkOut)} · ${hr.roomType || ''} ${String(hr.concept || '').toUpperCase()}`.trim(), amount: parseFloat(hr.price) || 0, currency: hr.currency || '€' };
+        const flightItems = ppl.map(p => flightRes.find(x => normalizeTr(x.customerName) === p.key)).filter(Boolean).map(fr => ({
+          kind: 'flight', refId: `${fl.id}-${fr.id}`,
+          label: `✈️ ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from} → ${fl.to} · ${formatDate(fl.date)} · ${titleCaseTr(fr.customerName)}`.replace(/\s+/g, ' '),
+          amount: (parseFloat(fr.sellPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.sell) || 0), 0), currency: fl.currency || '€' }));
+        const idx = next.findIndex(pk => (pk.items || []).some(it => it.refId === hotelRef));
+        if (idx >= 0) {
+          const have = new Set((next[idx].items || []).map(it => it.refId));
+          next[idx] = { ...next[idx], items: [...next[idx].items, ...flightItems.filter(it => !have.has(it.refId))] };
+          pkgs.push(next[idx]);
+        } else {
+          const pk = { ...emptyPackage, id: Date.now() + 1000 + ri, createdAt: new Date().toISOString(), customerId: hr.customerId || '', customerName: titleCaseTr(hr.customerName || ''), tag: hr.tag || '',
+            title: `${hotel.name} + ${fl.from}→${fl.to}`, items: [hotelItem, ...flightItems] };
+          next.push(pk); pkgs.push(pk);
+        }
+      });
+      if (pkgs.length) setPackages(next);
+    }
+    showToast(msg + (pkgs.length ? ` · ${pkgs.length} paket` : ''), 'success');
+    setFlightPick(fp => ({ ...fp, done: { msg, pkgs } }));
   };
   const saveFlight = () => {
     const f = editingFlight;
@@ -12120,6 +12150,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     notes: ''
   };
   const [pkgView, setPkgView] = useState('list'); // list | form
+  const [pkgSel, setPkgSel] = useState([]); // tek proforma için seçili paket id'leri
   const [editingPkg, setEditingPkg] = useState(null);
   const [pCustSearch, setPCustSearch] = useState('');
   const [showPCustList, setShowPCustList] = useState(false);
@@ -12176,12 +12207,22 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     showToast('Paket silindi', 'warning');
   };
   // Paket proforması (jsPDF)
-  const generatePackageProforma = (pk) => {
+  // Paket proforması (jsPDF) — tek paket veya birden fazla paket TEK proformada (ör. firma/grup: Kayteks'in 4 kişisi)
+  // Çoklu pakette kalemler kişi adıyla yazılır; farklı para birimleri ayrı toplanır (karışık toplam yazılmaz).
+  const generatePackageProforma = (pkOrList, opts = {}) => {
     try {
+      const list = (Array.isArray(pkOrList) ? pkOrList : [pkOrList]).filter(Boolean);
+      if (!list.length) { showToast('Proforma için paket seçin', 'warning'); return; }
+      const multi = list.length > 1;
+      const tags = [...new Set(list.map(p => String(p.tag || '').trim()).filter(Boolean).map(t => t.toLocaleUpperCase('tr-TR')))];
+      const customerLine = opts.customer || (multi ? (tags.length === 1 ? `${tags[0]} — ${list.length} kişi/oda` : list.map(p => titleCaseTr(p.customerName)).join(', ')) : list[0].customerName);
+      const title = opts.title || (multi ? (tags.length === 1 ? `${tags[0]} Grup Paketi` : 'Grup Paketi') : (list[0].title || 'Seyahat Paketi'));
+      const items = list.flatMap(p => (p.items || []).map(it => ({ ...it, label: multi ? `${titleCaseTr(p.customerName)} — ${it.label}` : it.label })));
+      const code = (c) => c === '€' ? 'EUR' : c === '$' ? 'USD' : c === '£' ? 'GBP' : c === '₺' ? 'TRY' : (c || 'EUR');
+      const totals = {}; items.forEach(it => { const k = code(it.currency || '€'); totals[k] = (totals[k] || 0) + (parseFloat(it.amount) || 0); });
+      const curCodes = Object.keys(totals); const curCode = curCodes[0] || 'EUR';
       const doc = new jsPDF();
       const tr = pdfText(doc);
-      const cur = pkgCurrency(pk);
-      const curCode = cur === '€' ? 'EUR' : cur === '$' ? 'USD' : cur === '£' ? 'GBP' : cur === '₺' ? 'TRY' : 'EUR';
       doc.setFontSize(20); doc.setTextColor(220, 53, 69); doc.text('Paydos Tur', 20, 20);
       doc.setFontSize(9); doc.setTextColor(100);
       doc.text(tr('Paydos Turizm ve Seyahat Acentalığı Sanayi ve Ticaret Limited Şirketi'), 20, 28);
@@ -12195,40 +12236,43 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8); doc.setTextColor(120);
       doc.text(tr('TARİH'), 24, 53); doc.text(tr('PARA BİRİMİ'), 90, 53); doc.text('HAZIRLAYAN', 150, 53);
       doc.setFontSize(10); doc.setTextColor(40);
-      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCode, 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
+      doc.text(now.toLocaleDateString('tr-TR'), 24, 60); doc.text(curCodes.join(' / ') || 'EUR', 90, 60); doc.text(tr(currentUser?.name || 'Önder Taşçı'), 150, 60);
       doc.setFontSize(9); doc.setTextColor(120); doc.text('KONU', 20, 72);
       doc.setFontSize(11); doc.setTextColor(40);
-      doc.text(pdfFit(doc, tr(pk.title || 'Seyahat Paketi'), 175, 11, 8), 20, 78);
+      doc.text(pdfFit(doc, tr(title), 175, 11, 8), 20, 78);
       doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('MÜŞTERİ'), 20, 90); doc.line(20, 92, 195, 92);
-      doc.setTextColor(40); doc.text(pdfFit(doc, tr(pk.customerName), 175, 11, 8), 20, 99);
+      doc.setTextColor(40); doc.text(pdfFit(doc, tr(customerLine), 175, 11, 8), 20, 99);
       doc.setFontSize(9); doc.setTextColor(120); doc.text(tr('PAKET KALEMLERİ'), 20, 112); doc.line(20, 114, 195, 114);
       doc.setFillColor(245, 245, 245); doc.rect(20, 117, 175, 7, 'F');
       doc.setFontSize(8); doc.setTextColor(80);
       doc.text(tr('HİZMET'), 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
-      let y = 130, subtotal = 0;
-      (pk.items || []).forEach((it, i) => {
-        const amt = parseFloat(it.amount) || 0; subtotal += amt;
+      let y = 130;
+      items.forEach((it, i) => {
+        const amt = parseFloat(it.amount) || 0;
         doc.setFontSize(9); doc.setTextColor(40);
-        const lbl = doc.splitTextToSize(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, '')).trim() || tr('Hizmet'), 135);
+        const lbl = doc.splitTextToSize(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}☀-➿️]/gu, '').replace(/[→⇒➔]/g, '-')).trim() || tr('Hizmet'), 135);
         const rowH = Math.max(9, lbl.length * 4 + 5);
         if (y + rowH > 270) { doc.addPage(); y = 30; }
         if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(20, y - 4, 175, rowH, 'F'); }
         doc.text(lbl, 22, y);
-        doc.text(`${amt.toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
+        doc.text(`${amt.toLocaleString('tr-TR')} ${code(it.currency || '€')}`, 193, y, { align: 'right' });
         y += rowH;
       });
-      if (y + 35 > 285) { doc.addPage(); y = 30; }
+      if (y + 35 + curCodes.length * 8 > 285) { doc.addPage(); y = 30; }
       doc.setDrawColor(180); doc.line(120, y, 195, y); y += 7;
-      doc.setFontSize(11); doc.setTextColor(40); doc.text('GENEL TOPLAM', 120, y);
-      doc.setFontSize(13); doc.setTextColor(220, 53, 69);
-      doc.text(`${pkgTotal(pk).toLocaleString('tr-TR')} ${curCode}`, 193, y, { align: 'right' });
-      y += 14;
+      (curCodes.length ? curCodes : [curCode]).forEach(k => {
+        doc.setFontSize(11); doc.setTextColor(40); doc.text(curCodes.length > 1 ? `TOPLAM (${k})` : 'GENEL TOPLAM', 120, y);
+        doc.setFontSize(13); doc.setTextColor(220, 53, 69);
+        doc.text(`${(totals[k] || 0).toLocaleString('tr-TR')} ${k}`, 193, y, { align: 'right' });
+        y += 8;
+      });
+      y += 6;
       const BKp = getActiveBanks(appSettings)[0];
       doc.setFontSize(8); doc.setTextColor(120);
       doc.text(tr(`Banka: ${BKp.bankName || ''} ${BKp.branch || ''} (${BKp.branchCode || ''}) | SWIFT: ${BKp.swift || ''}`), 20, y);
       doc.text(`TL IBAN: ${BKp.ibanTL || '-'} | EUR IBAN: ${BKp.ibanEUR || '-'}`, 20, y + 5);
-      doc.save(`Paket_Proforma_${tr(pk.customerName).replace(/\s+/g, '_')}.pdf`);
-      showToast('Paket proforması indirildi', 'success');
+      doc.save(`Paket_Proforma_${tr(multi ? (tags[0] || 'Grup') : list[0].customerName).replace(/\s+/g, '_')}.pdf`);
+      showToast(multi ? `Tek proforma indirildi (${list.length} paket)` : 'Paket proforması indirildi', 'success');
     } catch (e) { showToast('Proforma hatası: ' + e.message, 'error'); }
   };
   // Hızlı müşteri ekleme (rezervasyon formunda "bulunamadı" durumunda)
@@ -13282,14 +13326,33 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           {packages.length === 0 ? (
             <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz paket yok. Müşterinin otel + uçuş + transfer + vize kayıtlarından istediklerinizi birleştirip paket oluşturun — proforması tek belgede çıkar.</p>
           ) : (
+            <>
+            {(() => {
+              const tagList = [...new Set(packages.map(p => String(p.tag || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+              const selPk = packages.filter(p => pkgSel.includes(p.id));
+              return (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+                  {tagList.map(t => {
+                    const ids = packages.filter(p => normalizeTr(p.tag) === normalizeTr(t)).map(p => p.id);
+                    const on = ids.length && ids.every(id => pkgSel.includes(id));
+                    return <button key={t} onClick={() => setPkgSel(on ? pkgSel.filter(id => !ids.includes(id)) : [...new Set([...pkgSel, ...ids])])} style={{ padding: '5px 10px', borderRadius: '14px', fontSize: '12px', cursor: 'pointer', background: on ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${on ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.1)'}`, color: on ? '#fbbf24' : '#94a3b8' }}>🏷️ {t} ({ids.length})</button>;
+                  })}
+                  {selPk.length > 0 && <>
+                    <button onClick={() => generatePackageProforma(selPk)} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>📄 Tek proforma ({selPk.length} paket)</button>
+                    <button onClick={() => setPkgSel([])} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>Seçimi temizle</button>
+                  </>}
+                  {!selPk.length && <span style={{ fontSize: '11px', color: '#64748b' }}>Birden fazla paketi tek proformada birleştirmek için kartlardaki kutuları veya etiketi seçin.</span>}
+                </div>
+              );
+            })()}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
               {packages.map(pk => (
-                <div key={pk.id} style={{ background: 'rgba(6,182,212,0.05)', borderRadius: '14px', padding: '16px', border: '1px solid rgba(6,182,212,0.2)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>📦 {pk.title || 'Paket'}</span>
+                <div key={pk.id} style={{ background: pkgSel.includes(pk.id) ? 'rgba(139,92,246,0.10)' : 'rgba(6,182,212,0.05)', borderRadius: '14px', padding: '16px', border: `1px solid ${pkgSel.includes(pk.id) ? 'rgba(139,92,246,0.45)' : 'rgba(6,182,212,0.2)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', gap: '8px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8', display: 'flex', alignItems: 'center', gap: '8px' }}><input type="checkbox" checked={pkgSel.includes(pk.id)} onChange={() => setPkgSel(pkgSel.includes(pk.id) ? pkgSel.filter(id => id !== pk.id) : [...pkgSel, pk.id])} style={{ cursor: 'pointer' }} />📦 {pk.title || 'Paket'}</span>
                     <span style={{ fontSize: '13px', color: '#e8912a', fontWeight: '700' }}>{(pkgTotal(pk)).toLocaleString('tr-TR')} {pkgCurrency(pk)}</span>
                   </div>
-                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(pk.customerName)}</p>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(pk.customerName)}{pk.tag && <span style={{ marginLeft: '6px', padding: '1px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {pk.tag}</span>}</p>
                   <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
                     {(pk.items || []).map((it, i) => <div key={i} style={{ padding: '2px 0' }}>{it.label} — <b style={{ color: '#e8912a' }}>{(parseFloat(it.amount) || 0).toLocaleString('tr-TR')} {it.currency}</b></div>)}
                   </div>
@@ -13301,6 +13364,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       );
@@ -14668,6 +14732,20 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           return (
             <div onClick={() => setFlightPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
               <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '520px', maxHeight: '86vh', overflowY: 'auto' }}>
+                {flightPick.done ? (
+                  <div>
+                    <h4 style={{ margin: '0 0 8px', fontSize: '16px' }}>✅ Tamam</h4>
+                    <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#cbd5e1' }}>{flightPick.done.msg}</p>
+                    {flightPick.done.pkgs.length > 0 && (
+                      <>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📦 {flightPick.done.pkgs.length} paket (otel + uçuş) — Paketler sekmesinde:</div>
+                        <div style={{ fontSize: '12px', color: '#e8f1f8', marginBottom: '12px' }}>{flightPick.done.pkgs.map(pk => <div key={pk.id}>• {pk.customerName} — {(pk.items || []).length} kalem</div>)}</div>
+                        <button onClick={() => generatePackageProforma(flightPick.done.pkgs)} style={{ width: '100%', padding: '11px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>📄 Tek proforma indir ({flightPick.done.pkgs.length} paket)</button>
+                      </>
+                    )}
+                    <button onClick={() => setFlightPick(null)} style={{ marginTop: '8px', width: '100%', padding: '10px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>Kapat</button>
+                  </div>
+                ) : <>
                 <h4 style={{ margin: '0 0 4px', fontSize: '16px' }}>✈️ Grup uçuşuna ekle</h4>
                 <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>Kişiler etiketi ve "{flightPick.hotel.name}" otel bağlantısıyla eklenir; fiyat uçuşun kişi başı fiyatından gelir. Uçuşta zaten olanlar atlanır.</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
@@ -14678,6 +14756,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     </label>
                   ))}
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', marginBottom: '12px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '8px', fontSize: '12px', color: '#06b6d4', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!flightPick.makePkg} onChange={() => setFlightPick(fp => ({ ...fp, makePkg: !fp.makePkg }))} />
+                  📦 Paket de oluştur — her oda için otel + uçuş (sonra tek proforma)
+                </label>
                 <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Uçuş seçin ({n} kişi eklenecek):</div>
                 {list.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px 0' }}>Kayıtlı grup uçuşu yok. Önce "✈️ Grup Uçuşlar"dan uçuş ekleyin.</div>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -14699,6 +14781,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   })}
                 </div>
                 <button onClick={() => setFlightPick(null)} style={{ marginTop: '12px', width: '100%', padding: '10px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
+                </>}
               </div>
             </div>
           );
