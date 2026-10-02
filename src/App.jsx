@@ -2206,13 +2206,13 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
 }
 
 // ===== 📱 Müşteri Linki (sol menü): tüm müşteri linkleri için duyuru + bildirim =====
-function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser }) {
+function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser, bare }) {
   const [tab, setTab] = useState('duyuru');
   const tb = (k, t) => <button onClick={() => setTab(k)} style={{ padding: '9px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: tab === k ? '#fff' : '#94a3b8', background: tab === k ? 'rgba(59,130,246,0.25)' : 'transparent', border: `1px solid ${tab === k ? '#3b82f6' : 'rgba(255,255,255,0.1)'}` }}>{t}</button>;
   return (
     <div>
-      <div style={{ padding: isMobile ? '16px 16px 0' : '24px 24px 0' }}>
-        <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>📱 Müşteri Linki</h2>
+      <div style={{ padding: bare ? (isMobile ? '0 16px' : '0 24px') : isMobile ? '16px 16px 0' : '24px 24px 0' }}>
+        {!bare && <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>📱 Müşteri Linki</h2>}
         <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#64748b' }}>Bütün müşteri linklerinde (/m/) görünenler. Tek müşterinin belgeleri için müşteri kartındaki "Müşteri Linki" butonunu kullanın.</p>
         <div style={{ display: 'flex', gap: '8px' }}>{tb('duyuru', '📢 Duyurular')}{tb('bildirim', '📣 Bildirimler')}</div>
       </div>
@@ -2224,7 +2224,7 @@ function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser
 }
 
 // ===== 🎫 Tur Linki (sol menü): tur seçilir → o turun duyuruları, yarışma, tavsiyeler, link durumu =====
-function TurLinkiModule({ tours = [], showToast, isMobile, currentUser }) {
+function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) {
   const today = new Date().toISOString().slice(0, 10);
   const [sel, setSel] = useState('');
   const [q, setQ] = useState('');
@@ -2244,8 +2244,8 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser }) {
   );
   const btn = (bg, bc, c) => ({ padding: '10px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', background: bg, border: `1px solid ${bc}`, color: c });
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px' }}>
-      <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>🎫 Tur Linki</h2>
+    <div style={{ padding: bare ? (isMobile ? '0 16px 16px' : '0 24px 24px') : isMobile ? '16px' : '24px' }}>
+      {!bare && <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>🎫 Tur Linki</h2>}
       <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>Tur seçin: o turun yolcularının linkinde (/b/) görünecek duyurular, canlı yarışma ve şehir tavsiyeleri.</p>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', gap: '16px', alignItems: 'start' }}>
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '12px', maxHeight: isMobile ? '260px' : '75vh', overflow: 'auto' }}>
@@ -2276,6 +2276,24 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ===== 📢 Duyurular (sol menü, tek bölüm): içinde iki sekme — Müşteri Linki | Tur Linki =====
+function LinkDuyuruModule({ customers, tours, showToast, isMobile, currentUser }) {
+  const [tab, setTab] = useState(() => { try { return localStorage.getItem('paydos_duyuru_tab') || 'musteri'; } catch (e) { return 'musteri'; } });
+  const go = (k) => { setTab(k); try { localStorage.setItem('paydos_duyuru_tab', k); } catch (e) { /* yok */ } };
+  const tb = (k, t) => <button onClick={() => go(k)} style={{ flex: isMobile ? 1 : 'none', padding: '11px 20px', cursor: 'pointer', fontWeight: 700, fontSize: '14px', background: 'none', border: 'none', borderBottom: `3px solid ${tab === k ? '#f59e0b' : 'transparent'}`, color: tab === k ? '#fff' : '#94a3b8' }}>{t}</button>;
+  return (
+    <div>
+      <div style={{ padding: isMobile ? '16px 16px 0' : '24px 24px 0' }}>
+        <h2 style={{ fontSize: '20px', margin: '0 0 10px' }}>📢 Duyurular</h2>
+        <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '16px' }}>{tb('musteri', '📱 Müşteri Linki')}{tb('tur', '🎫 Tur Linki')}</div>
+      </div>
+      {tab === 'musteri'
+        ? <MusteriLinkiModule bare customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
+        : <TurLinkiModule bare tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
     </div>
   );
 }
@@ -18866,8 +18884,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
     { id: 'tavsiyeler', icon: '⭐', label: 'Tavsiyeler' },
-    { id: 'musterilinki', icon: '📱', label: 'Müşteri Linki' },
-    { id: 'turlinki', icon: '🎫', label: 'Tur Linki' },
+    { id: 'linkduyuru', icon: '📢', label: 'Duyurular' },
     { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vize.paydostur.com/#/panel' },
     { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'activitylog', icon: '📋', label: 'İşlemler' },
@@ -18885,6 +18902,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'linkduyuru': return <LinkDuyuruModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'musterilinki': return <MusteriLinkiModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'turlinki': return <TurLinkiModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'duyurular': return <DuyurularModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
