@@ -1,6 +1,8 @@
-// ===== Vize: günlük "Atama Bekliyor" duyurusu (Telegram grubu) =====
+// ===== Vize: günlük Telegram grup duyuruları =====
+// 09:30 — "Bugün başvuru yapılacaklar": vizecinin 10:00'da İdata/VFS'te yapacağı başvurular (CRM'deki "...Başvuru Yapılacak"
+//          durumundakiler; ileri tarihli olanlar tarihi gelene kadar listeye girmez — CRM'deki kuralla aynı). "/bugun" ile elle.
 // Vizeci her gün 10:00'da İdata/VFS başvurularını yapar; başvurusu yapılanlar CRM'de "Atama Bekliyor" olur.
-// Bu fonksiyon hafta içi + cumartesi 11:30 ve 17:00'de (İstanbul) o zamana kadar yeni "Atama Bekliyor"a geçenleri
+// 11:30 ve 17:00 (hafta içi, İstanbul): o zamana kadar o zamana kadar yeni "Atama Bekliyor"a geçenleri
 // gruba tek mesajla yazar. Aynı kişi iki kez yazılmaz (visa_applications.atamaDuyuruAt).
 // Grup: bot grupta "/grup" yazılarak kaydedilir (app_settings/main.telegramVizeGrupId). "/atama" ile beklemeden hemen yazdırılır.
 const functions = require('firebase-functions');
@@ -72,11 +74,58 @@ const loadCfg = async () => {
   return { db, token: d.telegramBotToken || '', groupId: d.telegramVizeGrupId || '' };
 };
 
+// CRM'deki durum adları ayarlardan değişebilir: adında "başvuru yapılacak" geçen durum esas alınır
+const findTodoStatus = (statuses) => {
+  const list = (Array.isArray(statuses) ? statuses : []).map(x => typeof x === 'string' ? x : (x && (x.name || x.label)) || '').filter(Boolean);
+  return list.find(x => /başvuru\s*yapılacak/i.test(x.toLocaleLowerCase('tr-TR'))) || list.find(x => /yapılacak/i.test(x.toLocaleLowerCase('tr-TR'))) || '';
+};
+// İleri tarihli (CRM visaFutureDate ile aynı): işlem tarihi bugünden sonra ve henüz PNR/randevu yok
+const isFuture = (v, today) => !!v.processDate && String(v.processDate) > today && !v.pnr && !v.appointmentDate;
+
+const announceTodo = async ({ db, token, chatId }) => {
+  const settings = (await db.collection('app_settings').doc('main').get()).data() || {};
+  const status = findTodoStatus(settings.visaStatuses);
+  if (!status) throw new Error('CRM durumlarında "Başvuru Yapılacak" bulunamadı (Ayarlar → Vize durumları)');
+  const today = istDate();
+  const snap = await db.collection('visa_applications').where('status', '==', status).get();
+  const list = [], later = [];
+  snap.forEach(d => { const v = d.data() || {}; (isFuture(v, today) ? later : list).push(v); });
+  list.sort((a, b) => String(a.customerName || '').localeCompare(String(b.customerName || ''), 'tr'));
+  const lines = list.map((v, i) => {
+    const tur = [v.country, v.visaDuration || v.visaType].filter(Boolean).join(' · ');
+    return `${i + 1}. <b>${esc(titleTr(v.customerName || '—'))}</b>${tur ? ` — ${esc(tur)}` : ''}`;
+  });
+  const head = `📝 <b>Bugün başvuru yapılacaklar</b> — ${esc(istLabel())}`;
+  const text = list.length
+    ? `${head}\n\n${lines.join('\n')}\n\nToplam <b>${list.length}</b> kişi.${later.length ? `\n<i>İleri tarihli ${later.length} başvuru, tarihi gelince listeye girer.</i>` : ''}`
+    : `${head}\n\nBugün başvurusu yapılacak kimse yok. ✅${later.length ? `\n<i>İleri tarihli ${later.length} başvuru bekliyor.</i>` : ''}`;
+  const chunks = []; let cur = '';
+  text.split('\n').forEach(l => { if ((cur + '\n' + l).length > 3800) { chunks.push(cur); cur = l; } else cur = cur ? cur + '\n' + l : l; });
+  if (cur) chunks.push(cur);
+  for (const c of chunks) {
+    const r = await tg(token, 'sendMessage', { chat_id: chatId, text: c, parse_mode: 'HTML', disable_web_page_preview: true });
+    if (!r.ok) throw new Error('Telegram: ' + (r.description || 'gönderilemedi'));
+  }
+  return list.length;
+};
+
 exports.announceAtama = announceAtama;
+exports.announceTodo = announceTodo;
+
+exports.vizeBugunDuyuru = functions
+  .region('europe-west1')
+  .pubsub.schedule('30 9 * * 1-5').timeZone(TZ)
+  .onRun(async () => {
+    const { db, token, groupId } = await loadCfg();
+    if (!token || !groupId) { console.log('[bugun] token veya grup yok — grupta /grup yazın'); return null; }
+    const n = await announceTodo({ db, token, chatId: groupId });
+    console.log('[bugun] 09:30 listesi:', n);
+    return null;
+  });
 
 exports.vizeAtamaDuyuru = functions
   .region('europe-west1')
-  .pubsub.schedule('30 11 * * 1-6').timeZone(TZ)
+  .pubsub.schedule('30 11 * * 1-5').timeZone(TZ)
   .onRun(async () => {
     const { db, token, groupId } = await loadCfg();
     if (!token || !groupId) { console.log('[atama] token veya grup yok — grupta /grup yazın'); return null; }
@@ -88,7 +137,7 @@ exports.vizeAtamaDuyuru = functions
 // Öğleden sonra yapılan / geç işlenen başvurular için ikinci tur (yeni yoksa mesaj atılmaz)
 exports.vizeAtamaDuyuruAksam = functions
   .region('europe-west1')
-  .pubsub.schedule('0 17 * * 1-6').timeZone(TZ)
+  .pubsub.schedule('0 17 * * 1-5').timeZone(TZ)
   .onRun(async () => {
     const { db, token, groupId } = await loadCfg();
     if (!token || !groupId) return null;

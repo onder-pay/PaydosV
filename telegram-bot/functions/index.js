@@ -1209,8 +1209,8 @@ exports.telegramBot = functions
 
     const msg = req.body?.message;
     console.log('Webhook received:', msg ? ('chat:' + msg.chat?.id + ' photo:' + (msg.photo ? 'YES' : 'NO') + ' text:' + (msg.text || '-')) : 'NO MESSAGE');
-    // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /atama (atama bekleyenleri hemen yaz) =====
-    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama)(?:@\w+)?\b/i) || [])[1] : '';
+    // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
+    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
     if (cmd) {
       const chat = msg.chat || {};
       const isGroup = chat.type === 'group' || chat.type === 'supergroup';
@@ -1221,13 +1221,17 @@ exports.telegramBot = functions
         // Duyurular müşteri adı içerir: kayıtlı grup varken başka bir grup kendini kaydedemez (CRM/Firestore'dan silinmeli)
         if (saved && saved !== String(chat.id)) { await tg(T, 'sendMessage', { chat_id: chat.id, text: '⛔ Vize duyuruları başka bir gruba kayıtlı. Değiştirmek için yöneticiye başvurun.' }); return res.status(200).send('OK'); }
         await setRef.set({ telegramVizeGrupId: String(chat.id), telegramVizeGrupAdi: chat.title || '' }, { merge: true });
-        await tg(T, 'sendMessage', { chat_id: chat.id, text: '✅ Bu grup vize duyuruları için kaydedildi.\nHer gün 11:30 ve 17:00\'de o gün "Atama Bekliyor"a geçen başvurular buraya yazılır.\nBeklemeden yazdırmak için: /atama' });
+        await tg(T, 'sendMessage', { chat_id: chat.id, text: '✅ Bu grup vize duyuruları için kaydedildi.\nHafta içi her gün:\n• 09:30 — bugün başvuru yapılacaklar\n• 11:30 ve 17:00 — başvurusu yapılıp "Atama Bekliyor"a geçenler\nBeklemeden yazdırmak için: /bugun · /atama' });
         return res.status(200).send('OK');
       }
       if (saved !== String(chat.id)) { await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Önce bu grubu kaydedin: /grup' }); return res.status(200).send('OK'); }
       try {
-        const n = await require('./atama').announceAtama({ db: cfg.db, token: T, chatId: chat.id });
-        if (!n) await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Duyurulmamış yeni "Atama Bekliyor" başvuru yok.' });
+        const A = require('./atama');
+        if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
+        else {
+          const n = await A.announceAtama({ db: cfg.db, token: T, chatId: chat.id });
+          if (!n) await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Duyurulmamış yeni "Atama Bekliyor" başvuru yok.' });
+        }
       } catch (e) {
         console.error('[BOT] /atama hatası:', e);
         await tg(T, 'sendMessage', { chat_id: chat.id, text: '❌ Liste hazırlanamadı: ' + e.message });
@@ -1364,6 +1368,7 @@ exports.telegramBot = functions
 
 // Belge linki API (PIN korumalı) — ayrı fonksiyon: npx firebase-tools deploy --only functions:belge
 exports.belge = require('./belge').belge;
-// Vize "Atama Bekliyor" günlük grup duyurusu (11:30 ve 17:00): npx firebase-tools deploy --only functions:vizeAtamaDuyuru,functions:vizeAtamaDuyuruAksam
+// Vize günlük grup duyuruları (09:30 yapılacaklar, 11:30 + 17:00 atama bekleyenler)
+exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
