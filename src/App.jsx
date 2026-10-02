@@ -13088,6 +13088,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   };
 
   const [selectedResIds, setSelectedResIds] = useState([]);
+  const [resSearch, setResSearch] = useState(''); // otel detayı: rezervasyonlarda ad soyad / etiket araması
+  useEffect(() => { setResSearch(''); }, [selectedHotel?.id]);
   const toggleResSelection = (id) => {
     setSelectedResIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -14398,6 +14400,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     const totalPaid = reservations.reduce((s, r) => s + (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0), 0);
     const totalBuy = reservations.reduce((s, r) => s + (parseFloat(r.buyPrice) || 0), 0);
     const totalProfit = totalRevenue - totalBuy;
+    const resWords = normalizeTr(resSearch).split(/\s+/).filter(Boolean);
+    const shownRes = resWords.length ? reservations.filter(r => { const hay = normalizeTr(`${r.customerName || ''} ${r.tag || ''}`); return resWords.every(w => hay.includes(w)); }) : reservations;
 
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
@@ -14589,6 +14593,27 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           })()}
         </div>
 
+        {/* Rezervasyon araması: ad soyad veya etiket (firma). Birden fazla kelime: hepsi geçmeli ("kayteks semanur") */}
+        {reservations.length > 0 && (() => {
+          const words = resWords, shown = shownRes;
+          const sum = (f) => shown.reduce((t, r) => t + f(r), 0);
+          const sell = sum(r => parseFloat(r.price) || 0), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
+          const cur = reservations[0]?.currency || '€';
+          return (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ position: 'relative' }}>
+                <input value={resSearch} onChange={e => setResSearch(e.target.value)} placeholder="🔍 Ad soyad veya etiket ara (ör. Kayteks)" style={{ width: '100%', boxSizing: 'border-box', padding: '10px 36px 10px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', fontSize: '13px' }} />
+                {resSearch && <button onClick={() => setResSearch('')} title="Temizle" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>✕</button>}
+              </div>
+              {words.length > 0 && (
+                <div style={{ marginTop: '6px', fontSize: '12px', color: shown.length ? '#94a3b8' : '#f59e0b' }}>
+                  {shown.length ? <>{shown.length} / {reservations.length} rezervasyon · Satış {sell.toLocaleString('tr-TR')} {cur} · Tahsil {got.toLocaleString('tr-TR')} {cur} · Kalan {(sell - got).toLocaleString('tr-TR')} {cur}</> : 'Eşleşen rezervasyon yok'}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Rezervasyonlar Tablosu */}
         {reservations.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
@@ -14602,8 +14627,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <th style={{ padding: '10px 8px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '11px', width: '32px' }}>
                       <input type="checkbox"
-                        checked={reservations.length > 0 && selectedResIds.length === reservations.length}
-                        onChange={e => setSelectedResIds(e.target.checked ? reservations.map(r => r.id) : [])}
+                        checked={shownRes.length > 0 && shownRes.every(r => selectedResIds.includes(r.id))}
+                        onChange={e => setSelectedResIds(e.target.checked ? [...new Set([...selectedResIds, ...shownRes.map(r => r.id)])] : selectedResIds.filter(id => !shownRes.some(r => r.id === id)))}
                         style={{ cursor: 'pointer' }} />
                     </th>
                     {['Müşteri', 'Giriş - Çıkış', 'Gece', 'Oda / Konsept', 'Tutar', 'Ödeme', ''].map(h => (
@@ -14612,7 +14637,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   </tr>
                 </thead>
                 <tbody>
-                  {reservations.map(r => {
+                  {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                     const total = parseFloat(r.price) || 0;
