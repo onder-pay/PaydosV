@@ -1148,14 +1148,13 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
           ['quotes', 'contract', '📜', 'Yeni Sözleşme', '#6366f1'], ['tavsiyeler', null, '⭐', 'Tavsiye Ekle', '#fb923c'],
         ];
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)', gap: isMobile ? '8px' : '10px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
             {items.map(([id, act, icon, label, color]) => (
               <button key={id + act} onClick={() => act === 'link' ? ds160Link() : onGo(id, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
-                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: isMobile ? '12px 4px' : '16px 6px', background: `linear-gradient(135deg, ${color}1f, ${color}0d)`, border: `1px solid ${color}40`, borderRadius: '14px', color: '#e8f1f8', cursor: 'pointer', minHeight: isMobile ? '78px' : '92px', transition: 'transform .12s, border-color .12s' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = color; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = `${color}40`; }}>
-                <span style={{ fontSize: isMobile ? '22px' : '26px', lineHeight: 1 }}>{icon}</span>
-                <span style={{ fontSize: isMobile ? '10.5px' : '12px', fontWeight: 600, textAlign: 'center', lineHeight: 1.25 }}>{label}</span>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: isMobile ? '8px 12px' : '9px 14px', background: `${color}1a`, border: `1px solid ${color}55`, borderRadius: '999px', color: '#e8f1f8', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background .12s, border-color .12s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${color}33`; e.currentTarget.style.borderColor = color; }}
+                onMouseLeave={e => { e.currentTarget.style.background = `${color}1a`; e.currentTarget.style.borderColor = `${color}55`; }}>
+                <span style={{ fontSize: '15px', lineHeight: 1 }}>{icon}</span>{label}
               </button>
             ))}
           </div>
