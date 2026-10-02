@@ -40,13 +40,6 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .lead{margin-top:16px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.62)}
 
 /* Bölüm başlığı */
-.dy{display:flex;flex-direction:column;gap:12px}
-.dy.many{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}.dy.many::-webkit-scrollbar{display:none}
-.dy.many .dc{flex:0 0 86%;scroll-snap-align:start}
-.dc{border-radius:16px;background:var(--card);border:1px solid var(--line);overflow:hidden}
-.dc .di{display:block}.dc .di img{display:block;width:100%;height:auto;max-height:420px;object-fit:cover}
-.dc .dt{padding:12px 14px}.dc .dt b{display:block;font-size:14.5px;color:var(--ink)}.dc .dt p{margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--muted);white-space:pre-line}
-.dc .dg{display:inline-block;margin-top:8px;font-size:12.5px;font-weight:700;color:var(--navy);text-decoration:none}
 .sec{display:flex;align-items:baseline;gap:8px;margin:30px 2px 12px}
 .sec b{font-size:15px;font-weight:700;letter-spacing:-.1px}
 .sec span{font-size:12px;color:var(--faint);font-weight:600}
@@ -133,6 +126,8 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .inst .tx b{display:block;font-size:13.5px;color:var(--ink);margin-bottom:1px}
 .inst .go{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--navy);background:transparent;color:var(--navy);font:700 13px 'Manrope',sans-serif;cursor:pointer;white-space:nowrap}
 .inst .x{background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:4px}
+.dyc .ic{flex:none;overflow:hidden}.dyc a.ic{width:44px;height:44px;border-radius:10px}.dyc .ic img{width:100%;height:100%;object-fit:cover;display:block}
+.dyc .tx{white-space:pre-line}.dyc a.go{display:inline-flex;align-items:center;text-decoration:none}
 /* Bildirim izni */
 .nt{flex-wrap:wrap}.nt .tx{min-width:0}
 .nt .tx b.ok{color:#15803d}
@@ -945,21 +940,20 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
           return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
         }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
         if (!list.length) return;
-        var h = el('div', 'sec'); h.appendChild(el('b', '', 'Duyurular')); slot.appendChild(h);
-        var row = el('div', 'dy' + (list.length > 1 ? ' many' : '')); slot.appendChild(row);
+        // "Ana ekrana ekleyin" kartı gibi: küçük görsel · başlık + kısa metin · bağlantı butonu
         list.forEach(function (d) {
-          var c = el('div', 'dc');
           var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
-          if (img) {
-            var a = el('a', 'di'); a.href = link || img; a.target = '_blank'; a.rel = 'noopener';
-            var im = document.createElement('img'); im.src = img; im.alt = String(d.title || 'Duyuru'); im.loading = 'lazy'; a.appendChild(im); c.appendChild(a);
-          }
-          var tx = el('div', 'dt');
-          if (d.title) tx.appendChild(el('b', '', String(d.title)));
-          if (d.text) tx.appendChild(el('p', '', String(d.text)));
-          if (link) { var go = el('a', 'dg', 'Detaylar →'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; tx.appendChild(go); }
-          if (tx.childNodes.length) c.appendChild(tx);
-          row.appendChild(c);
+          var c = el('div', 'inst dyc');
+          var ic = el(img ? 'a' : 'div', 'ic');
+          if (img) { ic.href = img; ic.target = '_blank'; ic.rel = 'noopener'; ic.title = 'Görseli büyüt'; var im = document.createElement('img'); im.src = img; im.alt = ''; im.loading = 'lazy'; ic.appendChild(im); }
+          else ic.appendChild(ico('bell'));
+          c.appendChild(ic);
+          var tx = el('div', 'tx');
+          tx.appendChild(el('b', '', String(d.title || 'Duyuru')));
+          if (d.text) tx.appendChild(document.createTextNode(String(d.text)));
+          c.appendChild(tx);
+          if (link) { var go = el('a', 'go', 'Aç'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; c.appendChild(go); }
+          slot.appendChild(c);
         });
       }).catch(function () {});
   };

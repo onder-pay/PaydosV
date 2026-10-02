@@ -2130,7 +2130,7 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
         <h2 style={{ fontSize: '20px', margin: 0, flex: 1 }}>📢 Duyurular</h2>
         {!form && <button onClick={() => { setForm({ ...empty }); setFile(null); setPreview(''); }} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff', background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>➕ Yeni duyuru</button>}
       </div>
-      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Görsel ve kısa metin — müşteri linkinde ve/veya tur linkinde "Duyurular" bölümünde görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>
+      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Küçük görsel + başlık + kısa metin + bağlantı — linklerde "Ana ekrana ekleyin" kartı gibi tek satır görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>
       {form && (
         <div style={{ ...card, marginBottom: '18px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
           <div>
@@ -2147,7 +2147,7 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser }) {
             <input value={form.title} maxLength={80} onChange={e => upd({ title: e.target.value })} placeholder="Kapadokya balon turu — erken rezervasyon" style={inp} />
             <label style={lbl}>Metin <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı)</span></label>
             <textarea value={form.text} maxLength={400} rows={3} onChange={e => upd({ text: e.target.value })} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
-            <label style={lbl}>Bağlantı <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı — "Detaylar" butonu)</span></label>
+            <label style={lbl}>Bağlantı <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı — kartta "Aç" butonu)</span></label>
             <input value={form.link} onChange={e => upd({ link: e.target.value })} placeholder="https://paydostur.com/..." style={inp} />
             <label style={lbl}>Nerede görünsün?</label>
             <select value={form.target} onChange={e => upd({ target: e.target.value })} style={inp}>{DUYURU_HEDEF.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
