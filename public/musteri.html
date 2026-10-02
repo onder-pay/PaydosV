@@ -126,6 +126,12 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .inst .tx b{display:block;font-size:13.5px;color:var(--ink);margin-bottom:1px}
 .inst .go{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--navy);background:transparent;color:var(--navy);font:700 13px 'Manrope',sans-serif;cursor:pointer;white-space:nowrap}
 .inst .x{background:none;border:none;color:var(--faint);font-size:16px;cursor:pointer;padding:4px}
+/* Bildirim izni */
+.nt{flex-wrap:wrap}.nt .tx{min-width:0}
+.nt .tx b.ok{color:#15803d}
+.nt .ck{flex-basis:100%;display:flex;align-items:flex-start;gap:8px;margin:2px 0 0 48px;font-size:12px;line-height:1.45;color:var(--muted);cursor:pointer}
+.nt .ck input{margin:2px 0 0;width:16px;height:16px;accent-color:var(--navy);flex:none}
+.nt .lnk{flex-basis:100%;margin:0 0 0 48px;background:none;border:none;padding:0;color:var(--faint);font:600 11.5px 'Manrope',sans-serif;text-align:left;cursor:pointer;text-decoration:underline}
 
 /* PIN */
 .pinc{margin:22px auto 0;max-width:400px;padding:28px 22px 22px;border-radius:18px;background:var(--card);border:1px solid var(--line);text-align:center}
@@ -267,6 +273,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
   var delay = 0;
   // İnce çizgi ikonlar (emoji yerine)
   var IC = {
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     plane: '<path d="M10.5 13.5 4 11l1.5-1.5 7 1L16.5 6.5a1.8 1.8 0 0 1 2.5 2.5L15 13l1 7-1.5 1.5-2.5-6.5-3 3v2.5L7.5 22l-1-3.5L3 17.5 4.5 16H7l3.5-2.5z"/>',
     pass: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14M7 10h5M7 14h3"/>',
     hotel: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/>',
@@ -699,6 +706,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       hero.appendChild(el('p', 'lead', 'Biletleriniz, otel ve vize belgeleriniz bu sayfada. Yeni belge eklendikçe güncellenir.'));
 
       renderInstall(box);
+      renderPush(box);
       if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
       document.title = 'Paydos · ' + (fullName || 'Seyahat Dosyası');
 
@@ -907,6 +915,84 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       return;
     }
     show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
+  };
+
+  // ===== Bildirimler (Web Push) =====
+  // İki ayrı izin: seyahat bildirimleri (uçuş, otel, belge) + isteğe bağlı kampanya onayı (önceden işaretli DEĞİL).
+  // iPhone'da sadece ana ekrana eklenmiş linkte çalışır (iOS 16.4+).
+  var PUSH_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
+  var pushCall = function (body) {
+    return fetch(PUSH_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._status = r.status; return j; }); });
+  };
+  var b64ToU8 = function (s) { var p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')), o = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
+  var swReg = function () {
+    return navigator.serviceWorker.getRegistration('/m/').then(function (r) { return r || navigator.serviceWorker.register('/musteri-sw.js', { scope: '/m/' }); })
+      .then(function (r) { if (r.active) return r; return new Promise(function (ok) { var w = r.installing || r.waiting; if (!w) return ok(r); w.addEventListener('statechange', function () { if (w.state === 'activated') ok(r); }); }); });
+  };
+  var pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  var renderPush = function (parent) {
+    var card = el('div', 'inst nt');
+    var ic = el('div', 'ic'); ic.appendChild(ico('bell')); card.appendChild(ic);
+    var tx = el('div', 'tx'); card.appendChild(tx);
+    var act = el('div'); act.style.display = 'contents'; card.appendChild(act);
+    var setText = function (t, s, cls) { tx.innerHTML = ''; var b = el('b', cls || '', t); tx.appendChild(b); if (s) tx.appendChild(document.createTextNode(s)); };
+    if (!pushOk) {
+      // iPhone'da Safari içinde bildirim yok — ana ekrana eklemeye yönlendir
+      if (isIOS && !isStandalone) { setText('Bildirim almak ister misiniz?', 'Önce bu sayfayı ana ekrana ekleyin (Paylaş → "Ana Ekrana Ekle"), sonra oradan açıp bildirimleri açın.'); parent.appendChild(card); }
+      return;
+    }
+    parent.appendChild(card);
+    var ck = el('label', 'ck'), cb = document.createElement('input'); cb.type = 'checkbox';
+    ck.appendChild(cb); ck.appendChild(document.createTextNode('Kampanya ve fırsatlardan da haberdar olmak istiyorum.'));
+    var subscribe = function (btn) {
+      var pin = lsGet(PIN_KEY);
+      if (!pin) { alert('Lütfen sayfayı yenileyip PIN\'inizi girin.'); return; }
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; } if (m) alert(m); };
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Tarayıcı ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
+        return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
+          var reg = r[0], key = r[1].key;
+          if (!key) throw new Error('key');
+          return reg.pushManager.getSubscription().then(function (s) { return s || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) }); });
+        }).then(function (s) {
+          return pushCall({ a: 'sub', k: code, pin: pin, sub: s.toJSON(), marketing: cb.checked }).then(function (j) {
+            if (!j.ok) throw new Error(j.error || 'sub');
+            showOn(!!j.marketing);
+          });
+        });
+      }).catch(function () { fail('Bildirimler açılamadı. Lütfen tekrar deneyin.'); });
+    };
+    var showOff = function () {
+      setText('Bildirimleri açın', 'Uçuş, otel ve belgelerinizle ilgili size mesaj gönderebilmemiz için lütfen izin verin.');
+      act.innerHTML = '';
+      var go = el('button', 'go', 'Aç'); go.type = 'button'; go.addEventListener('click', function () { subscribe(go); });
+      act.appendChild(go); cb.checked = false; act.appendChild(ck);
+    };
+    var showOn = function (mk) {
+      setText('Bildirimler açık', mk ? 'Seyahat bildirimleri ve kampanyalar bu telefona gelir.' : 'Seyahat bildirimleri bu telefona gelir.', 'ok');
+      act.innerHTML = '';
+      var tg = el('button', 'lnk', mk ? 'Kampanya bildirimlerini kapat' : 'Kampanya ve fırsatlardan da haberdar olmak istiyorum');
+      tg.type = 'button';
+      tg.addEventListener('click', function () { cb.checked = !mk; subscribe(null); });
+      act.appendChild(tg);
+      var off = el('button', 'lnk', 'Tüm bildirimleri kapat'); off.type = 'button';
+      off.addEventListener('click', function () {
+        swReg().then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (s) {
+          if (!s) return showOff();
+          return pushCall({ a: 'unsub', endpoint: s.endpoint }).then(function () { return s.unsubscribe(); }).then(showOff);
+        }).catch(showOff);
+      });
+      act.appendChild(off);
+    };
+    if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için tarayıcı ayarlarından bu siteye bildirim izni verin.'); return; }
+    showOff();
+    // Bu telefon zaten abone mi?
+    navigator.serviceWorker.getRegistration('/m/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (s) {
+      if (!s || Notification.permission !== 'granted') return;
+      return pushCall({ a: 'status', endpoint: s.endpoint }).then(function (j) { if (j.subscribed) showOn(!!j.marketing); });
+    }).catch(function () {});
   };
 
   // PIN ekranı: mode 'set' (ilk kez belirle) veya 'enter'
