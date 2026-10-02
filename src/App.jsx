@@ -1133,24 +1133,29 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
       <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>📊 Dashboard</h2>
-      {/* ⚡ Kısayollar: en sık kullanılan bölümler (Ctrl/⌘ + numara menüdeki sırayla aynı) */}
+      {/* ⚡ Hızlı işlemler: tıklayınca ilgili modülde yeni kayıt formu açılır */}
       {onGo && (() => {
-        const ks = (id) => { const i = SHORTCUT_MODULES.findIndex(m => m[0] === id); return i >= 0 ? i + 1 : null; };
+        // Amerika vize: kişiye özel DS-160 linki doğrudan panoya
+        const ds160Link = () => {
+          const raw = String(appSettings?.ds160SiteUrl || 'https://ds160-paydos.netlify.app').trim();
+          const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`;
+          const link = `${url}${url.includes('?') ? '&' : '?'}id=${'a' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36)}`;
+          navigator.clipboard.writeText(link).then(() => showToast?.('🇺🇸 Yeni DS-160 linki kopyalandı — müşteriye gönderin', 'success'), () => window.prompt('Linki kopyalayın:', link));
+        };
         const items = [
-          ['customers', '👥', 'Müşteriler', '#3b82f6'], ['visa', '🌍', 'Vize', '#10b981'], ['ds160', '🇺🇸', 'Amerika Vize', '#8b5cf6'],
-          ['tours', '🎫', 'Turlar', '#f59e0b'], ['hotels', '🏨', 'Oteller ve Uçuşlar', '#06b6d4'], ['quotes', '📄', 'Teklif & Proforma', '#ef4444'],
-          ['tavsiyeler', '⭐', 'Tavsiyeler', '#fb923c'], ['cards', '💳', 'Kredi Kartları', '#a78bfa'],
+          ['visa', 'new', '🌍', 'Yeni Vize Başvurusu', '#10b981'], ['customers', 'new', '👤', 'Yeni Müşteri', '#3b82f6'], ['ds160', 'link', '🇺🇸', 'Amerika Vize Linki', '#8b5cf6'],
+          ['tours', 'new', '🎫', 'Yeni Tur', '#f59e0b'], ['quotes', 'offer', '🧾', 'Yeni Tur Teklifi', '#e8912a'], ['quotes', 'new', '📄', 'Yeni Teklif / Proforma', '#ef4444'],
+          ['quotes', 'contract', '📜', 'Yeni Sözleşme', '#6366f1'], ['tavsiyeler', null, '⭐', 'Tavsiye Ekle', '#fb923c'],
         ];
         return (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)', gap: isMobile ? '8px' : '10px', marginBottom: '20px' }}>
-            {items.map(([id, icon, label, color]) => (
-              <button key={id} onClick={() => onGo(id)} title={ks(id) ? `${label} — Ctrl/⌘ + ${ks(id)}` : label}
+            {items.map(([id, act, icon, label, color]) => (
+              <button key={id + act} onClick={() => act === 'link' ? ds160Link() : onGo(id, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
                 style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: isMobile ? '12px 4px' : '16px 6px', background: `linear-gradient(135deg, ${color}1f, ${color}0d)`, border: `1px solid ${color}40`, borderRadius: '14px', color: '#e8f1f8', cursor: 'pointer', minHeight: isMobile ? '78px' : '92px', transition: 'transform .12s, border-color .12s' }}
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = color; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = `${color}40`; }}>
                 <span style={{ fontSize: isMobile ? '22px' : '26px', lineHeight: 1 }}>{icon}</span>
                 <span style={{ fontSize: isMobile ? '10.5px' : '12px', fontWeight: 600, textAlign: 'center', lineHeight: 1.25 }}>{label}</span>
-                {!isMobile && ks(id) && <span style={{ position: 'absolute', top: '6px', right: '8px', fontSize: '9.5px', color: '#64748b', fontFamily: 'monospace' }}>⌘{ks(id)}</span>}
               </button>
             ))}
           </div>
@@ -2234,7 +2239,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
   );
 }
 
-function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser }) {
+function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone }) {
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
   const [dateRangeTo, setDateRangeTo] = useState('');
@@ -2521,6 +2526,9 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     resetForm(); 
     setShowForm(true); 
   };
+
+  // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm(); onQuickActionDone?.(); }, [quickAction]);
   
   // Düzenleme her zaman sunucudaki TAM kayıttan açılır. Telefonda toplu yükleme yarıda kalınca
   // CRM görselleri silinmiş önbellek kopyasıyla çalışıyordu; o kopyayla kaydetmek görselleri
@@ -5321,7 +5329,7 @@ const visaFutureDate = (v) => {
   return v.processDate;
 };
 
-function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser }) {
+function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
@@ -5722,6 +5730,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   };
 
   const openNewForm = () => { resetForm(); setShowForm(true); };
+
+  // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm(); onQuickActionDone?.(); }, [quickAction]);
 
   const selectCustomer = (customer) => {
     setSelectedCustomer(customer);
@@ -7357,7 +7368,7 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
 
-function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -7556,6 +7567,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     setEditingTour(null);
     setShowForm(true);
   };
+
+  // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm(); onQuickActionDone?.(); }, [quickAction]);
 
   const openEditForm = (tour) => {
     setFormData({...tour});
@@ -10276,7 +10290,7 @@ function CostCalculator({ initial, onSave, onClose, showToast, isMobile }) {
   );
 }
 
-function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours }) {
+function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours, quickAction, onQuickActionDone }) {
   // Teklifi tura dönüştür (fiyat + tarih + destinasyon aktarılır)
   const convertOfferToTour = async (quote) => {
     const o = quote.offer || {};
@@ -10681,6 +10695,11 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     setShowForm(false);
     setSearchQuery('');
   };
+
+  // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') { resetForm(); setShowForm(true); }
+    else if (quickAction === 'offer') { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }
+    else if (quickAction === 'contract') { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); } onQuickActionDone?.(); }, [quickAction]);
 
   const handleSave = () => {
     if (!formData.type || !formData.customer || !formData.subject) {
@@ -17590,6 +17609,10 @@ function AppInner() {
   const [lastTourId, setLastTourId] = useState(null); // tur→müşteri→geri dönüşünde turu geri açmak için
   const [prevModule, setPrevModule] = useState(null);
   const navigateTo = (mod) => { setPrevModule(activeModule); setActiveModule(mod); };
+  // Dashboard kısayolu: modüle git + formu aç ('new' | 'offer' | 'contract')
+  const [quickAction, setQuickAction] = useState(null);
+  const goAction = (mod, act) => { setQuickAction(act ? { mod, act } : null); navigateTo(mod); };
+  const qa = (mod) => ({ quickAction: quickAction?.mod === mod ? quickAction.act : null, onQuickActionDone: () => setQuickAction(null) });
 
   // 🔄 Tüm veriyi Firebase'den yenile (onSnapshot kaldırıldığı için manuel tazeleme)
   const [refreshing, setRefreshing] = useState(false);
@@ -18255,20 +18278,20 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={navigateTo} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
-      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} />;
+      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} {...qa('customers')} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
-      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
+      case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={navigateTo} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 
