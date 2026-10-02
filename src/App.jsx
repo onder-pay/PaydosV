@@ -11957,9 +11957,48 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const emptyFRes = {
     customerId: '', customerName: '', phone: '',
     sellPrice: '', buyPrice: '', currency: '€',
-    paid: false, notes: '',
+    paid: false, notes: '', tag: '', // tag: firma/grup etiketi (otel rezervasyonundan gelir)
     extras: [], // [{type:'Ekstra Koltuk'|'Ekstra Bagaj', buy:'', sell:''}]
     packageHotelId: '', packageHotelName: '' // otel paketi bağlantısı
+  };
+  // ✈️ Otel rezervasyonundan grup uçuşuna ekle (isimleri bir daha yazmamak için)
+  const [flightPick, setFlightPick] = useState(null); // { hotel, people: [{ key, customerId, customerName, phone, tag, checked }] }
+  const [nameMenu, setNameMenu] = useState(null);     // { x, y, res } — isim üzerinde sağ tık menüsü
+  const openFlightPick = (hotel, resList) => {
+    const people = [];
+    const seen = new Set();
+    resList.forEach(r => {
+      const push = (name, customerId) => {
+        const k = normalizeTr(name); if (!k || seen.has(k)) return; seen.add(k);
+        const c = customerId ? customers.find(x => String(x.id) === String(customerId)) : customers.find(x => normalizeTr(`${x.firstName || ''} ${x.lastName || ''}`) === k);
+        people.push({ key: k, customerId: c?.id || customerId || '', customerName: titleCaseTr(name), phone: c?.phone || '', tag: r.tag || '', checked: true });
+      };
+      push(r.customerName, r.customerId);
+      (r.guestNames || []).filter(n => n && n.trim()).forEach(n => push(n.trim(), ''));
+    });
+    setFlightPick({ hotel, people });
+    setNameMenu(null);
+  };
+  const addPeopleToFlight = (fl) => {
+    const { hotel, people } = flightPick;
+    const chosen = people.filter(p => p.checked);
+    if (!chosen.length) { showToast('Eklenecek kişi seçin', 'warning'); return; }
+    const active = (fl.reservations || []).filter(x => !x.cancelled);
+    const onFlight = new Set(active.map(x => normalizeTr(x.customerName)));
+    const fresh = chosen.filter(p => !onFlight.has(p.key));
+    const dup = chosen.length - fresh.length;
+    const cap = parseInt(fl.capacity) || 0;
+    const room = cap - active.length;
+    if (!fresh.length) { showToast('Seçilen kişiler bu uçuşta zaten var', 'info'); return; }
+    if (cap > 0 && fresh.length > room) { showToast(`Kontenjan yetersiz: ${Math.max(0, room)} yer kaldı, ${fresh.length} kişi seçildi`, 'error'); return; }
+    const now = Date.now();
+    const added = fresh.map((p, i) => ({ ...emptyFRes, id: now + i, createdAt: new Date().toISOString(),
+      customerId: p.customerId, customerName: p.customerName, phone: p.phone, tag: p.tag,
+      sellPrice: fl.sellPrice || '', buyPrice: fl.buyPrice || '', currency: fl.currency || '€',
+      packageHotelId: hotel.id, packageHotelName: hotel.name || '' }));
+    setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: [...(x.reservations || []), ...added] } : x));
+    showToast(`✈️ ${added.length} kişi ${fl.airline || ''} ${fl.from || ''}→${fl.to || ''} uçuşuna eklendi${dup ? ` (${dup} kişi zaten vardı)` : ''}`, 'success');
+    setFlightPick(null);
   };
   const saveFlight = () => {
     const f = editingFlight;
@@ -13593,6 +13632,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     </div>
                   ))}
                 </div>
+                <div><label style={labelStyle}>🏷️ Etiket</label><input style={inS} value={r.tag || ''} onChange={e => setR({ tag: e.target.value })} placeholder="Firma / grup (ör. Kayteks)" /></div>
                 <div><label style={labelStyle}>Not</label><input style={inS} value={r.notes} onChange={e => setR({ notes: e.target.value })} placeholder="Özel notlar..." /></div>
                 <div style={{ padding: '10px 14px', background: 'rgba(232,145,42,0.08)', borderRadius: '8px', fontSize: '13px', color: '#e8912a', fontWeight: '600' }}>
                   Toplam Satış: {fmt(flightResTotal(r), fl.currency)}{(r.buyPrice || (r.extras || []).some(e => e.buy)) ? ` · Maliyet: ${fmt(flightResCost(r), fl.currency)} · Kâr: ${fmt(flightResTotal(r) - flightResCost(r), fl.currency)}` : ''}
@@ -13678,7 +13718,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     {active.map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
-                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
                         <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
@@ -14602,6 +14642,68 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
           })()}
         </div>
 
+        {nameMenu && (() => {
+          const sel = selectedResIds.includes(nameMenu.res.id) && selectedResIds.length > 1 ? reservations.filter(x => selectedResIds.includes(x.id)) : null;
+          const sameTag = nameMenu.res.tag ? reservations.filter(x => !x.cancelled && normalizeTr(x.tag) === normalizeTr(nameMenu.res.tag)) : [];
+          const item = { display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' };
+          return (
+            <div onClick={() => setNameMenu(null)} onContextMenu={e => { e.preventDefault(); setNameMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 2500 }}>
+              <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', left: Math.max(8, Math.min(nameMenu.x, window.innerWidth - 300)), top: Math.max(8, Math.min(nameMenu.y, window.innerHeight - 170)), minWidth: '240px', background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '10px', boxShadow: '0 12px 30px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 14px', fontSize: '11px', color: '#64748b', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{titleCaseTr(nameMenu.res.customerName)}</div>
+                <button style={item} onClick={() => openFlightPick(h, [nameMenu.res])}>✈️ Uçuşa ekle{(nameMenu.res.guestNames || []).filter(Boolean).length ? ' (odadakilerle)' : ''}</button>
+                {sel && <button style={item} onClick={() => openFlightPick(h, sel)}>✈️ Seçili {sel.length} rezervasyonu uçuşa ekle</button>}
+                {sameTag.length > 1 && <button style={item} onClick={() => openFlightPick(h, sameTag)}>✈️ 🏷️ {nameMenu.res.tag} — {sameTag.length} rezervasyonu uçuşa ekle</button>}
+              </div>
+            </div>
+          );
+        })()}
+        {flightPick && (() => {
+          const ppl = flightPick.people;
+          const n = ppl.filter(p => p.checked).length;
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const list = [...groupFlights].sort((a, b) => {
+            const pa = String(a.date || '') < todayStr, pb = String(b.date || '') < todayStr;
+            return pa !== pb ? (pa ? 1 : -1) : String(a.date || '').localeCompare(String(b.date || ''));
+          });
+          return (
+            <div onClick={() => setFlightPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '520px', maxHeight: '86vh', overflowY: 'auto' }}>
+                <h4 style={{ margin: '0 0 4px', fontSize: '16px' }}>✈️ Grup uçuşuna ekle</h4>
+                <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#94a3b8' }}>Kişiler etiketi ve "{flightPick.hotel.name}" otel bağlantısıyla eklenir; fiyat uçuşun kişi başı fiyatından gelir. Uçuşta zaten olanlar atlanır.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                  {ppl.map(p => (
+                    <label key={p.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 10px', borderRadius: '14px', fontSize: '12px', cursor: 'pointer', background: p.checked ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${p.checked ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.1)'}`, color: p.checked ? '#10b981' : '#94a3b8' }}>
+                      <input type="checkbox" checked={p.checked} onChange={() => setFlightPick(fp => ({ ...fp, people: fp.people.map(x => x.key === p.key ? { ...x, checked: !x.checked } : x) }))} />
+                      {p.customerName}{p.tag ? <span style={{ color: '#fbbf24' }}> 🏷️ {p.tag}</span> : null}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Uçuş seçin ({n} kişi eklenecek):</div>
+                {list.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px 0' }}>Kayıtlı grup uçuşu yok. Önce "✈️ Grup Uçuşlar"dan uçuş ekleyin.</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {list.map(fl => {
+                    const act = (fl.reservations || []).filter(x => !x.cancelled);
+                    const cap = parseInt(fl.capacity) || 0;
+                    const left = cap - act.length;
+                    const past = String(fl.date || '') < todayStr;
+                    const already = ppl.filter(p => p.checked && act.some(x => normalizeTr(x.customerName) === p.key)).length;
+                    return (
+                      <button key={fl.id} onClick={() => addPeopleToFlight(fl)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', textAlign: 'left', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', opacity: past ? 0.55 : 1 }}>
+                        <span>
+                          <b style={{ fontSize: '13px' }}>{fl.airline || 'Uçuş'} {fl.flightNo || ''}</b> <span style={{ fontSize: '12px', color: '#94a3b8' }}>{fl.from} → {fl.to}</span>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>📅 {formatDate(fl.date)}{fl.depTime ? ` · ${fl.depTime}` : ''}{past ? ' · geçmiş' : ''}{already ? ` · ${already} kişi zaten bu uçuşta` : ''}</div>
+                        </span>
+                        <span style={{ fontSize: '11px', whiteSpace: 'nowrap', color: cap && left < n ? '#ef4444' : '#10b981' }}>{cap ? `${Math.max(0, left)} yer` : `${act.length} kişi`}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={() => setFlightPick(null)} style={{ marginTop: '12px', width: '100%', padding: '10px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Rezervasyon araması: ad soyad veya etiket (firma). Birden fazla kelime: hepsi geçmeli ("kayteks semanur") */}
         {reservations.length > 0 && (() => {
           const words = resWords, shown = shownRes;
@@ -14658,7 +14760,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                           <input type="checkbox" checked={selectedResIds.includes(r.id)} onChange={() => toggleResSelection(r.id)} style={{ cursor: 'pointer' }} />
                         </td>
-                        <td style={{ padding: '10px 12px', fontWeight: '600' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: '600' }}
+                          title="Sağ tık (telefonda basılı tut): uçuşa ekle"
+                          onContextMenu={e => { e.preventDefault(); setNameMenu({ x: e.clientX, y: e.clientY, res: r }); }}
+                          onTouchStart={e => { const t = e.touches[0]; const x = t.clientX, y = t.clientY; const el = e.currentTarget; clearTimeout(el._lp); el._lp = setTimeout(() => setNameMenu({ x, y, res: r }), 600); }}
+                          onTouchEnd={e => clearTimeout(e.currentTarget._lp)} onTouchMove={e => clearTimeout(e.currentTarget._lp)}>
                           <span onClick={() => { const c = customers.find(x => String(x.id) === String(r.customerId)); if (c && onNavigateToCustomer) onNavigateToCustomer(c); }} style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
                             {r.customerName}
                           </span>
