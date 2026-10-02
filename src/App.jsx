@@ -12456,7 +12456,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // Bir rezervasyon için her geceyi tek tek hesapla
   // Birden fazla fiyat dönemine yayılıyorsa toplar
   const calcReservationPrice = (hotel, checkIn, checkOut, roomType, concept) => {
-    const result = { totalBuy: 0, totalSell: 0, nights: 0, currency: '€', gaps: [], periodsUsed: [] };
+    const result = { totalBuy: 0, totalSell: 0, nights: 0, currency: '€', gaps: [], periodsUsed: [], overlaps: [], missingRate: [] };
     if (!checkIn || !checkOut || !hotel) return result;
     const d1 = new Date(checkIn);
     const d2 = new Date(checkOut);
@@ -12470,20 +12470,26 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     for (let i = 0; i < result.nights; i++) {
       const day = new Date(d1.getTime() + i * 86400000);
       const dayStr = day.toISOString().split('T')[0];
-      const period = periods.find(p => p.startDate <= dayStr && p.endDate > dayStr);
-      if (!period) {
+      // Aynı günü kapsayan birden fazla dönem olabilir (eski/boş kopya dönem): bu oda+konsept için fiyatı olan dönem esas alınır
+      const covering = periods.filter(p => p.startDate <= dayStr && p.endDate > dayStr);
+      if (!covering.length) {
         result.gaps.push(dayStr);
         continue;
       }
+      const rateOf = (p) => {
+        const rate = p.rates?.[roomType]?.[concept];
+        if (rate == null || rate === '') return null;
+        const buy = typeof rate === 'object' ? (parseFloat(rate.buy) || 0) : 0;
+        const sell = typeof rate === 'object' ? (parseFloat(rate.sell) || 0) : (parseFloat(rate) || 0);
+        return buy > 0 || sell > 0 ? { buy, sell } : null;
+      };
+      const period = covering.find(p => rateOf(p)) || covering[0];
+      if (covering.length > 1) result.overlaps.push(dayStr);
       if (!result.periodsUsed.includes(period.id)) result.periodsUsed.push(period.id);
       result.currency = period.currency || result.currency;
-      const rate = period.rates?.[roomType]?.[concept];
-      if (rate) {
-        const buy = typeof rate === 'number' ? 0 : (rate.buy || 0);
-        const sell = typeof rate === 'number' ? rate : (rate.sell || 0);
-        result.totalBuy += buy;
-        result.totalSell += sell;
-      }
+      const r = rateOf(period);
+      if (r) { result.totalBuy += r.buy; result.totalSell += r.sell; }
+      else result.missingRate.push(dayStr);
     }
     return result;
   };
@@ -12498,6 +12504,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     let needsUpdate = false;
     const updated = res.map(r => {
       if (!r.checkIn || !r.checkOut || !r.roomType) return r;
+      // Elle girilen fiyata ve bilerek 0 bırakılan rezervasyona (ör. aynı odadaki 2. kişi) sessizce fiyat yazma
+      if (r.priceManual) return r;
+      if (!(parseFloat(r.price) || 0) && !(parseFloat(r.buyPrice) || 0)) return r;
       const calc = calcReservationPrice(selectedHotel, r.checkIn, r.checkOut, r.roomType, r.concept || 'bb');
       if (calc.totalSell === 0 && calc.totalBuy === 0) return r;
       const cb = parseFloat(r.buyPrice) || 0;
@@ -14791,6 +14800,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                           </span>
                         )}
                       </div>
+                      {calc.missingRate.length > 0 && !hasGaps && (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24' }}>
+                          ⚠️ {resData.roomType} / {(resData.concept || 'bb').toUpperCase()} için {calc.missingRate.length} gecenin fiyatı dönemde tanımlı değil — bu geceler hesaba dahil edilmedi.
+                        </div>
+                      )}
+                      {calc.overlaps.length > 0 && (
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24' }}>
+                          ⚠️ {calc.overlaps.length} gece için birden fazla fiyat dönemi çakışıyor; fiyatı tanımlı olan dönem kullanıldı. Anlaşma Fiyatları'nda eski/boş dönemi silin.
+                        </div>
+                      )}
                       {hasGaps && (
                         <div style={{ marginTop: '6px', fontSize: '11px', color: '#fca5a5' }}>
                           ⚠️ {calc.gaps.length} gün için fiyat dönemi yok: {calc.gaps.slice(0,3).join(', ')}{calc.gaps.length > 3 ? '...' : ''}. Bu günler hesaba dahil EDİLMEDİ. Eksik dönemi otel detayından ekleyin.
