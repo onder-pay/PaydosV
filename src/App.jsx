@@ -1005,7 +1005,7 @@ function LoginScreen({ onLogin, users }) {
   );
 }
 
-function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate }) {
+function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate, onGo }) {
   const [inboxFiles, setInboxFiles] = useState(null); // 📤 sürükle-bırak ile gelen dosyalar → Belge Yükle penceresi
   const [dragOn, setDragOn] = useState(false);
   const [showBirthdays, setShowBirthdays] = useState(false);
@@ -1132,7 +1132,30 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
-      <h2 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Dashboard</h2>
+      <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>📊 Dashboard</h2>
+      {/* ⚡ Kısayollar: en sık kullanılan bölümler (Ctrl/⌘ + numara menüdeki sırayla aynı) */}
+      {onGo && (() => {
+        const ks = (id) => { const i = SHORTCUT_MODULES.findIndex(m => m[0] === id); return i >= 0 ? i + 1 : null; };
+        const items = [
+          ['customers', '👥', 'Müşteriler', '#3b82f6'], ['visa', '🌍', 'Vize', '#10b981'], ['ds160', '🇺🇸', 'Amerika Vize', '#8b5cf6'],
+          ['tours', '🎫', 'Turlar', '#f59e0b'], ['hotels', '🏨', 'Oteller ve Uçuşlar', '#06b6d4'], ['quotes', '📄', 'Teklif & Proforma', '#ef4444'],
+          ['tavsiyeler', '⭐', 'Tavsiyeler', '#fb923c'], ['cards', '💳', 'Kredi Kartları', '#a78bfa'],
+        ];
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(8, 1fr)', gap: isMobile ? '8px' : '10px', marginBottom: '20px' }}>
+            {items.map(([id, icon, label, color]) => (
+              <button key={id} onClick={() => onGo(id)} title={ks(id) ? `${label} — Ctrl/⌘ + ${ks(id)}` : label}
+                style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: isMobile ? '12px 4px' : '16px 6px', background: `linear-gradient(135deg, ${color}1f, ${color}0d)`, border: `1px solid ${color}40`, borderRadius: '14px', color: '#e8f1f8', cursor: 'pointer', minHeight: isMobile ? '78px' : '92px', transition: 'transform .12s, border-color .12s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = color; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = `${color}40`; }}>
+                <span style={{ fontSize: isMobile ? '22px' : '26px', lineHeight: 1 }}>{icon}</span>
+                <span style={{ fontSize: isMobile ? '10.5px' : '12px', fontWeight: 600, textAlign: 'center', lineHeight: 1.25 }}>{label}</span>
+                {!isMobile && ks(id) && <span style={{ position: 'absolute', top: '6px', right: '8px', fontSize: '9.5px', color: '#64748b', fontFamily: 'monospace' }}>⌘{ks(id)}</span>}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
       {inboxFiles && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} initialFiles={inboxFiles} onClose={() => setInboxFiles(null)} />}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
         <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6"
@@ -18232,7 +18255,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={navigateTo} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
@@ -18245,7 +18268,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={navigateTo} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 
