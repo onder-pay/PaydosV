@@ -1005,7 +1005,9 @@ function LoginScreen({ onLogin, users }) {
   );
 }
 
-function DashboardModule({ customers, isMobile, onNavigate }) {
+function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate }) {
+  const [inboxFiles, setInboxFiles] = useState(null); // 📤 sürükle-bırak ile gelen dosyalar → Belge Yükle penceresi
+  const [dragOn, setDragOn] = useState(false);
   const [showBirthdays, setShowBirthdays] = useState(false);
   const [modal, setModal] = useState(null); // {title, color, list, renderItem}
   // Bugün eklenen müşteriler
@@ -1131,6 +1133,23 @@ function DashboardModule({ customers, isMobile, onNavigate }) {
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
       <h2 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Dashboard</h2>
+      {/* 📤 Belge yükle: bilet / biniş kartı / otel / vize PDF'lerini sürükle-bırak; isimden müşteri bulunur, müşteri linkine eklenir */}
+      <label
+        onDragEnter={e => { e.preventDefault(); setDragOn(true); }}
+        onDragOver={e => { e.preventDefault(); if (!dragOn) setDragOn(true); }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOn(false); }}
+        onDrop={e => { e.preventDefault(); setDragOn(false); const f = Array.from(e.dataTransfer.files || []); if (f.length) setInboxFiles(f); }}
+        style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: isMobile ? '16px' : '20px 24px', marginBottom: '20px', borderRadius: '14px', cursor: 'pointer',
+          border: `2px dashed ${dragOn ? '#60a5fa' : 'rgba(59,130,246,0.4)'}`, background: dragOn ? 'rgba(59,130,246,0.16)' : 'rgba(59,130,246,0.06)', transition: 'background .15s, border-color .15s' }}>
+        <div style={{ fontSize: isMobile ? '28px' : '34px' }}>{dragOn ? '📥' : '📤'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#60a5fa' }}>{dragOn ? 'Bırakın, belgeler okunsun' : 'Belge yükle — sürükleyip bırakın'}</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>Uçak bileti, biniş kartı, otel, vize… PDF'teki isimden müşteri bulunur ve müşteri linkine eklenir. Toplu bilet PDF'i kişilere ayrılır.</div>
+        </div>
+        {!isMobile && <span style={{ padding: '9px 16px', borderRadius: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap' }}>Dosya seç</span>}
+        <input type="file" multiple accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) setInboxFiles(f); }} />
+      </label>
+      {inboxFiles && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} initialFiles={inboxFiles} onClose={() => setInboxFiles(null)} />}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
         <StatCard value={customers.length} label="Toplam Müşteri" color="#3b82f6"
           sublabel={todayAdded.length > 0 ? `+${todayAdded.length} bugün eklendi` : null} />
@@ -1436,7 +1455,7 @@ const cityKey = (s) => String(s || '').trim().toLocaleLowerCase('tr-TR')
 // Tur şehri birden fazla olabilir: "Milano, Venedik" / "Paris - Brüksel"
 const tourCities = (str) => String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(x => x.trim()).filter(Boolean);
 const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '' };
-function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity }) {
+function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity, asPage }) {
   const [cities, setCities] = useState(null); // [{ key, city, country, restaurants, dirty }]
   const [sel, setSel] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1479,18 +1498,24 @@ function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity 
     try { await deleteDoc(doc(db, 'tavsiyeler', cur.key)); } catch (e) { showToast?.('Silinemedi: ' + e.message, 'error'); return; }
     const rest = cities.filter(c => c.key !== cur.key); setCities(rest); setSel(rest[0]?.key || '');
   };
-  const close = () => { if ((cities || []).some(c => c.dirty) && !window.confirm('Kaydedilmemiş değişiklik var. Kapatılsın mı?')) return; onClose(); };
+  const close = () => { if (asPage) return; if ((cities || []).some(c => c.dirty) && !window.confirm('Kaydedilmemiş değişiklik var. Kapatılsın mı?')) return; onClose(); };
+  // Sayfa modunda (sol menü) başka modüle geçerken kaydedilmemiş değişiklik uyarısı
+  useEffect(() => {
+    if (!asPage) return;
+    const h = (e) => { if ((cities || []).some(c => c.dirty)) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
+  }, [asPage, cities]);
   const fs = { padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#fff', fontSize: '13px', width: '100%', boxSizing: 'border-box' };
   const small = { padding: '6px 9px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer' };
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'center', padding: isMobile ? 0 : '20px' }} onClick={close}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(249,115,22,0.35)', borderRadius: isMobile ? 0 : '16px', width: '100%', maxWidth: '980px', maxHeight: isMobile ? '100vh' : '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={asPage ? { padding: isMobile ? '12px' : '24px' } : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'center', padding: isMobile ? 0 : '20px' }} onClick={close}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(249,115,22,0.35)', borderRadius: isMobile && !asPage ? 0 : '16px', width: '100%', maxWidth: asPage ? '1100px' : '980px', margin: asPage ? '0 auto' : undefined, maxHeight: asPage ? (isMobile ? 'none' : 'calc(100vh - 48px)') : isMobile ? '100vh' : '88vh', minHeight: asPage && !isMobile ? '70vh' : undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '17px' }}>⭐ Tavsiyeler</h3>
             <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#94a3b8' }}>Şehir bazlı tavsiye restoranlar. Turun şehriyle eşleşen tavsiyeler o turun linkinde otomatik görünür.</p>
           </div>
-          <button onClick={close} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+          {!asPage && <button onClick={close} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>}
         </div>
         {cities === null ? <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>⏳ Yükleniyor...</div> : (
           <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flex: 1, minHeight: 0 }}>
@@ -1729,7 +1754,7 @@ const matchCustomers = (index, words) => {
   return hits.filter(h => score(h) === max).map(h => h.c);
 };
 
-function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose }) {
+function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose, initialFiles }) {
   const [rows, setRows] = useState([]); // { key, file, pages, type, custIds:[], cands:[], flights:[], note }
   const [busy, setBusy] = useState('');
   const [done, setDone] = useState(null); // [{ c, link, text, added }]
@@ -1738,6 +1763,9 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
   const nameOf = (c) => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
   const listId = useRef('cust-dl-' + Math.random().toString(36).slice(2));
   const setRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
+  // Dashboard'a sürüklenip bırakılan dosyalar: pencere açılınca hemen okunur (bir kez)
+  const startedRef = useRef(false);
+  useEffect(() => { if (!startedRef.current && initialFiles && initialFiles.length) { startedRef.current = true; analyze(initialFiles); } }, []);
 
   const analyze = async (fileList) => {
     const files = Array.from(fileList || []).filter(f => f.size <= 15 * 1024 * 1024);
@@ -17908,6 +17936,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'quotes', icon: '📄', label: 'Teklif & Proforma' },
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
+    { id: 'tavsiyeler', icon: '⭐', label: 'Tavsiyeler' },
     { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vize.paydostur.com/#/panel' },
     { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'activitylog', icon: '📋', label: 'İşlemler' },
@@ -17916,7 +17945,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
@@ -17925,10 +17954,11 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 
