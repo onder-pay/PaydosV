@@ -40,6 +40,13 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .lead{margin-top:16px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.62)}
 
 /* Bölüm başlığı */
+.dy{display:flex;flex-direction:column;gap:12px}
+.dy.many{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}.dy.many::-webkit-scrollbar{display:none}
+.dy.many .dc{flex:0 0 86%;scroll-snap-align:start}
+.dc{border-radius:16px;background:var(--card);border:1px solid var(--line);overflow:hidden}
+.dc .di{display:block}.dc .di img{display:block;width:100%;height:auto;max-height:420px;object-fit:cover}
+.dc .dt{padding:12px 14px}.dc .dt b{display:block;font-size:14.5px;color:var(--ink)}.dc .dt p{margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--muted);white-space:pre-line}
+.dc .dg{display:inline-block;margin-top:8px;font-size:12.5px;font-weight:700;color:var(--navy);text-decoration:none}
 .sec{display:flex;align-items:baseline;gap:8px;margin:30px 2px 12px}
 .sec b{font-size:15px;font-weight:700;letter-spacing:-.1px}
 .sec span{font-size:12px;color:var(--faint);font-weight:600}
@@ -712,6 +719,8 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 
       renderInstall(box);
       renderPush(box);
+      var dySlot = el('div'); box.appendChild(dySlot);
+      try { renderDuyuru('customer', '', dySlot); } catch (x) {}
       if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
       document.title = 'Paydos · ' + (fullName || 'Seyahat Dosyası');
 
@@ -920,6 +929,39 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       return;
     }
     show('Belgeler yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.');
+  };
+
+
+  // ===== 📢 Duyurular (CRM → Duyurular) — görsel + kısa metin, hedef ve tarih aralığına göre =====
+  var renderDuyuru = function (kind, tourId, slot) {
+    fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/duyurular?pageSize=50')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.documents) return;
+        var n = new Date(), today = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); return o; }).filter(function (d) {
+          if (!d.active || (d.start && d.start > today) || (d.end && d.end < today)) return false;
+          if (!(d.title || safeUrl(d.image))) return false;
+          return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
+        }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
+        if (!list.length) return;
+        var h = el('div', 'sec'); h.appendChild(el('b', '', 'Duyurular')); slot.appendChild(h);
+        var row = el('div', 'dy' + (list.length > 1 ? ' many' : '')); slot.appendChild(row);
+        list.forEach(function (d) {
+          var c = el('div', 'dc');
+          var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
+          if (img) {
+            var a = el('a', 'di'); a.href = link || img; a.target = '_blank'; a.rel = 'noopener';
+            var im = document.createElement('img'); im.src = img; im.alt = String(d.title || 'Duyuru'); im.loading = 'lazy'; a.appendChild(im); c.appendChild(a);
+          }
+          var tx = el('div', 'dt');
+          if (d.title) tx.appendChild(el('b', '', String(d.title)));
+          if (d.text) tx.appendChild(el('p', '', String(d.text)));
+          if (link) { var go = el('a', 'dg', 'Detaylar →'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; tx.appendChild(go); }
+          if (tx.childNodes.length) c.appendChild(tx);
+          row.appendChild(c);
+        });
+      }).catch(function () {});
   };
 
   // ===== Bildirimler (Web Push) =====

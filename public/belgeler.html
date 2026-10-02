@@ -146,6 +146,13 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .hotel .b a{flex:1;text-align:center;padding:10px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;border:1px solid var(--gold);color:var(--gold)}
 .hotel .b a.p{background:var(--gold);color:#1b1f3b}
 /* Tavsiye edilen restoranlar (CRM → Turlar → ⭐ Tavsiyeler, şehir bazlı) */
+.dy{display:flex;flex-direction:column;gap:12px}
+.dy.many{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}.dy.many::-webkit-scrollbar{display:none}
+.dy.many .dc{flex:0 0 86%;scroll-snap-align:start}
+.dc{border-radius:18px;background:var(--card);border:1px solid var(--line);overflow:hidden}
+.dc .di{display:block}.dc .di img{display:block;width:100%;height:auto;max-height:420px;object-fit:cover}
+.dc .dt{padding:12px 16px 14px}.dc .dt b{display:block;font-size:16px}.dc .dt p{margin-top:4px;font-size:13px;line-height:1.5;color:var(--muted);white-space:pre-line}
+.dc .dg{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--gold2);text-decoration:none}
 .rest{display:flex;flex-direction:column;gap:10px}
 /* 🏆 Canlı bilgi yarışması */
 .qz{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;width:100%;text-align:left;font:inherit;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(219,39,119,.35);animation:qzp 2s ease-in-out infinite}
@@ -725,6 +732,39 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     }).catch(function () {});
   };
 
+
+  // ===== 📢 Duyurular (CRM → Duyurular) — görsel + kısa metin, hedef ve tarih aralığına göre =====
+  var renderDuyuru = function (kind, tourId, slot) {
+    fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/duyurular?pageSize=50')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.documents) return;
+        var n = new Date(), today = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); return o; }).filter(function (d) {
+          if (!d.active || (d.start && d.start > today) || (d.end && d.end < today)) return false;
+          if (!(d.title || safeUrl(d.image))) return false;
+          return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
+        }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
+        if (!list.length) return;
+        slot.appendChild(el('div', 'sec', 'Duyurular'));
+        var row = el('div', 'dy' + (list.length > 1 ? ' many' : '')); slot.appendChild(row);
+        list.forEach(function (d) {
+          var c = el('div', 'dc');
+          var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
+          if (img) {
+            var a = el('a', 'di'); a.href = link || img; a.target = '_blank'; a.rel = 'noopener';
+            var im = document.createElement('img'); im.src = img; im.alt = String(d.title || 'Duyuru'); im.loading = 'lazy'; a.appendChild(im); c.appendChild(a);
+          }
+          var tx = el('div', 'dt');
+          if (d.title) tx.appendChild(el('b', '', String(d.title)));
+          if (d.text) tx.appendChild(el('p', '', String(d.text)));
+          if (link) { var go = el('a', 'dg', 'Detaylar →'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; tx.appendChild(go); }
+          if (tx.childNodes.length) c.appendChild(tx);
+          row.appendChild(c);
+        });
+      }).catch(function () {});
+  };
+
   // ===== 🛫 Kalkış tabelası (eski usul, harfler dönerek yerine oturur) =====
   // Saat, uçuş, nereye biletten; kapı / durum / kontuar kalkışa 1 gün kala /.netlify/functions/ucus'tan
   // (AeroDataBox) gelir ve 5 dakikada bir yenilenir. Servis yoksa ilgili hücreler boş kalır.
@@ -969,6 +1009,8 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // Canlı yarışma kartı (rehber yarışma açınca belirir)
       var quizSlot = el('div'); box.appendChild(quizSlot);
       try { renderQuiz(f, quizSlot); } catch (x) {}
+      var dySlot = el('div'); box.appendChild(dySlot);
+      try { renderDuyuru('tour', f.tourId || '', dySlot); } catch (x) {}
       if (!navigator.onLine) add(box, el('div', 'offline', '📴 İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
       if (f.city) document.title = 'Paydos · ' + f.city;
 
