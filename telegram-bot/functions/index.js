@@ -1368,6 +1368,9 @@ exports.telegramBot = functions
 
 // Belge linki API (PIN korumalı) — ayrı fonksiyon: npx firebase-tools deploy --only functions:belge
 exports.belge = require('./belge').belge;
+// Müşteri linki bildirimleri (Web Push) — CRM'deki 📣 Bildirimler ekranı
+exports.bildirim = require('./bildirim').bildirim;
+exports.bildirimOtomatik = require('./bildirim').bildirimOtomatik; // her gün 10:00 vize/pasaport bitiş hatırlatması
 // Vize günlük grup duyuruları (09:30 yapılacaklar, 11:30 + 17:00 atama bekleyenler)
 exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;

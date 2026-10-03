@@ -113,3 +113,4 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
     return res.status(500).json({ state: 'error', error: 'Sunucu hatası' });
   }
 });
+exports.validityOf = validityOf; // bildirim.js otomatik vize/pasaport hatırlatması kullanır

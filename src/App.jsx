@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
 import jsPDF from 'jspdf';
 import { db, auth } from './lib/firebase';
-import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import 'jspdf-autotable';
@@ -1686,6 +1686,618 @@ const cityKey = (s) => String(s || '').trim().toLocaleLowerCase('tr-TR')
 // Tur şehri birden fazla olabilir: "Milano, Venedik" / "Paris - Brüksel"
 const tourCities = (str) => String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(x => x.trim()).filter(Boolean);
 const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '' };
+// ===== 📣 Bildirimler: müşteri linkinden bildirime izin verenlere mesaj =====
+// Sunucu: Firebase fonksiyonu "bildirim" (telegram-bot/functions/bildirim.js). Kampanya mesajı sadece kampanya
+// onayı verenlere gider — bu kural sunucuda; buradaki sayılar sadece önizleme.
+const BILDIRIM_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
+const bildirimCall = async (body) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  const r = await fetch(BILDIRIM_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+};
+const custKey = (c) => c._docId || String(c.id);
+const daysUntil = (ymd) => { const d = safeParseDate(ymd); return d ? Math.ceil((d - new Date()) / 86400000) : null; };
+const BILDIRIM_HEDEF = [
+  ['all', 'Bildirim açık herkes'],
+  ['schengen60', 'Schengen vizesi 60 gün içinde bitenler'],
+  ['usa90', 'ABD vizesi 90 gün içinde bitenler'],
+  ['passport6', 'Pasaportu 6 ay içinde bitenler'],
+  ['pick', 'Seçtiğim müşteriler'],
+];
+function BildirimlerModule({ customers, showToast, isMobile }) {
+  const [stats, setStats] = useState(null);
+  const [log, setLog] = useState([]);
+  const [err, setErr] = useState('');
+  const [type, setType] = useState('bilgi');
+  const [hedef, setHedef] = useState('all');
+  const [picked, setPicked] = useState([]);
+  const [q, setQ] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const toggleAuto = async () => {
+    const on = !stats?.auto;
+    try { await bildirimCall({ a: 'auto', on }); setStats(st => ({ ...st, auto: on })); showToast?.(on ? '⏰ Otomatik hatırlatma açıldı' : 'Otomatik hatırlatma kapatıldı', 'success'); }
+    catch (e) { showToast?.('❌ ' + e.message, 'error'); }
+  };
+  const load = async () => {
+    setErr('');
+    try { const [s, l] = await Promise.all([bildirimCall({ a: 'stats' }), bildirimCall({ a: 'log' })]); setStats(s); setLog(l.items || []); }
+    catch (e) { setErr(e.message); }
+  };
+  useEffect(() => { load(); }, []);
+  const by = stats?.byCustomer || {};
+  // Bildirimi açık müşteriler (CRM kartıyla eşleşen)
+  const subCustomers = customers.filter(c => by[custKey(c)]);
+  const matchHedef = (c) => {
+    if (hedef === 'all') return true;
+    if (hedef === 'pick') return picked.includes(custKey(c));
+    if (hedef === 'schengen60') return safeParseJSON(c.schengenVisas).some(v => { const n = daysUntil(v.endDate); return n !== null && n >= 0 && n <= 60; });
+    if (hedef === 'usa90') { const n = daysUntil(safeParseObj(c.usaVisa).endDate); return n !== null && n >= 0 && n <= 90; }
+    if (hedef === 'passport6') return safeParseJSON(c.passports).some(p => { const n = daysUntil(p.expiryDate); return n !== null && n >= 0 && n <= 183; });
+    return false;
+  };
+  const targets = subCustomers.filter(matchHedef);
+  const devices = hedef === 'all'
+    ? (type === 'kampanya' ? stats?.marketing || 0 : stats?.total || 0)
+    : targets.reduce((n, c) => n + (type === 'kampanya' ? by[custKey(c)].m : by[custKey(c)].n), 0);
+  const send = async () => {
+    if (!title.trim() || !body.trim()) { showToast?.('Başlık ve mesaj yazın', 'warning'); return; }
+    if (!devices) { showToast?.('Bu hedefte bildirim alacak cihaz yok', 'warning'); return; }
+    if (!window.confirm(`${type === 'kampanya' ? '🎁 KAMPANYA' : 'ℹ️ Bilgilendirme'} bildirimi ${devices} cihaza gönderilsin mi?\n\n${title}\n${body}`)) return;
+    setBusy(true);
+    try {
+      const r = await bildirimCall({ a: 'send', type, title, body, url: url.trim(), customerIds: hedef === 'all' ? null : targets.map(custKey) });
+      showToast?.(`📣 ${r.sent} cihaza gönderildi${r.failed ? ` · ${r.failed} ulaşmadı` : ''}`, r.sent ? 'success' : 'warning');
+      setTitle(''); setBody(''); setUrl(''); load();
+    } catch (e) { showToast?.('❌ Gönderilemedi: ' + e.message, 'error'); }
+    setBusy(false);
+  };
+  const inp = { width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' };
+  const lbl = { display: 'block', fontSize: '12px', color: '#94a3b8', margin: '14px 0 6px', fontWeight: 600 };
+  const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '16px' : '20px' };
+  const pickList = subCustomers.filter(c => !q || `${c.firstName} ${c.lastName}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr'))).slice(0, 30);
+  return (
+    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+      <h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
+      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Müşteri linkinden bildirime izin veren telefonlara mesaj gönderin. iPhone'da bildirim için linkin ana ekrana eklenmiş olması gerekir.</p>
+      {err && <div style={{ ...card, borderColor: 'rgba(239,68,68,0.4)', color: '#fca5a5', marginBottom: '16px', fontSize: '13px' }}>Bildirim servisine ulaşılamadı: {err}. (Firebase fonksiyonu "bildirim" yüklü mü?)</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '18px' }}>
+        {[['🔔', 'Bildirim açık cihaz', stats?.total, '#3b82f6'], ['🎁', 'Kampanya onaylı', stats?.marketing, '#f59e0b'], ['👥', 'Müşteri', subCustomers.length, '#10b981']].map(([i, l, v, c]) => (
+          <div key={l} style={{ ...card, padding: '14px 16px' }}><div style={{ fontSize: '24px', fontWeight: 700, color: c }}>{stats ? v : '…'}</div><div style={{ fontSize: '12px', color: '#94a3b8' }}>{i} {l}</div></div>
+        ))}
+      </div>
+      {/* ⏰ Otomatik hatırlatma — tarihler müşteri kartından (linkte görünen vize/pasaport bilgisiyle aynı) */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', padding: '14px 18px', borderColor: stats?.auto ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.08)' }}>
+        <span style={{ fontSize: '24px' }}>⏰</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: '14px' }}>Otomatik vize ve pasaport hatırlatması</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>Her gün 10:00'da: vize bitimine <b>60 · 30 · 7 gün</b>, pasaport bitimine <b>6 ay · 3 ay</b> kala müşteriye kendiliğinden bildirim gider. Her hatırlatma bir kez gönderilir. Bildirimi açık olan herkese gider (bilgilendirmedir, reklam içermez).</div>
+        </div>
+        <button onClick={toggleAuto} disabled={!stats} style={{ flex: 'none', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', border: 'none', color: '#fff', background: stats?.auto ? '#10b981' : '#475569', opacity: stats ? 1 : 0.5 }}>{stats ? (stats.auto ? '✓ Açık' : 'Kapalı') : '…'}</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', alignItems: 'start' }}>
+        <div style={card}>
+          <label style={{ ...lbl, marginTop: 0 }}>Tür</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {[['bilgi', 'ℹ️ Bilgilendirme', 'Uçuş, otel, belge, tur duyurusu'], ['kampanya', '🎁 Kampanya', 'Sadece kampanya onayı verenlere']].map(([k, t, s]) => (
+              <button key={k} onClick={() => setType(k)} style={{ flex: 1, minWidth: '180px', textAlign: 'left', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: '#e8f1f8', background: type === k ? 'rgba(59,130,246,0.18)' : 'rgba(0,0,0,0.2)', border: `1px solid ${type === k ? '#3b82f6' : 'rgba(255,255,255,0.1)'}` }}>
+                <div style={{ fontWeight: 700, fontSize: '13px' }}>{t}</div><div style={{ fontSize: '11px', color: '#94a3b8' }}>{s}</div>
+              </button>
+            ))}
+          </div>
+          {type === 'kampanya' && <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#fbbf24' }}>Reklam/kampanya içeriğini "Bilgilendirme" olarak göndermeyin — onay vermeyen müşteriye ticari ileti yasal risktir.</div>}
+          <label style={lbl}>Kime</label>
+          <select value={hedef} onChange={e => setHedef(e.target.value)} style={inp}>
+            {BILDIRIM_HEDEF.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+          </select>
+          {hedef === 'pick' && (
+            <div style={{ marginTop: '8px' }}>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Müşteri ara (sadece bildirimi açık olanlar)" style={inp} />
+              <div style={{ maxHeight: '180px', overflow: 'auto', marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {pickList.map(c => { const k = custKey(c), on = picked.includes(k); return (
+                  <button key={k} onClick={() => setPicked(p => on ? p.filter(x => x !== k) : [...p, k])} style={{ padding: '5px 10px', borderRadius: '999px', fontSize: '12px', cursor: 'pointer', color: '#e8f1f8', background: on ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.05)', border: `1px solid ${on ? '#10b981' : 'rgba(255,255,255,0.12)'}` }}>
+                    {on ? '✓ ' : ''}{c.firstName} {c.lastName}{by[k].m ? ' 🎁' : ''}
+                  </button>); })}
+                {!pickList.length && <span style={{ fontSize: '12px', color: '#64748b' }}>Bildirimi açık müşteri yok.</span>}
+              </div>
+            </div>
+          )}
+          <label style={lbl}>Başlık <span style={{ color: '#64748b', fontWeight: 400 }}>({title.length}/80)</span></label>
+          <input value={title} maxLength={80} onChange={e => setTitle(e.target.value)} placeholder={type === 'kampanya' ? 'Kapadokya turunda erken rezervasyon' : 'Online check-in açıldı'} style={inp} />
+          <label style={lbl}>Mesaj <span style={{ color: '#64748b', fontWeight: 400 }}>({body.length}/300)</span></label>
+          <textarea value={body} maxLength={300} onChange={e => setBody(e.target.value)} rows={4} placeholder={type === 'kampanya' ? '15 Kasım\'a kadar %15 indirim. Detaylar için dokunun.' : 'Yarınki TK1032 uçuşunuz için online check-in açıldı.'} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+          <label style={lbl}>Dokununca açılacak sayfa <span style={{ color: '#64748b', fontWeight: 400 }}>(boşsa müşterinin kendi linki · sadece paydostur.com)</span></label>
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://paydostur.com/..." style={inp} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px', flexWrap: 'wrap' }}>
+            <button onClick={send} disabled={busy || !stats} style={{ padding: '11px 22px', borderRadius: '10px', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 700, fontSize: '14px', color: '#fff', background: type === 'kampanya' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#2563eb)', opacity: busy || !stats ? 0.6 : 1 }}>{busy ? 'Gönderiliyor…' : '📣 Gönder'}</button>
+            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{stats ? <><b style={{ color: '#e8f1f8' }}>{devices}</b> cihaz{hedef !== 'all' ? ` · ${targets.length} müşteri` : ''}</> : 'yükleniyor…'}</span>
+          </div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '8px' }}>ÖNİZLEME</div>
+          <div style={{ background: '#f8fafc', color: '#0f172a', borderRadius: '14px', padding: '12px 14px', display: 'flex', gap: '10px', boxShadow: '0 6px 20px rgba(0,0,0,0.3)' }}>
+            <img src="/icons/icon-192.png" alt="" style={{ width: '36px', height: '36px', borderRadius: '8px', flex: 'none' }} />
+            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: '13.5px' }}>{title || 'Başlık'}</div><div style={{ fontSize: '12.5px', color: '#475569', wordBreak: 'break-word' }}>{body || 'Mesajınız burada görünür.'}</div></div>
+          </div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, margin: '20px 0 8px', display: 'flex', justifyContent: 'space-between' }}><span>SON GÖNDERİLENLER</span><button onClick={load} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: '12px' }}>↻ Yenile</button></div>
+          {log.length ? log.map(x => (
+            <div key={x.id} style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}><b style={{ color: '#e8f1f8' }}>{x.type === 'kampanya' ? '🎁' : 'ℹ️'} {x.title}</b><span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{String(x.at || '').slice(0, 16).replace('T', ' ')}</span></div>
+              <div style={{ color: '#94a3b8' }}>{x.sent}/{x.matched} cihaz · {x.by === 'otomatik' ? '⏰ otomatik' : String(x.by || '').split('@')[0]}</div>
+            </div>
+          )) : <div style={{ fontSize: '12px', color: '#64748b' }}>Henüz gönderim yok.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== 🏆 Tur bilgi yarışması (canlı) =====
+// Rehber CRM'den yönetir; yolcular tur linkinden (/b/<kod>) katılır ve cevaplar. Firestore:
+//   yarisma/<şehir>                      — soru bankası { city, questions: [{ q, o: [4 şık], a: doğru şık }] } (sadece CRM)
+//   yarisma_oturum/<turId>               — canlı oturum (herkes okur; doğru cevap sadece "reveal"de yazılır)
+//   yarisma_oturum/<turId>/gizli/sorular — oturumun soruları + cevapları (sadece CRM)
+//   yarisma_oturum/<turId>/players/<link kodu> — oyuncu { name, answers: { i: { c, at } }, score, last }
+// Puan sunucu saatine göre hesaplanır: doğru cevap 500–1000 (hızlı olan çok alır), süre bitince 0.
+const YARISMA_SURE = 20; // saniye
+const yarismaPuan = (ms, limitMs) => (ms > limitMs + 1500 ? 0 : Math.round(500 + 500 * Math.max(0, 1 - ms / limitMs)));
+const validQ = (x) => x && String(x.q || '').trim() && Array.isArray(x.o) && x.o.length === 4 && x.o.every(s => String(s || '').trim()) && x.a >= 0 && x.a < 4;
+const SIK_RENK = ['#ef4444', '#3b82f6', '#f59e0b', '#10b981'];
+function YarismaModal({ tour, onClose, showToast, isMobile }) {
+  const cities = tourCities(tour.city);
+  const [city, setCity] = useState(cities[0] || tour.country || '');
+  const key = cityKey(city);
+  const [bank, setBank] = useState(null);
+  const [edit, setEdit] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const sid = String(tour.id);
+  const [ses, setSes] = useState(undefined);
+  const [players, setPlayers] = useState([]);
+  const [now, setNow] = useState(Date.now());
+  const qsRef = useRef(null);
+  const revealing = useRef(false);
+  useEffect(() => { setBank(null); getDoc(doc(db, 'yarisma', key)).then(s => setBank(s.exists() ? (s.data().questions || []) : [])).catch(() => setBank([])); }, [key]);
+  useEffect(() => {
+    const u1 = onSnapshot(doc(db, 'yarisma_oturum', sid), s => setSes(s.exists() ? s.data() : null), () => setSes(null));
+    const u2 = onSnapshot(collection(db, 'yarisma_oturum', sid, 'players'), q => setPlayers(q.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
+    return () => { u1(); u2(); };
+  }, [sid]);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(t); }, []);
+  const live = ses && ses.status !== 'closed';
+  // Sayfa yenilenirse oturumun soruları gizli kopyadan geri gelir
+  useEffect(() => { if (live && !qsRef.current) getDoc(doc(db, 'yarisma_oturum', sid, 'gizli', 'sorular')).then(s => { if (s.exists()) qsRef.current = s.data().questions || []; }).catch(() => {}); }, [live, sid]);
+
+  const saveBank = async (qs) => {
+    try { await setDoc(doc(db, 'yarisma', key), { city, questions: qs, updatedAt: new Date().toISOString() }); setBank(qs); showToast?.('Sorular kaydedildi', 'success'); }
+    catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+  };
+  const genAI = async () => {
+    setAiBusy(true);
+    try {
+      const prompt = `${city}${tour.country ? ` (${tour.country})` : ''} gezisindeki Türk tur grubu için otobüste oynanacak 10 soruluk eğlenceli bilgi yarışması hazırla.
+- Türkçe, kolay-orta zorluk: tarih, ünlü yapılar, yemek, kültur, gündelik ilginç bilgiler.
+- Sadece KESİN doğru olduğundan emin olduğun bilgiler; şüpheli olanı sorma. Tarih/sayı sorularında şıklar birbirinden belirgin farklı olsun.
+- Her soruda 4 şık, tek doğru. Doğru şıkkın yeri sorudan soruya değişsin. Soru en fazla 120, şık en fazla 40 karakter.
+SADECE JSON dizi döndür: [{"q":"soru","o":["şık1","şık2","şık3","şık4"],"a":0}]  (a = doğru şıkkın sırası, 0-3)`;
+      const resp = await claudeRequest({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] }) });
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      const data = await resp.json();
+      const m = (data.content?.[0]?.text || '').match(/\[[\s\S]*\]/);
+      if (!m) throw new Error('yanıt okunamadı');
+      const qs = JSON.parse(m[0]).map(x => ({ q: String(x.q || ''), o: (x.o || []).slice(0, 4).map(String), a: Number(x.a) })).filter(validQ);
+      if (!qs.length) throw new Error('geçerli soru yok');
+      setBank(b => [...(b || []), ...qs]); setEdit(true);
+      showToast?.(`🤖 ${qs.length} soru eklendi — kontrol edip Kaydet'e basın`, 'success');
+    } catch (e) { showToast?.('Soru üretilemedi: ' + e.message, 'error'); }
+    setAiBusy(false);
+  };
+
+  const openGame = async () => {
+    const qs = (bank || []).filter(validQ);
+    if (!qs.length) { showToast?.('Önce soru ekleyin', 'warning'); return; }
+    try {
+      // Tur linklerine tur kimliği (eski linklerde yok) — yolcunun sayfası yarışmayı buradan bulur
+      const toks = (tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => r.shareToken);
+      await Promise.all(toks.map(t => setDoc(doc(db, 'paylasimlar', t), { tourId: sid }, { merge: true }).catch(() => {})));
+      const old = await getDocs(collection(db, 'yarisma_oturum', sid, 'players'));
+      if (old.size) { const b = writeBatch(db); old.docs.forEach(d => b.delete(d.ref)); await b.commit(); }
+      await setDoc(doc(db, 'yarisma_oturum', sid, 'gizli', 'sorular'), { questions: qs });
+      qsRef.current = qs;
+      await setDoc(doc(db, 'yarisma_oturum', sid), { status: 'lobby', title: `${city} Bilgi Yarışması`, tourName: tour.name || '', total: qs.length, qIndex: -1, limit: YARISMA_SURE, q: null, correct: null, top: [], createdAt: serverTimestamp() });
+      if (!toks.length) showToast?.('Bu turda henüz paylaşılmış tur linki yok — yolcular katılamaz', 'warning');
+    } catch (e) { showToast?.('❌ Açılamadı: ' + e.message, 'error'); }
+  };
+  const ask = async (i) => {
+    const qs = qsRef.current || [];
+    if (!qs[i]) return;
+    revealing.current = false;
+    await setDoc(doc(db, 'yarisma_oturum', sid), { status: 'q', qIndex: i, q: { text: qs[i].q, o: qs[i].o }, correct: null, qStartedAt: serverTimestamp() }, { merge: true });
+  };
+  const ranked = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const reveal = async () => {
+    if (revealing.current || ses?.status !== 'q') return;
+    revealing.current = true;
+    if (!qsRef.current) { const g = await getDoc(doc(db, 'yarisma_oturum', sid, 'gizli', 'sorular')).catch(() => null); qsRef.current = g?.exists() ? g.data().questions || [] : []; }
+    const i = ses.qIndex, qs = qsRef.current, correct = qs[i]?.a;
+    const start = ses.qStartedAt?.toMillis?.() || 0, limitMs = (ses.limit || YARISMA_SURE) * 1000;
+    const b = writeBatch(db);
+    const next = players.map(p => {
+      const an = p.answers?.[i];
+      const pts = an && an.c === correct && an.at?.toMillis && start ? yarismaPuan(an.at.toMillis() - start, limitMs) : 0;
+      b.update(doc(db, 'yarisma_oturum', sid, 'players', p.id), { score: (p.score || 0) + pts, last: pts });
+      return { name: p.name, score: (p.score || 0) + pts };
+    }).sort((x, y) => y.score - x.score);
+    await b.commit();
+    const last = i >= qs.length - 1;
+    await setDoc(doc(db, 'yarisma_oturum', sid), { status: last ? 'end' : 'reveal', correct, top: next.slice(0, last ? 10 : 5) }, { merge: true });
+  };
+  const closeGame = async () => { if (window.confirm('Yarışma kapatılsın mı? Yolcuların ekranından kalkar.')) await setDoc(doc(db, 'yarisma_oturum', sid), { status: 'closed' }, { merge: true }); };
+
+  // Soru açıkken: süre bitince ya da herkes cevaplayınca otomatik cevabı göster
+  const i = ses?.qIndex ?? -1;
+  const answered = ses?.status === 'q' ? players.filter(p => p.answers?.[i]).length : 0;
+  const startMs = ses?.qStartedAt?.toMillis?.();
+  const left = ses?.status === 'q' && startMs ? Math.max(0, Math.ceil(((ses.limit || YARISMA_SURE) * 1000 - (now - startMs)) / 1000)) : null;
+  useEffect(() => { if (ses?.status === 'q' && ((left === 0) || (players.length && answered === players.length))) reveal(); }, [left, answered, ses?.status]);
+
+  const box = { background: '#0f2137', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', width: '100%', maxWidth: '760px', maxHeight: '92vh', overflow: 'auto', padding: isMobile ? '16px' : '22px', color: '#e8f1f8' };
+  const btn = (bg) => ({ padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '14px', color: '#fff', background: bg });
+  const inp = { width: '100%', padding: '8px 10px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
+  const qs = qsRef.current || [];
+  const setQ = (k, patch) => setBank(b => b.map((x, j) => j === k ? { ...x, ...patch } : x));
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={box}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+          <h3 style={{ margin: 0, flex: 1, fontSize: '18px' }}>🏆 Bilgi Yarışması <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 400 }}>— {tour.name}</span></h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {ses === undefined ? <div style={{ color: '#94a3b8' }}>Yükleniyor…</div> : !live ? (
+          <>
+            <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px', lineHeight: 1.5 }}>Yarışmayı açınca yolcuların tur linkinde <b>"Canlı yarışma — Katıl"</b> çıkar. Siz soruları buradan tek tek gönderirsiniz; her soru {YARISMA_SURE} saniye. Hızlı ve doğru cevaplayan çok puan alır.</div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {cities.length > 1 && <select value={city} onChange={e => setCity(e.target.value)} style={{ ...inp, width: 'auto' }}>{cities.map(c => <option key={c}>{c}</option>)}</select>}
+              <b style={{ fontSize: '14px' }}>📍 {city || '—'} soruları: {bank ? bank.filter(validQ).length : '…'}</b>
+              <span style={{ flex: 1 }} />
+              <button onClick={genAI} disabled={aiBusy || !city} style={btn('linear-gradient(135deg,#8b5cf6,#6d28d9)')}>{aiBusy ? '⏳ Üretiliyor…' : '🤖 10 soru üret'}</button>
+              <button onClick={() => setEdit(e => !e)} style={btn('rgba(255,255,255,0.12)')}>{edit ? 'Listeyi kapat' : '✏️ Soruları düzenle'}</button>
+            </div>
+            {edit && bank && (
+              <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '10px', marginBottom: '12px' }}>
+                {bank.map((x, k) => (
+                  <div key={k} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <b style={{ fontSize: '12px', color: '#64748b', width: '22px' }}>{k + 1}.</b>
+                      <input value={x.q} onChange={e => setQ(k, { q: e.target.value })} placeholder="Soru" style={inp} />
+                      <button onClick={() => setBank(b => b.filter((_, j) => j !== k))} title="Sil" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px', margin: '6px 0 0 28px' }}>
+                      {[0, 1, 2, 3].map(o => (
+                        <label key={o} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input type="radio" checked={x.a === o} onChange={() => setQ(k, { a: o })} title="Doğru cevap" />
+                          <input value={x.o?.[o] || ''} onChange={e => { const oo = [...(x.o || ['', '', '', ''])]; oo[o] = e.target.value; setQ(k, { o: oo }); }} placeholder={`Şık ${o + 1}`} style={{ ...inp, borderColor: x.a === o ? '#10b981' : 'rgba(255,255,255,0.12)' }} />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                  <button onClick={() => setBank(b => [...b, { q: '', o: ['', '', '', ''], a: 0 }])} style={btn('rgba(255,255,255,0.12)')}>➕ Soru ekle</button>
+                  <span style={{ flex: 1 }} />
+                  <button onClick={() => saveBank(bank.filter(validQ))} style={btn('#10b981')}>💾 Kaydet</button>
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>Yuvarlak = doğru cevap. Yapay zekâ sorularını mutlaka kontrol edin; eksik doldurulan soru kaydedilmez.</div>
+              </div>
+            )}
+            <button onClick={openGame} disabled={!bank || !bank.filter(validQ).length} style={{ ...btn('linear-gradient(135deg,#f59e0b,#d97706)'), width: '100%', padding: '14px', fontSize: '16px', opacity: bank && bank.filter(validQ).length ? 1 : 0.5 }}>🏆 Yarışmayı aç ({bank ? bank.filter(validQ).length : 0} soru)</button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <span style={{ padding: '4px 10px', borderRadius: '999px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '12px', fontWeight: 700 }}>● CANLI</span>
+              <b>{ses.title}</b>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>👥 {players.length} oyuncu</span>
+              <span style={{ flex: 1 }} />
+              <button onClick={closeGame} style={btn('rgba(239,68,68,0.25)')}>Yarışmayı kapat</button>
+            </div>
+            {ses.status === 'lobby' && (
+              <div>
+                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>Yolcular tur linkinden katılıyor. Herkes gelince başlatın.</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '40px', marginBottom: '14px' }}>
+                  {players.map(p => <span key={p.id} style={{ padding: '6px 12px', borderRadius: '999px', background: 'rgba(59,130,246,0.15)', fontSize: '13px' }}>{p.name}</span>)}
+                  {!players.length && <span style={{ color: '#64748b', fontSize: '13px' }}>Henüz katılan yok…</span>}
+                </div>
+                <button onClick={() => ask(0)} disabled={!qs.length} style={{ ...btn('#10b981'), width: '100%', padding: '14px', fontSize: '16px' }}>▶ 1. soruyu gönder</button>
+              </div>
+            )}
+            {(ses.status === 'q' || ses.status === 'reveal') && ses.q && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>
+                  <span>Soru {i + 1} / {ses.total}</span>
+                  {ses.status === 'q' ? <span>⏱ <b style={{ color: '#fbbf24', fontSize: '16px' }}>{left ?? '…'}</b> sn · ✋ {answered}/{players.length} cevapladı</span> : <span>✅ Cevap gösterildi</span>}
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 700, margin: '6px 0 12px' }}>{ses.q.text}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px' }}>
+                  {ses.q.o.map((o, k) => {
+                    const n = players.filter(p => p.answers?.[i]?.c === k).length;
+                    const ok = ses.status === 'reveal' && ses.correct === k;
+                    return <div key={k} style={{ padding: '12px', borderRadius: '10px', background: ses.status === 'reveal' ? (ok ? '#10b981' : 'rgba(255,255,255,0.05)') : SIK_RENK[k], fontWeight: 600, fontSize: '14px', display: 'flex', justifyContent: 'space-between' }}><span>{ok ? '✓ ' : ''}{o}</span>{ses.status === 'reveal' && <span>{n}</span>}</div>;
+                  })}
+                </div>
+                {ses.status === 'q'
+                  ? <button onClick={reveal} style={{ ...btn('#3b82f6'), width: '100%' }}>Cevabı şimdi göster</button>
+                  : <button onClick={() => ask(i + 1)} style={{ ...btn('#10b981'), width: '100%', padding: '14px', fontSize: '16px' }}>▶ {i + 2}. soruyu gönder</button>}
+              </div>
+            )}
+            {(ses.status === 'reveal' || ses.status === 'end') && (
+              <div style={{ marginTop: '14px' }}>
+                <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, marginBottom: '6px' }}>{ses.status === 'end' ? '🏁 SONUÇ' : 'SIRALAMA'}</div>
+                {ranked.slice(0, ses.status === 'end' ? 10 : 5).map((p, k) => (
+                  <div key={p.id} style={{ display: 'flex', gap: '10px', padding: '8px 10px', borderRadius: '8px', background: k === 0 ? 'rgba(245,158,11,0.15)' : 'transparent', fontSize: '14px' }}>
+                    <b style={{ width: '28px' }}>{['🥇', '🥈', '🥉'][k] || k + 1 + '.'}</b><span style={{ flex: 1 }}>{p.name}</span>
+                    {ses.status === 'reveal' && p.last ? <span style={{ color: '#10b981', fontSize: '12px' }}>+{p.last}</span> : null}<b>{p.score || 0}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== 📢 Duyurular: müşteri ve tur linklerinde görünen görselli pano =====
+// Firestore duyurular/<id> (herkes okur, CRM yazar) · görsel Storage duyurular/<id>.jpg (1600px'e küçültülür).
+// Hedef: tüm linkler / sadece tur linkleri / sadece müşteri linkleri / tek bir tur. Tarih aralığı dışında görünmez.
+const DUYURU_HEDEF = [['all', 'Tüm linkler'], ['tour', 'Sadece tur linkleri'], ['customer', 'Sadece müşteri linkleri'], ['onetour', 'Belirli bir tur']];
+const shrinkImage = (file, max = 1600) => new Promise((ok, no) => {
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => {
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    c.toBlob(b => b ? ok(b) : no(new Error('görsel işlenemedi')), 'image/jpeg', 0.85);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); no(new Error('görsel açılamadı')); };
+  img.src = url;
+});
+// scope: 'customer' (müşteri linkleri) · 'tours' (tüm tur linkleri) · 'onetour' (fixedTour) · yoksa hepsi
+function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, fixedTour, embedded }) {
+  const defTarget = scope === 'customer' ? 'customer' : scope === 'tours' ? 'tour' : scope === 'onetour' ? 'onetour' : 'all';
+  const empty = { title: '', text: '', link: '', target: defTarget, tourId: fixedTour ? String(fixedTour.id) : '', start: '', end: '', active: true };
+  const inScope = (d) => !scope || (scope === 'customer' ? ['customer', 'all'].includes(d.target) : scope === 'tours' ? ['tour', 'all'].includes(d.target) : d.target === 'onetour' && String(d.tourId) === String(fixedTour?.id));
+  const [list, setList] = useState(null);
+  const [form, setForm] = useState(null); // düzenlenen duyuru
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const load = () => getDocs(collection(db, 'duyurular')).then(q => setList(q.docs.map(d => ({ id: d.id, ...d.data() })).filter(inScope).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))))).catch(e => { setList([]); showToast?.('Duyurular okunamadı: ' + e.message, 'error'); });
+  useEffect(() => { load(); }, [scope, fixedTour?.id]);
+  const pick = (f) => { if (!f || !/^image\//.test(f.type)) { showToast?.('Görsel dosyası seçin (JPG, PNG)', 'warning'); return; } setFile(f); setPreview(URL.createObjectURL(f)); };
+  const upd = (p) => setForm(f => ({ ...f, ...p }));
+  const save = async () => {
+    if (!form.title.trim() && !file && !form.image) { showToast?.('Başlık ya da görsel ekleyin', 'warning'); return; }
+    if (form.link && !/^https:\/\//.test(form.link.trim())) { showToast?.('Bağlantı https:// ile başlamalı', 'warning'); return; }
+    if (form.target === 'onetour' && !form.tourId) { showToast?.('Turu seçin', 'warning'); return; }
+    setBusy(true);
+    try {
+      const id = form.id || generateUniqueId();
+      let image = form.image || '', imagePath = form.imagePath || '';
+      if (file) {
+        const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+        imagePath = `duyurular/${id}-${Date.now()}.jpg`;
+        const r = ref(getStorage(), imagePath);
+        await uploadBytes(r, await shrinkImage(file), { contentType: 'image/jpeg' });
+        image = await getDownloadURL(r);
+      }
+      const tour = form.target === 'onetour' ? (tours.find(t => String(t.id) === String(form.tourId)) || (fixedTour && String(fixedTour.id) === String(form.tourId) ? fixedTour : null)) : null;
+      await setDoc(doc(db, 'duyurular', id), {
+        title: form.title.trim(), text: form.text.trim(), link: form.link.trim(), image, imagePath,
+        target: form.target, tourId: tour ? String(tour.id) : '', tourName: tour?.name || '',
+        start: form.start || '', end: form.end || '', active: !!form.active,
+        createdAt: form.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), by: currentUser?.name || '',
+      });
+      // Tek tur hedefinde eski tur linklerine tur kimliği yaz (sayfa duyuruyu bununla eşleştirir)
+      if (tour) await Promise.all((tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => setDoc(doc(db, 'paylasimlar', r.shareToken), { tourId: String(tour.id) }, { merge: true }).catch(() => {})));
+      // Görsel değiştiyse eskisini sil
+      if (file && form.imagePath && form.imagePath !== imagePath) { try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), form.imagePath)); } catch (e) { /* yok */ } }
+      const where = form.target === 'customer' ? 'müşteri linklerine' : form.target === 'all' ? 'müşteri ve tur linklerine' : tour ? `${tour.name} tur linklerine` : 'bütün tur linklerine';
+      showToast?.(`📢 Duyuru ${where} gönderildi`, 'success');
+      setForm(null); setFile(null); setPreview(''); load();
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+    setBusy(false);
+  };
+  const toggle = async (d) => { await setDoc(doc(db, 'duyurular', d.id), { active: !d.active }, { merge: true }); load(); };
+  const remove = async (d) => {
+    if (!window.confirm(`"${d.title || 'Duyuru'}" silinsin mi? Linklerden hemen kalkar.`)) return;
+    await deleteDoc(doc(db, 'duyurular', d.id));
+    if (d.imagePath) { try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), d.imagePath)); } catch (e) { /* yok */ } }
+    load();
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const stateOf = (d) => !d.active ? ['Kapalı', '#64748b'] : d.start && d.start > today ? ['Planlı', '#f59e0b'] : d.end && d.end < today ? ['Süresi bitti', '#64748b'] : ['Yayında', '#10b981'];
+  const inp = { width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' };
+  const lbl = { display: 'block', fontSize: '12px', color: '#94a3b8', margin: '12px 0 6px', fontWeight: 600 };
+  const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '14px' : '18px' };
+  const activeTours = tours.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  const img = preview || form?.image;
+  return (
+    <div style={{ padding: embedded ? 0 : isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px', flexWrap: 'wrap' }}>
+        {embedded ? <h3 style={{ fontSize: '16px', margin: 0, flex: 1 }}>📢 Duyurular</h3> : <h2 style={{ fontSize: '20px', margin: 0, flex: 1 }}>📢 Duyurular</h2>}
+        {!form && <button onClick={() => { setForm({ ...empty }); setFile(null); setPreview(''); }} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#fff', background: 'linear-gradient(135deg,#3b82f6,#2563eb)' }}>➕ Yeni duyuru</button>}
+      </div>
+      {!embedded && <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Görsel yüklerseniz linkte sadece görsel (afiş) görünür, dokununca bağlantı açılır. Görsel yoksa başlık + metin "Ana ekrana ekleyin" kartı gibi görünür. Kaydedince linkler bir sonraki açılışta günceldir.</p>}
+      {embedded && <div style={{ height: '12px' }} />}
+      {form && (
+        <div style={{ ...card, marginBottom: '18px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
+          <div>
+            <label onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]); }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: '220px', borderRadius: '12px', border: `2px dashed ${drag ? '#3b82f6' : 'rgba(255,255,255,0.18)'}`, background: drag ? 'rgba(59,130,246,0.08)' : 'rgba(0,0,0,0.2)', cursor: 'pointer', overflow: 'hidden' }}>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
+              {img ? <img src={img} alt="" style={{ width: '100%', maxHeight: '360px', objectFit: 'contain' }} />
+                : <><span style={{ fontSize: '40px' }}>🖼️</span><b style={{ fontSize: '14px' }}>Görseli sürükleyin ya da tıklayın</b><span style={{ fontSize: '12px', color: '#64748b' }}>Afiş, kampanya görseli… (otomatik küçültülür)</span></>}
+            </label>
+            {img && <button onClick={() => { setFile(null); setPreview(''); upd({ image: '', imagePath: form.imagePath }); }} style={{ marginTop: '6px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>Görseli kaldır</button>}
+          </div>
+          <div>
+            <label style={{ ...lbl, marginTop: 0 }}>Başlık</label>
+            <input value={form.title} maxLength={80} onChange={e => upd({ title: e.target.value })} placeholder="Kapadokya balon turu — erken rezervasyon" style={inp} />
+            <label style={lbl}>Metin <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı)</span></label>
+            <textarea value={form.text} maxLength={400} rows={3} onChange={e => upd({ text: e.target.value })} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+            <label style={lbl}>Bağlantı <span style={{ color: '#64748b', fontWeight: 400 }}>(isteğe bağlı — kartta "Aç" butonu)</span></label>
+            <input value={form.link} onChange={e => upd({ link: e.target.value })} placeholder="https://paydostur.com/..." style={inp} />
+            {/* Hangi linke gidecek: müşteri linki / tur linki (tüm turlar ya da tek tur) / ikisi de */}
+            <label style={lbl}>Hangi linke gidecek?</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+              {[['customer', '📱 Müşteri linki'], ['tour', '🎫 Tur linki'], ['all', '📱+🎫 İkisine de']].map(([k, t]) => {
+                const on = k === 'tour' ? ['tour', 'onetour'].includes(form.target) : form.target === k;
+                return <button key={k} type="button" onClick={() => upd(k === 'tour' ? { target: form.tourId ? 'onetour' : 'tour' } : { target: k })} style={{ padding: '10px 6px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '12.5px', color: on ? '#fff' : '#94a3b8', background: on ? 'rgba(59,130,246,0.25)' : 'rgba(0,0,0,0.2)', border: `1px solid ${on ? '#3b82f6' : 'rgba(255,255,255,0.12)'}` }}>{t}</button>;
+              })}
+            </div>
+            {['tour', 'onetour'].includes(form.target) && (
+              <select value={form.target === 'onetour' ? form.tourId : ''} onChange={e => upd(e.target.value ? { target: 'onetour', tourId: e.target.value } : { target: 'tour', tourId: '' })} style={{ ...inp, marginTop: '8px' }}>
+                <option value="">🌐 Bütün turların linklerine</option>
+                {(fixedTour && !activeTours.some(t => String(t.id) === String(fixedTour.id)) ? [fixedTour, ...activeTours] : activeTours).map(t => <option key={t.id} value={String(t.id)}>{t.name} · {formatDate(t.startDate)}</option>)}
+              </select>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div><label style={lbl}>Başlangıç</label><input type="date" value={form.start} onChange={e => upd({ start: e.target.value })} style={inp} /></div>
+              <div><label style={lbl}>Bitiş</label><input type="date" value={form.end} onChange={e => upd({ end: e.target.value })} style={inp} /></div>
+            </div>
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', fontSize: '13px' }}><input type="checkbox" checked={form.active} onChange={e => upd({ active: e.target.checked })} /> Yayında</label>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button onClick={save} disabled={busy} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 700, color: '#fff', background: '#10b981', opacity: busy ? 0.6 : 1 }}>{busy ? 'Kaydediliyor…' : '💾 Kaydet'}</button>
+              <button onClick={() => { setForm(null); setFile(null); setPreview(''); }} style={{ padding: '12px 18px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer' }}>Vazgeç</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {list === null ? <div style={{ color: '#64748b' }}>Yükleniyor…</div> : !list.length ? <div style={{ ...card, color: '#64748b', fontSize: '13px' }}>Henüz duyuru yok.</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '12px', alignItems: 'start' }}>
+          {list.map(d => { const [st, sc] = stateOf(d); return (
+            <div key={d.id} style={{ ...card, padding: 0, overflow: 'hidden', opacity: st === 'Yayında' ? 1 : 0.7 }}>
+              {d.image && <img src={d.image} alt="" style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block' }} />}
+              <div style={{ padding: '12px 14px' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: sc }}>● {st}</span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>· {d.target === 'onetour' ? d.tourName || 'Tek tur' : (DUYURU_HEDEF.find(x => x[0] === d.target) || [])[1]}</span>
+                </div>
+                <b style={{ fontSize: '14px' }}>{d.title || '(başlıksız)'}</b>
+                {(d.start || d.end) && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{d.start ? formatDate(d.start) : '…'} → {d.end ? formatDate(d.end) : '…'}</div>}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                  <button onClick={() => { setForm({ ...empty, ...d }); setFile(null); setPreview(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+                  <button onClick={() => toggle(d)} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>{d.active ? '⏸ Kapat' : '▶ Yayınla'}</button>
+                  <button onClick={() => remove(d)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.35)', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑</button>
+                </div>
+              </div>
+            </div>); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== 📱 Müşteri Linki (sol menü): tüm müşteri linkleri için duyuru + bildirim =====
+function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser, bare }) {
+  const [tab, setTab] = useState('duyuru');
+  const tb = (k, t) => <button onClick={() => setTab(k)} style={{ padding: '9px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: tab === k ? '#fff' : '#94a3b8', background: tab === k ? 'rgba(59,130,246,0.25)' : 'transparent', border: `1px solid ${tab === k ? '#3b82f6' : 'rgba(255,255,255,0.1)'}` }}>{t}</button>;
+  return (
+    <div>
+      <div style={{ padding: bare ? (isMobile ? '0 16px' : '0 24px') : isMobile ? '16px 16px 0' : '24px 24px 0' }}>
+        {!bare && <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>📱 Müşteri Linki</h2>}
+        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#64748b' }}>Bütün müşteri linklerinde (/m/) görünenler. Tek müşterinin belgeleri için müşteri kartındaki "Müşteri Linki" butonunu kullanın.</p>
+        <div style={{ display: 'flex', gap: '8px' }}>{tb('duyuru', '📢 Duyurular')}{tb('bildirim', '📣 Bildirimler')}</div>
+      </div>
+      {tab === 'duyuru'
+        ? <div style={{ padding: isMobile ? '16px' : '20px 24px' }}><DuyurularModule scope="customer" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} /></div>
+        : <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />}
+    </div>
+  );
+}
+
+// ===== 🎫 Tur Linki (sol menü): tur seçilir → o turun duyuruları, yarışma, tavsiyeler, link durumu =====
+function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [sel, setSel] = useState('');
+  const [q, setQ] = useState('');
+  const [showOld, setShowOld] = useState(false);
+  const [yarisma, setYarisma] = useState(false);
+  const [tavsiye, setTavsiye] = useState(false);
+  const list = tours.filter(t => showOld || !t.endDate || t.endDate >= today)
+    .filter(t => !q || `${t.name} ${t.city} ${t.country}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  const tour = sel && sel !== 'all' ? tours.find(t => String(t.id) === sel) : null;
+  const res = tour ? (tour.reservations || []).filter(r => !r.cancelled) : [];
+  const shared = res.filter(r => r.shareToken).length;
+  const item = (key, title, sub, on) => (
+    <button key={key} onClick={() => setSel(key)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: '#e8f1f8', background: on ? 'rgba(245,158,11,0.15)' : 'transparent', border: `1px solid ${on ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.06)'}`, marginBottom: '6px' }}>
+      <div style={{ fontWeight: 700, fontSize: '13px' }}>{title}</div><div style={{ fontSize: '11.5px', color: '#94a3b8' }}>{sub}</div>
+    </button>
+  );
+  const btn = (bg, bc, c) => ({ padding: '10px 16px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', background: bg, border: `1px solid ${bc}`, color: c });
+  return (
+    <div style={{ padding: bare ? (isMobile ? '0 16px 16px' : '0 24px 24px') : isMobile ? '16px' : '24px' }}>
+      {!bare && <h2 style={{ fontSize: '20px', margin: '0 0 4px' }}>🎫 Tur Linki</h2>}
+      <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>Tur seçin: o turun yolcularının linkinde (/b/) görünecek duyurular, canlı yarışma ve şehir tavsiyeleri.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', gap: '16px', alignItems: 'start' }}>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '12px', maxHeight: isMobile ? '260px' : '75vh', overflow: 'auto' }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tur ara…" style={{ width: '100%', padding: '8px 10px', marginBottom: '8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} />
+          {item('all', '🌐 Tüm tur linkleri', 'Her turda görünecek duyurular', sel === 'all')}
+          {list.map(t => item(String(t.id), t.name, `${t.city || t.country || ''} · ${formatDate(t.startDate)}${t.startDate <= today && (!t.endDate || t.endDate >= today) ? ' · 🟢 devam ediyor' : ''}`, sel === String(t.id)))}
+          {!list.length && <div style={{ fontSize: '12px', color: '#64748b', padding: '6px' }}>Tur yok.</div>}
+          <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}><input type="checkbox" checked={showOld} onChange={e => setShowOld(e.target.checked)} /> Biten turları da göster</label>
+        </div>
+        <div>
+          {!sel && <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>{isMobile ? '↑ Yukarıdan' : '← Soldan'} bir tur seçin</div>}
+          {sel === 'all' && <DuyurularModule key="all" scope="tours" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+          {tour && (
+            <>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '17px', fontWeight: 700 }}>{tour.name}</div>
+                <div style={{ fontSize: '12.5px', color: '#94a3b8', margin: '2px 0 12px' }}>🌍 {tour.country}{tour.city ? ` — ${tour.city}` : ''} · 📅 {formatDate(tour.startDate)} → {formatDate(tour.endDate)} · 🔗 {shared}/{res.length} yolcuya link gönderildi</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
+                  <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
+                </div>
+                {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
+              </div>
+              <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
+              {yarisma && <YarismaModal tour={tour} onClose={() => setYarisma(false)} showToast={showToast} isMobile={isMobile} />}
+              {tavsiye && <TavsiyelerModal focusCity={tour.city || ''} onClose={() => setTavsiye(false)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== 📢 Duyurular (sol menü, tek bölüm): içinde iki sekme — Müşteri Linki | Tur Linki =====
+function LinkDuyuruModule({ customers, tours, showToast, isMobile, currentUser }) {
+  const [tab, setTab] = useState(() => { try { return localStorage.getItem('paydos_duyuru_tab') || 'musteri'; } catch (e) { return 'musteri'; } });
+  const go = (k) => { setTab(k); try { localStorage.setItem('paydos_duyuru_tab', k); } catch (e) { /* yok */ } };
+  const tb = (k, t) => <button onClick={() => go(k)} style={{ flex: isMobile ? 1 : 'none', padding: '11px 20px', cursor: 'pointer', fontWeight: 700, fontSize: '14px', background: 'none', border: 'none', borderBottom: `3px solid ${tab === k ? '#f59e0b' : 'transparent'}`, color: tab === k ? '#fff' : '#94a3b8' }}>{t}</button>;
+  return (
+    <div>
+      <div style={{ padding: isMobile ? '16px 16px 0' : '24px 24px 0' }}>
+        <h2 style={{ fontSize: '20px', margin: '0 0 10px' }}>📢 Duyurular</h2>
+        <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '16px' }}>{tb('musteri', '📱 Müşteri Linki')}{tb('tur', '🎫 Tur Linki')}</div>
+      </div>
+      {tab === 'musteri'
+        ? <MusteriLinkiModule bare customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
+        : <TurLinkiModule bare tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+    </div>
+  );
+}
+
 function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity, asPage }) {
   const [cities, setCities] = useState(null); // [{ key, city, country, restaurants, dirty }]
   const [sel, setSel] = useState('');
@@ -7486,6 +8098,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [editingReservation, setEditingReservation] = useState(null);
   const [roomingTour, setRoomingTour] = useState(null);
   const [tavsiye, setTavsiye] = useState(null); // ⭐ Tavsiyeler penceresi: { focusCity }
+  const [yarismaTour, setYarismaTour] = useState(null); // 🏆 Bilgi yarışması (canlı)
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
   const [searchQuery, setSearchQuery] = useState('');
@@ -7820,7 +8433,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       await setDoc(doc(db, 'paylasimlar', token), {
-        customerName: res.customerName || '', tourName: tour.name || '',
+        customerName: res.customerName || '', tourName: tour.name || '', tourId: String(tour.id),
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
         docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
         // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
@@ -8708,6 +9321,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
 
       {/* Search */}
       {tavsiye && <TavsiyelerModal focusCity={tavsiye.focusCity} onClose={() => setTavsiye(null)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+      {yarismaTour && <YarismaModal tour={yarismaTour} onClose={() => setYarismaTour(null)} showToast={showToast} isMobile={isMobile} />}
       {!selectedTour && <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
         <input
           type="text"
@@ -8858,6 +9472,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
                 <button onClick={() => setTavsiye({ focusCity: tour.city || '' })} style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Bu turun şehrine ait tavsiye restoranlar (tur linkinde görünür)">⭐ Tavsiyeler</button>
+                <button onClick={() => setYarismaTour(tour)} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }} title="Yolcularla tur linki üzerinden canlı bilgi yarışması">🏆 Yarışma</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
                 <button onClick={() => openReservationForm(tour)} style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>➕ Rezervasyon</button>
                 {RES_DOCS.map(d => (
@@ -18269,6 +18884,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     { id: 'agencies', icon: '🏢', label: 'Acentelikler' },
     { id: 'cards', icon: '💳', label: 'Kredi Kartları' },
     { id: 'tavsiyeler', icon: '⭐', label: 'Tavsiyeler' },
+    { id: 'linkduyuru', icon: '📢', label: 'Duyurular' },
     { id: 'vizeevrak', icon: '📁', label: 'Vize Evrak', external: 'https://vize.paydostur.com/#/panel' },
     { id: 'bankinfo', icon: '🏦', label: 'Banka Bilgileri' },
     { id: 'activitylog', icon: '📋', label: 'İşlemler' },
@@ -18286,6 +18902,11 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
+      case 'linkduyuru': return <LinkDuyuruModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'musterilinki': return <MusteriLinkiModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'turlinki': return <TurLinkiModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'duyurular': return <DuyurularModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'bildirimler': return <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />;
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;

@@ -61,6 +61,18 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .note{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(245,185,66,.1);border:1px solid rgba(245,185,66,.25);color:var(--gold2);font-size:12px;line-height:1.5;display:none}
 
 /* Biniş kartı */
+/* 🛫 Eski usul kalkış tabelası (split-flap) */
+.fb{margin-bottom:14px;padding:12px 10px 10px;border-radius:14px;background:#111;border:1px solid #2a2a2a;box-shadow:inset 0 2px 10px rgba(0,0,0,.8),0 12px 30px -15px rgba(0,0,0,.7);overflow:hidden}
+.fb .fh{display:flex;align-items:center;justify-content:space-between;color:#ffd400;font:700 12px 'Courier New',monospace;letter-spacing:2px;margin:0 2px 8px}
+.fb .fh .clk{font-size:15px;letter-spacing:1px}
+.fb .cols,.fb .row{display:flex;gap:var(--gp,6px)}
+.fb .cols{color:#8a8a8a;font:700 8.5px 'DM Sans',sans-serif;letter-spacing:.8px;margin:0 0 4px}
+.fb .cols span{flex:none;overflow:hidden;white-space:nowrap}
+.fb .row{margin-top:5px}
+.fb .grp{display:flex;gap:1px;flex:none}
+.fb .fc{position:relative;display:inline-flex;align-items:center;justify-content:center;width:var(--cw,10px);height:calc(var(--cw,10px) * 1.55);background:#1d1d1d;border-radius:2px;color:#ffd400;font:700 calc(var(--cw,10px) * 1.15) 'Courier New',monospace;line-height:1;overflow:hidden}
+.fb .fc::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.85)}
+.fb .fc.w{color:#fff}.fb .fc.r{color:#ff5a4f}.fb .fc.g{color:#3ddc84}
 .pass{position:relative;display:block;margin-bottom:12px;border-radius:20px;background:#fffaf0;color:#1b1f3b;text-decoration:none;overflow:hidden;box-shadow:0 12px 30px -15px rgba(0,0,0,.6)}
 .pass .ph{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:linear-gradient(90deg,#1d3fa8,#6a2bd6);color:#fff;font-size:12px;font-weight:700;letter-spacing:1px}
 .pass .ph .fn{font-size:15px;letter-spacing:.5px}
@@ -132,6 +144,20 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .hotel .b a.p{background:var(--gold);color:#1b1f3b}
 /* Tavsiye edilen restoranlar (CRM → Turlar → ⭐ Tavsiyeler, şehir bazlı) */
 .rest{display:flex;flex-direction:column;gap:10px}
+/* 🏆 Canlı bilgi yarışması */
+.qz{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px 16px;border-radius:18px;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;width:100%;text-align:left;font:inherit;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(219,39,119,.35);animation:qzp 2s ease-in-out infinite}
+@keyframes qzp{50%{box-shadow:0 8px 34px rgba(219,39,119,.6)}}
+.qz .ic{font-size:30px}.qz b{display:block;font-size:15px}.qz span{font-size:12.5px;opacity:.9}.qz .go{margin-left:auto;background:#fff;color:#7c3aed;font-weight:800;padding:8px 14px;border-radius:10px;font-size:13px;opacity:1}
+.qo{position:fixed;inset:0;z-index:60;background:#070b1a;display:flex;flex-direction:column;padding:max(18px,env(safe-area-inset-top)) 16px 18px;color:var(--text);overflow:auto}
+.qo .top{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}.qo .top b{color:var(--text)}.qo .x{margin-left:auto;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer}
+.qo .bar{height:6px;border-radius:3px;background:var(--line);margin:12px 0 18px;overflow:hidden}.qo .bar i{display:block;height:100%;background:var(--gold);transition:width .25s linear}
+.qo .qt{font-size:21px;font-weight:700;line-height:1.35;margin-bottom:18px}
+.qo .op{display:grid;gap:10px}
+.qo .op button{min-height:58px;padding:12px 16px;border-radius:14px;border:2px solid transparent;color:#fff;font:700 16px 'DM Sans',sans-serif;text-align:left;cursor:pointer}
+.qo .op button[disabled]{opacity:.45}.qo .op button.sel{opacity:1;border-color:#fff}.qo .op button.ok{opacity:1;background:#16a34a!important;border-color:#fff}
+.qo .msg2{text-align:center;margin:18px 0 6px;font-size:15px;color:var(--muted)}.qo .big{text-align:center;font-size:34px;font-weight:800;margin:6px 0}
+.qo .lb{margin-top:16px;display:flex;flex-direction:column;gap:6px}.qo .lb div{display:flex;gap:10px;padding:10px 12px;border-radius:12px;background:var(--card);font-size:15px}.qo .lb div.me{border:1px solid var(--gold)}.qo .lb span{flex:1}
+.qo .cta{margin-top:auto;padding-top:16px}.qo .cta button{width:100%;padding:15px;border-radius:14px;border:none;background:var(--gold);color:#1a1300;font:800 16px 'DM Sans',sans-serif;cursor:pointer}
 .rest .rcity{font-size:13px;font-weight:700;color:var(--gold2);margin:6px 4px 0}
 .rest .r{padding:14px 16px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
 .rest .rh{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -156,6 +182,9 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
 .inst .tx b{display:block;font-size:14px;margin-bottom:2px}
 .inst .go{padding:10px 14px;border-radius:12px;border:none;background:var(--gold);color:#1b1f3b;font:700 13px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
 .inst .x{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px}
+.dyc .ic{flex:none;overflow:hidden}.dyc a.ic{width:46px;height:46px;border-radius:12px}.dyc .ic img{width:100%;height:100%;object-fit:cover;display:block}
+.dyc .tx{white-space:pre-line}.dyc a.go{text-decoration:none}
+.dyb{display:block;margin-top:14px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--card)}.dyb img{display:block;width:100%;height:auto}
 .offline{margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(106,168,255,.12);border:1px solid rgba(106,168,255,.3);color:#b9d4ff;font-size:12px;text-align:center}
 .msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 10px;line-height:1.6}
 .in{opacity:0;transform:translateY(12px);animation:up .5s ease forwards}
@@ -696,6 +725,210 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     }).catch(function () {});
   };
 
+
+  // ===== 📢 Duyurular (CRM → Duyurular) — görsel + kısa metin, hedef ve tarih aralığına göre =====
+  var renderDuyuru = function (kind, tourId, slot) {
+    fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/duyurular?pageSize=50')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.documents) return;
+        var n = new Date(), today = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); return o; }).filter(function (d) {
+          if (!d.active || (d.start && d.start > today) || (d.end && d.end < today)) return false;
+          if (!(d.title || safeUrl(d.image))) return false;
+          return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
+        }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
+        if (!list.length) return;
+        // "Ana ekrana ekleyin" kartı gibi: küçük görsel · başlık + kısa metin · bağlantı butonu
+        list.forEach(function (d) {
+          var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
+          // Görsel varsa sadece görsel (afiş) — dokununca bağlantı, bağlantı yoksa görselin kendisi açılır
+          if (img) {
+            var ban = el('a', 'dyb'); ban.href = link || img; ban.target = '_blank'; ban.rel = 'noopener';
+            var bim = document.createElement('img'); bim.src = img; bim.alt = String(d.title || 'Duyuru'); bim.loading = 'lazy'; ban.appendChild(bim);
+            slot.appendChild(ban); return;
+          }
+          var c = el('div', 'inst dyc');
+          var ic = el(img ? 'a' : 'div', 'ic');
+          if (img) { ic.href = img; ic.target = '_blank'; ic.rel = 'noopener'; ic.title = 'Görseli büyüt'; var im = document.createElement('img'); im.src = img; im.alt = ''; im.loading = 'lazy'; ic.appendChild(im); }
+          else ic.textContent = '📢';
+          c.appendChild(ic);
+          var tx = el('div', 'tx');
+          tx.appendChild(el('b', '', String(d.title || 'Duyuru')));
+          if (d.text) tx.appendChild(document.createTextNode(String(d.text)));
+          c.appendChild(tx);
+          if (link) { var go = el('a', 'go', 'Aç'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; c.appendChild(go); }
+          slot.appendChild(c);
+        });
+      }).catch(function () {});
+  };
+
+  // ===== 🛫 Kalkış tabelası (eski usul, harfler dönerek yerine oturur) =====
+  // Sadece biletteki bilgi: tarih, saat, uçuş, nereye, gidiş/dönüş. Canlı kapı / boarding / rötar bilgisi YOK
+  // (dış servise bağlı değil, maliyetsiz).
+  var TR_AY = { ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6, temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12 };
+  var trYmd = function (s) {
+    var t = String(s || '').toLocaleLowerCase('tr-TR').replace(/[çğıöşü]/g, function (c) { return TRA[c]; });
+    var m = t.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/); if (!m || !TR_AY[m[2]]) return '';
+    return m[3] + '-' + String(TR_AY[m[2]]).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  };
+  var addDay = function (ymd, n) { var d = new Date(ymd + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  var FLAP = 'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ0123456789:-';
+  var flipTo = function (c, ch, delay) {
+    if (c._v === ch) return; c._v = ch;
+    var tok = c._t = (c._t || 0) + 1; // yeni değer gelirse eski dönüş yarıda kalır
+    var n = 0, max = 6 + Math.floor(Math.random() * 6);
+    setTimeout(function () {
+      var iv = setInterval(function () {
+        if (tok !== c._t) { clearInterval(iv); return; }
+        if (++n >= max) { clearInterval(iv); c.textContent = ch === ' ' ? ' ' : ch; return; }
+        c.textContent = FLAP.charAt(Math.floor(Math.random() * FLAP.length));
+      }, 45);
+    }, delay || 0);
+  };
+  var renderBoard = function (flights) {
+    var W = [5, 5, 6, 10, 5], H = ['TARİH', 'SAAT', 'UÇUŞ', 'NEREYE', 'YÖN'];
+    var b = el('div', 'fb');
+    var fh = el('div', 'fh'); fh.appendChild(el('span', '', 'KALKIŞ · DEPARTURES')); var clk = el('span', 'clk', ''); fh.appendChild(clk); b.appendChild(fh);
+    var tickClk = function () { var d = new Date(); clk.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+    tickClk(); setInterval(tickClk, 15000);
+    var cols = el('div', 'cols'); b.appendChild(cols);
+    var colEls = H.map(function (h) { var s = el('span', '', h); cols.appendChild(s); return s; });
+    // Aktarmalı uçuşlarda sonraki bacak gece yarısını geçtiyse tarihi bir gün ileri al
+    var lastDir = '', lastMin = -1, off = 0;
+    var today = new Date().toISOString().slice(0, 10);
+    flights.forEach(function (x, ri) {
+      var d = parsePt(x.dep), r = parsePt(x.arr);
+      var tm = (d.time || '').slice(0, 5), mins = tm ? (+tm.slice(0, 2)) * 60 + (+tm.slice(3, 5)) : -1;
+      if (x.dir !== lastDir) { off = 0; lastMin = -1; } else if (mins >= 0 && lastMin >= 0 && mins < lastMin) off++;
+      lastDir = x.dir; if (mins >= 0) lastMin = mins;
+      var ymd = trYmd(x.date); if (ymd && off) ymd = addDay(ymd, off);
+      var vals = [ymd ? ymd.slice(8, 10) + '.' + ymd.slice(5, 7) : '', tm, x.code, r.city || r.iata || '', x.dir || ''];
+      var done = ymd && ymd < today;
+      var row = el('div', 'row');
+      W.forEach(function (w, gi) {
+        var g = el('div', 'grp'), v = String(vals[gi] || '').toLocaleUpperCase('tr-TR').slice(0, w);
+        while (v.length < w) v += ' ';
+        for (var k = 0; k < w; k++) { var c = el('span', 'fc' + (gi === 2 ? ' w' : done ? ' g' : ''), ' '); g.appendChild(c); flipTo(c, v.charAt(k), ri * 120 + (gi * 4 + k) * 25); }
+        row.appendChild(g);
+      });
+      b.appendChild(row);
+    });
+    // Hücre genişliği: tabelanın genişliğine sığacak şekilde
+    var fit = function () {
+      var total = W.reduce(function (a, n) { return a + n; }, 0), gp = 6;
+      var avail = b.clientWidth - 20 - gp * (W.length - 1) - total;
+      var cw = Math.max(7, Math.min(16, Math.floor(avail / total)));
+      b.style.setProperty('--cw', cw + 'px'); b.style.setProperty('--gp', gp + 'px');
+      colEls.forEach(function (s, i) { s.style.width = (W[i] * cw + (W[i] - 1)) + 'px'; });
+    };
+    setTimeout(fit, 0); window.addEventListener('resize', fit);
+    return b;
+  };
+
+  // ===== 🏆 Canlı bilgi yarışması =====
+  // Rehber CRM'den açar/yönetir; burada sadece katılım ve cevap. Gerçek zamanlı olduğu için Firebase SDK
+  // yalnızca tur kimliği olan linkte ve tur bitene kadar (bitişten 2 gün sonrasına dek) yüklenir.
+  var renderQuiz = function (f, slot) {
+    var tourId = String(f.tourId || '');
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(tourId)) return;
+    var endD = parseD(f.endDate || f.startDate);
+    if (endD && Date.now() > endD.getTime() + 2 * 86400000) return;
+    var V = 'https://www.gstatic.com/firebasejs/10.12.2/';
+    Promise.all([import(V + 'firebase-app.js'), import(V + 'firebase-firestore.js')]).then(function (mods) {
+      var A = mods[0], F = mods[1];
+      var app = A.initializeApp({ apiKey: 'AIzaSyBGPKWf2A6Zck1zJaT3JAhOai1UVIPjwZo', authDomain: 'paydos-crm.firebaseapp.com', projectId: 'paydos-crm', appId: '1:1085867941071:web:f0b93edb5efed7de70abba' }, 'yarisma');
+      var fdb = F.getFirestore(app, 'paydos');
+      var sref = F.doc(fdb, 'yarisma_oturum', tourId), pref = F.doc(fdb, 'yarisma_oturum', tourId, 'players', code);
+      var nm = String(f.customerName || '').trim().split(/\s+/);
+      var myName = nm.length > 1 ? nm.slice(0, -1).join(' ') + ' ' + nm[nm.length - 1].charAt(0) + '.' : (nm[0] || 'Yolcu');
+      var ses = null, me = null, ov = null, closedKey = '', qSeenAt = 0, myPick = {}, tick = null;
+      var card = null;
+      var join = function () { return F.setDoc(pref, { name: myName.slice(0, 30), joinedAt: F.serverTimestamp(), answers: {} }).catch(function () { alert('Katılamadınız, internet bağlantınızı kontrol edin.'); }); };
+      var stateKey = function () { return ses ? ses.status + ':' + ses.qIndex : ''; };
+      var drawCard = function () {
+        var on = ses && ['lobby', 'q', 'reveal', 'end'].indexOf(ses.status) >= 0 && !(ses.status === 'end' && !me);
+        if (!on) { if (card) { card.remove(); card = null; } return; }
+        if (!card) { card = el('button', 'qz'); card.type = 'button'; slot.appendChild(card); card.addEventListener('click', function () { closedKey = ''; if (!me) join(); drawOv(); }); }
+        card.innerHTML = '';
+        card.appendChild(el('div', 'ic', '🏆'));
+        var t = el('div'); t.appendChild(el('b', '', ses.status === 'end' ? 'Yarışma bitti — sonuçlar' : 'Canlı bilgi yarışması!'));
+        t.appendChild(el('span', '', me ? (ses.status === 'end' ? 'Sıralamayı görün' : 'Katıldınız · ' + (me.score || 0) + ' puan') : (ses.title || 'Rehberiniz yarışma başlattı'))); card.appendChild(t);
+        card.appendChild(el('span', 'go', me ? 'Aç' : 'Katıl'));
+      };
+      var lb = function (parent, top) {
+        var w = el('div', 'lb');
+        (top || []).forEach(function (p, k) {
+          var r = el('div', p.name === (me && me.name) ? 'me' : ''); r.appendChild(el('b', '', ['🥇', '🥈', '🥉'][k] || (k + 1) + '.')); r.appendChild(el('span', '', p.name)); r.appendChild(el('b', '', String(p.score))); w.appendChild(r);
+        });
+        parent.appendChild(w);
+      };
+      var drawOv = function () {
+        if (!ses || !me || ['lobby', 'q', 'reveal', 'end'].indexOf(ses.status) < 0 || closedKey === stateKey()) { if (ov) { ov.remove(); ov = null; } if (tick) { clearInterval(tick); tick = null; } return; }
+        if (!ov) { ov = el('div', 'qo'); document.body.appendChild(ov); }
+        ov.innerHTML = ''; if (tick) { clearInterval(tick); tick = null; }
+        var top = el('div', 'top'); top.appendChild(el('span', '', '🏆 ')); top.appendChild(el('b', '', ses.title || 'Bilgi Yarışması'));
+        var x = el('button', 'x', '✕'); x.type = 'button'; x.addEventListener('click', function () { closedKey = stateKey(); drawOv(); }); top.appendChild(x); ov.appendChild(top);
+        var i = ses.qIndex;
+        if (ses.status === 'lobby') {
+          ov.appendChild(el('div', 'big', '👋'));
+          ov.appendChild(el('div', 'msg2', 'Katıldınız, ' + me.name + '! Rehberiniz başlatınca sorular burada çıkacak.'));
+          ov.appendChild(el('div', 'msg2', 'Her soru ' + (ses.limit || 20) + ' saniye — hızlı ve doğru olan çok puan alır.'));
+          return;
+        }
+        if (ses.status === 'end') {
+          ov.appendChild(el('div', 'big', '🏁'));
+          ov.appendChild(el('div', 'msg2', 'Yarışma bitti! Puanınız: ' + (me.score || 0)));
+          lb(ov, ses.top);
+          var c = el('div', 'cta'); var b = el('button', '', 'Kapat'); b.addEventListener('click', function () { closedKey = stateKey(); drawOv(); }); c.appendChild(b); ov.appendChild(c);
+          return;
+        }
+        var q = ses.q || {};
+        var head = el('div', 'top'); head.appendChild(el('span', '', 'Soru ' + (i + 1) + ' / ' + ses.total)); var tl = el('b', ''); tl.style.marginLeft = 'auto'; head.appendChild(tl); ov.appendChild(head);
+        var bar = el('div', 'bar'), bi = el('i'); bar.appendChild(bi); ov.appendChild(bar);
+        ov.appendChild(el('div', 'qt', q.text || ''));
+        var ops = el('div', 'op'); ov.appendChild(ops);
+        var mine = myPick[i] != null ? myPick[i] : (me.answers && me.answers[i] ? me.answers[i].c : null);
+        var COL = ['#ef4444', '#3b82f6', '#f59e0b', '#10b981'];
+        var lim = (ses.limit || 20) * 1000;
+        var expired = function () { return ses.status !== 'q' || Date.now() - qSeenAt > lim; };
+        (q.o || []).forEach(function (o, k) {
+          var b = el('button', '', o); b.type = 'button'; b.style.background = COL[k];
+          if (ses.status === 'reveal') { b.disabled = true; if (k === ses.correct) b.className = 'ok'; else if (k === mine) b.className = 'sel'; }
+          else if (mine != null) { b.disabled = true; if (k === mine) b.className = 'sel'; }
+          b.addEventListener('click', function () {
+            if (mine != null || expired()) return;
+            myPick[i] = k; var u = {}; u['answers.' + i] = { c: k, at: F.serverTimestamp() };
+            F.updateDoc(pref, u).catch(function () { delete myPick[i]; drawOv(); alert('Cevap gönderilemedi.'); });
+            drawOv();
+          });
+          ops.appendChild(b);
+        });
+        if (ses.status === 'q') {
+          var upd = function () { var r = Math.max(0, lim - (Date.now() - qSeenAt)); bi.style.width = (r / lim * 100) + '%'; tl.textContent = Math.ceil(r / 1000) + ' sn'; if (!r && tick) { clearInterval(tick); tick = null; } };
+          upd(); tick = setInterval(upd, 250);
+          ov.appendChild(el('div', 'msg2', mine != null ? '✅ Cevabınız alındı — sonucu bekleyin' : 'Cevabınızı seçin'));
+        } else {
+          bi.style.width = '0%';
+          var right = mine === ses.correct;
+          ov.appendChild(el('div', 'big', mine == null ? '⏰' : right ? '🎉 +' + (me.last || 0) : '❌'));
+          ov.appendChild(el('div', 'msg2', mine == null ? 'Bu soruyu kaçırdınız' : right ? 'Doğru! Toplam ' + (me.score || 0) + ' puan' : 'Yanlış — toplam ' + (me.score || 0) + ' puan'));
+          lb(ov, ses.top);
+          ov.appendChild(el('div', 'msg2', 'Sıradaki soru birazdan…'));
+        }
+      };
+      F.onSnapshot(sref, function (s) {
+        var prev = stateKey();
+        ses = s.exists() ? s.data() : null;
+        if (ses && ses.status === 'lobby' && prev && prev.indexOf('lobby') !== 0) { me = null; myPick = {}; } // yeni yarışma
+        if (ses && ses.status === 'q' && stateKey() !== prev) qSeenAt = Date.now();
+        if (stateKey() !== prev) closedKey = ''; // yeni soru / sonuç gelince pencere tekrar açılır
+        drawCard(); drawOv();
+      }, function () {});
+      F.onSnapshot(pref, function (s) { me = s.exists() ? s.data() : null; drawCard(); drawOv(); }, function () {});
+    }).catch(function () {});
+  };
+
   fetch('https://firestore.googleapis.com/v1/projects/paydos-crm/databases/paydos/documents/paylasimlar/' + code)
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
@@ -729,6 +962,11 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       }
 
       renderInstall(box);
+      // Canlı yarışma kartı (rehber yarışma açınca belirir)
+      var quizSlot = el('div'); box.appendChild(quizSlot);
+      try { renderQuiz(f, quizSlot); } catch (x) {}
+      var dySlot = el('div'); box.appendChild(dySlot);
+      try { renderDuyuru('tour', f.tourId || '', dySlot); } catch (x) {}
       if (!navigator.onLine) add(box, el('div', 'offline', '📴 İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
       if (f.city) document.title = 'Paydos · ' + f.city;
 
@@ -737,6 +975,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       // --- Uçuşlar (biniş kartı) ---
       if (flights.length) {
         add(box, el('div', 'sec', 'Uçuşlarınız'));
+        try { add(box, renderBoard(flights)); } catch (x) {}
         add(box, el('div', 'hint', '🎮 Beklerken sıkıldınız mı? Uçağa dokunun, Tetris açılsın!'));
         flights.forEach(function (x) {
           var a = el('a', 'pass'); a.href = 'https://www.flightradar24.com/data/flights/' + x.code.toLowerCase(); a.target = '_blank'; a.rel = 'noopener';
