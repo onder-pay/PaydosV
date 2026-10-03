@@ -991,6 +991,9 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
       return;
     }
     parent.appendChild(card);
+    // Bildirim servisi (Firebase fonksiyonu) yüklü değilse kart hiç görünmez — bozuk buton göstermeyelim
+    card.style.display = 'none';
+    pushCall({ a: 'key' }).then(function (j) { if (j && j.key) card.style.display = ''; }).catch(function () {});
     var ck = el('label', 'ck'), cb = document.createElement('input'); cb.type = 'checkbox';
     ck.appendChild(cb); ck.appendChild(document.createTextNode('Kampanya ve fırsatlardan da haberdar olmak istiyorum.'));
     var subscribe = function (btn) {
