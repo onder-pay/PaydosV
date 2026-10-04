@@ -632,6 +632,7 @@ const countryFromPlace = (...texts) => {
   PLACE_COUNTRY.forEach(([w, c]) => { const i = t.lastIndexOf(' ' + w + ' '); if (i >= 0 && (!best || i > best[0] || (i === best[0] && w.length > best[2]))) best = [i, c, w.length]; });
   return best ? best[1] : '';
 };
+const SHORT_COUNTRY = { 'Çin Halk Cumhuriyeti': 'Çin', 'Amerika Birleşik Devletleri': 'ABD', 'Birleşik Krallık': 'İngiltere', 'BAE': 'BAE (Dubai)' };
 // c: CRM müşteri kaydı · trip: { startDate, endDate, country, flights:[{ to, ymd }], hotelCheckIn, hotelCheckOut, hotelName, hotelAddress }
 // Döner: { country, start, end, items: [{ level: 'ok'|'warn'|'err'|'info', msg }] }
 const travelCheck = (c, trip = {}) => {
@@ -654,8 +655,17 @@ const travelCheck = (c, trip = {}) => {
   // CRM'de sadece Schengen ve ABD vizesi tutuluyor → yalnız bunlar kontrol edilir; diğer ülkelerde sadece hatırlatma
   const isSch = schengenCountries.includes(country);
   const isUsa = country === 'Amerika Birleşik Devletleri';
-  if (!isSch && !isUsa) { items.push({ level: 'warn', msg: `${country ? country + ': ' : ''}Vize durumunu kontrol ediniz` }); return { country, start, end, items }; }
   const green = greenPassportStatus(passports, end).green;
+  if (!isSch && !isUsa) {
+    // Diğer ülkeler: CRM'de vizesi tutulmuyor → Dışişleri tablosuna göre vizesiz / vizeli bilgisi
+    const rule = country && VIZE_DURUM[country];
+    const st = rule ? (green ? rule.y : rule.b) : '';
+    const ad = SHORT_COUNTRY[country] || country;
+    if (st === 'muaf' || st === 'yurtici') items.push({ level: 'ok', msg: `${ad} vizesiz gidilebilir${green ? ' (yeşil pasaport)' : ''}` });
+    else if (st === 'tabi') items.push({ level: 'warn', msg: `${ad} vizeli — lütfen vize durumunu kontrol ediniz` });
+    else items.push({ level: 'warn', msg: `${ad ? ad + ': ' : ''}Lütfen vize durumunu kontrol ediniz` });
+    return { country, start, end, items };
+  }
   const covers = (v) => v && /^\d{4}-\d{2}-\d{2}$/.test(v.endDate || '') && v.endDate >= end && (!v.startDate || v.startDate <= start);
   if (isSch && green && greenExemptIn(country)) items.push({ level: 'ok', msg: `${country}: yeşil pasaportla vize gerekmiyor` });
   else if (isSch) {
