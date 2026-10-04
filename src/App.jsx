@@ -645,7 +645,7 @@ const travelCheck = (c, trip = {}) => {
   const items = [];
   if (!end) return { country, start, end, items: [{ level: 'info', msg: 'Seyahat tarihi okunamadı — pasaport/vize kontrolü yapılamadı' }] };
   const passports = safeParseJSON(c.passports);
-  // Pasaport: Schengen → çıkıştan sonra en az 6 ay (hata) + son 10 yılda verilmiş; diğer ülkeler → 6 ay (uyarı)
+  // Pasaport: her ülke için dönüşten sonra en az 6 ay geçerli; Schengen'de ayrıca son 10 yılda verilmiş olmalı
   const schTrip = schengenCountries.includes(country);
   const list = passports.filter(p => p && (p.passportNo || p.expiryDate));
   const best = list.filter(p => safeParseDate(p.expiryDate)).sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0];
@@ -655,8 +655,7 @@ const travelCheck = (c, trip = {}) => {
     const expD = safeParseDate(best.expiryDate), endD = safeParseDate(end), exp = formatDate(best.expiryDate);
     const plus = (m) => { const d = new Date(endD); d.setMonth(d.getMonth() + m); return d; };
     if (expD < endD) items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
-    else if (schTrip && expD < plus(6)) items.push({ level: 'err', msg: `Schengen için pasaport dönüşten sonra en az 6 ay geçerli olmalı (${exp})` });
-    else if (!schTrip && expD < plus(6)) items.push({ level: 'warn', msg: `Pasaport dönüşten sonra 6 aydan az geçerli (${exp}) — gidilen ülkenin kuralını kontrol edin` });
+    else if (expD < plus(6)) items.push({ level: 'err', msg: `Pasaport dönüşten sonra en az 6 ay geçerli olmalı (${exp})` });
     else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
     if (schTrip && best.issueDate && safeParseDate(best.issueDate)) {
       const lim = safeParseDate(start || end); lim.setFullYear(lim.getFullYear() - 10);
