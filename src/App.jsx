@@ -645,13 +645,27 @@ const travelCheck = (c, trip = {}) => {
   const items = [];
   if (!end) return { country, start, end, items: [{ level: 'info', msg: 'Seyahat tarihi okunamadı — pasaport/vize kontrolü yapılamadı' }] };
   const passports = safeParseJSON(c.passports);
-  const pv = passportValidityFor(passports, end);
-  const exp = pv.exp ? formatDate(pv.exp.toISOString().slice(0, 10)) : '';
-  if (pv.reason === 'none') items.push({ level: 'err', msg: 'CRM\'de pasaport kaydı yok' });
-  else if (pv.reason === 'nodate') items.push({ level: 'warn', msg: 'Pasaport bitiş tarihi CRM\'de girilmemiş' });
-  else if (pv.reason === 'expires') items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
-  else if (pv.reason === 'months') items.push({ level: 'warn', msg: `Pasaport dönüşten sonra 6 aydan az geçerli (${exp})` });
-  else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
+  // Pasaport: Schengen → çıkıştan sonra en az 3 ay + son 10 yılda verilmiş; diğer ülkeler → 6 ay (en güvenli kural, uyarı)
+  const schTrip = schengenCountries.includes(country);
+  const list = passports.filter(p => p && (p.passportNo || p.expiryDate));
+  const best = list.filter(p => safeParseDate(p.expiryDate)).sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0];
+  if (!list.length) items.push({ level: 'err', msg: 'CRM\'de pasaport kaydı yok' });
+  else if (!best) items.push({ level: 'warn', msg: 'Pasaport bitiş tarihi CRM\'de girilmemiş' });
+  else {
+    const expD = safeParseDate(best.expiryDate), endD = safeParseDate(end), exp = formatDate(best.expiryDate);
+    const plus = (m) => { const d = new Date(endD); d.setMonth(d.getMonth() + m); return d; };
+    if (expD < endD) items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
+    else if (schTrip && expD < plus(3)) items.push({ level: 'err', msg: `Schengen için pasaport dönüşten sonra en az 3 ay geçerli olmalı (${exp})` });
+    else if (!schTrip && expD < plus(6)) items.push({ level: 'warn', msg: `Pasaport dönüşten sonra 6 aydan az geçerli (${exp}) — gidilen ülkenin kuralını kontrol edin` });
+    else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
+    if (schTrip && best.issueDate && safeParseDate(best.issueDate)) {
+      const lim = safeParseDate(start || end); lim.setFullYear(lim.getFullYear() - 10);
+      if (safeParseDate(best.issueDate) < lim) {
+        if (items[items.length - 1]?.level === 'ok') items.pop(); // "uygun" ile çelişmesin
+        items.push({ level: 'err', msg: `Schengen: pasaport 10 yıldan eski (veriliş ${formatDate(best.issueDate)}) — yenilenmeli` });
+      }
+    }
+  }
   // CRM'de sadece Schengen ve ABD vizesi tutuluyor → yalnız bunlar kontrol edilir; diğer ülkelerde sadece hatırlatma
   const isSch = schengenCountries.includes(country);
   const isUsa = country === 'Amerika Birleşik Devletleri';
