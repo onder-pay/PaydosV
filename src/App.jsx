@@ -632,6 +632,9 @@ const countryFromPlace = (...texts) => {
   PLACE_COUNTRY.forEach(([w, c]) => { const i = t.lastIndexOf(' ' + w + ' '); if (i >= 0 && (!best || i > best[0] || (i === best[0] && w.length > best[2]))) best = [i, c, w.length]; });
   return best ? best[1] : '';
 };
+// Dışişleri — resmi (diplomatik/hizmet/hususi) pasaportun asgari geçerlilik süresi, ay (0 = kalış süresince geçerli yeterli).
+// Kaynak: mfa.gov.tr "Resmi pasaport" tablosu (PDF, Ekim 2026). Almanya: 1 aydan uzun seyahatte 12 ay (kodda).
+const PASAPORT_MIN_AY = {"Amerika Birleşik Devletleri":6,"Afganistan":6,"Almanya":3,"Andorra":3,"Angola":6,"Arjantin":6,"Arnavutluk":6,"Avusturya":3,"Avustralya":6,"Azerbaycan":1,"BAE":6,"Bahreyn":6,"Bangladeş":6,"Barbados":6,"Belarus":6,"Belçika":3,"Belize":6,"Benin":6,"Birleşik Krallık":6,"Bolivya":6,"Bosna Hersek":6,"Botsvana":6,"Brezilya":6,"Bulgaristan":3,"Burundi":6,"Butan":6,"Cabo Verde":6,"Cezayir":6,"Cibuti":6,"Çad":6,"Çekya":3,"Çin Halk Cumhuriyeti":3,"Danimarka":3,"Doğu Timor":6,"Dominik Cumhuriyeti":6,"Dominika":6,"El Salvador":6,"Endonezya":6,"Eritre":6,"Ermenistan":6,"Estonya":3,"Fas":3,"Fiji":3,"Fildişi Sahili":3,"Filipinler":6,"Finlandiya":3,"Fransa":3,"Gabon":6,"Gana":6,"Grenada":6,"Gine Bissau":6,"Guatemala":6,"Guyana":6,"Güney Afrika":1,"Gürcistan":0,"Haiti":6,"Hırvatistan":3,"Hindistan":6,"Hollanda":3,"Honduras":6,"Irak":6,"İran":6,"İrlanda":6,"İspanya":4,"İsrail":6,"İsveç":3,"İsviçre":3,"İtalya":3.5,"İzlanda":3,"Japonya":3,"Kamboçya":6,"Kamerun":6,"Kanada":0,"Katar":6,"Kazakistan":6,"Kenya":6,"Kırgızistan":6,"Kiribati":6,"KKTC":6,"Kolombiya":0,"Kongo":0,"Kongo Demokratik Cumhuriyeti":6,"Güney Kore":3,"Kuzey Kore":0,"Kosta Rika":3,"Kuveyt":6,"Küba":0,"Laos":6,"Lesotho":6,"Letonya":3,"Liberya":6,"Libya":6,"Liechtenstein":3,"Litvanya":3,"Lübnan":3,"Lüksemburg":3,"Macaristan":6,"Madagaskar":6,"Kuzey Makedonya":6,"Malavi":6,"Maldivler":6,"Malezya":6,"Malta":6,"Mauritius":6,"Meksika":6,"Mısır":6,"Mikronezya":4,"Moğolistan":12,"Moldova":6,"Monako":3,"Moritanya":6,"Mozambik":6,"Myanmar":6,"Namibya":6,"Nauru":6,"Nepal":6,"Nijer":6,"Nijerya":6,"Nikaragua":6,"Norveç":3,"Orta Afrika Cumhuriyeti":0,"Özbekistan":6,"Palau":6,"Pakistan":6,"Panama":6,"Papua Yeni Gine":6,"Paraguay":6,"Polonya":3,"Portekiz":3,"Romanya":6,"Rusya":6,"Senegal":6,"Sırbistan":6,"Sierra Leone":6,"Singapur":6,"Slovakya":3,"Slovenya":4,"Solomon Adaları":6,"Sri Lanka":6,"Sudan":6,"Surinam":6,"Suriye":4,"Suudi Arabistan":6,"Esvatini":0,"Şili":6,"Tacikistan":6,"Tayland":6,"Tayvan":6,"Togo":0,"Tonga":6,"Trinidad-Tobago":0,"Tunus":6,"Tuvalu":6,"Türkmenistan":6,"Ukrayna":1,"Uruguay":6,"Ürdün":6,"Vanuatu":6,"Venezuela":6,"Vietnam":6,"Yemen":6,"Yeni Zelanda":3,"Yunanistan":3,"Zambiya":6,"Zimbabve":6,"Umman":6,"Etiyopya":6,"Antigua-Barbuda":6,"Bağımsız Samoa":6,"Brunei":6,"Ekvador":6,"St. Kitts ve Nevis":6,"Marshall Adaları":3,"Cook Adaları":0};
 const SHORT_COUNTRY = { 'Çin Halk Cumhuriyeti': 'Çin', 'Amerika Birleşik Devletleri': 'ABD', 'Birleşik Krallık': 'İngiltere', 'BAE': 'BAE (Dubai)' };
 // c: CRM müşteri kaydı · trip: { startDate, endDate, country, flights:[{ to, ymd }], hotelCheckIn, hotelCheckOut, hotelName, hotelAddress }
 // Döner: { country, start, end, items: [{ level: 'ok'|'warn'|'err'|'info', msg }] }
@@ -653,9 +656,17 @@ const travelCheck = (c, trip = {}) => {
   else if (!best) items.push({ level: 'warn', msg: 'Pasaport bitiş tarihi CRM\'de girilmemiş' });
   else {
     const expD = safeParseDate(best.expiryDate), endD = safeParseDate(end), exp = formatDate(best.expiryDate);
-    const plus = (m) => { const d = new Date(endD); d.setMonth(d.getMonth() + m); return d; };
+    const plus = (m) => { const d = new Date(endD); d.setMonth(d.getMonth() + Math.floor(m)); if (m % 1) d.setDate(d.getDate() + 15); return d; };
+    // Ülkeye göre asgari süre (Dışişleri resmi pasaport tablosu). Yeşil pasaport → tablodaki süre;
+    // bordo pasaport → tablo resmi pasaport için olduğundan en az 6 ay (tablo daha uzunsa o).
+    const tripDays = start ? Math.round((endD - safeParseDate(start)) / 86400000) : 0;
+    let need = PASAPORT_MIN_AY[country];
+    if (country === 'Almanya' && tripDays > 30) need = 12;
+    const greenP = greenPassportStatus(passports, end).green;
+    need = need === undefined ? 6 : greenP ? need : Math.max(6, need);
+    const needTxt = need >= 12 ? `${need / 12} yıl` : need % 1 ? `${Math.floor(need)} ay 15 gün` : `${need} ay`;
     if (expD < endD) items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
-    else if (expD < plus(6)) items.push({ level: 'err', msg: `Pasaport dönüşten sonra en az 6 ay geçerli olmalı (${exp})` });
+    else if (need > 0 && expD < plus(need)) items.push({ level: 'err', msg: `Pasaport dönüşten sonra en az ${needTxt} geçerli olmalı${country ? ' (' + (SHORT_COUNTRY[country] || country) + ')' : ''} — bitiş ${exp}` });
     else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
     if (schTrip && best.issueDate && safeParseDate(best.issueDate)) {
       const lim = safeParseDate(start || end); lim.setFullYear(lim.getFullYear() - 10);
