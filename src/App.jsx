@@ -652,7 +652,7 @@ const travelCheck = (c, trip = {}) => {
   const schTrip = schengenCountries.includes(country);
   const list = passports.filter(p => p && (p.passportNo || p.expiryDate));
   const best = list.filter(p => safeParseDate(p.expiryDate)).sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0];
-  if (!list.length) items.push({ level: 'err', msg: 'CRM\'de pasaport kaydı yok' });
+  if (!list.length) items.push({ level: 'warn', msg: 'CRM\'de pasaport kaydı yok — lütfen müşteri ile vize ve pasaport durumunu görüşün' });
   else if (!best) items.push({ level: 'warn', msg: 'Pasaport bitiş tarihi CRM\'de girilmemiş' });
   else {
     const expD = safeParseDate(best.expiryDate), endD = safeParseDate(end), exp = formatDate(best.expiryDate);
