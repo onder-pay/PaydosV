@@ -580,12 +580,65 @@ const IATA_COUNTRY = (() => {
   }).forEach(([c, codes]) => codes.split(' ').forEach(k => { m[k] = c; }));
   return m;
 })();
-// c: CRM müşteri kaydı · trip: { startDate, endDate, country, flights:[{ to, ymd }], hotelCheckIn, hotelCheckOut }
+// Otel adresinden (ve adından) ülke: ülke adı (TR/EN/yerel) ya da büyük şehir. Adreste ülke genelde sondadır →
+// en sondaki eşleşme esas. Belgenin tamamı taranmaz (Booking.com altbilgisindeki "Amsterdam, Netherlands" gibi yanıltır).
+const PLACE_COUNTRY = (() => {
+  const m = [];
+  Object.entries({
+    'Türkiye': 'TURKIYE|TURKEY|TURKIYE CUMHURIYETI|ISTANBUL|ANTALYA|IZMIR|ANKARA|BODRUM|ALANYA|KAPADOKYA|CAPPADOCIA|NEVSEHIR|TRABZON|MUGLA|FETHIYE|MARMARIS|KEMER|BELEK',
+    'KKTC': 'KKTC|NORTHERN CYPRUS|KUZEY KIBRIS|GIRNE|KYRENIA|LEFKOSA|GAZIMAGUSA|FAMAGUSTA',
+    'Almanya': 'ALMANYA|GERMANY|DEUTSCHLAND|BERLIN|FRANKFURT|MUNCHEN|MUENCHEN|MUNICH|HAMBURG|KOLN|KOELN|COLOGNE|DUSSELDORF|DUESSELDORF|STUTTGART|HANNOVER|NURNBERG|NUREMBERG|LEIPZIG|DRESDEN|ESSEN|DORTMUND|BREMEN',
+    'Avusturya': 'AVUSTURYA|AUSTRIA|OSTERREICH|OESTERREICH|WIEN|VIENNA|SALZBURG|INNSBRUCK|GRAZ',
+    'Belçika': 'BELCIKA|BELGIUM|BELGIQUE|BELGIE|BRUXELLES|BRUSSEL|BRUSSELS|ANTWERPEN|ANTWERP|BRUGGE|BRUGES',
+    'Çekya': 'CEKYA|CEK CUMHURIYETI|CZECH REPUBLIC|CZECHIA|CESKA REPUBLIKA|PRAHA|PRAGUE|BRNO',
+    'Danimarka': 'DANIMARKA|DENMARK|DANMARK|KOBENHAVN|COPENHAGEN',
+    'Estonya': 'ESTONYA|ESTONIA|EESTI|TALLINN', 'Finlandiya': 'FINLANDIYA|FINLAND|SUOMI|HELSINKI|ROVANIEMI',
+    'Fransa': 'FRANSA|FRANCE|PARIS|NICE|LYON|MARSEILLE|TOULOUSE|BORDEAUX|STRASBOURG|CANNES|LILLE|NANTES',
+    'Hollanda': 'HOLLANDA|NETHERLANDS|NEDERLAND|THE NETHERLANDS|AMSTERDAM|ROTTERDAM|DEN HAAG|THE HAGUE|UTRECHT|EINDHOVEN',
+    'İspanya': 'ISPANYA|SPAIN|ESPANA|MADRID|BARCELONA|SEVILLA|SEVILLE|VALENCIA|MALAGA|MALLORCA|IBIZA|GRANADA|BILBAO|TENERIFE',
+    'İsveç': 'ISVEC|SWEDEN|SVERIGE|STOCKHOLM|GOTEBORG|GOTHENBURG',
+    'İsviçre': 'ISVICRE|SWITZERLAND|SCHWEIZ|SUISSE|SVIZZERA|ZURICH|ZUERICH|GENEVE|GENEVA|GENF|BERN|BASEL|LUZERN|LUCERNE|INTERLAKEN|ZERMATT',
+    'İtalya': 'ITALYA|ITALY|ITALIA|ROMA|ROME|MILANO|MILAN|VENEZIA|VENICE|FIRENZE|FLORENCE|NAPOLI|NAPLES|BOLOGNA|TORINO|TURIN|VERONA|PISA',
+    'İzlanda': 'IZLANDA|ICELAND|REYKJAVIK', 'Letonya': 'LETONYA|LATVIA|RIGA', 'Litvanya': 'LITVANYA|LITHUANIA|VILNIUS',
+    'Lüksemburg': 'LUKSEMBURG|LUXEMBOURG', 'Macaristan': 'MACARISTAN|HUNGARY|MAGYARORSZAG|BUDAPEST', 'Malta': 'MALTA|VALLETTA',
+    'Norveç': 'NORVEC|NORWAY|NORGE|OSLO|BERGEN', 'Polonya': 'POLONYA|POLAND|POLSKA|WARSZAWA|WARSAW|KRAKOW|GDANSK|WROCLAW',
+    'Portekiz': 'PORTEKIZ|PORTUGAL|LISBOA|LISBON|PORTO|FARO|MADEIRA', 'Slovakya': 'SLOVAKYA|SLOVAKIA|BRATISLAVA',
+    'Slovenya': 'SLOVENYA|SLOVENIA|LJUBLJANA', 'Yunanistan': 'YUNANISTAN|GREECE|HELLAS|ATHENS|ATINA|SELANIK|THESSALONIKI|SANTORINI|MYKONOS|RODOS|RHODES|GIRIT|CRETE',
+    'Hırvatistan': 'HIRVATISTAN|CROATIA|HRVATSKA|ZAGREB|SPLIT|DUBROVNIK', 'Bulgaristan': 'BULGARISTAN|BULGARIA|SOFIA|SOFYA|VARNA|PLOVDIV|BURGAZ|BURGAS',
+    'Romanya': 'ROMANYA|ROMANIA|BUCURESTI|BUCHAREST|BUKRES', 'Kıbrıs Rum Kesimi': 'REPUBLIC OF CYPRUS|LARNACA|LIMASSOL|PAPHOS', 'İrlanda': 'IRLANDA|IRELAND|DUBLIN',
+    'Birleşik Krallık': 'INGILTERE|UNITED KINGDOM|ENGLAND|LONDON|LONDRA|MANCHESTER|EDINBURGH|LIVERPOOL|BIRMINGHAM|SCOTLAND',
+    'Amerika Birleşik Devletleri': 'ABD|UNITED STATES|USA|NEW YORK|LOS ANGELES|CHICAGO|MIAMI|LAS VEGAS|SAN FRANCISCO|ORLANDO|BOSTON|WASHINGTON',
+    'Kanada': 'KANADA|CANADA|TORONTO|MONTREAL|VANCOUVER',
+    'Çin Halk Cumhuriyeti': 'CIN|CHINA|P R CHINA|PR CHINA|PEOPLES REPUBLIC OF CHINA|GUANGZHOU|KANTON|SHANGHAI|SANGHAY|BEIJING|PEKIN|SHENZHEN|CHENGDU|CHONGQING|HANGZHOU|XIAN|URUMQI|URUMCI|YIWU|XIAMEN|NANJING|WUHAN|TIANJIN|QINGDAO|DONGGUAN|FOSHAN',
+    'Hong Kong': 'HONG KONG|KOWLOON', 'BAE': 'BAE|UNITED ARAB EMIRATES|UAE|DUBAI|ABU DHABI|SHARJAH',
+    'Katar': 'KATAR|QATAR|DOHA', 'Suudi Arabistan': 'SUUDI ARABISTAN|SAUDI ARABIA|MEKKE|MAKKAH|MECCA|MEDINE|MADINAH|MEDINA|CIDDE|JEDDAH|RIYAD|RIYADH',
+    'Mısır': 'MISIR|EGYPT|KAHIRE|CAIRO|HURGADA|HURGHADA|SHARM EL SHEIKH|LUXOR', 'Azerbaycan': 'AZERBAYCAN|AZERBAIJAN|BAKU|BAKI|GENCE|GANJA|GABALA|QABALA',
+    'Gürcistan': 'GURCISTAN|TIFLIS|TBILISI|BATUM|BATUMI', 'Rusya': 'RUSYA|RUSSIA|MOSKOVA|MOSCOW|ST PETERSBURG|SOCHI|SOCI',
+    'Japonya': 'JAPONYA|JAPAN|TOKYO|OSAKA|KYOTO', 'Güney Kore': 'GUNEY KORE|SOUTH KOREA|KOREA|SEOUL|SEUL|BUSAN',
+    'Tayland': 'TAYLAND|THAILAND|BANGKOK|PHUKET|PATTAYA', 'Singapur': 'SINGAPUR|SINGAPORE', 'Malezya': 'MALEZYA|MALAYSIA|KUALA LUMPUR',
+    'Endonezya': 'ENDONEZYA|INDONESIA|BALI|JAKARTA', 'Hindistan': 'HINDISTAN|INDIA|NEW DELHI|MUMBAI', 'Maldivler': 'MALDIVLER|MALDIVES',
+    'Fas': 'FAS|MOROCCO|MAROC|MARRAKECH|MARRAKESH|CASABLANCA', 'Tunus': 'TUNUS|TUNISIA', 'Özbekistan': 'OZBEKISTAN|UZBEKISTAN|TASKENT|TASHKENT|SEMERKANT|SAMARKAND|BUHARA|BUKHARA',
+    'Kazakistan': 'KAZAKISTAN|KAZAKHSTAN|ALMATI|ALMATY|ASTANA', 'Sırbistan': 'SIRBISTAN|SERBIA|BELGRAD|BELGRADE|BEOGRAD', 'Bosna Hersek': 'BOSNA|BOSNIA|SARAYBOSNA|SARAJEVO|MOSTAR',
+    'Karadağ': 'KARADAG|MONTENEGRO|PODGORICA|BUDVA|KOTOR', 'Arnavutluk': 'ARNAVUTLUK|ALBANIA|TIRAN|TIRANA', 'Kuzey Makedonya': 'MAKEDONYA|MACEDONIA|USKUP|SKOPJE|OHRID',
+    'Ürdün': 'URDUN|AMMAN|PETRA', 'Lübnan': 'LUBNAN|LEBANON|BEYRUT|BEIRUT', 'Vietnam': 'VIETNAM|HANOI|HO CHI MINH',
+    'Brezilya': 'BREZILYA|BRAZIL|BRASIL|RIO DE JANEIRO|SAO PAULO', 'Meksika': 'MEKSIKA|MEXICO|CANCUN', 'Küba': 'KUBA|CUBA|HAVANA', 'Güney Afrika': 'GUNEY AFRIKA|SOUTH AFRICA|CAPE TOWN|JOHANNESBURG',
+  }).forEach(([c, w]) => w.split('|').forEach(x => m.push([x, c])));
+  return m;
+})();
+const foldUp = (t) => String(t || '').toLocaleUpperCase('tr-TR').replace(/[ÇĞİÖŞÜ]/g, ch => ({ Ç: 'C', Ğ: 'G', İ: 'I', Ö: 'O', Ş: 'S', Ü: 'U' }[ch])).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, ' ');
+const countryFromPlace = (...texts) => {
+  const t = ' ' + foldUp(texts.filter(Boolean).join(' , ')) + ' ';
+  let best = null;
+  PLACE_COUNTRY.forEach(([w, c]) => { const i = t.lastIndexOf(' ' + w + ' '); if (i >= 0 && (!best || i > best[0] || (i === best[0] && w.length > best[2]))) best = [i, c, w.length]; });
+  return best ? best[1] : '';
+};
+// c: CRM müşteri kaydı · trip: { startDate, endDate, country, flights:[{ to, ymd }], hotelCheckIn, hotelCheckOut, hotelName, hotelAddress }
 // Döner: { country, start, end, items: [{ level: 'ok'|'warn'|'err'|'info', msg }] }
 const travelCheck = (c, trip = {}) => {
   const flights = (trip.flights || []).filter(Boolean).slice().sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
   const abroad = flights.map(f => IATA_COUNTRY[String(f.to || '').toUpperCase()]).filter(x => x && x !== 'Türkiye');
-  const country = abroad[0] || (trip.country && trip.country !== 'Türkiye' ? trip.country : '');
+  const hotelCountry = countryFromPlace(trip.hotelName, trip.hotelAddress);
+  const country = abroad[0] || (hotelCountry && hotelCountry !== 'Türkiye' ? hotelCountry : '') || (trip.country && trip.country !== 'Türkiye' ? trip.country : '');
   const dates = [trip.startDate, trip.endDate, trip.hotelCheckIn, trip.hotelCheckOut, ...flights.map(f => f.ymd)].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).sort();
   const start = dates[0] || '', end = dates[dates.length - 1] || '';
   const items = [];
@@ -2910,7 +2963,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
                       <span>👤 {nameOf(c)}{c.shareToken ? '' : ' · yeni link'}
                       <button onClick={() => setRow(r.key, { custIds: r.custIds.filter(x => x !== id) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px' }}>×</button></span>
                       {(() => { const k = nameCheck(c, r.txt); return k.msg ? <span style={{ fontSize: '10.5px', color: NAMECHK_COLOR[k.level], fontWeight: k.level === 'ok' ? 400 : 600 }}>{k.msg}</span> : null; })()}
-                      {['✈️', '🛫', '🛬', '🏨'].includes(CUST_DOC_TYPES[r.type]?.[0]) && (r.flights?.length || r.hotel?.checkIn) ? <TravelCheckBox compact c={c} trip={{ flights: r.flights, hotelCheckIn: r.hotel?.checkIn, hotelCheckOut: r.hotel?.checkOut, country: r.flights?.length ? '' : safeParseObj(c.shareTrip).country }} /> : null}
+                      {['✈️', '🛫', '🛬', '🏨'].includes(CUST_DOC_TYPES[r.type]?.[0]) && (r.flights?.length || r.hotel?.checkIn) ? <TravelCheckBox compact c={c} trip={{ flights: r.flights, hotelCheckIn: r.hotel?.checkIn, hotelCheckOut: r.hotel?.checkOut, hotelName: r.hotel?.name, hotelAddress: r.hotel?.address, country: r.flights?.length ? '' : safeParseObj(c.shareTrip).country }} /> : null}
                     </span>); })}
                   {r.cands.filter(id => !r.custIds.includes(id)).map(id => { const c = byId.get(id); return c && (
                     <button key={id} onClick={() => setRow(r.key, { custIds: [...r.custIds, id] })} style={{ ...inS, cursor: 'pointer', color: '#fbbf24' }}>＋ {nameOf(c)}</button>); })}
