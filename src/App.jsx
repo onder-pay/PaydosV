@@ -550,6 +550,88 @@ const greenExemptIn = (country) => {
   if (d && d.y && d.y !== '?') return d.y === 'muaf' || d.y === 'yurtici';
   return schengenCountries.includes(country);
 };
+// ===== ✈️ Seyahat kontrolü: bilet / otel belgesi yüklenince CRM'deki pasaport + vize seyahate uyuyor mu =====
+// Havalimanı kodu → ülke (VIZE_DURUM anahtarlarıyla aynı yazım). Listede olmayan havalimanında ülke
+// yolculuk bilgisinden (trip.country) alınır; o da yoksa "elle kontrol edin" denir.
+const IATA_COUNTRY = (() => {
+  const m = {};
+  Object.entries({
+    'Türkiye': 'IST SAW ESB ADB AYT DLM BJV GZP TZX GZT ADA COV ASR VAN ERZ ERC DIY SZF KYA MLX EZS NAV HTY KCM KSY MQM BAL BGG GNY NKT IGD AJI KFS ONQ SFQ USQ YEI EDO CKZ TEQ DNZ ISE MSR OGU NOP VAS TJK KCO AOE AFY BZI YKO RZV GKD KZR CII BDM BXN SXZ',
+    'KKTC': 'ECN',
+    'Almanya': 'FRA MUC BER TXL HAM DUS CGN STR HAJ NUE LEJ DRS BRE FMM FKB DTM PAD NRN HHN SCN FDH',
+    'Avusturya': 'VIE SZG INN GRZ LNZ KLU', 'Belçika': 'BRU CRL ANR LGG', 'Çekya': 'PRG BRQ', 'Danimarka': 'CPH BLL AAL',
+    'Estonya': 'TLL', 'Finlandiya': 'HEL RVN', 'Fransa': 'CDG ORY BVA NCE LYS MRS TLS BOD NTE MPL MLH SXB LIL BIQ',
+    'Hollanda': 'AMS EIN RTM', 'İspanya': 'MAD BCN AGP PMI ALC VLC SVQ BIO IBZ TFS TFN LPA ACE', 'İsveç': 'ARN GOT MMX BMA',
+    'İsviçre': 'ZRH GVA BRN', 'İtalya': 'FCO CIA MXP LIN BGY VCE NAP BLQ FLR PSA CTA PMO BRI TRN VRN OLB CAG GOA',
+    'İzlanda': 'KEF', 'Letonya': 'RIX', 'Litvanya': 'VNO KUN', 'Lüksemburg': 'LUX', 'Macaristan': 'BUD', 'Malta': 'MLA',
+    'Norveç': 'OSL BGO TRD SVG', 'Polonya': 'WAW WMI KRK GDN WRO KTW POZ', 'Portekiz': 'LIS OPO FAO FNC',
+    'Slovakya': 'BTS', 'Slovenya': 'LJU', 'Yunanistan': 'ATH SKG HER RHO JTR JMK CFU KGS CHQ', 'Hırvatistan': 'ZAG SPU DBV',
+    'Bulgaristan': 'SOF VAR BOJ', 'Romanya': 'OTP CLJ', 'Kıbrıs Rum Kesimi': 'LCA PFO', 'İrlanda': 'DUB',
+    'Birleşik Krallık': 'LHR LGW STN LTN MAN EDI BHX GLA LCY BRS',
+    'Amerika Birleşik Devletleri': 'JFK EWR LGA IAD DCA ORD LAX SFO MIA ATL BOS SEA IAH DFW LAS MCO', 'Kanada': 'YYZ YUL YVR',
+    'Çin Halk Cumhuriyeti': 'PEK PKX PVG SHA CAN SZX CTU TFU CKG XIY HGH KMG URC XMN WUH NKG TSN', 'Hong Kong': 'HKG', 'Makao': 'MFM',
+    'BAE': 'DXB DWC AUH SHJ', 'Katar': 'DOH', 'Suudi Arabistan': 'JED RUH MED DMM', 'Mısır': 'CAI HRG SSH', 'Azerbaycan': 'GYD',
+    'Gürcistan': 'TBS BUS', 'Rusya': 'SVO DME VKO LED AER KZN', 'Ukrayna': 'KBP', 'Japonya': 'NRT HND KIX', 'Güney Kore': 'ICN GMP',
+    'Tayland': 'BKK DMK HKT', 'Singapur': 'SIN', 'Malezya': 'KUL', 'Endonezya': 'CGK DPS', 'Hindistan': 'DEL BOM', 'Maldivler': 'MLE',
+    'Fas': 'CMN RAK', 'Tunus': 'TUN', 'Özbekistan': 'TAS SKD', 'Kazakistan': 'ALA NQZ', 'Sırbistan': 'BEG', 'Bosna Hersek': 'SJJ',
+    'Karadağ': 'TGD TIV', 'Arnavutluk': 'TIA', 'Kuzey Makedonya': 'SKP', 'Ürdün': 'AMM', 'Lübnan': 'BEY', 'Brezilya': 'GRU',
+    'Meksika': 'MEX CUN', 'Küba': 'HAV', 'Güney Afrika': 'JNB CPT', 'Kenya': 'NBO', 'Tanzanya': 'ZNZ DAR', 'Vietnam': 'SGN HAN',
+    'Sri Lanka': 'CMB', 'Nepal': 'KTM',
+  }).forEach(([c, codes]) => codes.split(' ').forEach(k => { m[k] = c; }));
+  return m;
+})();
+// c: CRM müşteri kaydı · trip: { startDate, endDate, country, flights:[{ to, ymd }], hotelCheckIn, hotelCheckOut }
+// Döner: { country, start, end, items: [{ level: 'ok'|'warn'|'err'|'info', msg }] }
+const travelCheck = (c, trip = {}) => {
+  const flights = (trip.flights || []).filter(Boolean).slice().sort((a, b) => String(a.ymd).localeCompare(String(b.ymd)));
+  const abroad = flights.map(f => IATA_COUNTRY[String(f.to || '').toUpperCase()]).filter(x => x && x !== 'Türkiye');
+  const country = abroad[0] || (trip.country && trip.country !== 'Türkiye' ? trip.country : '');
+  const dates = [trip.startDate, trip.endDate, trip.hotelCheckIn, trip.hotelCheckOut, ...flights.map(f => f.ymd)].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).sort();
+  const start = dates[0] || '', end = dates[dates.length - 1] || '';
+  const items = [];
+  if (!end) return { country, start, end, items: [{ level: 'info', msg: 'Seyahat tarihi okunamadı — pasaport/vize kontrolü yapılamadı' }] };
+  const passports = safeParseJSON(c.passports);
+  const pv = passportValidityFor(passports, end);
+  const exp = pv.exp ? formatDate(pv.exp.toISOString().slice(0, 10)) : '';
+  if (pv.reason === 'none') items.push({ level: 'err', msg: 'CRM\'de pasaport kaydı yok' });
+  else if (pv.reason === 'nodate') items.push({ level: 'warn', msg: 'Pasaport bitiş tarihi CRM\'de girilmemiş' });
+  else if (pv.reason === 'expires') items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
+  else if (pv.reason === 'months') items.push({ level: 'warn', msg: `Pasaport dönüşten sonra 6 aydan az geçerli (${exp})` });
+  else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
+  if (!country) { items.push({ level: 'info', msg: 'Varış ülkesi belirlenemedi — vizeyi elle kontrol edin' }); return { country, start, end, items }; }
+  const green = greenPassportStatus(passports, end).green;
+  const rule = VIZE_DURUM[country];
+  const isSch = schengenCountries.includes(country);
+  const needs = green ? !greenExemptIn(country) : rule ? rule.b === 'tabi' : isSch;
+  const covers = (v) => v && /^\d{4}-\d{2}-\d{2}$/.test(v.endDate || '') && v.endDate >= end && (!v.startDate || v.startDate <= start);
+  if (!needs) items.push({ level: 'ok', msg: `${country}: ${green ? 'yeşil pasaportla ' : ''}vize gerekmiyor` });
+  else if (isSch) {
+    const vs = safeParseJSON(c.schengenVisas).filter(v => v && v.endDate);
+    const ok = vs.find(covers);
+    const last = vs.sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)))[0];
+    if (ok) items.push({ level: 'ok', msg: `Schengen vizesi var (${ok.country || ''} · ${formatDate(ok.endDate)} bitiş)` });
+    else if (last) items.push({ level: 'err', msg: `Schengen vizesi seyahati kapsamıyor (${last.country || ''} · ${formatDate(last.startDate)} – ${formatDate(last.endDate)})` });
+    else items.push({ level: 'err', msg: `${country} vizeye tabi — CRM'de Schengen vizesi yok` });
+  } else if (country === 'Amerika Birleşik Devletleri') {
+    const u = safeParseObj(c.usaVisa);
+    if (covers(u)) items.push({ level: 'ok', msg: `ABD vizesi var (${formatDate(u.endDate)} bitiş)` });
+    else items.push({ level: 'err', msg: u.endDate ? `ABD vizesi seyahati kapsamıyor (${formatDate(u.endDate)} bitiş)` : 'ABD vizeye tabi — CRM\'de ABD vizesi yok' });
+  } else items.push({ level: 'warn', msg: `${country} vizeye tabi — bu ülkenin vizesi CRM'de takip edilmiyor, kontrol edin` });
+  return { country, start, end, items };
+};
+const TC_ICON = { ok: '✅', warn: '⚠️', err: '❌', info: 'ℹ️' };
+const TC_COLOR = { ok: '#10b981', warn: '#f59e0b', err: '#ef4444', info: '#94a3b8' };
+function TravelCheckBox({ c, trip, compact }) {
+  if (!c) return null;
+  const r = travelCheck(c, trip);
+  const worst = r.items.some(i => i.level === 'err') ? 'err' : r.items.some(i => i.level === 'warn') ? 'warn' : 'ok';
+  return (
+    <div style={{ marginTop: compact ? '4px' : '8px', padding: compact ? '5px 8px' : '8px 12px', borderRadius: '8px', background: `${TC_COLOR[worst]}14`, border: `1px solid ${TC_COLOR[worst]}40`, fontSize: compact ? '11px' : '12px', lineHeight: 1.6 }}>
+      {!compact && <div style={{ fontWeight: 700, color: '#e8f1f8', marginBottom: '2px' }}>🛂 Pasaport & vize kontrolü{r.country ? ` · ${r.country}` : ''}{r.start ? ` · ${formatDate(r.start)}${r.end && r.end !== r.start ? ' – ' + formatDate(r.end) : ''}` : ''}</div>}
+      {r.items.map((i, k) => <div key={k} style={{ color: TC_COLOR[i.level] }}>{TC_ICON[i.level]} {i.msg}</div>)}
+    </div>
+  );
+}
 const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!date) return null; const today = new Date(); today.setHours(0, 0, 0, 0); date.setHours(0, 0, 0, 0); return Math.ceil((date - today) / (1000 * 60 * 60 * 24)); };
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
@@ -2592,6 +2674,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
               ? <div>🏨 <b>{trip.hotelName}</b>{trip.hotelCheckIn ? ` · ${formatDate(trip.hotelCheckIn)}${trip.hotelCheckOut ? ' – ' + formatDate(trip.hotelCheckOut) : ''}` : ''}{trip.hotelAddress ? <span style={{ color: '#94a3b8' }}> · {trip.hotelAddress}</span> : ''}</div>
               : <div style={{ color: '#64748b' }}>🏨 Otel yok — otel giriş belgesi yüklenince otomatik eklenir</div>}
           </div>
+          {((trip.flights || []).length > 0 || trip.hotelCheckIn) && <TravelCheckBox c={c} trip={trip} />}
           <button onClick={() => setEditMode(v => !v)} style={{ marginTop: '8px', padding: '6px 12px', background: 'none', border: '1px dashed rgba(255,255,255,0.18)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>{editMode ? '▲ Elle düzeltmeyi kapat' : '✏️ Elle düzelt (yanlış okunduysa)'}</button>
           {editMode && (<>
           <div style={sec}>YOLCULUK</div>
@@ -2827,6 +2910,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
                       <span>👤 {nameOf(c)}{c.shareToken ? '' : ' · yeni link'}
                       <button onClick={() => setRow(r.key, { custIds: r.custIds.filter(x => x !== id) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px' }}>×</button></span>
                       {(() => { const k = nameCheck(c, r.txt); return k.msg ? <span style={{ fontSize: '10.5px', color: NAMECHK_COLOR[k.level], fontWeight: k.level === 'ok' ? 400 : 600 }}>{k.msg}</span> : null; })()}
+                      {['✈️', '🛫', '🛬', '🏨'].includes(CUST_DOC_TYPES[r.type]?.[0]) && (r.flights?.length || r.hotel?.checkIn) ? <TravelCheckBox compact c={c} trip={{ flights: r.flights, hotelCheckIn: r.hotel?.checkIn, hotelCheckOut: r.hotel?.checkOut, country: r.flights?.length ? '' : safeParseObj(c.shareTrip).country }} /> : null}
                     </span>); })}
                   {r.cands.filter(id => !r.custIds.includes(id)).map(id => { const c = byId.get(id); return c && (
                     <button key={id} onClick={() => setRow(r.key, { custIds: [...r.custIds, id] })} style={{ ...inS, cursor: 'pointer', color: '#fbbf24' }}>＋ {nameOf(c)}</button>); })}
