@@ -651,25 +651,25 @@ const travelCheck = (c, trip = {}) => {
   else if (pv.reason === 'expires') items.push({ level: 'err', msg: `Pasaport seyahat bitmeden doluyor (${exp})` });
   else if (pv.reason === 'months') items.push({ level: 'warn', msg: `Pasaport dönüşten sonra 6 aydan az geçerli (${exp})` });
   else items.push({ level: 'ok', msg: `Pasaport uygun (${exp})` });
-  if (!country) { items.push({ level: 'info', msg: 'Varış ülkesi belirlenemedi — vizeyi elle kontrol edin' }); return { country, start, end, items }; }
-  const green = greenPassportStatus(passports, end).green;
-  const rule = VIZE_DURUM[country];
+  // CRM'de sadece Schengen ve ABD vizesi tutuluyor → yalnız bunlar kontrol edilir; diğer ülkelerde sadece hatırlatma
   const isSch = schengenCountries.includes(country);
-  const needs = green ? !greenExemptIn(country) : rule ? rule.b === 'tabi' : isSch;
+  const isUsa = country === 'Amerika Birleşik Devletleri';
+  if (!isSch && !isUsa) { items.push({ level: 'warn', msg: `${country ? country + ': ' : ''}Vize durumunu kontrol ediniz` }); return { country, start, end, items }; }
+  const green = greenPassportStatus(passports, end).green;
   const covers = (v) => v && /^\d{4}-\d{2}-\d{2}$/.test(v.endDate || '') && v.endDate >= end && (!v.startDate || v.startDate <= start);
-  if (!needs) items.push({ level: 'ok', msg: `${country}: ${green ? 'yeşil pasaportla ' : ''}vize gerekmiyor` });
+  if (isSch && green && greenExemptIn(country)) items.push({ level: 'ok', msg: `${country}: yeşil pasaportla vize gerekmiyor` });
   else if (isSch) {
     const vs = safeParseJSON(c.schengenVisas).filter(v => v && v.endDate);
     const ok = vs.find(covers);
     const last = vs.sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)))[0];
     if (ok) items.push({ level: 'ok', msg: `Schengen vizesi var (${ok.country || ''} · ${formatDate(ok.endDate)} bitiş)` });
     else if (last) items.push({ level: 'err', msg: `Schengen vizesi seyahati kapsamıyor (${last.country || ''} · ${formatDate(last.startDate)} – ${formatDate(last.endDate)})` });
-    else items.push({ level: 'err', msg: `${country} vizeye tabi — CRM'de Schengen vizesi yok` });
-  } else if (country === 'Amerika Birleşik Devletleri') {
+    else items.push({ level: 'err', msg: `${country} Schengen vizesi gerektirir — CRM'de Schengen vizesi yok` });
+  } else {
     const u = safeParseObj(c.usaVisa);
     if (covers(u)) items.push({ level: 'ok', msg: `ABD vizesi var (${formatDate(u.endDate)} bitiş)` });
-    else items.push({ level: 'err', msg: u.endDate ? `ABD vizesi seyahati kapsamıyor (${formatDate(u.endDate)} bitiş)` : 'ABD vizeye tabi — CRM\'de ABD vizesi yok' });
-  } else items.push({ level: 'warn', msg: `${country} vizeye tabi — bu ülkenin vizesi CRM'de takip edilmiyor, kontrol edin` });
+    else items.push({ level: 'err', msg: u.endDate ? `ABD vizesi seyahati kapsamıyor (${formatDate(u.endDate)} bitiş)` : 'ABD vizesi gerekir — CRM\'de ABD vizesi yok' });
+  }
   return { country, start, end, items };
 };
 const TC_ICON = { ok: '✅', warn: '⚠️', err: '❌', info: 'ℹ️' };
