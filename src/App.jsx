@@ -845,11 +845,13 @@ const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || cod
 // Toast Component
 function Toast({ toasts, removeToast }) {
   return (
-    <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    // Sağ altta dikdörtgen kutular — üstteki butonları (➕ Rezervasyon vb.) ve formların alt Kaydet çubuğunu kapatmasın
+    <div style={{ position: 'fixed', bottom: '110px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column-reverse', gap: '10px', maxWidth: 'calc(100vw - 40px)' }}>
       {toasts.map(toast => (
         <div key={toast.id} onClick={() => removeToast(toast.id)} style={{
-          padding: '14px 20px',
-          borderRadius: '12px',
+          padding: '14px 18px',
+          borderRadius: '6px',
+          borderLeft: '5px solid rgba(255,255,255,0.55)',
           background: toast.type === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' : 
                       toast.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
                       toast.type === 'warning' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 
@@ -860,8 +862,9 @@ function Toast({ toasts, removeToast }) {
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          minWidth: '250px',
-          maxWidth: '400px',
+          width: '340px',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           animation: 'slideIn 0.3s ease',
           fontSize: '14px',
           fontWeight: '500'
