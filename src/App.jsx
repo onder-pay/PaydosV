@@ -845,11 +845,13 @@ const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || cod
 // Toast Component
 function Toast({ toasts, removeToast }) {
   return (
-    <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    // Sağ altta dikdörtgen kutular — üstteki butonları (➕ Rezervasyon vb.) ve formların alt Kaydet çubuğunu kapatmasın
+    <div style={{ position: 'fixed', bottom: '110px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column-reverse', gap: '10px', maxWidth: 'calc(100vw - 40px)' }}>
       {toasts.map(toast => (
         <div key={toast.id} onClick={() => removeToast(toast.id)} style={{
-          padding: '14px 20px',
-          borderRadius: '12px',
+          padding: '14px 18px',
+          borderRadius: '6px',
+          borderLeft: '5px solid rgba(255,255,255,0.55)',
           background: toast.type === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' : 
                       toast.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
                       toast.type === 'warning' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 
@@ -860,8 +862,9 @@ function Toast({ toasts, removeToast }) {
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          minWidth: '250px',
-          maxWidth: '400px',
+          width: '340px',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           animation: 'slideIn 0.3s ease',
           fontSize: '14px',
           fontWeight: '500'
@@ -3836,7 +3839,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                             const resp = await claudeRequest({
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe. birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe (Türk pasaportunda Doğum tarihi alanının yakınında, BÜYÜK harfle yazılı il/ilçe adı, ör. DENIZLI, KARŞIYAKA; mutlaka oku, sadece hiç görünmüyorsa boş bırak). birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
@@ -3852,10 +3855,16 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                               }
                             }
                             if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
+                            // Veriliş / bitiş tarihi de pasaporta yazılır (önceden okunuyor ama kaydedilmiyordu)
+                            const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && isSaneDate(d);
+                            if (okDate(parsed.issueDate)) updatePassport(passport.id, 'issueDate', parsed.issueDate);
+                            if (okDate(parsed.expiryDate)) updatePassport(passport.id, 'expiryDate', parsed.expiryDate);
                             if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: placeTr(parsed.birthPlace) }));
                             if (parsed.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.birthDate)) setFormData(fd => ({ ...fd, birthDate: parsed.birthDate }));
                             if (parsed.tcKimlik && /^\d{11}$/.test(parsed.tcKimlik)) setFormData(fd => ({ ...fd, tcKimlik: fd.tcKimlik || parsed.tcKimlik }));
-                            showToast?.('Pasaport okundu', 'success');
+                            // Ne okunduğu / okunamadığı açıkça söylenir
+                            const got = [parsed.passportNo && 'no', okDate(parsed.expiryDate) && 'bitiş', parsed.birthDate && 'doğum tarihi', parsed.birthPlace && 'doğum yeri', parsed.tcKimlik && 'TC'].filter(Boolean);
+                            showToast?.(`Pasaport okundu (${got.join(', ') || 'alan yok'})${parsed.birthPlace ? '' : ' — ⚠️ doğum yeri okunamadı, elle girin'}`, parsed.birthPlace ? 'success' : 'warning');
                           } catch(err) { showToast?.('AI okuma başarısız', 'error'); }
                         }} style={{ flex: 1, padding: '8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                           🤖 AI ile Oku
@@ -5380,6 +5389,7 @@ JSON formatı:
 }
 
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
+birthPlace: pasaporttaki DOĞUM YERİ / PLACE OF BIRTH alanı (il/ilçe, büyük harfle yazılır, ör. DENIZLI). Pasaport görseli varsa mutlaka oku.
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
 
                     const savedModel = appSettings?.claudeModel;
@@ -13841,6 +13851,29 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   // ====== PROFORMA OLUŞTURUCU ======
   // hotel: otel objesi, reservations: array (tek rezervasyon için 1 elemanlı array)
+  // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
+  // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
+  const hotelProformaWithFlights = (hotel, resList) => {
+    const conceptTxt = (c) => ({ ro: 'Sadece Oda', bb: 'Kahvaltı', hb: 'Yarım Pansiyon', fb: 'Tam Pansiyon', ai: 'Her Şey Dahil' }[c] || String(c || '').toUpperCase());
+    let anyFlight = false;
+    const pkgs = resList.map(r => {
+      const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+      const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
+      (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
+        if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
+        if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
+        // Otel bilgisi olmayan eski kayıtlarda tarih uyumu aranır (giriş/çıkış ±2 gün)
+        if (!fr.packageHotelId) { const d = (a, b) => Math.abs(new Date(a) - new Date(b)) / 86400000; if (!(d(fl.date, r.checkIn) <= 2 || d(fl.date, r.checkOut) <= 2)) return; }
+        anyFlight = true;
+        items.push({ kind: 'flight', refId: `${fl.id}-${fr.id}`,
+          label: `✈️ ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from} → ${fl.to} · ${formatDate(fl.date)} · ${titleCaseTr(fr.customerName)}`.replace(/\s+/g, ' '),
+          amount: (parseFloat(fr.sellPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.sell) || 0), 0), currency: fl.currency || '€' });
+      }));
+      return { customerName: titleCaseTr(r.customerName || ''), customerId: r.customerId || '', tag: r.tag || '', title: `${hotel.name} paketi`, items };
+    });
+    if (!anyFlight) return generateHotelProforma(hotel, resList);
+    generatePackageProforma(pkgs, pkgs.length === 1 ? { title: `${hotel.name} + Uçuş` } : {});
+  };
   const generateHotelProforma = (hotel, reservations) => {
     if (!reservations || reservations.length === 0) {
       showToast?.('Proforma için en az 1 rezervasyon gerekli', 'error');
@@ -15721,7 +15754,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             {selectedResIds.length > 0 && (
               <button onClick={() => {
                 const selected = reservations.filter(r => selectedResIds.includes(r.id));
-                generateHotelProforma(h, selected);
+                hotelProformaWithFlights(h, selected);
               }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                 📄 Seçilenleri Proforma ({selectedResIds.length})
               </button>
@@ -16015,7 +16048,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', display: 'flex', gap: '4px' }}>
-                          <button onClick={() => generateHotelProforma(h, [r])} style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="Proforma İndir">📄</button>
+                          <button onClick={() => hotelProformaWithFlights(h, [r])} style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#f59e0b', cursor: 'pointer', fontSize: '14px' }} title="Proforma İndir">📄</button>
                           <button onClick={() => generateHotelVoucher(h, r)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#22c55e', cursor: 'pointer', fontSize: '14px' }} title="Voucher İndir">🎫</button>
                           <button onClick={() => openEditRes(r)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '14px' }} title="Düzenle">✏️</button>
                           <button onClick={() => deleteReservation(r)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Sil">🗑️</button>
