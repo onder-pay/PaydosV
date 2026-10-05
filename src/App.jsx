@@ -13096,7 +13096,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // ✈️ Otel rezervasyonundan grup uçuşuna ekle (isimleri bir daha yazmamak için)
   const [flightPick, setFlightPick] = useState(null); // { hotel, people: [{ key, customerId, customerName, phone, tag, checked }] }
   const [nameMenu, setNameMenu] = useState(null);     // { x, y, res } — isim üzerinde sağ tık menüsü
-  const openFlightPick = (hotel, resList) => {
+  const peopleFromRes = (resList) => {
     const people = [];
     const seen = new Set();
     resList.forEach(r => {
@@ -13108,21 +13108,25 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       push(r.customerName, r.customerId);
       (r.guestNames || []).filter(n => n && n.trim()).forEach(n => push(n.trim(), ''));
     });
-    setFlightPick({ hotel, people, makePkg: true });
+    return people;
+  };
+  const openFlightPick = (hotel, resList) => {
+    setFlightPick({ hotel, people: peopleFromRes(resList), makePkg: true });
     setNameMenu(null);
   };
-  const addPeopleToFlight = (fl) => {
-    const { hotel, people } = flightPick;
+  // fp: { hotel, people, makePkg } (varsayılan: açık pencere) · pkgBase: önceki çağrının paket listesi (gidiş+dönüş art arda)
+  const addPeopleToFlight = (fl, fp = flightPick, pkgBase) => {
+    const { hotel, people } = fp;
     const chosen = people.filter(p => p.checked);
-    if (!chosen.length) { showToast('Eklenecek kişi seçin', 'warning'); return; }
+    if (!chosen.length) { showToast('Eklenecek kişi seçin', 'warning'); return null; }
     const active = (fl.reservations || []).filter(x => !x.cancelled);
     const onFlight = new Set(active.map(x => normalizeTr(x.customerName)));
     const fresh = chosen.filter(p => !onFlight.has(p.key));
     const dup = chosen.length - fresh.length;
     const cap = parseInt(fl.capacity) || 0;
     const room = cap - active.length;
-    if (!fresh.length) { showToast('Seçilen kişiler bu uçuşta zaten var', 'info'); return; }
-    if (cap > 0 && fresh.length > room) { showToast(`Kontenjan yetersiz: ${Math.max(0, room)} yer kaldı, ${fresh.length} kişi seçildi`, 'error'); return; }
+    if (!fresh.length) { showToast('Seçilen kişiler bu uçuşta zaten var', 'info'); return null; }
+    if (cap > 0 && fresh.length > room) { showToast(`Kontenjan yetersiz: ${Math.max(0, room)} yer kaldı, ${fresh.length} kişi seçildi`, 'error'); return null; }
     const now = Date.now();
     const added = fresh.map((p, i) => ({ ...emptyFRes, id: now + i, createdAt: new Date().toISOString(),
       customerId: p.customerId, customerName: p.customerName, phone: p.phone, tag: p.tag,
@@ -13132,11 +13136,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     const msg = `✈️ ${added.length} kişi ${fl.airline || ''} ${fl.from || ''}→${fl.to || ''} uçuşuna eklendi${dup ? ` (${dup} kişi zaten vardı)` : ''}`;
     // 📦 Paket: her otel rezervasyonu (oda) için otel + odadakilerin bu uçuştaki biletleri. Oda için paket varsa ona eklenir.
     const pkgs = [];
-    if (flightPick.makePkg) {
+    let next = pkgBase || packages || [];
+    if (fp.makePkg) {
       const flightRes = [...active, ...added];
       const byRoom = {};
       chosen.forEach(p => { (byRoom[p.resId] = byRoom[p.resId] || []).push(p); });
-      const next = [...(packages || [])];
+      next = [...next];
       Object.entries(byRoom).forEach(([resId, ppl], ri) => {
         const hr = (hotel.reservations || []).find(x => String(x.id) === String(resId));
         if (!hr) return;
@@ -13160,7 +13165,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       if (pkgs.length) setPackages(next);
     }
     showToast(msg + (pkgs.length ? ` · ${pkgs.length} paket` : ''), 'success');
-    setFlightPick(fp => ({ ...fp, done: { msg, pkgs } }));
+    setFlightPick(cur => cur ? { ...cur, done: { msg, pkgs } } : cur);
+    return { next };
   };
   const saveFlight = () => {
     const f = editingFlight;
@@ -13609,19 +13615,21 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     setView('list');
   };
 
-  const openNewRes = () => { setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
+  const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
+  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  const openEditRes = (r) => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
     if (!resData.checkIn || !resData.checkOut) { showToast?.('Giriş/çıkış tarihleri zorunlu', 'error'); return; }
     if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
-    let updatedHotel;
+    let updatedHotel, savedRes;
     if (editingRes) {
-      updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? {...resData, id: r.id} : r) };
+      savedRes = { ...resData, id: editingRes.id };
+      updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
     } else {
-      const newRes = { ...resData, id: generateUniqueId(), createdAt: new Date().toISOString() };
-      updatedHotel = { ...selectedHotel, reservations: [...(selectedHotel.reservations || []), newRes] };
+      savedRes = { ...resData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+      updatedHotel = { ...selectedHotel, reservations: [...(selectedHotel.reservations || []), savedRes] };
     }
     const list = hotels.map(h => h.id === selectedHotel.id ? updatedHotel : h);
     setHotels(list);
@@ -13633,6 +13641,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       await setDoc(doc(db, 'hotels', docId), sd, { merge: false });
     } catch(e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
     showToast?.(editingRes ? 'Rezervasyon güncellendi' : 'Rezervasyon eklendi', 'success');
+    // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
+    const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
+    let pk;
+    [resFlights.out, resFlights.ret].filter(Boolean).forEach(fid => {
+      const fl = groupFlights.find(f => String(f.id) === String(fid));
+      if (fl) { const r = addPeopleToFlight(fl, fp, pk); if (r) pk = r.next; }
+    });
     setShowResForm(false); setEditingRes(null);
   };
 
@@ -16262,6 +16277,26 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     Toplam Ödenen: <span style={{ color: '#10b981', fontWeight: '700' }}>{((parseFloat(resData.payment1) || 0) + (parseFloat(resData.payment2) || 0) + (parseFloat(resData.payment3) || 0)).toFixed(2)} {resData.currency}</span>
                   </div>
                 </div>
+
+                {/* ✈️ Aynı anda grup uçuşuna ekle — isimler bir daha yazılmaz */}
+                {(groupFlights || []).length > 0 && (() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const near = (d) => (a, b) => Math.abs(new Date(a.date) - new Date(d || today)) - Math.abs(new Date(b.date) - new Date(d || today));
+                  const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
+                  const lab = (f) => { const a = (f.reservations || []).filter(x => !x.cancelled).length; return `${formatDate(f.date)} · ${f.airline || ''} ${f.flightNo || ''} · ${f.from}→${f.to} · ${a}/${f.capacity || '∞'}${f.date === resData.checkIn || f.date === resData.checkOut ? ' ⭐' : ''}`; };
+                  const sel = (key, dir, d) => (
+                    <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
+                      <option value="">{dir} uçuşu — ekleme</option>
+                      {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
+                    </select>);
+                  const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
+                  return (
+                    <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                      <label style={labelStyle}>✈️ Grup uçuşuna da ekle <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan)</span></label>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      {(resFlights.out || resFlights.ret) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
+                    </div>);
+                })()}
 
                 <div>
                   <label style={labelStyle}>🏷️ Etiket <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — VIP, Acil, Tekrar müşteri vs.)</span></label>
