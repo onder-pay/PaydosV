@@ -3839,7 +3839,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                             const resp = await claudeRequest({
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe. birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe (Türk pasaportunda Doğum tarihi alanının yakınında, BÜYÜK harfle yazılı il/ilçe adı, ör. DENIZLI, KARŞIYAKA; mutlaka oku, sadece hiç görünmüyorsa boş bırak). birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
@@ -3855,10 +3855,16 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                               }
                             }
                             if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
+                            // Veriliş / bitiş tarihi de pasaporta yazılır (önceden okunuyor ama kaydedilmiyordu)
+                            const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && isSaneDate(d);
+                            if (okDate(parsed.issueDate)) updatePassport(passport.id, 'issueDate', parsed.issueDate);
+                            if (okDate(parsed.expiryDate)) updatePassport(passport.id, 'expiryDate', parsed.expiryDate);
                             if (parsed.birthPlace) setFormData(fd => ({ ...fd, birthPlace: placeTr(parsed.birthPlace) }));
                             if (parsed.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.birthDate)) setFormData(fd => ({ ...fd, birthDate: parsed.birthDate }));
                             if (parsed.tcKimlik && /^\d{11}$/.test(parsed.tcKimlik)) setFormData(fd => ({ ...fd, tcKimlik: fd.tcKimlik || parsed.tcKimlik }));
-                            showToast?.('Pasaport okundu', 'success');
+                            // Ne okunduğu / okunamadığı açıkça söylenir
+                            const got = [parsed.passportNo && 'no', okDate(parsed.expiryDate) && 'bitiş', parsed.birthDate && 'doğum tarihi', parsed.birthPlace && 'doğum yeri', parsed.tcKimlik && 'TC'].filter(Boolean);
+                            showToast?.(`Pasaport okundu (${got.join(', ') || 'alan yok'})${parsed.birthPlace ? '' : ' — ⚠️ doğum yeri okunamadı, elle girin'}`, parsed.birthPlace ? 'success' : 'warning');
                           } catch(err) { showToast?.('AI okuma başarısız', 'error'); }
                         }} style={{ flex: 1, padding: '8px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                           🤖 AI ile Oku
@@ -5383,6 +5389,7 @@ JSON formatı:
 }
 
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
+birthPlace: pasaporttaki DOĞUM YERİ / PLACE OF BIRTH alanı (il/ilçe, büyük harfle yazılır, ör. DENIZLI). Pasaport görseli varsa mutlaka oku.
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
 
                     const savedModel = appSettings?.claudeModel;
