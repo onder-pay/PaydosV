@@ -805,6 +805,16 @@ const normalizeTr = (s) => (s == null ? '' : String(s))
   .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
   .toLowerCase().trim();
 
+// Vize başvurusu bu müşteriye mi ait? customerId (id/_docId) önce; ID yoksa ya da hiçbir müşteriye denk gelmiyorsa ad-soyad ile eşleştir
+const visaAppBelongsTo = (v, c, customers) => {
+  if (!v || !c) return false;
+  const vid = v.customerId != null && v.customerId !== '' ? String(v.customerId) : '';
+  if (vid && (vid === String(c.id) || (c._docId && vid === String(c._docId)))) return true;
+  if (vid && (customers || []).some(x => vid === String(x.id) || (x._docId && vid === String(x._docId)))) return false;
+  const full = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).replace(/\s+/g, ' ');
+  return !!full && normalizeTr(v.customerName || '').replace(/\s+/g, ' ') === full;
+};
+
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
 const titleCaseTr = (s) => {
   if (!s) return '';
@@ -4120,7 +4130,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 const ppDays = pp?.expiryDate ? getDaysLeft(pp.expiryDate) : null;
                 const ppColor = !pp ? '#64748b' : ppDays == null ? '#f59e0b' : ppDays < 0 ? '#ef4444' : ppDays <= 180 ? '#ef4444' : ppDays <= 365 ? '#f59e0b' : '#10b981';
                 const ppNote = !pp ? 'Pasaport eklenmemiş' : ppDays == null ? 'Geçerlilik tarihi yok' : ppDays < 0 ? 'Süresi dolmuş' : `${ppDays} gün kaldı`;
-                const myApps = (visaApplications || []).filter(v => String(v.customerId) === String(c.id))
+                const myApps = (visaApplications || []).filter(v => visaAppBelongsTo(v, c, customers))
                   .sort((a, b) => String(b.createdAt || b.applicationDate || '').localeCompare(String(a.createdAt || a.applicationDate || '')));
                 const lastApp = myApps[0];
                 const lastSch = [...cSchengen].sort((a, b) => String(b.endDate || '').localeCompare(String(a.endDate || '')))[0];
@@ -4432,7 +4442,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             const usa = c.usaVisa ? (typeof c.usaVisa === 'string' ? (() => { try { return JSON.parse(c.usaVisa || '{}'); } catch { return {}; } })() : c.usaVisa) : {};
             if (usa && (usa.createdAt || usa.addedAt)) events.push({ icon: '🇺🇸', color: '#8b5cf6', title: 'ABD vizesi eklendi', time: usa.createdAt || usa.addedAt });
             // Vize başvuruları (visa_applications) — bu müşteriye ait olanlar
-            (visaApplications || []).filter(v => String(v.customerId) === String(c.id)).forEach(v => {
+            (visaApplications || []).filter(v => visaAppBelongsTo(v, c, customers)).forEach(v => {
               const yer = v.country ? ` — ${v.country}` : '';
               const tur = v.visaDuration ? ` (${v.visaDuration})` : '';
               events.push({ icon: '🛂', color: '#f59e0b', title: `Vize başvurusu${yer}${tur}${v.status ? ` · ${v.status}` : ''}`, time: v.createdAt || v.applicationDate });
