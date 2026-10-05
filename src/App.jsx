@@ -16279,7 +16279,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 </div>
 
                 {/* ✈️ Aynı anda grup uçuşuna ekle — isimler bir daha yazılmaz */}
-                {(groupFlights || []).length > 0 && (() => {
+                {(() => {
                   const today = new Date().toISOString().slice(0, 10);
                   const near = (d) => (a, b) => Math.abs(new Date(a.date) - new Date(d || today)) - Math.abs(new Date(b.date) - new Date(d || today));
                   const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
@@ -16293,7 +16293,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   return (
                     <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
                       <label style={labelStyle}>✈️ Grup uçuşuna da ekle <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan)</span></label>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      {!opts('Gidiş').length && !opts('Dönüş').length
+                        ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>İleri tarihli grup uçuşu yok — önce <b>Grup Uçuşları</b> sekmesinden uçuşu ekleyin, sonra burada seçin.</div>
+                        : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>}
                       {(resFlights.out || resFlights.ret) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
