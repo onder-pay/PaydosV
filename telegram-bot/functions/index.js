@@ -592,6 +592,15 @@ const placeTr = (x) => {
   return TR_ILLER.find(p => normTr(p) === n) || PLACE_ALIAS[n] || titleCaseTr(String(x).trim());
 };
 
+// TC Kimlik No algoritma kontrolü (11 hane, 0 ile başlamaz, kontrol basamakları)
+const isValidTc = (tc) => {
+  const t = String(tc || '').trim();
+  if (!/^[1-9]\d{10}$/.test(t)) return false;
+  const d = t.split('').map(Number);
+  const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
+  return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
+};
+
 const savePassport = async (db, custs, json, img) => {
   if (json.birthPlace) json.birthPlace = placeTr(json.birthPlace);
   const bpLine = json.birthPlace ? `\n📍 Doğum yeri: ${json.birthPlace}` : '';
@@ -608,7 +617,11 @@ const savePassport = async (db, custs, json, img) => {
 
   // Müşteri bul: TC → pasaport no (isimle eşleştirme YOK — TC farklıysa farklı kişi)
   let cust = null;
-  if (json.tcKimlik) cust = custs.find(c => c.tcKimlik === json.tcKimlik);
+  if (json.tcKimlik) cust = custs.find(c => String(c.tcKimlik || '').trim() === String(json.tcKimlik).trim());
+  // TC eşsizdir: aynı TC başka isimle kayıtlıysa TC ya da isim yanlış okunmuştur — başkasının kaydına yazma
+  if (cust && !namesMatch(`${fn} ${ln}`, `${cust.firstName || ''} ${cust.lastName || ''}`)) {
+    return { text: `⛔ TC ${json.tcKimlik} zaten "${cust.firstName} ${cust.lastName}" adına kayıtlı, okunan isim "${fn} ${ln}".\nTC eşsizdir — TC veya isim yanlış okunmuş olabilir. Kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
+  }
   if (!cust && json.passportNo) {
     cust = custs.find(c => {
       let p = []; try { p = JSON.parse(c.passports || '[]'); } catch {}
@@ -626,6 +639,19 @@ const savePassport = async (db, custs, json, img) => {
     if (dup) return { text: `⛔ Pasaport No "${json.passportNo}" zaten "${dup.firstName} ${dup.lastName}" kayıtlı!`, custId: null };
   }
 
+  // TC/pasaport no ile bulunamadı ama aynı ad-soyad + doğum tarihi var → TC/pasaport no yanlış okunmuş olabilir;
+  // mükerrer müşteri açma (Gonca Aktekın vakası: TC 3 hane eksik, pasaport no hatalı okundu)
+  if (!cust && json.birthDate) {
+    const same = custs.filter(c => c.birthDate === json.birthDate && namesMatch(`${fn} ${ln}`, `${c.firstName || ''} ${c.lastName || ''}`));
+    // Tek eşleşme, kayıtta TC yok ve okunan TC geçerli → aynı kişinin yeni pasaportu, mevcut kayda ekle
+    if (same.length === 1 && !String(same[0].tcKimlik || '').trim() && isValidTc(json.tcKimlik)) cust = same[0];
+    else if (same.length) {
+      const list = same.map(c => { let p = []; try { p = JSON.parse(c.passports || '[]'); } catch {} return `• ${c.firstName} ${c.lastName} (TC: ${c.tcKimlik || 'YOK'}, Pasaport: ${p.map(x => x.passportNo).filter(Boolean).join(', ') || '-'})`; }).join('\n');
+      return { text: `⚠️ Aynı ad-soyad ve doğum tarihiyle kayıt var:\n${list}\n\nOkunan: TC ${json.tcKimlik || '-'}, Pasaport ${json.passportNo || '-'} — yanlış okunmuş olabilir. Mükerrer kayıt açılmadı; CRM'den kontrol edin.`, custId: null };
+    }
+  }
+  const tcWarn = json.tcKimlik && !isValidTc(json.tcKimlik) ? `\n⚠️ TC geçersiz görünüyor (${json.tcKimlik}) — CRM'den kontrol edin` : '';
+
   const pp = {
     id: genId(), nationality: json.nationality || 'Turkiye',
     passportType: detectPT(json.passportNo), passportNo: json.passportNo || '',
@@ -633,6 +659,7 @@ const savePassport = async (db, custs, json, img) => {
     image: await toStorage(img, 'pasaport'),
     createdAt: new Date().toISOString()
   };
+
 
   if (cust) {
     let ps = []; try { ps = JSON.parse(cust.passports || '[]'); } catch {}
@@ -648,7 +675,7 @@ const savePassport = async (db, custs, json, img) => {
       passports: JSON.stringify(ps),
       verified: false
     }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${tcWarn}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
   } else {
     const id = genId();
     await ref.doc(String(id)).set({
@@ -661,7 +688,7 @@ const savePassport = async (db, custs, json, img) => {
       verified: false, createdBy: 'Telegram Bot',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
-    return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}\n📘 ${json.passportNo}${bpLine}${passportExpiryWarn(json.expiryDate)}`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
+    return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}\n📘 ${json.passportNo}${bpLine}${tcWarn}${passportExpiryWarn(json.expiryDate)}`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
   }
 };
 

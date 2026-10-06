@@ -6331,6 +6331,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [idataText, setIdataText] = useState('');
   const [idataParsed, setIdataParsed] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [relinkOpen, setRelinkOpen] = useState(false); // başvurunun müşterisini değiştir
+  const [relinkQ, setRelinkQ] = useState('');
+  const findVisaCust = (id) => (id == null || id === '') ? null : (customers || []).find(c => String(c.id) === String(id) || (c._docId && c._docId === String(id))) || null;
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [dayDetailModal, setDayDetailModal] = useState(null);
   const [editingVisa, setEditingVisa] = useState(null);
@@ -6656,6 +6659,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setFormStep('search');
     setSearchQuery('');
     setSelectedCustomer(null);
+    setRelinkOpen(false); setRelinkQ('');
     setSelectedCategory(null);
     setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
     // Maliyet varsayılanları kategori seçilince (selectCategory) uygulanır
@@ -6876,6 +6880,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
+    if (!findVisaCust(formData.customerId)) {
+      showToast?.('Başvuru bir CRM müşterisine bağlı olmalı — listeden müşteri seçin', 'error');
+      setRelinkOpen(true);
+      setTimeout(() => document.getElementById('visa-relink')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
     if (!formData.visaType && !formData.visaDuration) {
       showToast?.('Vize türü seçiniz', 'error');
       return;
@@ -6953,7 +6963,8 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   };
 
   const openEditVisa = (visa) => {
-    const customer = customers.find(c => c.id === visa.customerId);
+    const customer = findVisaCust(visa.customerId);
+    setRelinkOpen(!customer); setRelinkQ(customer ? '' : (visa.customerName || ''));
     const cat = visaCategories.find(c => c.id === visa.category);
     setSelectedCustomer(customer);
     setSelectedCategory(cat);
@@ -6965,7 +6976,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   // iDATA formu için müşteri bilgilerini hazırla (doğum tarihi gün/ay/yıl'a ayrılır)
   const openIdataInfo = (visa) => {
-    const customer = customers.find(c => c.id === visa.customerId);
+    const customer = findVisaCust(visa.customerId);
     setIdataInfoModal({ visa, customer: customer || null });
   };
   const TR_AYLAR_IDATA = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
@@ -7247,7 +7258,36 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             </div>
             <div style={{ background: `rgba(${hexToRgb(selectedCategory.color)},0.1)`, padding: '16px', borderRadius: '12px', marginBottom: '20px', border: `1px solid ${selectedCategory.color}30` }}>
               <p style={{ margin: 0, fontSize: '13px', color: selectedCategory.color }}>{selectedCategory.icon} Adım 4/4: {selectedCategory.label} Vize Detayları</p>
-              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{selectedCustomer?.firstName} {selectedCustomer?.lastName}</strong></p>
+              {(() => {
+                const linked = findVisaCust(formData.customerId);
+                const q = normalizeTr(relinkQ).trim();
+                const qd = relinkQ.replace(/\D/g, '');
+                const results = relinkOpen && q.length >= 2 ? (customers || []).filter(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).includes(q) || (qd.length >= 4 && (String(c.tcKimlik || '').includes(qd) || String(c.phone || '').replace(/\D/g, '').includes(qd)))).slice(0, 8) : [];
+                const pick = (c) => {
+                  setSelectedCustomer(c);
+                  setFormData(f => ({ ...f, customerId: c.id, customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(), customerPhone: c.phone || '', customerEmail: c.email || '' }));
+                  setRelinkOpen(false); setRelinkQ('');
+                };
+                return (<>
+                  <div id="visa-relink" style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {linked
+                      ? <span>Müşteri: <strong style={{ color: '#fff' }}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</strong>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
+                      : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
+                    <button type="button" onClick={() => { setRelinkOpen(o => !o); if (!relinkQ && formData.customerName) setRelinkQ(formData.customerName); }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit' }}>{relinkOpen ? 'Kapat' : '🔁 Müşteriyi değiştir'}</button>
+                  </div>
+                  {relinkOpen && (
+                    <div style={{ marginTop: '10px' }}>
+                      <input autoFocus value={relinkQ} onChange={e => setRelinkQ(e.target.value)} placeholder="Ad soyad, TC veya telefon ara..." style={{ width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
+                      {results.map(c => (
+                        <button key={c._docId || c.id} type="button" onClick={() => pick(c)} style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: '6px', padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' }}>
+                          <b>{titleCaseTr(`${c.firstName || ''} ${c.lastName || ''}`)}</b> · TC {c.tcKimlik || '—'}{c.tcKimlik && !isValidTc(c.tcKimlik) ? ' ⚠️' : ''} · {c.phone || '—'}{c.birthDate ? ` · ${formatDate(c.birthDate)}` : ''}
+                        </button>
+                      ))}
+                      {q.length >= 2 && !results.length && <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>Eşleşen müşteri yok</div>}
+                    </div>
+                  )}
+                </>);
+              })()}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -7701,7 +7741,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px'
                   }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#e8f1f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleCaseTr(v.customerName)}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#e8f1f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>{extractVisaCountry(v)} · {formatDate(v.appointmentDate)}{v.appointmentTime ? ` ${v.appointmentTime}` : ''}</div>
                     </div>
                     <span style={{
@@ -7851,7 +7891,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <div key={v.id} onClick={() => openEditVisa(v)} style={{ background: daysLeft <= 3 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.1)', padding: '14px', borderRadius: '10px', border: daysLeft <= 3 ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
+                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{formatDate(v.appointmentDate)} {v.appointmentTime && `• ${v.appointmentTime}`}</p>
                       <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{v.country} - {v.visaType}</p>
                     </div>
@@ -7910,7 +7950,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       <span style={{ flexShrink: 0, width: '22px', height: '22px', marginTop: '1px', borderRadius: '6px', border: selectedIds.includes(v.id) ? 'none' : '2px solid rgba(255,255,255,0.3)', background: selectedIds.includes(v.id) ? '#3b82f6' : 'transparent', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>{selectedIds.includes(v.id) ? '✓' : ''}</span>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
+                      <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
                       {visaFutureDate(v) && (
@@ -8047,7 +8087,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const cat = getCategoryInfo(v.category);
                 return (
                   <div key={v.id} onClick={() => { setDayDetailModal(null); openEditVisa(v); }} style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', cursor: 'pointer' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                     <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.appointmentTime || '-'} • {v.country}</p>
                     <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
                   </div>
