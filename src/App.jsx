@@ -9975,7 +9975,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const lc = (x) => String(x || '').toLocaleLowerCase('tr-TR');
                             const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
                             const app = (visaApplications || [])
-                              .filter(a => String(a.customerId) === String(customer.id) || (customer._docId && String(a.customerId) === String(customer._docId)))
+                              .filter(a => visaAppBelongsTo(a, customer, customers))
                               .filter(a => {
                                 const cat = a.categoryId || a.category;
                                 const txt = lc(`${a.country || ''} ${a.visaDuration || ''}`);
