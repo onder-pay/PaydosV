@@ -507,7 +507,7 @@ const labelStyle = { display: 'block', fontSize: '12px', color: '#94a3b8', margi
 const inputStyle = { width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
 const selectStyle = { width: '100%', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
 
-const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = String(d); if (d.includes('-')) return d.split('-').reverse().join('.'); if (d.includes('.')) return d; return d; };
+const formatDate = (d) => { if (!d) return '-'; if (typeof d !== 'string') d = String(d); if (/^\d{4}-\d{2}-\d{2}T/.test(d)) d = d.slice(0, 10); if (d.includes('-')) return d.split('-').reverse().join('.'); if (d.includes('.')) return d; return d; };
 const safeParseTags = (val) => { if (!val) return []; if (Array.isArray(val)) return val.filter(t => t && typeof t === 'string'); if (typeof val === 'string') return val.split(',').map(t => t.trim()).filter(Boolean); return []; };
 const safeParseActivities = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
 const safeParseJSON = (val) => { if (!val) return []; if (Array.isArray(val)) return val; if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } } return []; };
@@ -810,9 +810,29 @@ const visaAppBelongsTo = (v, c, customers) => {
   if (!v || !c) return false;
   const vid = v.customerId != null && v.customerId !== '' ? String(v.customerId) : '';
   if (vid && (vid === String(c.id) || (c._docId && vid === String(c._docId)))) return true;
-  if (vid && (customers || []).some(x => vid === String(x.id) || (x._docId && vid === String(x._docId)))) return false;
-  const full = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).replace(/\s+/g, ' ');
-  return !!full && normalizeTr(v.customerName || '').replace(/\s+/g, ' ') === full;
+  const nm = (s) => normalizeTr(s).replace(/\s+/g, ' ');
+  const full = nm(`${c.firstName || ''} ${c.lastName || ''}`);
+  if (!full) return false;
+  // Başka bir müşteriye bağlıysa: o müşteri aynı isimde (mükerrer kayıt, ör. Aktekin/Aktekın) ise yine göster
+  const linked = vid ? (customers || []).find(x => vid === String(x.id) || (x._docId && vid === String(x._docId))) : null;
+  if (linked) return nm(`${linked.firstName || ''} ${linked.lastName || ''}`) === full;
+  return nm(v.customerName || '') === full;
+};
+
+// Olası mükerrer müşteriler: aynı TC, aynı pasaport no, ya da aynı ad-soyad + doğum tarihi (OCR TC/pasaport no'yu yanlış okusa bile yakalar)
+const findLikelyDuplicates = (c, customers) => {
+  if (!c) return [];
+  const nm = (s) => normalizeTr(s).replace(/\s+/g, ' ');
+  const key = (x) => x._docId || String(x.id);
+  const full = nm(`${c.firstName || ''} ${c.lastName || ''}`);
+  const tc = String(c.tcKimlik || '').trim();
+  const ppNos = new Set(safeParseJSON(c.passports || c._passports).map(p => String(p.passportNo || '').trim().toUpperCase()).filter(Boolean));
+  return (customers || []).filter(x => {
+    if (c.id != null && (key(x) === key(c) || String(x.id) === String(c.id))) return false;
+    if (tc.length === 11 && String(x.tcKimlik || '').trim() === tc) return true;
+    if (ppNos.size && safeParseJSON(x.passports).some(p => ppNos.has(String(p.passportNo || '').trim().toUpperCase()))) return true;
+    return !!full && !!c.birthDate && x.birthDate === c.birthDate && nm(`${x.firstName || ''} ${x.lastName || ''}`) === full;
+  });
 };
 
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
@@ -4158,7 +4178,20 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 const big = { fontSize: '15px', fontWeight: '700', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
                 const small = { fontSize: '12px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 
+                const dups = findLikelyDuplicates(c, customers);
                 return (<>
+                  {dups.length > 0 && (
+                    <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '13px', color: '#fca5a5', fontWeight: '700' }}>⚠️ Olası mükerrer kayıt — aynı kişi {dups.length + 1} kez kayıtlı olabilir</div>
+                      {dups.map(d => (
+                        <div key={d._docId || d.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '12px', color: '#e8f1f8' }}>
+                          <span style={{ flex: 1, minWidth: '180px' }}>{titleCaseTr(`${d.firstName || ''} ${d.lastName || ''}`)} · TC {d.tcKimlik || '—'} · Pasaport {safeParseJSON(d.passports).map(p => p.passportNo).filter(Boolean).join(', ') || '—'}{d.createdAt ? ` · ${formatDate(d.createdAt)}` : ''}</span>
+                          <button type="button" onClick={() => { setDetailTab('info'); setSelectedCustomer(d); }} style={{ padding: '6px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontWeight: '600', fontSize: '12px', fontFamily: 'inherit' }}>Aç</button>
+                        </div>
+                      ))}
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Doğru kaydı tutun; vize başvurusunu ona bağlayıp hatalı kaydı silin.</div>
+                    </div>
+                  )}
                   {/* Hızlı işlemler */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {c.phone}</a>}
@@ -5255,6 +5288,14 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(aiResult._usaVisa.startDate)} – {formatDate(aiResult._usaVisa.endDate)}</div>
                   </div>
                 )}
+                {aiResult._likelyDup && (
+                  <div style={{ marginTop: '12px', padding: '12px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '200px', fontSize: '12px', color: '#fca5a5' }}>
+                      <b>⚠️ Olası mükerrer:</b> {titleCaseTr(`${aiResult._likelyDup.firstName || ''} ${aiResult._likelyDup.lastName || ''}`)} — aynı ad-soyad ve doğum tarihi zaten kayıtlı{aiResult._likelyDup.tcKimlik ? ` (TC ${aiResult._likelyDup.tcKimlik})` : ''}. TC/pasaport no yanlış okunmuş olabilir, eklemeden önce kontrol edin.
+                    </div>
+                    <button type="button" onClick={() => { const c = aiResult._likelyDup; setShowAiModal(false); setAiText(''); setAiResult(null); setAiImages([]); setTimeout(() => setSelectedCustomer(c), 100); }} style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>👤 Mevcut kaydı aç</button>
+                  </div>
+                )}
                 {aiResult._duplicate ? (
                   /* AYNI PASAPORT / TC → zaten var */
                   <div style={{ marginTop: '12px', padding: '16px', background: 'rgba(245,158,11,0.1)', border: '2px solid rgba(245,158,11,0.4)', borderRadius: '12px' }}>
@@ -5350,7 +5391,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                           schengenVisas: aiSchengen.map(v => (v.country ? { ...v, createdAt: v.createdAt || now } : v)),
                           usaVisa: aiUsa ? { ...aiUsa, createdAt: aiUsa.createdAt || now } : {},
                         };
-                        delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate;
+                        delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate; delete newCust._likelyDup;
                         delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
                         newCust.firstName = titleCaseTr(newCust.firstName || '');
                         newCust.lastName = titleCaseTr(newCust.lastName || '');
@@ -5454,6 +5495,10 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
                       parsed._duplicateCustomer = dupByTc;
                     }
 
+                    if (!parsed._duplicate && !parsed._addPassportTo) {
+                      const likely = findLikelyDuplicates({ firstName: parsed.firstName, lastName: parsed.lastName, birthDate: parsed.birthDate }, customers)[0];
+                      if (likely) parsed._likelyDup = likely;
+                    }
                     if (parsed._schengen) parsed._schengen = parsed._schengen.map((v, i) => ({ ...v, id: i + 1 }));
                     setAiResult(parsed);
                   } catch(err) {
