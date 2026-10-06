@@ -810,9 +810,13 @@ const visaAppBelongsTo = (v, c, customers) => {
   if (!v || !c) return false;
   const vid = v.customerId != null && v.customerId !== '' ? String(v.customerId) : '';
   if (vid && (vid === String(c.id) || (c._docId && vid === String(c._docId)))) return true;
-  if (vid && (customers || []).some(x => vid === String(x.id) || (x._docId && vid === String(x._docId)))) return false;
-  const full = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).replace(/\s+/g, ' ');
-  return !!full && normalizeTr(v.customerName || '').replace(/\s+/g, ' ') === full;
+  const nm = (s) => normalizeTr(s).replace(/\s+/g, ' ');
+  const full = nm(`${c.firstName || ''} ${c.lastName || ''}`);
+  if (!full) return false;
+  // Başka bir müşteriye bağlıysa: o müşteri aynı isimde (mükerrer kayıt, ör. Aktekin/Aktekın) ise yine göster
+  const linked = vid ? (customers || []).find(x => vid === String(x.id) || (x._docId && vid === String(x._docId))) : null;
+  if (linked) return nm(`${linked.firstName || ''} ${linked.lastName || ''}`) === full;
+  return nm(v.customerName || '') === full;
 };
 
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
