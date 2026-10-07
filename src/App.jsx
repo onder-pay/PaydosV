@@ -9879,9 +9879,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
-                {cancelledRes.length > 0 && (
-                  <button onClick={() => setShowCancelled(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: showCancelled[tour.id] ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>⊘ İptal Edenler ({cancelledRes.length})</button>
-                )}
                 <button onClick={() => {
                   const isDetail = detailedView[tour.id];
                   const allRes = [...activeRes, ...cancelledRes];
@@ -9925,14 +9922,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 const cur = activeRes[0]?.currency || '€';
                 return [
                   { label: 'Aktif Rezervasyon', value: activeRes.length, color: '#10b981', suffix: '' },
-                  { label: 'İptal', value: cancelledRes.length, color: '#ef4444', suffix: '' },
+                  { label: 'İptal', value: cancelledRes.length, color: '#ef4444', suffix: '', onClick: cancelledRes.length ? () => setShowCancelled(prev => ({...prev, [tour.id]: !prev[tour.id]})) : null, active: !!showCancelled[tour.id] },
                   { label: 'Toplam Ödenen', value: totalOdenen.toLocaleString('tr'), color: '#10b981', suffix: ` ${cur}` },
                   { label: 'Ödenmemiş', value: totalOdenmemis > 0 ? totalOdenmemis.toLocaleString('tr') : '0', color: totalOdenmemis > 0 ? '#ef4444' : '#64748b', suffix: ` ${cur}` },
                 ];
               })().map(s => (
-                <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '7px 8px', textAlign: 'center', border: `1px solid ${s.color}20` }}>
+                <div key={s.label} onClick={s.onClick || undefined} title={s.onClick ? (s.active ? 'İptal edenleri gizle' : 'İptal edenleri göster') : undefined} style={{ background: s.active ? `${s.color}26` : 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '7px 8px', textAlign: 'center', border: `1px solid ${s.active ? s.color : `${s.color}20`}`, cursor: s.onClick ? 'pointer' : 'default' }}>
                   <div style={{ fontSize: '15px', fontWeight: '700', color: s.color }}>{s.value}{s.suffix}</div>
-                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{s.label}</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{s.label}{s.onClick ? (s.active ? ' ▲' : ' ▼') : ''}</div>
                 </div>
               ))}
             </div>
