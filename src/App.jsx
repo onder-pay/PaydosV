@@ -9657,10 +9657,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       ['S.No', 'Firma', 'Ad Soyad', 'Tel No', 'E-mail', 'Oda Tipi', 'Oda Arkadaşı', '3.Oda Arkadaşı', 'Çocuk', 'Pasaport', 'Vize', 'Vize Bitiş Tar', 'Tur Ücreti', 'Para Birimi', '1.Ödeme', '2.Ödeme', '3.Ödeme', 'Toplam Ödeme', 'Notlar']
     ];
 
-    tour.reservations?.forEach(r => {
+    // Sadece mevcut (iptal edilmemiş) rezervasyonlar; sıra no boşluksuz
+    (tour.reservations || []).filter(r => !r.cancelled).forEach((r, i) => {
       const totalPayment = (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0);
       ws_data.push([
-        r.sNo,
+        i + 1,
         r.company || '',
         titleCaseTr(r.customerName || ''),
         r.customerPhone,
