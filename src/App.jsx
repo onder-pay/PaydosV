@@ -2938,6 +2938,127 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
   );
 }
 
+// 📥 Tur Excel — sütunları seçilebilir tek dışa aktarma (eski "Tam Excel" + "Liste Excel")
+const TOUR_XLS_COLS = [
+  { k: 'sNo', l: 'S.No', w: 6 },
+  { k: 'name', l: 'Ad Soyad', w: 25 },
+  { k: 'company', l: 'Firma', w: 22 },
+  { k: 'phone', l: 'Telefon', w: 16 },
+  { k: 'email', l: 'E-posta', w: 26 },
+  { k: 'birthDate', l: 'Doğum Tarihi', w: 13 },
+  { k: 'tc', l: 'TC No', w: 14 },
+  { k: 'passport', l: 'Pasaport No', w: 13 },
+  { k: 'roomType', l: 'Oda Tipi', w: 12 },
+  { k: 'roommate', l: 'Oda Arkadaşı', w: 22 },
+  { k: 'roommate3', l: '3. Oda Arkadaşı', w: 22 },
+  { k: 'child', l: 'Çocuk', w: 7 },
+  { k: 'visa', l: 'Vize Durumu', w: 22 },
+  { k: 'visaEnd', l: 'Vize Bitiş', w: 12 },
+  { k: 'price', l: 'Tur Ücreti', w: 11 },
+  { k: 'currency', l: 'Para Birimi', w: 8 },
+  { k: 'p1', l: '1. Ödeme', w: 10 },
+  { k: 'p2', l: '2. Ödeme', w: 10 },
+  { k: 'p3', l: '3. Ödeme', w: 10 },
+  { k: 'paid', l: 'Toplam Ödeme', w: 12 },
+  { k: 'remaining', l: 'Kalan', w: 10 },
+  { k: 'payStatus', l: 'Ödeme Durumu', w: 14 },
+  { k: 'notes', l: 'Notlar', w: 30 },
+  { k: 'status', l: 'Durum', w: 9 },
+];
+const TOUR_XLS_PRESETS = {
+  'Genel Liste': ['name', 'roomType', 'visa', 'price', 'payStatus'],
+  'Detaylı Liste': ['name', 'birthDate', 'tc', 'passport', 'company', 'phone', 'email'],
+  'Muhasebe (Tam)': ['sNo', 'company', 'name', 'phone', 'email', 'roomType', 'roommate', 'roommate3', 'child', 'passport', 'visa', 'visaEnd', 'price', 'currency', 'p1', 'p2', 'p3', 'paid', 'remaining', 'notes'],
+};
+function TourExcelModal({ tour, customers, onClose, showToast }) {
+  const LS = 'paydos_tour_xls_cols';
+  const [cols, setCols] = useState(() => { try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (Array.isArray(v) && v.length) return v.filter(k => TOUR_XLS_COLS.some(c => c.k === k)); } catch { /* yok */ } return TOUR_XLS_PRESETS['Genel Liste']; });
+  const [withCancelled, setWithCancelled] = useState(false);
+  const [withHeader, setWithHeader] = useState(false);
+  const all = tour.reservations || [];
+  const nCancelled = all.filter(r => r.cancelled).length;
+  const toggle = (k) => setCols(prev => prev.includes(k) ? prev.filter(x => x !== k) : TOUR_XLS_COLS.map(c => c.k).filter(x => x === k || prev.includes(x)));
+  const download = () => {
+    if (!cols.length) { showToast?.('En az bir sütun seçin', 'error'); return; }
+    try { localStorage.setItem(LS, JSON.stringify(cols)); } catch { /* yok */ }
+    const list = all.filter(r => withCancelled || !r.cancelled);
+    const findCust = (res) => (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId))) || (customers || []).find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName || ''));
+    const num = (v) => parseFloat(v) || 0;
+    const val = (k, r, i, cust) => {
+      const cur = r.currency || '€';
+      const paid = num(r.payment1) + num(r.payment2) + num(r.payment3);
+      switch (k) {
+        case 'sNo': return i + 1;
+        case 'name': return titleCaseTr(r.customerName || '');
+        case 'company': return cust?.companyName || cust?.company || r.company || '';
+        case 'phone': return cust?.phone || r.customerPhone || '';
+        case 'email': return cust?.email || r.customerEmail || '';
+        case 'birthDate': return cust?.birthDate ? formatDate(cust.birthDate) : '';
+        case 'tc': return cust?.tcKimlik || '';
+        case 'passport': return r.passport || safeParseJSON(cust?.passports)[0]?.passportNo || '';
+        case 'roomType': return r.roomType || '';
+        case 'roommate': return titleCaseTr(r.roommate || '');
+        case 'roommate3': return titleCaseTr(r.roommate3 || '');
+        case 'child': return r.hasChild ? 'Evet' : 'Hayır';
+        case 'visa': return r.hasVisa ? (r.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${r.visaEndDate ? ` (${formatDate(r.visaEndDate)})` : ''}`) : 'Yok';
+        case 'visaEnd': return r.visaEndDate && r.visaEndDate !== 'GREEN_PASSPORT' ? formatDate(r.visaEndDate) : '';
+        case 'price': return num(r.tourPrice);
+        case 'currency': return cur;
+        case 'p1': return num(r.payment1);
+        case 'p2': return num(r.payment2);
+        case 'p3': return num(r.payment3);
+        case 'paid': return paid;
+        case 'remaining': return Math.max(0, num(r.tourPrice) - paid);
+        case 'payStatus': return paid >= num(r.tourPrice) && paid > 0 ? 'Ödendi' : `${paid} ${cur}`;
+        case 'notes': return r.notes || '';
+        case 'status': return r.cancelled ? 'İptal' : 'Aktif';
+        default: return '';
+      }
+    };
+    const defs = TOUR_XLS_COLS.filter(c => cols.includes(c.k));
+    const rows = [];
+    if (withHeader) rows.push([tour.name || ''], [`${tour.country || ''}${tour.city ? ' — ' + tour.city : ''}`], [`${formatDate(tour.startDate)} → ${formatDate(tour.endDate)}`], []);
+    rows.push(defs.map(c => c.l));
+    list.forEach((r, i) => { const cust = findCust(r); rows.push(defs.map(c => val(c.k, r, i, cust))); });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = defs.map(c => ({ wch: c.w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Liste');
+    XLSX.writeFile(wb, `${(tour.name || 'Tur').replace(/[\\/:*?"<>|]/g, '')}_Liste.xlsx`);
+    showToast?.(`📥 ${list.length} kişi, ${defs.length} sütun indirildi`, 'success');
+    onClose();
+  };
+  const chip = (on) => ({ padding: '7px 11px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? '#10b981' : 'rgba(255,255,255,0.15)'}`, background: on ? 'rgba(16,185,129,0.18)' : 'transparent', color: on ? '#34d399' : '#cbd5e1', fontWeight: on ? 600 : 400 });
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f1d2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', padding: '18px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ fontSize: '16px', fontWeight: '700', color: '#fff' }}>📥 Excel — sütunları seçin</div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Hazır seçimler</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {Object.entries(TOUR_XLS_PRESETS).map(([name, ks]) => (
+            <button key={name} type="button" onClick={() => setCols(ks)} style={chip(ks.length === cols.length && ks.every(k => cols.includes(k)))}>{name}</button>
+          ))}
+          <button type="button" onClick={() => setCols(TOUR_XLS_COLS.map(c => c.k))} style={chip(cols.length === TOUR_XLS_COLS.length)}>Tümü</button>
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Sütunlar ({cols.length})</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {TOUR_XLS_COLS.map(c => <button key={c.k} type="button" onClick={() => toggle(c.k)} style={chip(cols.includes(c.k))}>{cols.includes(c.k) ? '✓ ' : ''}{c.l}</button>)}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e8f1f8', marginBottom: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={withCancelled} onChange={e => setWithCancelled(e.target.checked)} /> İptal edenleri de ekle ({nCancelled})
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e8f1f8', marginBottom: '16px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={withHeader} onChange={e => setWithHeader(e.target.checked)} /> Üste tur bilgisi yaz (ad, ülke, tarih)
+        </label>
+        <button type="button" onClick={download} style={{ width: '100%', padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: 'inherit' }}>📥 İndir — {all.filter(r => withCancelled || !r.cancelled).length} kişi</button>
+      </div>
+    </div>
+  );
+}
+
 function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose, initialFiles }) {
   const [rows, setRows] = useState([]); // { key, file, pages, type, custIds:[], cands:[], flights:[], note }
   const [busy, setBusy] = useState('');
@@ -8471,6 +8592,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [yarismaTour, setYarismaTour] = useState(null); // 🏆 Bilgi yarışması (canlı)
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
+  const [excelTour, setExcelTour] = useState(null); // 📥 sütun seçmeli Excel penceresi
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -9644,51 +9766,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   };
 
 
-  const exportToExcel = (tour) => {
-    const ws_data = [
-      ['TUR BİLGİLERİ'],
-      ['Tur Adı:', tour.name],
-      ['Ülke:', tour.country],
-      ['Şehir:', tour.city],
-      ['Başlangıç:', formatDate(tour.startDate)],
-      ['Bitiş:', formatDate(tour.endDate)],
-      [''],
-      ['REZERVASYONLAR'],
-      ['S.No', 'Firma', 'Ad Soyad', 'Tel No', 'E-mail', 'Oda Tipi', 'Oda Arkadaşı', '3.Oda Arkadaşı', 'Çocuk', 'Pasaport', 'Vize', 'Vize Bitiş Tar', 'Tur Ücreti', 'Para Birimi', '1.Ödeme', '2.Ödeme', '3.Ödeme', 'Toplam Ödeme', 'Notlar']
-    ];
-
-    // Sadece mevcut (iptal edilmemiş) rezervasyonlar; sıra no boşluksuz
-    (tour.reservations || []).filter(r => !r.cancelled).forEach((r, i) => {
-      const totalPayment = (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0);
-      ws_data.push([
-        i + 1,
-        r.company || '',
-        titleCaseTr(r.customerName || ''),
-        r.customerPhone,
-        r.customerEmail,
-        r.roomType || "-",
-        titleCaseTr(r.roommate || ''),
-        titleCaseTr(r.roommate3 || ''),
-        r.hasChild ? 'Evet' : 'Hayır',
-        r.passport || '',
-        r.hasVisa ? 'Var' : 'Yok',
-        r.visaEndDate || '',
-        r.tourPrice,
-        r.currency,
-        r.payment1 || 0,
-        r.payment2 || 0,
-        r.payment3 || 0,
-        totalPayment,
-        r.notes || ''
-      ]);
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(ws_data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rezervasyonlar');
-    XLSX.writeFile(wb, `${tour.name}_Rezervasyonlar.xlsx`);
-    showToast('Excel dosyası indirildi', 'success');
-  };
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
@@ -9851,7 +9928,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
-                <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
+                <button onClick={() => setExcelTour(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Excel</button>
+                {excelTour && excelTour.id === tour.id && <TourExcelModal tour={tour} customers={customers} onClose={() => setExcelTour(null)} showToast={showToast} />}
                 <button onClick={() => setTavsiye({ focusCity: tour.city || '' })} style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Bu turun şehrine ait tavsiye restoranlar (tur linkinde görünür)">⭐ Tavsiyeler</button>
                 <button onClick={() => setYarismaTour(tour)} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }} title="Yolcularla tur linki üzerinden canlı bilgi yarışması">🏆 Yarışma</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
@@ -9880,31 +9958,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
-                <button onClick={() => {
-                  const isDetail = detailedView[tour.id];
-                  const allRes = [...activeRes, ...cancelledRes];
-                  let rows;
-                  if (isDetail) {
-                    rows = [['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', 'Durum']];
-                    allRes.forEach(res => {
-                      const customer = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
-                      const passports = safeParseJSON(customer?.passports);
-                      rows.push([titleCaseTr(res.customerName || ''), customer?.birthDate ? formatDate(customer.birthDate) : '', customer?.tcKimlik || '', res.passport || passports[0]?.passportNo || '', customer?.company || res.company || '', customer?.phone || res.customerPhone || '', customer?.email || res.customerEmail || '', res.cancelled ? 'İptal' : 'Aktif']);
-                    });
-                  } else {
-                    rows = [['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', 'Durum']];
-                    allRes.forEach(res => {
-                      const totalPaid = (parseFloat(res.payment1) || 0) + (parseFloat(res.payment2) || 0) + (parseFloat(res.payment3) || 0);
-                      const fullyPaid = totalPaid >= (parseFloat(res.tourPrice) || 0) && totalPaid > 0;
-                      rows.push([titleCaseTr(res.customerName || ''), res.roomType || '', res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok', `${res.tourPrice || 0} ${res.currency || '€'}`, fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`, res.cancelled ? 'İptal' : 'Aktif']);
-                    });
-                  }
-                  const ws = XLSX.utils.aoa_to_sheet(rows);
-                  ws['!cols'] = isDetail ? [{wch:25},{wch:14},{wch:14},{wch:14},{wch:20},{wch:18},{wch:25},{wch:10}] : [{wch:25},{wch:14},{wch:25},{wch:14},{wch:18},{wch:10}];
-                  const wb = XLSX.utils.book_new();
-                  XLSX.utils.book_append_sheet(wb, ws, isDetail ? 'Detaylı Liste' : 'Genel Liste');
-                  XLSX.writeFile(wb, `${tour.name}_${isDetail ? 'Detayli' : 'Genel'}_Liste.xlsx`);
-                }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.18)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Liste Excel</button>
                 <button onClick={() => openBulkMail(tour)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Toplu Mail</button>
                 <span style={{ width: '1px', alignSelf: 'stretch', background: 'rgba(255,255,255,0.12)', margin: '0 2px' }} />
                 <button onClick={() => { openEditForm(tour); setSelectedTour(null); }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
