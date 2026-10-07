@@ -3426,7 +3426,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
       return;
     }
     setEditingCustomer(customer); 
-    setFormData({ ...emptyForm, ...customer, tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
+    setFormData({ ...emptyForm, ...customer, birthPlace: customer.birthPlace || customer.dogum_yeri || '', tkMemberNo: customer.tkMemberNo || customer.tk_uyelik_no || '', tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
     // Pasaport bilgilerini yükle
     const savedPassports = safeParseJSON(customer.passports);
     setPassports(savedPassports.length > 0 ? savedPassports : [{ ...emptyPassport, id: generateUniqueId() }]);
@@ -3853,6 +3853,13 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         </div>
                       );
                     } else {
+                      // Bilinen alanlar müşteri kaydındaki gerçek anahtara bağlanır (eskiden 'dogum_yeri' / 'tk_uyelik_no'
+                      // diye ayrı alana yazıyordu: formda boş görünüyor, girilen değer detaya/PDF'e hiç gitmiyordu)
+                      const KNOWN_FIELD_KEYS = { 'Doğum Yeri': 'birthPlace', 'TK Üyelik No': 'tkMemberNo' };
+                      if (KNOWN_FIELD_KEYS[field]) {
+                        const k = KNOWN_FIELD_KEYS[field];
+                        return <FormInput key={idx} label={field} value={formData[k] || ''} onChange={e => setFormData({...formData, [k]: e.target.value})} placeholder={field} />;
+                      }
                       // Diğer alanlar için generic input - field ismini key olarak kullan
                       const fieldKey = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
                       return <FormInput key={idx} label={field} value={formData[fieldKey] || ''} onChange={e => setFormData({...formData, [fieldKey]: e.target.value})} placeholder={field} />;
@@ -4247,11 +4254,11 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 const fields = [
                   ['TC Kimlik', c.tcKimlik],
                   ['Doğum', c.birthDate ? `${formatDate(c.birthDate)}${age != null ? ` · ${age} yaş` : ''}` : ''],
-                  ['Doğum Yeri', placeTr(c.birthPlace)],
+                  ['Doğum Yeri', placeTr(c.birthPlace || c.dogum_yeri)],
                   ['İkametgah', placeTr(c.city)],
                   ['Firma', titleCaseTr(c.companyName)],
                   ['Sektör', c.sector],
-                  ['TK Üyelik', c.tkMemberNo],
+                  ['TK Üyelik', c.tkMemberNo || c.tk_uyelik_no],
                   ['E-posta', (c.email || '').toLowerCase()],
                 ].filter(([, v]) => v && v !== '-');
                 const missing = [!c.tcKimlik && 'TC', !c.birthDate && 'doğum tarihi', !c.email && 'e-posta', !cPassports.length && 'pasaport'].filter(Boolean);
