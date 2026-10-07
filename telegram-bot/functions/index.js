@@ -1402,3 +1402,4 @@ exports.bildirimOtomatik = require('./bildirim').bildirimOtomatik; // her gün 1
 exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
+exports.vizeEvrakMail = require('./evrakmail').vizeEvrakMail; // Atama Bekliyor → evrak maili; randevu → süreli evrak maili (15 dk'da bir)

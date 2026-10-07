@@ -6104,10 +6104,10 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Mail Gönderimi</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu oluşturulunca müşteriye otomatik bilgilendirme maili gönder</p>
+            <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Evrak Mailleri</h3>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Durum <b>Atama Bekliyor</b> olunca vize türünün şablonu (aşağıda) gider. Schengen'de randevu tarihi girilince <b>süreli evraklar</b> (SGK/banka dökümü vb.) randevuya göre hesaplanmış tarihlerle gider. 15 dakikada bir kontrol edilir; e-postası olmayanlar Telegram grubuna yazılır.</p>
           </div>
-          <div onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: !appSettings?.autoEmailOnVisa })}
+          <div onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: appSettings?.autoEmailOnVisa === false })}
             style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
             <div style={{ position: 'absolute', top: '3px', left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
           </div>
@@ -7050,17 +7050,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('create', 'Vize', `${formData.customerName || ''} — ${autoCountry} ${formData.visaDuration || ''}`.trim(), currentUser);
 
-        // Otomatik mail gönder
-        if (appSettings?.autoEmailOnVisa !== false) {
-          const customer = customers?.find(c =>
-            c.id === formData.customerId ||
-            `${c.firstName} ${c.lastName}`.trim() === formData.customerName
-          );
-          sendVisaEmail({ visa: newVisa, customer, appSettings }).then(result => {
-            if (result.ok) showToast?.('📧 Müşteriye bilgilendirme maili gönderildi', 'success');
-            else if (result.error !== 'Müşteri e-postası yok') showToast?.(`⚠️ Mail: ${result.error}`, 'warning');
-          });
-        }
+        // Evrak maili artık açılışta değil: durum "Atama Bekliyor" olunca sunucu (vizeEvrakMail) gönderir
       }
       setShowForm(false);
       resetForm();
@@ -7414,6 +7404,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       {q.length >= 2 && !results.length && <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>Eşleşen müşteri yok</div>}
                     </div>
                   )}
+                  {editingVisa && (() => {
+                    const okAt = (x) => x && /^\d{4}-/.test(String(x)) ? formatDate(String(x).slice(0, 10)) : '';
+                    const evrak = okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
+                      : formData.evrakMailEpostaYokAt && !formData.evrakMailAt ? '⚠️ e-posta yok — müşteriye e-posta ekleyin'
+                      : formData.status === 'Atama Bekliyor' && !formData.evrakMailAt ? '⏳ sırada (15 dk içinde)' : '—';
+                    const appt = String(formData.appointmentDate || '').slice(0, 10);
+                    const sureli = appt && formData.sureliMailFor === appt && formData.sureliMailAt ? `✅ gönderildi ${okAt(formData.sureliMailAt)}` : appt && (formData.categoryId || formData.category || 'schengen') === 'schengen' ? '⏳ randevu kaydedilince gider' : '—';
+                    return <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap' }}><span>📧 Evrak maili: {evrak}</span><span>⏳ Süreli evrak maili: {sureli}</span></div>;
+                  })()}
                 </>);
               })()}
             </div>
