@@ -7710,18 +7710,27 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Ek notlar..." style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', minHeight: '80px', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
 
-              {/* İletişim Butonları */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {editingVisa && <button type="button" onClick={() => openIdataInfo(editingVisa)} style={{ gridColumn: '1 / -1', padding: '12px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-                  📋 iDATA Bilgileri (kopyala)
-                </button>}
-                <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/${formatWhatsAppPhone(phone)}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  💬 WhatsApp
-                </button>
-                <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  📧 E-posta
-                </button>
-                <button type="button" onClick={async () => {
+              {/* İşlemler — tek kart, eşit butonlar */}
+              {(() => {
+                const act = (c) => ({ flex: '1 1 160px', padding: '10px 12px', background: `${c}14`, border: `1px solid ${c}40`, borderRadius: '9px', color: c, cursor: 'pointer', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' });
+                const head = { fontSize: '11px', color: '#64748b', fontWeight: '600', letterSpacing: '0.3px', margin: '0 0 8px' };
+                return (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={head}>İLETİŞİM</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/${formatWhatsAppPhone(phone)}`, '_blank'); }} style={act('#25d366')}>💬 WhatsApp</button>
+                      {formData.appointmentDate && <button type="button" onClick={() => {
+                  const linked = customers?.find(c => c.id === formData.customerId || c._docId === formData.customerId);
+                  const rawPhone = formData.customerPhone || linked?.phone || '';
+                  if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
+                  let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
+                  message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
+                  const phone = rawPhone.replace(/\D/g, '');
+                  const fullPhone = formatWhatsAppPhone(phone);
+                  window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                }} style={act('#25d366')}>📱 Randevu Bilgisi (WA)</button>}
+                      <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={act('#60a5fa')}>📧 E-posta</button>
+                      <button type="button" onClick={async () => {
                   if (!formData.customerEmail) { showToast?.('Müşterinin e-posta adresi yok', 'error'); return; }
                   const visa = {
                     id: editingVisa?.id || Date.now().toString(),
@@ -7739,96 +7748,38 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   const result = await sendVisaEmail({ visa, customer, appSettings });
                   if (result.ok) showToast?.('📧 Bilgi maili gönderildi', 'success');
                   else showToast?.(`❌ Mail gönderilemedi: ${result.error}`, 'error');
-                }} style={{ padding: '12px', background: 'rgba(20,184,166,0.2)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#14b8a6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  📨 Bilgi Maili
-                </button>
-              </div>
-
-              {/* Randevu Bilgisi Gönder */}
-              {formData.appointmentDate && (
-                <button type="button" onClick={() => {
-                  const linked = customers?.find(c => c.id === formData.customerId || c._docId === formData.customerId);
-                  const rawPhone = formData.customerPhone || linked?.phone || '';
-                  if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
-                  let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
-                  message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
-                  const phone = rawPhone.replace(/\D/g, '');
-                  const fullPhone = formatWhatsAppPhone(phone);
-                  window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
-                }} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                  📱 Randevu Bilgisi Gönder (WhatsApp)
-                </button>
-              )}
+                }} style={act('#14b8a6')}>📨 Bilgi Maili</button>
+                    </div>
+                    {editingVisa && (<>
+                      <div style={{ ...head, marginTop: '14px' }}>BELGELER</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        <button type="button" onClick={() => openIdataInfo(editingVisa)} style={act('#a78bfa')}>📋 iDATA Bilgileri</button>
+                        <button type="button" onClick={() => generateProforma(formData)} style={act('#f59e0b')}>📄 Proforma İndir</button>
+                        <button type="button" onClick={() => sendProformaWhatsApp(formData)} style={act('#25d366')}>💬 Proforma Gönder</button>
+                      </div>
+                    </>)}
+                  </div>
+                );
+              })()}
             </div>
 
             <LoadingButton 
               onClick={handleSubmit} 
               loading={saving}
-              style={{ width: '100%', marginTop: '24px', padding: '16px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px' }}
+              style={{ width: '100%', marginTop: '18px', padding: '15px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}
             >
               {editingVisa ? '💾 Değişiklikleri Kaydet' : '✅ Başvuruyu Kaydet'}
             </LoadingButton>
 
-            {/* Proforma İndir - Sadece düzenleme modunda */}
             {editingVisa && (
-              <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <button 
-                  type="button"
-                  onClick={() => generateProforma(formData)}
-                  style={{ 
-                    padding: '14px', 
-                    background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
-                    border: 'none', 
-                    borderRadius: '10px', 
-                    color: 'white', 
-                    cursor: 'pointer', 
-                    fontWeight: '600', 
-                    fontSize: '13px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  📄 Proforma İndir
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => sendProformaWhatsApp(formData)}
-                  style={{ 
-                    padding: '14px', 
-                    background: 'linear-gradient(135deg, #25d366, #128c7e)', 
-                    border: 'none', 
-                    borderRadius: '10px', 
-                    color: 'white', 
-                    cursor: 'pointer', 
-                    fontWeight: '600', 
-                    fontSize: '13px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  💬 Proforma Gönder
-                </button>
-              </div>
-            )}
-
-            {/* Sil - Sadece düzenleme modunda */}
-            {editingVisa && (
-              <button
-                type="button"
-                onClick={async () => {
+              <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                <button type="button" onClick={async () => {
                   if (!window.confirm(`"${formData.customerName}" vize başvurusunu silmek istediğinize emin misiniz?`)) return;
                   await deleteVisa(editingVisa.id);
                   setShowForm(false);
                   setEditingVisa(null);
-                }}
-                style={{ width: '100%', marginTop: '12px', padding: '14px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}
-              >
-                🗑️ Başvuruyu Sil
-              </button>
+                }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', opacity: 0.8, fontFamily: 'inherit' }}>🗑️ Başvuruyu sil</button>
+              </div>
             )}
           </div>
         )}
