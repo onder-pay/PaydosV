@@ -6134,16 +6134,23 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
 
       {mode === 'visa' && (<>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Evrak Mailleri</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Durum <b>Atama Bekliyor</b> olunca vize türünün şablonu (aşağıda) gider. Schengen'de randevu tarihi girilince <b>süreli evraklar</b> (SGK/banka dökümü vb.) randevuya göre hesaplanmış tarihlerle gider. 15 dakikada bir kontrol edilir; e-postası olmayanlar Telegram grubuna yazılır.</p>
+        <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Evrak Mailleri</h3>
+        <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>15 dakikada bir kontrol edilir (08:00–21:00). E-postası olmayanlar Telegram vize grubuna yazılır. Kapalıyken gelen başvurulara, tekrar açınca geriye dönük mail gitmez.</p>
+        {[
+          { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
+          { key: 'autoSureliMail', title: '⏳ Randevu → süreli evrak maili', desc: "Schengen'de randevu tarihi girilince SGK / banka dökümü vb. süreli evraklar, randevuya göre hesaplanmış tarihlerle gider." },
+        ].map(t => { const on = appSettings?.[t.key] !== false; return (
+          <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div>
+              <div style={{ fontSize: '13px', color: '#e8f1f8', fontWeight: '600' }}>{t.title} <span style={{ fontSize: '11px', color: on ? '#14b8a6' : '#ef4444', marginLeft: '6px' }}>{on ? 'AÇIK' : 'KAPALI'}</span></div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{t.desc}</div>
+            </div>
+            <div onClick={() => setAppSettings({ ...appSettings, [t.key]: !on })}
+              style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: on ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+              <div style={{ position: 'absolute', top: '3px', left: on ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+            </div>
           </div>
-          <div onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: appSettings?.autoEmailOnVisa === false })}
-            style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-            <div style={{ position: 'absolute', top: '3px', left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
-          </div>
-        </div>
+        ); })}
       </div>
 
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -6423,7 +6430,7 @@ const visaFutureDate = (v) => {
   return v.processDate;
 };
 
-function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
+function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, setAppSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
@@ -7436,14 +7443,33 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       {q.length >= 2 && !results.length && <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>Eşleşen müşteri yok</div>}
                     </div>
                   )}
-                  {editingVisa && (() => {
+                  {(() => {
                     const okAt = (x) => x && /^\d{4}-/.test(String(x)) ? formatDate(String(x).slice(0, 10)) : '';
-                    const evrak = okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
-                      : formData.evrakMailEpostaYokAt && !formData.evrakMailAt ? '⚠️ e-posta yok — müşteriye e-posta ekleyin'
-                      : formData.status === 'Atama Bekliyor' && !formData.evrakMailAt ? '⏳ sırada (15 dk içinde)' : '—';
+                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' ? '— kurulumdan önceki başvuru' : '';
+                    const off = !!formData.autoMailOff;
+                    const evrak = off ? '⏸ bu başvuruda kapalı'
+                      : okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
+                      : skipTxt(formData.evrakMailAt) ? skipTxt(formData.evrakMailAt)
+                      : formData.evrakMailEpostaYokAt ? '⚠️ e-posta yok — müşteriye e-posta ekleyin'
+                      : appSettings?.autoEmailOnVisa === false ? '⏸ ayarlarda kapalı'
+                      : formData.status === 'Atama Bekliyor' ? '⏳ sırada (15 dk içinde)' : 'Atama Bekliyor olunca gider';
                     const appt = String(formData.appointmentDate || '').slice(0, 10);
-                    const sureli = appt && formData.sureliMailFor === appt && formData.sureliMailAt ? `✅ gönderildi ${okAt(formData.sureliMailAt)}` : appt && (formData.categoryId || formData.category || 'schengen') === 'schengen' ? '⏳ randevu kaydedilince gider' : '—';
-                    return <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap' }}><span>📧 Evrak maili: {evrak}</span><span>⏳ Süreli evrak maili: {sureli}</span></div>;
+                    const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
+                    const sureli = !isSch ? '— sadece Schengen' : off ? '⏸ bu başvuruda kapalı'
+                      : appt && formData.sureliMailFor === appt && okAt(formData.sureliMailAt) ? `✅ gönderildi ${okAt(formData.sureliMailAt)}`
+                      : appt && formData.sureliMailFor === appt && skipTxt(formData.sureliMailAt) ? skipTxt(formData.sureliMailAt)
+                      : appSettings?.autoSureliMail === false ? '⏸ ayarlarda kapalı'
+                      : appt ? '⏳ randevu kaydedilince gider' : 'randevu girilince gider';
+                    return (
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span>📧 Evrak maili: {evrak}</span>
+                        <span>⏳ Süreli evrak maili: {sureli}</span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: off ? '#f87171' : '#94a3b8' }}>
+                          <input type="checkbox" checked={off} onChange={e => setFormData(f => ({ ...f, autoMailOff: e.target.checked }))} />
+                          Bu başvuruya otomatik mail gönderme
+                        </label>
+                      </div>
+                    );
                   })()}
                 </>);
               })()}
@@ -7870,7 +7896,19 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>🌍 Vize Başvuruları ({visaApplications.length})</h2>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {setAppSettings && (() => {
+            const a1 = appSettings?.autoEmailOnVisa !== false, a2 = appSettings?.autoSureliMail !== false;
+            const on = a1 || a2;
+            return (
+              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Süreli evrak maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
+                onClick={() => { if (on && !window.confirm('Otomatik evrak mailleri kapatılsın mı?\n\nKapalıyken Atama Bekliyor olan / randevusu girilen başvurulara mail gitmez; tekrar açınca da geriye dönük gitmez.')) return; setAppSettings({ ...appSettings, autoEmailOnVisa: !on, autoSureliMail: !on }); showToast?.(on ? '⏸ Otomatik evrak mailleri kapatıldı' : '📧 Otomatik evrak mailleri açıldı', on ? 'warning' : 'success'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: on ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)', border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '10px', color: on ? '#2dd4bf' : '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit' }}>
+                <span style={{ width: '30px', height: '16px', borderRadius: '8px', background: on ? '#14b8a6' : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0 }}><span style={{ position: 'absolute', top: '2px', left: on ? '16px' : '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></span>
+                📧 Otomatik mail: {on ? (a1 && a2 ? 'Açık' : 'Kısmen açık') : 'Kapalı'}
+              </button>
+            );
+          })()}
           <button onClick={() => { setShowIdataModal(true); setIdataText(''); setIdataParsed([]); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#a78bfa', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📧 iDATA Randevu İşle</button>
           <button onClick={exportToExcel} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', padding: '10px 16px', color: '#10b981', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Başvuru</button>
@@ -19426,7 +19464,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} {...qa('customers')} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;

@@ -5,7 +5,9 @@
 // 15 dakikada bir çalışır. Aynı mail iki kez gitmez (visa_applications.evrakMailAt / sureliMailFor).
 // E-postası olmayan başvuru bekletilir: vizeci e-postayı ekleyince sonraki turda gider; gruba bir kez haber verilir.
 // İlk çalışmada mevcut birikmiş kayıtlara mail gitmez, sessizce işaretlenir (app_settings/main.evrakMailBasladi).
-// Ayarlar → "Otomatik Mail Gönderimi" kapalıysa (autoEmailOnVisa === false) hiçbir şey gönderilmez.
+// Açma/kapama: app_settings.autoEmailOnVisa (Atama Bekliyor maili) ve autoSureliMail (süreli evrak maili).
+// Kapalıyken gelen başvurular "kapalıyken atlandı" diye işaretlenir — tekrar açınca geriye dönük mail yağmaz.
+// Başvuru bazında: visa_applications.autoMailOff === true ise o başvuruya otomatik mail gitmez.
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const fetch = require('node-fetch');
@@ -114,9 +116,11 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
   const settingsRef = db.collection('app_settings').doc('main');
   const settings = (await settingsRef.get()).data() || {};
   const res = { atama: 0, sureli: 0, epostaYok: [], sablonYok: [], hata: [] };
-  if (settings.autoEmailOnVisa === false) return res;
+  const atamaOn = settings.autoEmailOnVisa !== false;
+  const sureliOn = settings.autoSureliMail !== false;
   const smtp = settings.smtpVisa || {};
-  if (!smtp.host || !smtp.user || !smtp.pass) { console.log('[evrakmail] Vize SMTP ayarı eksik (Ayarlar → Vize SMTP)'); return res; }
+  // Açıkken SMTP yoksa hiçbir şey işaretleme — SMTP girilince bekleyenler gider
+  if ((atamaOn || sureliOn) && (!smtp.host || !smtp.user || !smtp.pass)) { console.log('[evrakmail] Vize SMTP ayarı eksik (Ayarlar → Vize SMTP)'); return res; }
   const firstRun = !settings.evrakMailBasladi;
   const today = istDate();
   const now = new Date().toISOString();
@@ -133,8 +137,8 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
   const s1 = await db.collection('visa_applications').where('status', '==', STATUS).get();
   for (const d of s1.docs) {
     const v = { id: d.id, ...d.data() };
-    if (v.evrakMailAt) continue;
-    if (firstRun) { await d.ref.set({ evrakMailAt: 'ilk-kurulum-atlandi' }, { merge: true }); continue; }
+    if (v.evrakMailAt || v.autoMailOff) continue;
+    if (firstRun || !atamaOn) { await d.ref.set({ evrakMailAt: firstRun ? 'ilk-kurulum-atlandi' : 'kapali-atlandi' }, { merge: true }); continue; }
     const cust = await getCust(v);
     const to = emailOf(v, cust);
     if (!to) { if (!v.evrakMailEpostaYokAt) { res.epostaYok.push(custName(v, cust)); await d.ref.set({ evrakMailEpostaYokAt: now }, { merge: true }); } continue; }
@@ -150,8 +154,8 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     const v = { id: d.id, ...d.data() };
     const appt = String(v.appointmentDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(appt) || v.sureliMailFor === appt || closed(v)) continue;
-    if ((v.categoryId || v.category || 'schengen') !== 'schengen') continue;
-    if (firstRun) { await d.ref.set({ sureliMailFor: appt }, { merge: true }); continue; }
+    if ((v.categoryId || v.category || 'schengen') !== 'schengen' || v.autoMailOff) continue;
+    if (firstRun || !sureliOn) { await d.ref.set({ sureliMailFor: appt, sureliMailAt: firstRun ? 'ilk-kurulum-atlandi' : 'kapali-atlandi' }, { merge: true }); continue; }
     const cust = await getCust(v);
     const to = emailOf(v, cust);
     if (!to) { if (v.sureliEpostaYokFor !== appt) { res.epostaYok.push(`${custName(v, cust)} (randevu ${trDate(appt)})`); await d.ref.set({ sureliEpostaYokFor: appt }, { merge: true }); } continue; }
