@@ -2938,6 +2938,159 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
   );
 }
 
+// 🛏️ Otel oda kontenjanı: Single / Double / Twin
+const HOTEL_ROOM_KINDS = ['Single', 'Double', 'Twin'];
+const roomKindOf = (rt) => {
+  const s = normalizeTr(rt);
+  if (/twin|twn/.test(s)) return 'Twin';
+  if (/sing|sgl|tek/.test(s)) return 'Single';
+  if (/doub|dbl|cift|dubl/.test(s)) return 'Double';
+  return '';
+};
+// Her oda tipi için en yoğun gecede dolu oda sayısı (1 rezervasyon = 1 oda; iptaller sayılmaz).
+// Farklı tarihlerdeki rezervasyonlar üst üste binmediği için toplam değil, gece bazında bakılır.
+const hotelRoomUsage = (h) => {
+  const per = {};
+  (h?.reservations || []).filter(r => !r.cancelled).forEach(r => {
+    const k = roomKindOf(r.roomType);
+    const a = /^\d{4}-\d{2}-\d{2}/.test(String(r.checkIn || '')) ? new Date(`${String(r.checkIn).slice(0, 10)}T12:00:00Z`) : null;
+    const b = /^\d{4}-\d{2}-\d{2}/.test(String(r.checkOut || '')) ? new Date(`${String(r.checkOut).slice(0, 10)}T12:00:00Z`) : null;
+    if (!k || !a || !b) return;
+    for (let d = new Date(a), i = 0; d < b && i < 400; d.setUTCDate(d.getUTCDate() + 1), i++) {
+      const key = d.toISOString().slice(0, 10);
+      (per[k] = per[k] || {})[key] = (per[k][key] || 0) + 1;
+    }
+  });
+  const out = {};
+  HOTEL_ROOM_KINDS.forEach(k => {
+    let max = 0, day = '';
+    Object.entries(per[k] || {}).forEach(([dd, c]) => { if (c > max || (c === max && dd < day)) { max = c; day = dd; } });
+    out[k] = { max, day };
+  });
+  return out;
+};
+
+// 📥 Tur Excel — sütunları seçilebilir tek dışa aktarma (eski "Tam Excel" + "Liste Excel")
+const TOUR_XLS_COLS = [
+  { k: 'sNo', l: 'S.No', w: 6 },
+  { k: 'name', l: 'Ad Soyad', w: 25 },
+  { k: 'company', l: 'Firma', w: 22 },
+  { k: 'phone', l: 'Telefon', w: 16 },
+  { k: 'email', l: 'E-posta', w: 26 },
+  { k: 'birthDate', l: 'Doğum Tarihi', w: 13 },
+  { k: 'tc', l: 'TC No', w: 14 },
+  { k: 'passport', l: 'Pasaport No', w: 13 },
+  { k: 'roomType', l: 'Oda Tipi', w: 12 },
+  { k: 'roommate', l: 'Oda Arkadaşı', w: 22 },
+  { k: 'roommate3', l: '3. Oda Arkadaşı', w: 22 },
+  { k: 'child', l: 'Çocuk', w: 7 },
+  { k: 'visa', l: 'Vize Durumu', w: 22 },
+  { k: 'visaEnd', l: 'Vize Bitiş', w: 12 },
+  { k: 'price', l: 'Tur Ücreti', w: 11 },
+  { k: 'currency', l: 'Para Birimi', w: 8 },
+  { k: 'p1', l: '1. Ödeme', w: 10 },
+  { k: 'p2', l: '2. Ödeme', w: 10 },
+  { k: 'p3', l: '3. Ödeme', w: 10 },
+  { k: 'paid', l: 'Toplam Ödeme', w: 12 },
+  { k: 'remaining', l: 'Kalan', w: 10 },
+  { k: 'payStatus', l: 'Ödeme Durumu', w: 14 },
+  { k: 'notes', l: 'Notlar', w: 30 },
+  { k: 'status', l: 'Durum', w: 9 },
+];
+const TOUR_XLS_PRESETS = {
+  'Genel Liste': ['name', 'roomType', 'visa', 'price', 'payStatus'],
+  'Detaylı Liste': ['name', 'birthDate', 'tc', 'passport', 'company', 'phone', 'email'],
+  'Muhasebe (Tam)': ['sNo', 'company', 'name', 'phone', 'email', 'roomType', 'roommate', 'roommate3', 'child', 'passport', 'visa', 'visaEnd', 'price', 'currency', 'p1', 'p2', 'p3', 'paid', 'remaining', 'notes'],
+};
+function TourExcelModal({ tour, customers, onClose, showToast }) {
+  const LS = 'paydos_tour_xls_cols';
+  const [cols, setCols] = useState(() => { try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (Array.isArray(v) && v.length) return v.filter(k => TOUR_XLS_COLS.some(c => c.k === k)); } catch { /* yok */ } return TOUR_XLS_PRESETS['Genel Liste']; });
+  const [withCancelled, setWithCancelled] = useState(false);
+  const [withHeader, setWithHeader] = useState(false);
+  const all = tour.reservations || [];
+  const nCancelled = all.filter(r => r.cancelled).length;
+  const toggle = (k) => setCols(prev => prev.includes(k) ? prev.filter(x => x !== k) : TOUR_XLS_COLS.map(c => c.k).filter(x => x === k || prev.includes(x)));
+  const download = () => {
+    if (!cols.length) { showToast?.('En az bir sütun seçin', 'error'); return; }
+    try { localStorage.setItem(LS, JSON.stringify(cols)); } catch { /* yok */ }
+    const list = all.filter(r => withCancelled || !r.cancelled);
+    const findCust = (res) => (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId))) || (customers || []).find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName || ''));
+    const num = (v) => parseFloat(v) || 0;
+    const val = (k, r, i, cust) => {
+      const cur = r.currency || '€';
+      const paid = num(r.payment1) + num(r.payment2) + num(r.payment3);
+      switch (k) {
+        case 'sNo': return i + 1;
+        case 'name': return titleCaseTr(r.customerName || '');
+        case 'company': return cust?.companyName || cust?.company || r.company || '';
+        case 'phone': return cust?.phone || r.customerPhone || '';
+        case 'email': return cust?.email || r.customerEmail || '';
+        case 'birthDate': return cust?.birthDate ? formatDate(cust.birthDate) : '';
+        case 'tc': return cust?.tcKimlik || '';
+        case 'passport': return r.passport || safeParseJSON(cust?.passports)[0]?.passportNo || '';
+        case 'roomType': return r.roomType || '';
+        case 'roommate': return titleCaseTr(r.roommate || '');
+        case 'roommate3': return titleCaseTr(r.roommate3 || '');
+        case 'child': return r.hasChild ? 'Evet' : 'Hayır';
+        case 'visa': return r.hasVisa ? (r.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${r.visaEndDate ? ` (${formatDate(r.visaEndDate)})` : ''}`) : 'Yok';
+        case 'visaEnd': return r.visaEndDate && r.visaEndDate !== 'GREEN_PASSPORT' ? formatDate(r.visaEndDate) : '';
+        case 'price': return num(r.tourPrice);
+        case 'currency': return cur;
+        case 'p1': return num(r.payment1);
+        case 'p2': return num(r.payment2);
+        case 'p3': return num(r.payment3);
+        case 'paid': return paid;
+        case 'remaining': return Math.max(0, num(r.tourPrice) - paid);
+        case 'payStatus': return paid >= num(r.tourPrice) && paid > 0 ? 'Ödendi' : `${paid} ${cur}`;
+        case 'notes': return r.notes || '';
+        case 'status': return r.cancelled ? 'İptal' : 'Aktif';
+        default: return '';
+      }
+    };
+    const defs = TOUR_XLS_COLS.filter(c => cols.includes(c.k));
+    const rows = [];
+    if (withHeader) rows.push([tour.name || ''], [`${tour.country || ''}${tour.city ? ' — ' + tour.city : ''}`], [`${formatDate(tour.startDate)} → ${formatDate(tour.endDate)}`], []);
+    rows.push(defs.map(c => c.l));
+    list.forEach((r, i) => { const cust = findCust(r); rows.push(defs.map(c => val(c.k, r, i, cust))); });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = defs.map(c => ({ wch: c.w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Liste');
+    XLSX.writeFile(wb, `${(tour.name || 'Tur').replace(/[\\/:*?"<>|]/g, '')}_Liste.xlsx`);
+    showToast?.(`📥 ${list.length} kişi, ${defs.length} sütun indirildi`, 'success');
+    onClose();
+  };
+  const chip = (on) => ({ padding: '7px 11px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? '#10b981' : 'rgba(255,255,255,0.15)'}`, background: on ? 'rgba(16,185,129,0.18)' : 'transparent', color: on ? '#34d399' : '#cbd5e1', fontWeight: on ? 600 : 400 });
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0f1d2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', padding: '18px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ fontSize: '16px', fontWeight: '700', color: '#fff' }}>📥 Excel — sütunları seçin</div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Hazır seçimler</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {Object.entries(TOUR_XLS_PRESETS).map(([name, ks]) => (
+            <button key={name} type="button" onClick={() => setCols(ks)} style={chip(ks.length === cols.length && ks.every(k => cols.includes(k)))}>{name}</button>
+          ))}
+          <button type="button" onClick={() => setCols(TOUR_XLS_COLS.map(c => c.k))} style={chip(cols.length === TOUR_XLS_COLS.length)}>Tümü</button>
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Sütunlar ({cols.length})</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {TOUR_XLS_COLS.map(c => <button key={c.k} type="button" onClick={() => toggle(c.k)} style={chip(cols.includes(c.k))}>{cols.includes(c.k) ? '✓ ' : ''}{c.l}</button>)}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e8f1f8', marginBottom: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={withCancelled} onChange={e => setWithCancelled(e.target.checked)} /> İptal edenleri de ekle ({nCancelled})
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#e8f1f8', marginBottom: '16px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={withHeader} onChange={e => setWithHeader(e.target.checked)} /> Üste tur bilgisi yaz (ad, ülke, tarih)
+        </label>
+        <button type="button" onClick={download} style={{ width: '100%', padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer', fontFamily: 'inherit' }}>📥 İndir — {all.filter(r => withCancelled || !r.cancelled).length} kişi</button>
+      </div>
+    </div>
+  );
+}
+
 function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose, initialFiles }) {
   const [rows, setRows] = useState([]); // { key, file, pages, type, custIds:[], cands:[], flights:[], note }
   const [busy, setBusy] = useState('');
@@ -5981,16 +6134,23 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
 
       {mode === 'visa' && (<>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Mail Gönderimi</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Yeni vize başvurusu oluşturulunca müşteriye otomatik bilgilendirme maili gönder</p>
+        <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Evrak Mailleri</h3>
+        <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>15 dakikada bir kontrol edilir (08:00–21:00). E-postası olmayanlar Telegram vize grubuna yazılır. Kapalıyken gelen başvurulara, tekrar açınca geriye dönük mail gitmez.</p>
+        {[
+          { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
+          { key: 'autoSureliMail', title: '⏳ Randevu → süreli evrak maili', desc: "Schengen'de randevu tarihi girilince SGK / banka dökümü vb. süreli evraklar, randevuya göre hesaplanmış tarihlerle gider." },
+        ].map(t => { const on = appSettings?.[t.key] !== false; return (
+          <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div>
+              <div style={{ fontSize: '13px', color: '#e8f1f8', fontWeight: '600' }}>{t.title} <span style={{ fontSize: '11px', color: on ? '#14b8a6' : '#ef4444', marginLeft: '6px' }}>{on ? 'AÇIK' : 'KAPALI'}</span></div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{t.desc}</div>
+            </div>
+            <div onClick={() => setAppSettings({ ...appSettings, [t.key]: !on })}
+              style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: on ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+              <div style={{ position: 'absolute', top: '3px', left: on ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+            </div>
           </div>
-          <div onClick={() => setAppSettings({ ...appSettings, autoEmailOnVisa: !appSettings?.autoEmailOnVisa })}
-            style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: appSettings?.autoEmailOnVisa !== false ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-            <div style={{ position: 'absolute', top: '3px', left: appSettings?.autoEmailOnVisa !== false ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
-          </div>
-        </div>
+        ); })}
       </div>
 
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -6270,7 +6430,7 @@ const visaFutureDate = (v) => {
   return v.processDate;
 };
 
-function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
+function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, setAppSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
@@ -6929,17 +7089,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('create', 'Vize', `${formData.customerName || ''} — ${autoCountry} ${formData.visaDuration || ''}`.trim(), currentUser);
 
-        // Otomatik mail gönder
-        if (appSettings?.autoEmailOnVisa !== false) {
-          const customer = customers?.find(c =>
-            c.id === formData.customerId ||
-            `${c.firstName} ${c.lastName}`.trim() === formData.customerName
-          );
-          sendVisaEmail({ visa: newVisa, customer, appSettings }).then(result => {
-            if (result.ok) showToast?.('📧 Müşteriye bilgilendirme maili gönderildi', 'success');
-            else if (result.error !== 'Müşteri e-postası yok') showToast?.(`⚠️ Mail: ${result.error}`, 'warning');
-          });
-        }
+        // Evrak maili artık açılışta değil: durum "Atama Bekliyor" olunca sunucu (vizeEvrakMail) gönderir
       }
       setShowForm(false);
       resetForm();
@@ -7293,6 +7443,34 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       {q.length >= 2 && !results.length && <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>Eşleşen müşteri yok</div>}
                     </div>
                   )}
+                  {(() => {
+                    const okAt = (x) => x && /^\d{4}-/.test(String(x)) ? formatDate(String(x).slice(0, 10)) : '';
+                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' ? '— kurulumdan önceki başvuru' : '';
+                    const off = !!formData.autoMailOff;
+                    const evrak = off ? '⏸ bu başvuruda kapalı'
+                      : okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
+                      : skipTxt(formData.evrakMailAt) ? skipTxt(formData.evrakMailAt)
+                      : formData.evrakMailEpostaYokAt ? '⚠️ e-posta yok — müşteriye e-posta ekleyin'
+                      : appSettings?.autoEmailOnVisa === false ? '⏸ ayarlarda kapalı'
+                      : formData.status === 'Atama Bekliyor' ? '⏳ sırada (15 dk içinde)' : 'Atama Bekliyor olunca gider';
+                    const appt = String(formData.appointmentDate || '').slice(0, 10);
+                    const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
+                    const sureli = !isSch ? '— sadece Schengen' : off ? '⏸ bu başvuruda kapalı'
+                      : appt && formData.sureliMailFor === appt && okAt(formData.sureliMailAt) ? `✅ gönderildi ${okAt(formData.sureliMailAt)}`
+                      : appt && formData.sureliMailFor === appt && skipTxt(formData.sureliMailAt) ? skipTxt(formData.sureliMailAt)
+                      : appSettings?.autoSureliMail === false ? '⏸ ayarlarda kapalı'
+                      : appt ? '⏳ randevu kaydedilince gider' : 'randevu girilince gider';
+                    return (
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span>📧 Evrak maili: {evrak}</span>
+                        <span>⏳ Süreli evrak maili: {sureli}</span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: off ? '#f87171' : '#94a3b8' }}>
+                          <input type="checkbox" checked={off} onChange={e => setFormData(f => ({ ...f, autoMailOff: e.target.checked }))} />
+                          Bu başvuruya otomatik mail gönderme
+                        </label>
+                      </div>
+                    );
+                  })()}
                 </>);
               })()}
             </div>
@@ -7590,18 +7768,27 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Ek notlar..." style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', minHeight: '80px', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
 
-              {/* İletişim Butonları */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {editingVisa && <button type="button" onClick={() => openIdataInfo(editingVisa)} style={{ gridColumn: '1 / -1', padding: '12px', background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-                  📋 iDATA Bilgileri (kopyala)
-                </button>}
-                <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/${formatWhatsAppPhone(phone)}`, '_blank'); }} style={{ padding: '12px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  💬 WhatsApp
-                </button>
-                <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={{ padding: '12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  📧 E-posta
-                </button>
-                <button type="button" onClick={async () => {
+              {/* İşlemler — tek kart, eşit butonlar */}
+              {(() => {
+                const act = (c) => ({ flex: '1 1 160px', padding: '10px 12px', background: `${c}14`, border: `1px solid ${c}40`, borderRadius: '9px', color: c, cursor: 'pointer', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' });
+                const head = { fontSize: '11px', color: '#64748b', fontWeight: '600', letterSpacing: '0.3px', margin: '0 0 8px' };
+                return (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={head}>İLETİŞİM</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <button type="button" onClick={() => { const phone = formData.customerPhone?.replace(/\D/g, ''); if (phone) window.open(`https://wa.me/${formatWhatsAppPhone(phone)}`, '_blank'); }} style={act('#25d366')}>💬 WhatsApp</button>
+                      {formData.appointmentDate && <button type="button" onClick={() => {
+                  const linked = customers?.find(c => c.id === formData.customerId || c._docId === formData.customerId);
+                  const rawPhone = formData.customerPhone || linked?.phone || '';
+                  if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
+                  let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
+                  message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
+                  const phone = rawPhone.replace(/\D/g, '');
+                  const fullPhone = formatWhatsAppPhone(phone);
+                  window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                }} style={act('#25d366')}>📱 Randevu Bilgisi (WA)</button>}
+                      <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={act('#60a5fa')}>📧 E-posta</button>
+                      <button type="button" onClick={async () => {
                   if (!formData.customerEmail) { showToast?.('Müşterinin e-posta adresi yok', 'error'); return; }
                   const visa = {
                     id: editingVisa?.id || Date.now().toString(),
@@ -7619,96 +7806,38 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   const result = await sendVisaEmail({ visa, customer, appSettings });
                   if (result.ok) showToast?.('📧 Bilgi maili gönderildi', 'success');
                   else showToast?.(`❌ Mail gönderilemedi: ${result.error}`, 'error');
-                }} style={{ padding: '12px', background: 'rgba(20,184,166,0.2)', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#14b8a6', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-                  📨 Bilgi Maili
-                </button>
-              </div>
-
-              {/* Randevu Bilgisi Gönder */}
-              {formData.appointmentDate && (
-                <button type="button" onClick={() => {
-                  const linked = customers?.find(c => c.id === formData.customerId || c._docId === formData.customerId);
-                  const rawPhone = formData.customerPhone || linked?.phone || '';
-                  if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
-                  let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
-                  message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
-                  const phone = rawPhone.replace(/\D/g, '');
-                  const fullPhone = formatWhatsAppPhone(phone);
-                  window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
-                }} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                  📱 Randevu Bilgisi Gönder (WhatsApp)
-                </button>
-              )}
+                }} style={act('#14b8a6')}>📨 Bilgi Maili</button>
+                    </div>
+                    {editingVisa && (<>
+                      <div style={{ ...head, marginTop: '14px' }}>BELGELER</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        <button type="button" onClick={() => openIdataInfo(editingVisa)} style={act('#a78bfa')}>📋 iDATA Bilgileri</button>
+                        <button type="button" onClick={() => generateProforma(formData)} style={act('#f59e0b')}>📄 Proforma İndir</button>
+                        <button type="button" onClick={() => sendProformaWhatsApp(formData)} style={act('#25d366')}>💬 Proforma Gönder</button>
+                      </div>
+                    </>)}
+                  </div>
+                );
+              })()}
             </div>
 
             <LoadingButton 
               onClick={handleSubmit} 
               loading={saving}
-              style={{ width: '100%', marginTop: '24px', padding: '16px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px' }}
+              style={{ width: '100%', marginTop: '18px', padding: '15px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}
             >
               {editingVisa ? '💾 Değişiklikleri Kaydet' : '✅ Başvuruyu Kaydet'}
             </LoadingButton>
 
-            {/* Proforma İndir - Sadece düzenleme modunda */}
             {editingVisa && (
-              <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <button 
-                  type="button"
-                  onClick={() => generateProforma(formData)}
-                  style={{ 
-                    padding: '14px', 
-                    background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
-                    border: 'none', 
-                    borderRadius: '10px', 
-                    color: 'white', 
-                    cursor: 'pointer', 
-                    fontWeight: '600', 
-                    fontSize: '13px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  📄 Proforma İndir
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => sendProformaWhatsApp(formData)}
-                  style={{ 
-                    padding: '14px', 
-                    background: 'linear-gradient(135deg, #25d366, #128c7e)', 
-                    border: 'none', 
-                    borderRadius: '10px', 
-                    color: 'white', 
-                    cursor: 'pointer', 
-                    fontWeight: '600', 
-                    fontSize: '13px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  💬 Proforma Gönder
-                </button>
-              </div>
-            )}
-
-            {/* Sil - Sadece düzenleme modunda */}
-            {editingVisa && (
-              <button
-                type="button"
-                onClick={async () => {
+              <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                <button type="button" onClick={async () => {
                   if (!window.confirm(`"${formData.customerName}" vize başvurusunu silmek istediğinize emin misiniz?`)) return;
                   await deleteVisa(editingVisa.id);
                   setShowForm(false);
                   setEditingVisa(null);
-                }}
-                style={{ width: '100%', marginTop: '12px', padding: '14px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '10px', color: '#ef4444', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}
-              >
-                🗑️ Başvuruyu Sil
-              </button>
+                }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline', opacity: 0.8, fontFamily: 'inherit' }}>🗑️ Başvuruyu sil</button>
+              </div>
             )}
           </div>
         )}
@@ -7767,7 +7896,19 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>🌍 Vize Başvuruları ({visaApplications.length})</h2>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {setAppSettings && (() => {
+            const a1 = appSettings?.autoEmailOnVisa !== false, a2 = appSettings?.autoSureliMail !== false;
+            const on = a1 || a2;
+            return (
+              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Süreli evrak maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
+                onClick={() => { if (on && !window.confirm('Otomatik evrak mailleri kapatılsın mı?\n\nKapalıyken Atama Bekliyor olan / randevusu girilen başvurulara mail gitmez; tekrar açınca da geriye dönük gitmez.')) return; setAppSettings({ ...appSettings, autoEmailOnVisa: !on, autoSureliMail: !on }); showToast?.(on ? '⏸ Otomatik evrak mailleri kapatıldı' : '📧 Otomatik evrak mailleri açıldı', on ? 'warning' : 'success'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: on ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)', border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '10px', color: on ? '#2dd4bf' : '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit' }}>
+                <span style={{ width: '30px', height: '16px', borderRadius: '8px', background: on ? '#14b8a6' : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0 }}><span style={{ position: 'absolute', top: '2px', left: on ? '16px' : '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></span>
+                📧 Otomatik mail: {on ? (a1 && a2 ? 'Açık' : 'Kısmen açık') : 'Kapalı'}
+              </button>
+            );
+          })()}
           <button onClick={() => { setShowIdataModal(true); setIdataText(''); setIdataParsed([]); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#a78bfa', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📧 iDATA Randevu İşle</button>
           <button onClick={exportToExcel} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', padding: '10px 16px', color: '#10b981', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Başvuru</button>
@@ -8471,6 +8612,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const [yarismaTour, setYarismaTour] = useState(null); // 🏆 Bilgi yarışması (canlı)
   const [detailedView, setDetailedView] = useState({}); // {tourId: bool}
   const [showCancelled, setShowCancelled] = useState({}); // {tourId: bool} — iptal listesini aç/kapa
+  const [excelTour, setExcelTour] = useState(null); // 📥 sütun seçmeli Excel penceresi
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -9644,50 +9786,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   };
 
 
-  const exportToExcel = (tour) => {
-    const ws_data = [
-      ['TUR BİLGİLERİ'],
-      ['Tur Adı:', tour.name],
-      ['Ülke:', tour.country],
-      ['Şehir:', tour.city],
-      ['Başlangıç:', formatDate(tour.startDate)],
-      ['Bitiş:', formatDate(tour.endDate)],
-      [''],
-      ['REZERVASYONLAR'],
-      ['S.No', 'Firma', 'Ad Soyad', 'Tel No', 'E-mail', 'Oda Tipi', 'Oda Arkadaşı', '3.Oda Arkadaşı', 'Çocuk', 'Pasaport', 'Vize', 'Vize Bitiş Tar', 'Tur Ücreti', 'Para Birimi', '1.Ödeme', '2.Ödeme', '3.Ödeme', 'Toplam Ödeme', 'Notlar']
-    ];
-
-    tour.reservations?.forEach(r => {
-      const totalPayment = (r.payment1 || 0) + (r.payment2 || 0) + (r.payment3 || 0);
-      ws_data.push([
-        r.sNo,
-        r.company || '',
-        titleCaseTr(r.customerName || ''),
-        r.customerPhone,
-        r.customerEmail,
-        r.roomType || "-",
-        titleCaseTr(r.roommate || ''),
-        titleCaseTr(r.roommate3 || ''),
-        r.hasChild ? 'Evet' : 'Hayır',
-        r.passport || '',
-        r.hasVisa ? 'Var' : 'Yok',
-        r.visaEndDate || '',
-        r.tourPrice,
-        r.currency,
-        r.payment1 || 0,
-        r.payment2 || 0,
-        r.payment3 || 0,
-        totalPayment,
-        r.notes || ''
-      ]);
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(ws_data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rezervasyonlar');
-    XLSX.writeFile(wb, `${tour.name}_Rezervasyonlar.xlsx`);
-    showToast('Excel dosyası indirildi', 'success');
-  };
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
@@ -9850,7 +9948,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
-                <button onClick={() => exportToExcel(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Tam Excel</button>
+                <button onClick={() => setExcelTour(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Excel</button>
+                {excelTour && excelTour.id === tour.id && <TourExcelModal tour={tour} customers={customers} onClose={() => setExcelTour(null)} showToast={showToast} />}
                 <button onClick={() => setTavsiye({ focusCity: tour.city || '' })} style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: '8px', color: '#fb923c', cursor: 'pointer', fontSize: '12px' }} title="Bu turun şehrine ait tavsiye restoranlar (tur linkinde görünür)">⭐ Tavsiyeler</button>
                 <button onClick={() => setYarismaTour(tour)} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }} title="Yolcularla tur linki üzerinden canlı bilgi yarışması">🏆 Yarışma</button>
                 <button onClick={() => setRoomingTour(roomingTour?.id === tour.id ? null : tour)} style={{ padding: '8px 14px', background: roomingTour?.id === tour.id ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px' }}>🏨 Odalama</button>
@@ -9879,34 +9978,6 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
-                {cancelledRes.length > 0 && (
-                  <button onClick={() => setShowCancelled(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: showCancelled[tour.id] ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>⊘ İptal Edenler ({cancelledRes.length})</button>
-                )}
-                <button onClick={() => {
-                  const isDetail = detailedView[tour.id];
-                  const allRes = [...activeRes, ...cancelledRes];
-                  let rows;
-                  if (isDetail) {
-                    rows = [['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', 'Durum']];
-                    allRes.forEach(res => {
-                      const customer = customers.find(c => String(c.id) === String(res.customerId)) || customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
-                      const passports = safeParseJSON(customer?.passports);
-                      rows.push([titleCaseTr(res.customerName || ''), customer?.birthDate ? formatDate(customer.birthDate) : '', customer?.tcKimlik || '', res.passport || passports[0]?.passportNo || '', customer?.company || res.company || '', customer?.phone || res.customerPhone || '', customer?.email || res.customerEmail || '', res.cancelled ? 'İptal' : 'Aktif']);
-                    });
-                  } else {
-                    rows = [['Ad Soyad', 'Oda Tipi', 'Vize Durumu', 'Tur Bedeli', 'Ödeme', 'Durum']];
-                    allRes.forEach(res => {
-                      const totalPaid = (parseFloat(res.payment1) || 0) + (parseFloat(res.payment2) || 0) + (parseFloat(res.payment3) || 0);
-                      const fullyPaid = totalPaid >= (parseFloat(res.tourPrice) || 0) && totalPaid > 0;
-                      rows.push([titleCaseTr(res.customerName || ''), res.roomType || '', res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok', `${res.tourPrice || 0} ${res.currency || '€'}`, fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`, res.cancelled ? 'İptal' : 'Aktif']);
-                    });
-                  }
-                  const ws = XLSX.utils.aoa_to_sheet(rows);
-                  ws['!cols'] = isDetail ? [{wch:25},{wch:14},{wch:14},{wch:14},{wch:20},{wch:18},{wch:25},{wch:10}] : [{wch:25},{wch:14},{wch:25},{wch:14},{wch:18},{wch:10}];
-                  const wb = XLSX.utils.book_new();
-                  XLSX.utils.book_append_sheet(wb, ws, isDetail ? 'Detaylı Liste' : 'Genel Liste');
-                  XLSX.writeFile(wb, `${tour.name}_${isDetail ? 'Detayli' : 'Genel'}_Liste.xlsx`);
-                }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.18)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Liste Excel</button>
                 <button onClick={() => openBulkMail(tour)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Toplu Mail</button>
                 <span style={{ width: '1px', alignSelf: 'stretch', background: 'rgba(255,255,255,0.12)', margin: '0 2px' }} />
                 <button onClick={() => { openEditForm(tour); setSelectedTour(null); }} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
@@ -9925,14 +9996,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                 const cur = activeRes[0]?.currency || '€';
                 return [
                   { label: 'Aktif Rezervasyon', value: activeRes.length, color: '#10b981', suffix: '' },
-                  { label: 'İptal', value: cancelledRes.length, color: '#ef4444', suffix: '' },
+                  { label: 'İptal', value: cancelledRes.length, color: '#ef4444', suffix: '', onClick: cancelledRes.length ? () => setShowCancelled(prev => ({...prev, [tour.id]: !prev[tour.id]})) : null, active: !!showCancelled[tour.id] },
                   { label: 'Toplam Ödenen', value: totalOdenen.toLocaleString('tr'), color: '#10b981', suffix: ` ${cur}` },
                   { label: 'Ödenmemiş', value: totalOdenmemis > 0 ? totalOdenmemis.toLocaleString('tr') : '0', color: totalOdenmemis > 0 ? '#ef4444' : '#64748b', suffix: ` ${cur}` },
                 ];
               })().map(s => (
-                <div key={s.label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '7px 8px', textAlign: 'center', border: `1px solid ${s.color}20` }}>
+                <div key={s.label} onClick={s.onClick || undefined} title={s.onClick ? (s.active ? 'İptal edenleri gizle' : 'İptal edenleri göster') : undefined} style={{ background: s.active ? `${s.color}26` : 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '7px 8px', textAlign: 'center', border: `1px solid ${s.active ? s.color : `${s.color}20`}`, cursor: s.onClick ? 'pointer' : 'default' }}>
                   <div style={{ fontSize: '15px', fontWeight: '700', color: s.color }}>{s.value}{s.suffix}</div>
-                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{s.label}</div>
+                  <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>{s.label}{s.onClick ? (s.active ? ' ▲' : ' ▼') : ''}</div>
                 </div>
               ))}
             </div>
@@ -13753,6 +13824,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
     notes: '',
+    roomCounts: {}, // { Single: 10, Double: 12, Twin: 5 } — anlaşmalı oda sayısı (kontenjan)
     reservations: []
   };
   const [hotelForm, setHotelForm] = useState(emptyHotel);
@@ -15270,6 +15342,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {titleCaseTr(h.city)}{h.country ? `, ${titleCaseTr(h.country)}` : ''}</p>
                   {h.phone && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>📞 {h.phone}</p>}
                   {h.bookingCode && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>🎫 {h.bookingCode}</p>}
+                  {HOTEL_ROOM_KINDS.some(k => parseInt(h.roomCounts?.[k], 10) > 0) && (
+                    <p style={{ margin: '4px 0', fontSize: '11px', color: '#60a5fa' }}>🛏️ {HOTEL_ROOM_KINDS.filter(k => parseInt(h.roomCounts?.[k], 10) > 0).map(k => `${k} ${parseInt(h.roomCounts[k], 10)}`).join(' · ')}</p>
+                  )}
                   <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span style={{ color: '#94a3b8' }}>📅 {resCount} rezervasyon</span>
                     <span style={{ color: '#10b981', fontWeight: '600' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</span>
@@ -15726,6 +15801,22 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <input type="text" value={hotelForm.season} onChange={e => setHotelForm({...hotelForm, season: e.target.value})} placeholder="örn: Haziran-Eylül 2026" style={inputStyle} />
           </div>
 
+          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#60a5fa' }}>🛏️ Oda Sayısı (kontenjan)</h3>
+            <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Otelle anlaşılan oda sayıları. Otel sayfasında rezervasyonlara göre dolu / boş gösterilir.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+              {HOTEL_ROOM_KINDS.map(k => (
+                <div key={k}>
+                  <label style={labelStyle}>{k}</label>
+                  <input type="number" min="0" inputMode="numeric" value={hotelForm.roomCounts?.[k] ?? ''} placeholder="0"
+                    onChange={e => { const v = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0); setHotelForm({ ...hotelForm, roomCounts: { ...(hotelForm.roomCounts || {}), [k]: v } }); }}
+                    style={inputStyle} />
+                </div>
+              ))}
+            </div>
+            {(() => { const t = HOTEL_ROOM_KINDS.reduce((s, k) => s + (parseInt(hotelForm.roomCounts?.[k], 10) || 0), 0); return t > 0 ? <div style={{ marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}>Toplam: <b style={{ color: '#e8f1f8' }}>{t} oda</b></div> : null; })()}
+          </div>
+
           <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
               <div>
@@ -16001,6 +16092,44 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan Tahsilat</div>
           </div>
         </div>
+
+        {/* 🛏️ Oda durumu — kontenjan vs en yoğun gece */}
+        {(() => {
+          const usage = hotelRoomUsage(h);
+          const kinds = HOTEL_ROOM_KINDS.filter(k => parseInt(h.roomCounts?.[k], 10) > 0 || usage[k].max > 0);
+          if (!kinds.length) return null;
+          return (
+            <div style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ fontSize: '13px', color: '#60a5fa', fontWeight: '600' }}>🛏️ Oda Durumu</div>
+                {!HOTEL_ROOM_KINDS.some(k => parseInt(h.roomCounts?.[k], 10) > 0) && <button onClick={() => openEditHotel(h)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}>Oda sayılarını gir</button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+                {kinds.map(k => {
+                  const total = parseInt(h.roomCounts?.[k], 10) || 0;
+                  const used = usage[k].max;
+                  const free = total - used;
+                  const over = total > 0 && used > total;
+                  const color = !total ? '#94a3b8' : over ? '#ef4444' : free === 0 ? '#f59e0b' : '#10b981';
+                  const pct = total ? Math.min(100, Math.round(used / total * 100)) : 0;
+                  return (
+                    <div key={k} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${color}40`, borderRadius: '8px', padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#e8f1f8' }}>{k}</span>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color }}>{used}{total ? ` / ${total}` : ''} dolu</span>
+                      </div>
+                      {total > 0 && <div style={{ height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', margin: '7px 0 5px', overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: color }} /></div>}
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        {!total ? 'Kontenjan girilmemiş' : over ? `⚠️ ${used - total} oda fazla rezervasyon` : free === 0 ? 'Kontenjan doldu' : `${free} oda boş`}
+                        {usage[k].day && used > 0 ? ` · en yoğun gece ${formatDate(usage[k].day)}` : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
@@ -19335,7 +19464,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} {...qa('customers')} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;

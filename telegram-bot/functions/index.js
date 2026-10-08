@@ -641,11 +641,19 @@ const savePassport = async (db, custs, json, img) => {
 
   // TC/pasaport no ile bulunamadı ama aynı ad-soyad + doğum tarihi var → TC/pasaport no yanlış okunmuş olabilir;
   // mükerrer müşteri açma (Gonca Aktekın vakası: TC 3 hane eksik, pasaport no hatalı okundu)
+  let renewNote = '';
   if (!cust && json.birthDate) {
     const same = custs.filter(c => c.birthDate === json.birthDate && namesMatch(`${fn} ${ln}`, `${c.firstName || ''} ${c.lastName || ''}`));
-    // Tek eşleşme, kayıtta TC yok ve okunan TC geçerli → aynı kişinin yeni pasaportu, mevcut kayda ekle
-    if (same.length === 1 && !String(same[0].tcKimlik || '').trim() && isValidTc(json.tcKimlik)) cust = same[0];
-    else if (same.length) {
+    // Tek eşleşme → aynı kişinin yeni (yenilenen) pasaportu, mevcut kayda ekle. Sadece okunan TC GEÇERLİ ve
+    // kayıttaki geçerli TC'den FARKLIYSA durulur (aynı ad + doğum tarihli iki ayrı kişi olabilir).
+    // TC okunamadıysa / geçersiz okunduysa kayıttaki TC korunur (Bekir Kerem Can vakası: pasaport yenilendi, TC okunmadı).
+    const readTc = String(json.tcKimlik || '').trim();
+    const exTc = same.length === 1 ? String(same[0].tcKimlik || '').trim() : '';
+    const tcConflict = isValidTc(readTc) && isValidTc(exTc) && readTc !== exTc;
+    if (same.length === 1 && !tcConflict) {
+      cust = same[0];
+      renewNote = `\nℹ️ TC/pasaport no ile bulunamadı; aynı ad-soyad + doğum tarihli kayda eklendi${isValidTc(exTc) && readTc !== exTc ? ` (kayıttaki TC ${exTc} korundu)` : ''}. Pasaport no'yu kontrol edin.`;
+    } else if (same.length) {
       const list = same.map(c => { let p = []; try { p = JSON.parse(c.passports || '[]'); } catch {} return `• ${c.firstName} ${c.lastName} (TC: ${c.tcKimlik || 'YOK'}, Pasaport: ${p.map(x => x.passportNo).filter(Boolean).join(', ') || '-'})`; }).join('\n');
       return { text: `⚠️ Aynı ad-soyad ve doğum tarihiyle kayıt var:\n${list}\n\nOkunan: TC ${json.tcKimlik || '-'}, Pasaport ${json.passportNo || '-'} — yanlış okunmuş olabilir. Mükerrer kayıt açılmadı; CRM'den kontrol edin.`, custId: null };
     }
@@ -670,12 +678,12 @@ const savePassport = async (db, custs, json, img) => {
     await ref.doc(custDocId2).set({
       birthDate: json.birthDate || cust.birthDate || '',
       birthPlace: json.birthPlace || cust.birthPlace || '',
-      tcKimlik: json.tcKimlik || cust.tcKimlik || '',
+      tcKimlik: (isValidTc(json.tcKimlik) ? json.tcKimlik : '') || cust.tcKimlik || json.tcKimlik || '',
       gender: json.gender || cust.gender || '',
       passports: JSON.stringify(ps),
       verified: false
     }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${tcWarn}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${tcWarn}${renewNote}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
   } else {
     const id = genId();
     await ref.doc(String(id)).set({
@@ -1402,3 +1410,4 @@ exports.bildirimOtomatik = require('./bildirim').bildirimOtomatik; // her gün 1
 exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
+exports.vizeEvrakMail = require('./evrakmail').vizeEvrakMail; // Atama Bekliyor → evrak maili; randevu → süreli evrak maili (15 dk'da bir)
