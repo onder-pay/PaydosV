@@ -2938,6 +2938,38 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
   );
 }
 
+// 🛏️ Otel oda kontenjanı: Single / Double / Twin
+const HOTEL_ROOM_KINDS = ['Single', 'Double', 'Twin'];
+const roomKindOf = (rt) => {
+  const s = normalizeTr(rt);
+  if (/twin|twn/.test(s)) return 'Twin';
+  if (/sing|sgl|tek/.test(s)) return 'Single';
+  if (/doub|dbl|cift|dubl/.test(s)) return 'Double';
+  return '';
+};
+// Her oda tipi için en yoğun gecede dolu oda sayısı (1 rezervasyon = 1 oda; iptaller sayılmaz).
+// Farklı tarihlerdeki rezervasyonlar üst üste binmediği için toplam değil, gece bazında bakılır.
+const hotelRoomUsage = (h) => {
+  const per = {};
+  (h?.reservations || []).filter(r => !r.cancelled).forEach(r => {
+    const k = roomKindOf(r.roomType);
+    const a = /^\d{4}-\d{2}-\d{2}/.test(String(r.checkIn || '')) ? new Date(`${String(r.checkIn).slice(0, 10)}T12:00:00Z`) : null;
+    const b = /^\d{4}-\d{2}-\d{2}/.test(String(r.checkOut || '')) ? new Date(`${String(r.checkOut).slice(0, 10)}T12:00:00Z`) : null;
+    if (!k || !a || !b) return;
+    for (let d = new Date(a), i = 0; d < b && i < 400; d.setUTCDate(d.getUTCDate() + 1), i++) {
+      const key = d.toISOString().slice(0, 10);
+      (per[k] = per[k] || {})[key] = (per[k][key] || 0) + 1;
+    }
+  });
+  const out = {};
+  HOTEL_ROOM_KINDS.forEach(k => {
+    let max = 0, day = '';
+    Object.entries(per[k] || {}).forEach(([dd, c]) => { if (c > max || (c === max && dd < day)) { max = c; day = dd; } });
+    out[k] = { max, day };
+  });
+  return out;
+};
+
 // 📥 Tur Excel — sütunları seçilebilir tek dışa aktarma (eski "Tam Excel" + "Liste Excel")
 const TOUR_XLS_COLS = [
   { k: 'sNo', l: 'S.No', w: 6 },
@@ -13754,6 +13786,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
     notes: '',
+    roomCounts: {}, // { Single: 10, Double: 12, Twin: 5 } — anlaşmalı oda sayısı (kontenjan)
     reservations: []
   };
   const [hotelForm, setHotelForm] = useState(emptyHotel);
@@ -15271,6 +15304,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {titleCaseTr(h.city)}{h.country ? `, ${titleCaseTr(h.country)}` : ''}</p>
                   {h.phone && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>📞 {h.phone}</p>}
                   {h.bookingCode && <p style={{ margin: '4px 0', fontSize: '11px', color: '#64748b' }}>🎫 {h.bookingCode}</p>}
+                  {HOTEL_ROOM_KINDS.some(k => parseInt(h.roomCounts?.[k], 10) > 0) && (
+                    <p style={{ margin: '4px 0', fontSize: '11px', color: '#60a5fa' }}>🛏️ {HOTEL_ROOM_KINDS.filter(k => parseInt(h.roomCounts?.[k], 10) > 0).map(k => `${k} ${parseInt(h.roomCounts[k], 10)}`).join(' · ')}</p>
+                  )}
                   <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span style={{ color: '#94a3b8' }}>📅 {resCount} rezervasyon</span>
                     <span style={{ color: '#10b981', fontWeight: '600' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</span>
@@ -15727,6 +15763,22 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <input type="text" value={hotelForm.season} onChange={e => setHotelForm({...hotelForm, season: e.target.value})} placeholder="örn: Haziran-Eylül 2026" style={inputStyle} />
           </div>
 
+          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#60a5fa' }}>🛏️ Oda Sayısı (kontenjan)</h3>
+            <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Otelle anlaşılan oda sayıları. Otel sayfasında rezervasyonlara göre dolu / boş gösterilir.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+              {HOTEL_ROOM_KINDS.map(k => (
+                <div key={k}>
+                  <label style={labelStyle}>{k}</label>
+                  <input type="number" min="0" inputMode="numeric" value={hotelForm.roomCounts?.[k] ?? ''} placeholder="0"
+                    onChange={e => { const v = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0); setHotelForm({ ...hotelForm, roomCounts: { ...(hotelForm.roomCounts || {}), [k]: v } }); }}
+                    style={inputStyle} />
+                </div>
+              ))}
+            </div>
+            {(() => { const t = HOTEL_ROOM_KINDS.reduce((s, k) => s + (parseInt(hotelForm.roomCounts?.[k], 10) || 0), 0); return t > 0 ? <div style={{ marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}>Toplam: <b style={{ color: '#e8f1f8' }}>{t} oda</b></div> : null; })()}
+          </div>
+
           <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
               <div>
@@ -16002,6 +16054,44 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan Tahsilat</div>
           </div>
         </div>
+
+        {/* 🛏️ Oda durumu — kontenjan vs en yoğun gece */}
+        {(() => {
+          const usage = hotelRoomUsage(h);
+          const kinds = HOTEL_ROOM_KINDS.filter(k => parseInt(h.roomCounts?.[k], 10) > 0 || usage[k].max > 0);
+          if (!kinds.length) return null;
+          return (
+            <div style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ fontSize: '13px', color: '#60a5fa', fontWeight: '600' }}>🛏️ Oda Durumu</div>
+                {!HOTEL_ROOM_KINDS.some(k => parseInt(h.roomCounts?.[k], 10) > 0) && <button onClick={() => openEditHotel(h)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}>Oda sayılarını gir</button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+                {kinds.map(k => {
+                  const total = parseInt(h.roomCounts?.[k], 10) || 0;
+                  const used = usage[k].max;
+                  const free = total - used;
+                  const over = total > 0 && used > total;
+                  const color = !total ? '#94a3b8' : over ? '#ef4444' : free === 0 ? '#f59e0b' : '#10b981';
+                  const pct = total ? Math.min(100, Math.round(used / total * 100)) : 0;
+                  return (
+                    <div key={k} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${color}40`, borderRadius: '8px', padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#e8f1f8' }}>{k}</span>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color }}>{used}{total ? ` / ${total}` : ''} dolu</span>
+                      </div>
+                      {total > 0 && <div style={{ height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', margin: '7px 0 5px', overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: color }} /></div>}
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        {!total ? 'Kontenjan girilmemiş' : over ? `⚠️ ${used - total} oda fazla rezervasyon` : free === 0 ? 'Kontenjan doldu' : `${free} oda boş`}
+                        {usage[k].day && used > 0 ? ` · en yoğun gece ${formatDate(usage[k].day)}` : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Anlaşma fiyatları */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
