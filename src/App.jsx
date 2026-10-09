@@ -713,6 +713,8 @@ const getDaysLeft = (dateStr) => { const date = safeParseDate(dateStr); if (!dat
 const formatWhatsAppPhone = (phone) => {
   if (!phone) return '';
   const digits = String(phone).replace(/\D/g, '');
+  // Telefon alanına yanlışlıkla TC yazılmışsa (11 hane, 0 ile başlamaz, TC algoritması tutar) WhatsApp'a TC gitmesin
+  if (digits.length === 11 && !digits.startsWith('0') && isValidTc(digits)) return '';
   if (digits.startsWith('00')) return digits.slice(2);   // 0049... uluslararası önek
   if (digits.startsWith('90')) return digits;            // +90 5XX...
   if (digits.startsWith('0')) return '90' + digits.slice(1); // 05XX... (yerel)
@@ -856,8 +858,11 @@ const titleCaseTr = (s) => {
 
 // Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
-const placeTr = (s) => {
-  if (!s) return '';
+// OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
+const cleanPlaceOcr = (s) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); if (w.length > 1 && w[0].replace(/[^\p{L}]/gu, '').length <= 3) w.shift(); return w.join(' '); };
+const placeTr = (s0) => {
+  if (!s0) return '';
+  const s = cleanPlaceOcr(s0);
   const n = normalizeTr(s);
   const hit = turkishProvinces.find(p => normalizeTr(p) === n) || PLACE_ALIAS[n];
   return hit || titleCaseTr(s);
@@ -9010,7 +9015,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       const tpl = (appSettings?.shareMessageTemplate || '').trim() || DEFAULT_SHARE_MSG;
       let text = tpl.replace(/\{isim\}/g, res.customerName || '').replace(/\{tur\}/g, tour.name || 'Tur').replace(/\{belgeler\}/g, belgeler).replace(/\{link\}/g, link);
       if (!text.includes(link)) text += `\n${link}`; // şablonda {link} unutulsa da link gitsin
-      setShareReady({ link, text, phone: formatWhatsAppPhone(res.customerPhone), name: res.customerName, count: docs.length + (flights.length ? 1 : 0) });
+      // Telefon: önce müşteri kaydındaki, sonra rezervasyondaki — TC'ye benzeyen değer atlanır (formatWhatsAppPhone boş döner)
+      const cust = (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId)));
+      const phone = [cust?.phone, res.customerPhone].map(formatWhatsAppPhone).find(Boolean) || '';
+      setShareReady({ link, text, phone, name: res.customerName, count: docs.length + (flights.length ? 1 : 0) });
     } catch (e) {
       showToast?.('Link hazırlanamadı: ' + e.message, 'error');
     } finally { setShareBusy(''); }
@@ -9936,7 +9944,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                   {!shareReady.text.includes(shareReady.link) && <div style={{ fontSize: '11px', color: '#f59e0b', marginBottom: '8px' }}>⚠️ Mesajda link yok — müşteri belgelere ulaşamaz</div>}
                   <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '12px' }}>Kalıcı değişiklik için: Ayarlar → Tur Ayarları → Belge linki mesajı</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <a href={`https://wa.me/${shareReady.phone || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
+                    <input value={shareReady.phone || ''} onChange={e => setShareReady({ ...shareReady, phone: e.target.value.replace(/[^\d+ ]/g, '') })} placeholder="WhatsApp numarası (boşsa kişi seçilir)" style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
+                    <a href={`https://wa.me/${formatWhatsAppPhone(shareReady.phone) || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
                     <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Mesajı kopyala</button>
                     <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.link); showToast?.('Link kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı — linki elle seçin', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Linki Kopyala</button>
                     <button onClick={() => window.open(shareReady.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
