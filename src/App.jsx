@@ -17804,9 +17804,6 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
             <button onClick={() => setActiveTab('mailSettings')} style={{ padding: '12px 16px', background: activeTab === 'mailSettings' ? 'rgba(20,184,166,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'mailSettings' ? '1px solid rgba(20,184,166,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'mailSettings' ? '#14b8a6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'mailSettings' ? '600' : '400' }}>
               📧 Vize Mail Ayarları
             </button>
-            <button onClick={() => setActiveTab('tourMailSettings')} style={{ padding: '12px 16px', background: activeTab === 'tourMailSettings' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'tourMailSettings' ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'tourMailSettings' ? '#3b82f6' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'tourMailSettings' ? '600' : '400' }}>
-              🎫 Tur Mail Ayarları
-            </button>
             <button onClick={() => setActiveTab('attachmentSettings')} style={{ padding: '12px 16px', background: activeTab === 'attachmentSettings' ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'attachmentSettings' ? '1px solid rgba(168,85,247,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'attachmentSettings' ? '#a855f7' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'attachmentSettings' ? '600' : '400' }}>
               📎 Dosya Ekleri
             </button>
@@ -18744,9 +18741,12 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         <MailSettingsPanel mode="visa" appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
       )}
 
-      {/* TUR MAIL AYARLARI */}
-      {activeTab === 'tourMailSettings' && isAdmin && (
-        <MailSettingsPanel mode="tour" appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+      {/* TUR MAIL AYARLARI — Turlar sekmesinin altında (ayrı sekme kaldırıldı) */}
+      {(activeTab === 'tourSettings' || activeTab === 'tourMailSettings') && isAdmin && (
+        <div style={{ marginTop: '20px' }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: '16px', color: '#3b82f6' }}>📧 Tur Mail Ayarları</h3>
+          <MailSettingsPanel mode="tour" appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />
+        </div>
       )}
 
       {/* DOSYA EKLERİ */}
