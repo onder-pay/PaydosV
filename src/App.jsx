@@ -17889,6 +17889,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
   const [editingUser, setEditingUser] = useState(null);
   const [userFormData, setUserFormData] = useState({});
   const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
+  const [showPwForm, setShowPwForm] = useState(false); // şifre formu açılır/kapanır
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [newProcessor, setNewProcessor] = useState('');
@@ -18768,130 +18769,77 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       )}
 
       {/* PROFİLİM */}
-      {activeTab === 'users' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '24px' }}>
-              {currentUser?.name?.[0] || 'U'}
+      {/* 👤 PROFİL + ŞİFRE + KULLANICILAR — tek düzen */}
+      {activeTab === 'users' && (() => {
+        const roleOf = (r) => r === 'admin' ? { label: 'Yönetici', icon: '👑', color: '#a78bfa', bg: 'rgba(139,92,246,0.15)', grad: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }
+          : r === 'muhasebe' ? { label: 'Muhasebe', icon: '🧮', color: '#34d399', bg: 'rgba(16,185,129,0.15)', grad: 'linear-gradient(135deg, #10b981, #059669)' }
+          : { label: 'Kullanıcı', icon: '👤', color: '#60a5fa', bg: 'rgba(59,130,246,0.15)', grad: 'linear-gradient(135deg, #3b82f6, #2563eb)' };
+        const me = roleOf(currentUser?.role);
+        const card = { background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)' };
+        const ghost = (c) => ({ padding: '8px 14px', background: `${c}1a`, border: `1px solid ${c}55`, borderRadius: '8px', color: c, cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap', fontFamily: 'inherit' });
+        const pwIn = { width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' };
+        return (<>
+          {/* Profil */}
+          <div style={{ ...card, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '20px', flexShrink: 0 }}>{currentUser?.name?.[0] || 'U'}</div>
+            <div style={{ flex: 1, minWidth: '180px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '16px', fontWeight: '700', color: '#fff' }}>{currentUser?.name}</span>
+                <span style={{ fontSize: '11px', padding: '2px 10px', borderRadius: '20px', background: me.bg, color: me.color }}>{me.icon} {me.label}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser?.email}</div>
             </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '18px' }}>{currentUser?.name}</h3>
-              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{currentUser?.email}</p>
-              <span style={{ display: 'inline-block', marginTop: '8px', fontSize: '11px', padding: '4px 12px', borderRadius: '20px', background: currentUser?.role === 'admin' ? 'rgba(139,92,246,0.2)' : currentUser?.role === 'muhasebe' ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)', color: currentUser?.role === 'admin' ? '#8b5cf6' : currentUser?.role === 'muhasebe' ? '#10b981' : '#3b82f6' }}>
-                {currentUser?.role === 'admin' ? '👑 Yönetici' : currentUser?.role === 'muhasebe' ? '🧮 Muhasebe' : '👤 Kullanıcı'}
-              </span>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '10px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px' }}>
-              <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>Ad Soyad</p>
-              <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{currentUser?.name}</p>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px', minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>E-posta</p>
-              <p style={{ margin: '4px 0 0', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</p>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '10px' }}>
-              <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>Rol</p>
-              <p style={{ margin: '4px 0 0', fontSize: '14px' }}>{currentUser?.role === 'admin' ? 'Yönetici' : currentUser?.role === 'muhasebe' ? 'Muhasebe' : 'Kullanıcı'}</p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => openEditUser(currentUser)} style={ghost('#60a5fa')}>✏️ Profili düzenle</button>
+              <button type="button" onClick={() => setShowPwForm(v => !v)} style={ghost('#f59e0b')}>{showPwForm ? '✕ Kapat' : '🔐 Şifre değiştir'}</button>
             </div>
           </div>
 
-          <button onClick={() => openEditUser(currentUser)} style={{ width: '100%', marginTop: '20px', padding: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
-            ✏️ Profili Düzenle
-          </button>
-        </div>
-      )}
-
-      {/* ŞİFRE DEĞİŞTİR */}
-      {activeTab === 'users' && (
-        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🔐</div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Şifre Değiştir</h3>
-              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Hesap güvenliğiniz için şifrenizi düzenli değiştirin</p>
-            </div>
-          </div>
-
-          {passwordError && (
-            <div style={{ background: 'rgba(239,68,68,0.15)', padding: '12px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(239,68,68,0.3)' }}>
-              <p style={{ margin: 0, fontSize: '13px', color: '#ef4444' }}>❌ {passwordError}</p>
+          {/* Şifre — tıklanınca açılır */}
+          {(showPwForm || passwordError || passwordSuccess) && (
+            <div style={{ ...card, padding: '16px 18px', marginTop: '12px' }}>
+              {passwordError && <div style={{ background: 'rgba(239,68,68,0.12)', padding: '10px 12px', borderRadius: '8px', marginBottom: '12px', border: '1px solid rgba(239,68,68,0.3)', fontSize: '13px', color: '#f87171' }}>❌ {passwordError}</div>}
+              {passwordSuccess && <div style={{ background: 'rgba(16,185,129,0.12)', padding: '10px 12px', borderRadius: '8px', marginBottom: '12px', border: '1px solid rgba(16,185,129,0.3)', fontSize: '13px', color: '#34d399' }}>✅ {passwordSuccess}</div>}
+              {showPwForm && (
+                <form onSubmit={handlePasswordChange} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+                  <div><label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Mevcut şifre</label><input type="password" autoComplete="current-password" value={passwordData.current} onChange={e => setPasswordData({ ...passwordData, current: e.target.value })} style={pwIn} required /></div>
+                  <div><label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Yeni şifre</label><input type="password" autoComplete="new-password" value={passwordData.new} onChange={e => setPasswordData({ ...passwordData, new: e.target.value })} style={pwIn} required /></div>
+                  <div><label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Yeni şifre (tekrar)</label><input type="password" autoComplete="new-password" value={passwordData.confirm} onChange={e => setPasswordData({ ...passwordData, confirm: e.target.value })} style={pwIn} required /></div>
+                  <button type="submit" style={{ padding: '10px 18px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#0c1929', fontWeight: '700', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Değiştir</button>
+                </form>
+              )}
             </div>
           )}
 
-          {passwordSuccess && (
-            <div style={{ background: 'rgba(16,185,129,0.15)', padding: '12px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(16,185,129,0.3)' }}>
-              <p style={{ margin: 0, fontSize: '13px', color: '#10b981' }}>✅ {passwordSuccess}</p>
+          {/* Kullanıcılar (sadece yönetici) */}
+          {isAdmin && (
+            <div style={{ ...card, marginTop: '16px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>👥 Kullanıcılar <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '400' }}>({users.length})</span></div>
+                <button type="button" onClick={openNewUserForm} style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '8px', padding: '8px 16px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>➕ Yeni Kullanıcı</button>
+              </div>
+              {[...users].sort((x, y) => (x.id === currentUser.id ? -1 : y.id === currentUser.id ? 1 : 0) || (x.role === 'admin' ? -1 : 0) - (y.role === 'admin' ? -1 : 0) || String(x.name || '').localeCompare(String(y.name || ''), 'tr')).map(user => {
+                const ri = roleOf(user.role);
+                const isMe = user.id === currentUser.id;
+                return (
+                  <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 18px', borderTop: '1px solid rgba(255,255,255,0.05)', background: isMe ? 'rgba(245,158,11,0.05)' : 'transparent' }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: ri.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>{user.name?.[0] || 'U'}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: '#e8f1f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}{isMe && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#f59e0b' }}>(sen)</span>}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
+                    </div>
+                    <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '20px', background: ri.bg, color: ri.color, flexShrink: 0, whiteSpace: 'nowrap' }}>{ri.icon} {ri.label}</span>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <button type="button" title="Düzenle" onClick={() => openEditUser(user)} style={{ width: '32px', height: '32px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '13px' }}>✏️</button>
+                      <button type="button" title={isMe ? 'Kendinizi silemezsiniz' : 'Sil'} disabled={isMe} onClick={() => !isMe && deleteUser(user.id)} style={{ width: '32px', height: '32px', background: isMe ? 'transparent' : 'rgba(239,68,68,0.1)', border: `1px solid ${isMe ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '8px', color: '#ef4444', cursor: isMe ? 'default' : 'pointer', fontSize: '13px', opacity: isMe ? 0.25 : 1 }}>🗑️</button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-
-          <form onSubmit={handlePasswordChange}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Mevcut Şifre *</label>
-                <input type="password" value={passwordData.current} onChange={e => setPasswordData({...passwordData, current: e.target.value})} placeholder="••••••••" style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Yeni Şifre *</label>
-                <input type="password" value={passwordData.new} onChange={e => setPasswordData({...passwordData, new: e.target.value})} placeholder="••••••••" style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Yeni Şifre Tekrar *</label>
-                <input type="password" value={passwordData.confirm} onChange={e => setPasswordData({...passwordData, confirm: e.target.value})} placeholder="••••••••" style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' }} required />
-              </div>
-              <button type="submit" style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', color: '#0c1929', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>
-                🔐 Şifreyi Değiştir
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* KULLANICILAR (Sadece Admin) */}
-      {activeTab === 'users' && isAdmin && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <p style={{ margin: 0, fontSize: '14px', color: '#94a3b8' }}>Toplam {users.length} kullanıcı</p>
-            <button onClick={openNewUserForm} style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>
-              ➕ Yeni Kullanıcı
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-            {users.map(user => {
-              const roleInfo = user.role === 'admin' ? { label: 'Yönetici', color: '#8b5cf6', bg: 'rgba(139,92,246,0.2)', grad: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }
-                : user.role === 'muhasebe' ? { label: 'Muhasebe', color: '#10b981', bg: 'rgba(16,185,129,0.2)', grad: 'linear-gradient(135deg, #10b981, #059669)' }
-                : { label: 'Kullanıcı', color: '#3b82f6', bg: 'rgba(59,130,246,0.2)', grad: 'linear-gradient(135deg, #3b82f6, #2563eb)' };
-              return (
-              <div key={user.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '10px', border: user.id === currentUser.id ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: roleInfo.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
-                    {user.name?.[0] || 'U'}
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <h4 style={{ margin: 0, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {user.name}
-                      {user.id === currentUser.id && <span style={{ marginLeft: '6px', fontSize: '9px', color: '#f59e0b' }}>(Sen)</span>}
-                    </h4>
-                    <p style={{ margin: '1px 0 0', fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</p>
-                  </div>
-                  <span style={{ fontSize: '9px', padding: '3px 8px', borderRadius: '20px', background: roleInfo.bg, color: roleInfo.color, flexShrink: 0 }}>
-                    {roleInfo.label}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={() => openEditUser(user)} style={{ flex: 1, padding: '6px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '7px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px' }}>✏️ Düzenle</button>
-                  {user.id !== currentUser.id && (
-                    <button onClick={() => deleteUser(user.id)} style={{ flex: 1, padding: '6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>
-                  )}
-                </div>
-              </div>
-            );})}
-          </div>
-        </div>
-      )}
+        </>);
+      })()}
 
       {/* KULLANICI FORM MODAL */}
       {showUserForm && (
