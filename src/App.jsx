@@ -9015,7 +9015,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
         // Sayfadaki otel kartı (adres + yol tarifi) ve acil iletişim
         hotel: hi.name ? { name: hi.name || '', address: hi.address || '', city: hi.city || '', country: hi.country || '', phone: hi.phone || '' } : null,
-        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur', hours: appSettings?.shareContact?.hours || '' }
+        contact: { phone: appSettings?.shareContact?.phone || '+90 258 263 71 76', whatsapp: tour.contactWhatsapp || appSettings?.shareContact?.whatsapp || '', instagram: appSettings?.shareContact?.instagram ?? 'paydostur', hours: appSettings?.shareContact?.hours || '' }
       });
       if (res.shareToken !== token) await patchTourReservations(tour.id, { [res.id]: { shareToken: token } });
       const link = `${window.location.origin}/b/${token}`;
@@ -10693,6 +10693,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                     style={inputStyle}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>💬 Bu turun WhatsApp numarası (belge linkindeki "Yardıma mı ihtiyacınız var?" kartı)</label>
+                <input type="tel" value={formData.contactWhatsapp || ''} onChange={e => setFormData({ ...formData, contactWhatsapp: e.target.value.replace(/[^\d+ ]/g, '') })} placeholder={appSettings?.shareContact?.whatsapp ? `Boşsa genel numara: ${appSettings.shareContact.whatsapp}` : '+90 5xx xxx xx xx (boşsa Ayarlar → Turlar\'daki genel numara)'} style={inputStyle} />
               </div>
 
               <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '10px' }}>
