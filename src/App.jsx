@@ -2948,6 +2948,7 @@ const hotelRoomKinds = (h, baseTypes = []) => {
   (baseTypes || []).forEach(add);
   (h?.priceList || []).forEach(p => Object.keys(p?.rates || {}).forEach(add));
   Object.keys(h?.roomCounts || {}).forEach(add);
+  Object.values(h?.roomAllotment || {}).forEach(day => Object.keys(day || {}).forEach(add));
   (h?.reservations || []).forEach(r => add(r.roomType));
   return out;
 };
@@ -2979,6 +2980,47 @@ const nightsBetween = (from, to) => { // from..to dahil (son gece)
   for (let d = new Date(`${from}T12:00:00Z`), e = new Date(`${to}T12:00:00Z`), i = 0; d <= e && i < 120; d.setUTCDate(d.getUTCDate() + 1), i++) out.push(d.toISOString().slice(0, 10));
   return out;
 };
+
+// 📄 Otel proformasını AI ile oku: gece × oda tipi kontenjan + ödeme takvimi + iptal/iade koşulları.
+// Metinli PDF'te metin tarayıcıda çıkarılıp gönderilir (hızlı, ucuz); taranmış PDF / görselde dosyanın kendisi gider.
+const readHotelProforma = async (file, roomTypes) => {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  let text = '';
+  if (isPdf) { try { text = (await pdfFileText(file)).replace(/\s+/g, ' ').trim(); } catch { text = ''; } }
+  const toB64 = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onloadend = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
+  const prompt = `Bu bir otel proforması / grup rezervasyon teyidi. SADECE geçerli JSON döndür, başka metin yazma:
+{"hotelName":"","proformaNo":"","currency":"EUR","total":0,
+ "nights":[{"date":"YYYY-MM-DD","rooms":[{"type":"","raw":"","count":0}]}],
+ "releaseDate":"YYYY-MM-DD veya boş",
+ "payments":[{"date":"YYYY-MM-DD","amount":0,"note":""}],
+ "cancellation":[{"date":"YYYY-MM-DD","text":""}],
+ "notes":""}
+Kurallar:
+- nights: her gece (konaklama tarihi) ve o gece her oda tipinden kaç oda. "20 x Bed & Breakfast TWIN" → count 20, raw "TWIN".
+- type: raw oda tipini şu listeden en uygun olanla eşleştir: ${JSON.stringify(roomTypes)}. Uygun yoksa raw'ı aynen yaz. (SUITE / Junior Suite → listede "Suit" geçen tip.)
+- payments: ödeme takvimi (depozito, ön ödeme, kalan bakiye). Tutar yoksa yüzdeyi note'a yaz ("%30 depozito"). Göreli tarihleri ("varıştan 30 gün önce") ilk geceye göre gerçek tarihe çevir.
+- cancellation: iptal / iade / no-show koşulları, tarih sırasıyla. text Türkçe ve kısa olsun: örn. "Bu tarihe kadar ücretsiz iptal", "%50 ceza", "İade yok". Göreli tarihleri gerçek tarihe çevir.
+- releaseDate: opsiyon / release / kontenjan iade son tarihi varsa.
+- total: KDV ve şehir vergisi dahil genel toplam. Sayılar nokta ondalıklı (84566.00).
+- Bulamadığın alanı boş bırak; tahmin etme.`;
+  const content = text.length > 200
+    ? [{ type: 'text', text: `PROFORMA METNİ (${file.name || 'proforma'}):\n${text.slice(0, 60000)}\n\n${prompt}` }]
+    : [isPdf ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: await toB64(file) } }
+             : { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: await toB64(file) } },
+       { type: 'text', text: prompt }];
+  const resp = await claudeRequest({
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 2000, output_config: { effort: 'low' }, messages: [{ role: 'user', content }] }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data?.error?.message || data?.error || `API ${resp.status}`);
+  if (data.stop_reason === 'refusal') throw new Error('AI bu belgeyi okumayı reddetti');
+  const out = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('AI yanıtı okunamadı');
+  return JSON.parse(m[0]);
+};
+const isYmd = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
 
 // 📥 Tur Excel — sütunları seçilebilir tek dışa aktarma (eski "Tam Excel" + "Liste Excel")
 const TOUR_XLS_COLS = [
@@ -13753,6 +13795,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [editingPricePeriod, setEditingPricePeriod] = useState(null);
   const [hotelPriceUploadBusy, setHotelPriceUploadBusy] = useState(false);
+  const [proformaBusy, setProformaBusy] = useState(false); // 📄 AI proforma okuma
   // Otel Düzenle ekranında, açık olan otele Excel'den fiyat dönemi yükleme
   const handleHotelPriceExcel = async (hotel, file, replaceMode) => {
     if (!file) return;
@@ -15357,6 +15400,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     const tot = ds.reduce((x, d) => x + Object.values(h.roomAllotment[d] || {}).reduce((y, v) => y + (parseInt(v, 10) || 0), 0), 0);
                     return tot > 0 ? <p style={{ margin: '4px 0', fontSize: '11px', color: '#60a5fa' }}>🛏️ Kontenjan {formatDate(ds[0])} – {formatDate(ds[ds.length - 1])} · {tot} oda-gece</p> : null;
                   })()}
+                  {(() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const nx = (h.hotelTerms?.payments || []).filter(x => isYmd(x.date) && x.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+                    if (!nx) return null;
+                    const n = Math.round((new Date(nx.date + 'T12:00:00Z') - new Date(today + 'T12:00:00Z')) / 86400000);
+                    return <p style={{ margin: '4px 0', fontSize: '11px', color: n <= 7 ? '#ef4444' : n <= 30 ? '#f59e0b' : '#34d399' }}>💳 Sonraki ödeme {formatDate(nx.date)}{nx.amount ? ` · ${Number(nx.amount).toLocaleString('tr-TR')} ${h.hotelTerms?.currency || '€'}` : ''} ({n === 0 ? 'bugün' : `${n} gün`})</p>;
+                  })()}
                   <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(245,158,11,0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span style={{ color: '#94a3b8' }}>📅 {resCount} rezervasyon</span>
                     <span style={{ color: '#10b981', fontWeight: '600' }}>{totalRevenue.toLocaleString('tr-TR')} {h.prices?.double?.currency || '€'}</span>
@@ -15828,8 +15878,42 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             const cellIn = { width: '100%', minWidth: '56px', padding: '7px 8px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '13px', textAlign: 'center', boxSizing: 'border-box' };
             return (
               <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '10px', padding: '14px' }}>
-                <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#60a5fa' }}>🛏️ Oda Kontenjanı (gece gece)</h3>
-                <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Otelin proformasındaki gibi her gece için oda tipine göre anlaşılan oda sayısı. Otel sayfasında rezervasyonlarla karşılaştırılır (dolu / boş / fazla).</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#60a5fa' }}>🛏️ Oda Kontenjanı (gece gece)</h3>
+                    <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Otelin proformasındaki gibi her gece için oda tipine göre anlaşılan oda sayısı. Elle girebilir ya da proformayı yükleyebilirsiniz. Otel sayfasında rezervasyonlarla karşılaştırılır (dolu / boş / fazla).</p>
+                  </div>
+                  <input type="file" accept="application/pdf,image/*" id="hotelProformaInput" style={{ display: 'none' }} onChange={async (e) => {
+                    const file = e.target.files?.[0]; e.target.value = '';
+                    if (!file) return;
+                    setProformaBusy(true);
+                    try {
+                      const r = await readHotelProforma(file, kinds);
+                      const nights = (r.nights || []).filter(n => isYmd(n.date));
+                      if (!nights.length && !(r.payments || []).length && !(r.cancellation || []).length) { showToast?.('Proformada kontenjan / ödeme bilgisi bulunamadı', 'warning'); return; }
+                      const nextAl = { ...(hotelForm.roomAllotment || {}) };
+                      nights.forEach(n => { const row = {}; (n.rooms || []).forEach(rm => { const t = String(rm.type || rm.raw || '').trim(); const c = parseInt(rm.count, 10) || 0; if (t && c > 0) row[t] = (row[t] || 0) + c; }); nextAl[n.date] = row; });
+                      const old = hotelForm.hotelTerms || {};
+                      const nid = () => Math.random().toString(36).slice(2, 9);
+                      const terms = {
+                        ...old,
+                        proformaNo: r.proformaNo || old.proformaNo || '',
+                        total: parseFloat(r.total) || old.total || '',
+                        currency: r.currency || old.currency || '€',
+                        releaseDate: isYmd(r.releaseDate) ? r.releaseDate : (old.releaseDate || ''),
+                        payments: (r.payments || []).length ? r.payments.map(x => ({ id: nid(), date: isYmd(x.date) ? x.date : '', amount: parseFloat(x.amount) || '', note: x.note || '' })) : (old.payments || []),
+                        cancellation: (r.cancellation || []).length ? r.cancellation.map(x => ({ id: nid(), date: isYmd(x.date) ? x.date : '', text: x.text || '' })) : (old.cancellation || []),
+                        notes: [old.notes, r.notes].filter(Boolean).join('\n'),
+                        source: file.name || '', importedAt: new Date().toISOString(),
+                      };
+                      setHotelForm(f => ({ ...f, roomAllotment: nextAl, hotelTerms: terms }));
+                      const rn = nights.reduce((x, n) => x + (n.rooms || []).reduce((y, rm) => y + (parseInt(rm.count, 10) || 0), 0), 0);
+                      showToast?.(`📄 Proforma okundu: ${nights.length} gece · ${rn} oda-gece · ${terms.payments.length} ödeme · ${terms.cancellation.length} iptal kuralı — kontrol edip Kaydet'e basın`, 'success');
+                    } catch (err) { showToast?.('Proforma okunamadı: ' + err.message, 'error'); }
+                    finally { setProformaBusy(false); }
+                  }} />
+                  <button type="button" disabled={proformaBusy} onClick={() => document.getElementById('hotelProformaInput')?.click()} style={{ padding: '9px 14px', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', cursor: proformaBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>{proformaBusy ? '⏳ Okunuyor...' : '📄 Proformadan oku (AI)'}</button>
+                </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '10px' }}>
                   <div><label style={labelStyle}>İlk gece</label><input type="date" id="alFrom" style={{ ...inputStyle, width: '160px' }} /></div>
                   <div><label style={labelStyle}>Son gece</label><input type="date" id="alTo" style={{ ...inputStyle, width: '160px' }} /></div>
@@ -15872,6 +15956,42 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     <div style={{ marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}>{dates.length} gece · toplam <b style={{ color: '#e8f1f8' }}>{total} oda-gece</b></div>
                   </div>
                 ) : <div style={{ fontSize: '12px', color: '#64748b' }}>Henüz gece eklenmedi. İlk ve son geceyi seçip "Geceleri ekle"ye basın.</div>}
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const t = hotelForm.hotelTerms || {};
+            const setT = (patch) => setHotelForm(f => ({ ...f, hotelTerms: { ...(f.hotelTerms || {}), ...patch } }));
+            const nid = () => Math.random().toString(36).slice(2, 9);
+            const listEd = (key, cols) => {
+              const rows = t[key] || [];
+              const upd = (id, patch) => setT({ [key]: rows.map(r => r.id === id ? { ...r, ...patch } : r) });
+              return (<>
+                {rows.map(r => (
+                  <div key={r.id} style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                    <input type="date" value={r.date || ''} onChange={e => upd(r.id, { date: e.target.value })} style={{ ...inputStyle, width: '150px', flex: 'none' }} />
+                    {cols.map(c => <input key={c.k} type={c.type || 'text'} value={r[c.k] ?? ''} placeholder={c.ph} onChange={e => upd(r.id, { [c.k]: c.type === 'number' ? (e.target.value === '' ? '' : parseFloat(e.target.value)) : e.target.value })} style={{ ...inputStyle, flex: c.flex || 1, minWidth: 0 }} />)}
+                    <button type="button" onClick={() => setT({ [key]: rows.filter(x => x.id !== r.id) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '15px' }}>×</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setT({ [key]: [...rows, { id: nid(), date: '' }] })} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>➕ Satır ekle</button>
+              </>);
+            };
+            return (
+              <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px', padding: '14px' }}>
+                <h3 style={{ margin: '0 0 4px', fontSize: '14px', color: '#34d399' }}>💳 Ödeme ve İptal Koşulları</h3>
+                <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>Proformadan otomatik dolar; elle de girilebilir. Otel sayfasında yaklaşan ödeme ve iptal tarihleri uyarı olarak görünür.{t.source ? ` · Kaynak: ${t.source}` : ''}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.3fr 1fr 0.6fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                  <div><label style={labelStyle}>Proforma No</label><input value={t.proformaNo || ''} onChange={e => setT({ proformaNo: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>Toplam tutar</label><input type="number" value={t.total ?? ''} onChange={e => setT({ total: e.target.value === '' ? '' : parseFloat(e.target.value) })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>Para</label><input value={t.currency || '€'} onChange={e => setT({ currency: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>Opsiyon / release</label><input type="date" value={t.releaseDate || ''} onChange={e => setT({ releaseDate: e.target.value })} style={inputStyle} /></div>
+                </div>
+                <label style={{ ...labelStyle, marginBottom: '6px' }}>Ödeme takvimi</label>
+                {listEd('payments', [{ k: 'amount', ph: 'Tutar', type: 'number', flex: 0.6 }, { k: 'note', ph: 'Açıklama (örn. %30 depozito)', flex: 1.4 }])}
+                <label style={{ ...labelStyle, margin: '12px 0 6px' }}>İptal / iade koşulları</label>
+                {listEd('cancellation', [{ k: 'text', ph: 'Kural (örn. bu tarihe kadar ücretsiz iptal, %50 ceza)', flex: 2 }])}
               </div>
             );
           })()}
@@ -16151,6 +16271,46 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan Tahsilat</div>
           </div>
         </div>
+
+        {/* 💳 Ödeme ve iptal koşulları */}
+        {(() => {
+          const t = h.hotelTerms || {};
+          const pays = (t.payments || []).filter(x => x.date || x.amount || x.note);
+          const cans = (t.cancellation || []).filter(x => x.date || x.text);
+          if (!pays.length && !cans.length && !t.releaseDate && !t.total) return null;
+          const today = new Date().toISOString().slice(0, 10);
+          const days = (d) => isYmd(d) ? Math.round((new Date(d + 'T12:00:00Z') - new Date(today + 'T12:00:00Z')) / 86400000) : null;
+          const tag = (d) => { const n = days(d); if (n == null) return { c: '#94a3b8', t: '' }; if (n < 0) return { c: '#64748b', t: 'geçti' }; if (n === 0) return { c: '#ef4444', t: 'bugün' }; if (n <= 7) return { c: '#ef4444', t: `${n} gün kaldı` }; if (n <= 30) return { c: '#f59e0b', t: `${n} gün kaldı` }; return { c: '#10b981', t: `${n} gün` }; };
+          const cur = t.currency || '€';
+          const row = (d, main, sub) => { const g = tag(d); return (
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', opacity: g.t === 'geçti' ? 0.55 : 1 }}>
+              <span style={{ width: '82px', flexShrink: 0, color: '#e8f1f8', fontWeight: '600' }}>{d ? formatDate(d) : '—'}</span>
+              <span style={{ flex: 1, color: '#e8f1f8' }}>{main}{sub ? <span style={{ color: '#94a3b8' }}> · {sub}</span> : null}</span>
+              {g.t && <span style={{ color: g.c, fontWeight: '600', whiteSpace: 'nowrap', fontSize: '11px' }}>{g.t}</span>}
+            </div>); };
+          return (
+            <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '13px', color: '#34d399', fontWeight: '600' }}>💳 Ödeme ve İptal Koşulları</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  {t.proformaNo && <span>Proforma {t.proformaNo}</span>}
+                  {t.total ? <span>Toplam <b style={{ color: '#e8f1f8' }}>{Number(t.total).toLocaleString('tr-TR')} {cur}</b></span> : null}
+                  {t.releaseDate && <span style={{ color: tag(t.releaseDate).c }}>Opsiyon {formatDate(t.releaseDate)}{tag(t.releaseDate).t ? ` (${tag(t.releaseDate).t})` : ''}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginBottom: '2px' }}>ÖDEME TAKVİMİ</div>
+                  {pays.length ? [...pays].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(x => <div key={x.id}>{row(x.date, x.amount ? `${Number(x.amount).toLocaleString('tr-TR')} ${cur}` : (x.note || 'Ödeme'), x.amount ? x.note : '')}</div>) : <div style={{ fontSize: '12px', color: '#64748b' }}>—</div>}
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginBottom: '2px' }}>İPTAL / İADE</div>
+                  {cans.length ? [...cans].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(x => <div key={x.id}>{row(x.date, x.text || '—')}</div>) : <div style={{ fontSize: '12px', color: '#64748b' }}>—</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 🛏️ Oda durumu — gece × oda tipi: dolu / kontenjan */}
         {(() => {
