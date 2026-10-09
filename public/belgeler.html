@@ -974,7 +974,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       if (wa && wa.charAt(0) === '0') wa = '90' + wa.slice(1); else if (wa && wa.length === 10) wa = '90' + wa;
       var ct = add(box, el('div', 'contact'));
       ct.appendChild(el('div', 'ic', '📞'));
-      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Yardıma mı ihtiyacınız var?')); ctx.appendChild(document.createTextNode('Paydos Turizm ekibi yanınızda.')); ct.appendChild(ctx);
+      var ctx = el('div', 'tx'); ctx.appendChild(el('b', '', 'Yardıma mı ihtiyacınız var?')); ctx.appendChild(document.createTextNode('Paydos Turizm ekibi yanınızda.')); if (cf.hours) { var hr = el('span', 'hrs'); hr.style.cssText = 'display:block;margin-top:3px;font-weight:600'; hr.textContent = '🕘 ' + String(cf.hours).slice(0, 120); ctx.appendChild(hr); } ct.appendChild(ctx);
       var bt = el('div', 'bt');
       if (wa.length >= 11) { var w = el('a', 'wa', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Merhaba, ' + (f.tourName || 'turum') + ' hakkında yardım almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; bt.appendChild(w); }
       var call = el('a', '', 'Ara'); call.href = 'tel:' + (ph.length >= 7 ? ph : '+902582637176'); bt.appendChild(call);
