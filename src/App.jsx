@@ -856,8 +856,11 @@ const titleCaseTr = (s) => {
 
 // Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
-const placeTr = (s) => {
-  if (!s) return '';
+// OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
+const cleanPlaceOcr = (s) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); if (w.length > 1 && w[0].replace(/[^\p{L}]/gu, '').length <= 3) w.shift(); return w.join(' '); };
+const placeTr = (s0) => {
+  if (!s0) return '';
+  const s = cleanPlaceOcr(s0);
   const n = normalizeTr(s);
   const hit = turkishProvinces.find(p => normalizeTr(p) === n) || PLACE_ALIAS[n];
   return hit || titleCaseTr(s);

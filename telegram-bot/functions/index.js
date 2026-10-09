@@ -586,8 +586,11 @@ const passportExpiryWarn = (expiryDate) => {
 const TR_ILLER = ['Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin','Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale','Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum','Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkari','Hatay','Isparta','Mersin','İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli','Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş','Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas','Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak','Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan','Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce'];
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
 const normTr = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().trim();
-const placeTr = (x) => {
-  if (!x) return '';
+// OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
+const cleanPlaceOcr = (s) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); if (w.length > 1 && w[0].replace(/[^\p{L}]/gu, '').length <= 3) w.shift(); return w.join(' '); };
+const placeTr = (x0) => {
+  if (!x0) return '';
+  const x = cleanPlaceOcr(x0);
   const n = normTr(x);
   return TR_ILLER.find(p => normTr(p) === n) || PLACE_ALIAS[n] || titleCaseTr(String(x).trim());
 };
