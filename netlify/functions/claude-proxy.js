@@ -16,6 +16,7 @@ const ALLOWED_ORIGINS = [
 
 // İzin verilen Claude modelleri (whitelist) — Haziran 2026 güncel modeller
 const ALLOWED_MODELS = [
+  'claude-opus-5-5', // otel proforması okuma
   'claude-fable-5',
   'claude-opus-4-8',
   'claude-sonnet-4-6',
