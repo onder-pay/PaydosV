@@ -722,6 +722,14 @@ const formatWhatsAppPhone = (phone) => {
   return digits;                                          // yabancı numara (+49, +44 ...) — olduğu gibi
 };
 
+// WhatsApp mesaj linki. wa.me yönlendirmesi 4 baytlık emojileri (📱 🔒 📄 🤝…) "�" yapıyor;
+// doğrudan WhatsApp adresi kullanılır: telefonda api.whatsapp.com, bilgisayarda web.whatsapp.com.
+const waUrl = (phone, text) => {
+  const p = String(phone || '').replace(/\D/g, '');
+  const mobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  return `${mobile ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send'}?${p ? `phone=${p}&` : ''}text=${encodeURIComponent(text || '')}`;
+};
+
 const generateUniqueId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -2763,7 +2771,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
             <label style={{ ...lbl, marginTop: '8px' }}>📱 WhatsApp numarası (müşteri veya firma yetkilisi)</label>
             <input value={ready.phone} onChange={e => setReady({ ...ready, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" style={inS} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-              <a href={`https://wa.me/${formatWhatsAppPhone(ready.phone) || ''}?text=${encodeURIComponent(ready.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: '#fff', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}>💬 WhatsApp'tan gönder</a>
+              <a href={waUrl(formatWhatsAppPhone(ready.phone) || '', ready.text)} target="_blank" rel="noopener noreferrer" style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: '#fff', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}>💬 WhatsApp'tan gönder</a>
               <button onClick={async () => { try { await navigator.clipboard.writeText(ready.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer' }}>📋 Mesajı kopyala</button>
               <button onClick={() => window.open(ready.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
               <button onClick={() => setReady(null)} style={{ padding: '8px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '12px' }}>← Belgelere geri dön</button>
@@ -3275,7 +3283,7 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
                 <div style={{ fontSize: '13px', fontWeight: 600 }}>{nameOf(r.c)} {r.isNew && <span style={{ fontSize: '10px', color: '#22c55e' }}>· yeni link</span>}</div>
                 <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.added.join(', ')}</div>
               </div>
-              <a href={`https://wa.me/${formatWhatsAppPhone(r.c.phone) || ''}?text=${encodeURIComponent(r.text)}`} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#22c55e', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>💬 Gönder</a>
+              <a href={waUrl(formatWhatsAppPhone(r.c.phone) || '', r.text)} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 12px', background: '#22c55e', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>💬 Gönder</a>
               <button onClick={() => window.open(r.link, '_blank')} style={{ ...inS, cursor: 'pointer' }}>👁️</button>
             </div>
           ))}
@@ -6962,7 +6970,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     
     const phone = visa.customerPhone.replace(/\D/g, '');
     const fullPhone = formatWhatsAppPhone(phone);
-    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
+    window.open(waUrl(fullPhone, message), '_blank');
   };
 
   const sendEmail = (visa) => {
@@ -7097,7 +7105,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const price = visa.visaPrice || visa.price || 0;
     const currency = visa.visaCurrency || visa.currency || '€';
     const msg = `Sayın ${visa.customerName || ''},\n\n${visa.country ? visa.country + ' ' : ''}${visa.visaDuration || visa.visaType || 'vize'} hizmet bedeli: ${price} ${currency}\n\nProforma faturanız ekte yer almaktadır.\n\nPaydos Turizm`;
-    window.open(`https://wa.me/${formatWhatsAppPhone(phone)}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(waUrl(formatWhatsAppPhone(phone), msg), '_blank');
     showToast?.('Proforma indirildi — WhatsApp\'ta dosyayı ekleyip gönderin', 'info');
   };
 
@@ -7842,7 +7850,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                   message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
                   const phone = rawPhone.replace(/\D/g, '');
                   const fullPhone = formatWhatsAppPhone(phone);
-                  window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                  window.open(waUrl(fullPhone, message), '_blank');
                 }} style={act('#25d366')}>📱 Randevu Bilgisi (WA)</button>}
                       <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={act('#60a5fa')}>📧 E-posta</button>
                       <button type="button" onClick={async () => {
@@ -9945,7 +9953,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                   <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '12px' }}>Kalıcı değişiklik için: Ayarlar → Tur Ayarları → Belge linki mesajı</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <input value={shareReady.phone || ''} onChange={e => setShareReady({ ...shareReady, phone: e.target.value.replace(/[^\d+ ]/g, '') })} placeholder="WhatsApp numarası (boşsa kişi seçilir)" style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '13px' }} />
-                    <a href={`https://wa.me/${formatWhatsAppPhone(shareReady.phone) || ''}?text=${encodeURIComponent(shareReady.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
+                    <a href={waUrl(formatWhatsAppPhone(shareReady.phone) || '', shareReady.text)} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setShareReady(null), 300)} style={{ padding: '12px', background: 'linear-gradient(135deg, #22c55e, #16a34a)', borderRadius: '10px', color: 'white', fontWeight: '700', textAlign: 'center', textDecoration: 'none', fontSize: '14px' }}>💬 WhatsApp'ta Gönder{shareReady.phone ? '' : ' (kişi seçerek)'}</a>
                     <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.text); showToast?.('Mesaj kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Mesajı kopyala</button>
                     <button onClick={async () => { try { await navigator.clipboard.writeText(shareReady.link); showToast?.('Link kopyalandı', 'success'); } catch { showToast?.('Kopyalanamadı — linki elle seçin', 'error'); } }} style={{ padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Linki Kopyala</button>
                     <button onClick={() => window.open(shareReady.link, '_blank')} style={{ padding: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>👁️ Müşterinin göreceği sayfayı aç</button>
@@ -11774,7 +11782,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
         return;
       }
       
-      window.open(`https://wa.me/${formatWhatsAppPhone(phone)}?text=${encodeURIComponent(message)}`, '_blank');
+      window.open(waUrl(formatWhatsAppPhone(phone), message), '_blank');
       showToast?.('WhatsApp açıldı', 'success');
     } catch (error) {
       console.error('WhatsApp hatası:', error);
@@ -18101,7 +18109,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                           'Hesap Sahibi: Paydos Turizm Seyahat Acentalığı San. ve Tic. Ltd. Şti.',
                           ...accs.filter(a => a.iban).map(a => `${a.currency} IBAN: ${a.iban}`)
                         ].filter(Boolean).join('\n');
-                        window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
+                        window.open(waUrl('', txt), '_blank');
                       }} style={{ padding: '4px 10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>💬 WhatsApp</button>
                       {(appSettings.banks || []).length > 1 && <button onClick={() => { if (window.confirm('Bu bankayı silmek istiyor musunuz?')) setAppSettings(prev => ({ ...prev, banks: prev.banks.filter((_, j) => j !== bi2) })); }} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑️ Sil</button>}
                     </div>
