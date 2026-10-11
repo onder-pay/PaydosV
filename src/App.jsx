@@ -1902,7 +1902,25 @@ const cityKey = (s) => String(s || '').trim().toLocaleLowerCase('tr-TR')
   .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 // Tur şehri birden fazla olabilir: "Milano, Venedik" / "Paris - Brüksel"
 const tourCities = (str) => String(str || '').split(/\s*(?:,|\/|;|\s[-–—]\s|\+)\s*/).map(x => x.trim()).filter(Boolean);
-const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '' };
+const EMPTY_REST = { name: '', cuisine: '', price: '', note: '', address: '', loc: '', mapsUrl: '' };
+// Google Maps linkinden / "41.01, 28.97" metninden konum çıkar. Kısa linkler (maps.app.goo.gl) tarayıcıdan açılamadığı için
+// koordinat çıkmaz ama link olduğu gibi saklanır ve müşteri sayfasında doğrudan açılır.
+const parseMapsInput = (raw) => {
+  const t = String(raw || '').trim();
+  if (!t) return null;
+  const num = (a, b) => { const la = parseFloat(a), lo = parseFloat(b); return isFinite(la) && isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180 ? `${la.toFixed(6)},${lo.toFixed(6)}` : ''; };
+  let m = t.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+  if (m) return { loc: num(m[1], m[2]), mapsUrl: '', name: '' };
+  let url; try { url = new URL(t); } catch { return null; }
+  if (!/(^|\.)(google\.[a-z.]+|goo\.gl|maps\.app\.goo\.gl|g\.co)$/i.test(url.hostname)) return null;
+  const d = decodeURIComponent(t);
+  let loc = '';
+  if ((m = d.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))) loc = num(m[1], m[2]);
+  else if ((m = d.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))) loc = num(m[1], m[2]);
+  else if ((m = d.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/))) loc = num(m[1], m[2]);
+  const nm = (d.match(/\/place\/([^/@?]+)/) || [])[1];
+  return { loc, mapsUrl: url.href, name: nm ? nm.replace(/\+/g, ' ').trim() : '' };
+};
 // ===== 📣 Bildirimler: müşteri linkinden bildirime izin verenlere mesaj =====
 // Sunucu: Firebase fonksiyonu "bildirim" (telegram-bot/functions/bildirim.js). Kampanya mesajı sadece kampanya
 // onayı verenlere gider — bu kural sunucuda; buradaki sayılar sadece önizleme.
@@ -2544,7 +2562,7 @@ function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity,
   };
   const save = async () => {
     if (!cur) return;
-    const restaurants = cur.restaurants.map(r => ({ name: String(r.name || '').trim(), cuisine: String(r.cuisine || '').trim(), price: String(r.price || ''), note: String(r.note || '').trim(), address: String(r.address || '').trim() })).filter(r => r.name);
+    const restaurants = cur.restaurants.map(r => ({ name: String(r.name || '').trim(), cuisine: String(r.cuisine || '').trim(), price: String(r.price || ''), note: String(r.note || '').trim(), address: String(r.address || '').trim(), loc: String(r.loc || '').trim(), mapsUrl: String(r.mapsUrl || '').trim() })).filter(r => r.name);
     setBusy(true);
     try {
       await setDoc(doc(db, 'tavsiyeler', cur.key), { city: cur.city, country: cur.country || '', restaurants, updatedAt: new Date().toISOString(), updatedBy: currentUser?.name || '' });
@@ -2620,6 +2638,26 @@ function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity,
                           <button onClick={() => moveR(i, -1)} disabled={i === 0} title="Yukarı" style={small}>↑</button>
                           <button onClick={() => moveR(i, 1)} disabled={i === cur.restaurants.length - 1} title="Aşağı" style={small}>↓</button>
                           <button onClick={() => patchCur(c => ({ ...c, restaurants: c.restaurants.filter((_, j) => j !== i) }))} title="Sil" style={{ ...small, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>🗑</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input key={`${i}-${r.mapsUrl || r.loc || ''}`} defaultValue={r.mapsUrl || r.loc || ''} placeholder="📍 Google Maps linki yapıştır (Paylaş → Bağlantıyı kopyala) veya 41.01, 28.97"
+                            onBlur={e => {
+                              const v = e.target.value.trim();
+                              if (!v) { patchCur(c => ({ ...c, restaurants: c.restaurants.map((x, j) => j === i ? { ...x, loc: '', mapsUrl: '' } : x) })); return; }
+                              const p = parseMapsInput(v);
+                              if (!p) { showToast?.('Google Maps linki veya "enlem, boylam" girin', 'error'); return; }
+                              patchCur(c => ({ ...c, restaurants: c.restaurants.map((x, j) => j === i ? { ...x, loc: p.loc, mapsUrl: p.mapsUrl, name: x.name || p.name } : x) }));
+                              showToast?.(p.loc ? '📍 Konum alındı' : '📍 Link kaydedildi (kısa link — müşteri sayfasında doğrudan açılır)', 'success');
+                            }} style={{ ...fs, flex: 1, minWidth: '220px' }} />
+                          <button type="button" title="Şu an bulunduğum yeri konum olarak kaydet (yerindeyken)" onClick={() => {
+                            if (!navigator.geolocation) { showToast?.('Bu cihaz konum vermiyor', 'error'); return; }
+                            navigator.geolocation.getCurrentPosition(pos => {
+                              const loc = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+                              patchCur(c => ({ ...c, restaurants: c.restaurants.map((x, j) => j === i ? { ...x, loc, mapsUrl: '' } : x) }));
+                              showToast?.(`📍 Konum alındı (±${Math.round(pos.coords.accuracy)} m)`, 'success');
+                            }, err => showToast?.('Konum alınamadı: ' + err.message, 'error'), { enableHighAccuracy: true, timeout: 15000 });
+                          }} style={{ ...small, width: 'auto', padding: '0 10px', whiteSpace: 'nowrap' }}>📍 Buradayım</button>
+                          {(r.loc || r.mapsUrl) && <a href={r.loc ? `https://www.google.com/maps/search/?api=1&query=${r.loc}` : r.mapsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#34d399', whiteSpace: 'nowrap' }}>✓ {r.loc ? 'konum var' : 'link var'} · kontrol et</a>}
                         </div>
                       </div>
                     ))}

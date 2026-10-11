@@ -270,10 +270,13 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           if (r.cuisine) c.appendChild(el('div', 'rc', String(r.cuisine)));
           if (r.note) c.appendChild(el('div', 'rt', String(r.note)));
           if (r.address) c.appendChild(el('div', 'ra', String(r.address)));
+          // Konum: koordinat (CRM'de haritadan) > Google Maps linki > isim + adres araması
+          var loc = /^-?\d{1,2}\.\d+,-?\d{1,3}\.\d+$/.test(String(r.loc || '')) ? String(r.loc) : '';
+          var murl = ''; try { var mu = new URL(String(r.mapsUrl || '')); if (mu.protocol === 'https:' && /(^|\.)(google\.[a-z.]+|goo\.gl|maps\.app\.goo\.gl|g\.co)$/i.test(mu.hostname)) murl = mu.href; } catch (e) {}
           var q = encodeURIComponent([r.name, r.address, g.city, g.country].filter(Boolean).join(', '));
           var b = el('div', 'rb');
-          var go = el('a', '', '📍 Yol tarifi'); go.href = 'https://www.google.com/maps/dir/?api=1&destination=' + q; go.target = '_blank'; go.rel = 'noopener'; b.appendChild(go);
-          var mp = el('a', '', '🗺️ Haritada gör'); mp.href = 'https://www.google.com/maps/search/?api=1&query=' + q; mp.target = '_blank'; mp.rel = 'noopener'; b.appendChild(mp);
+          var go = el('a', '', '📍 Yol tarifi'); go.href = loc ? 'https://www.google.com/maps/dir/?api=1&destination=' + loc : (murl || 'https://www.google.com/maps/dir/?api=1&destination=' + q); go.target = '_blank'; go.rel = 'noopener'; b.appendChild(go);
+          var mp = el('a', '', '🗺️ Haritada gör'); mp.href = loc ? 'https://www.google.com/maps/search/?api=1&query=' + loc : (murl || 'https://www.google.com/maps/search/?api=1&query=' + q); mp.target = '_blank'; mp.rel = 'noopener'; b.appendChild(mp);
           c.appendChild(b); rl.appendChild(c);
         });
       });
