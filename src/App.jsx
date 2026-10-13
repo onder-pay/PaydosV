@@ -8661,7 +8661,7 @@ const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler
 const ROOM_KEY_LABELS = { singleRoom: 'Single', doubleRoom: 'Double', twinRoom: 'Twin', tripleRoom: 'Triple', suiteRoom: 'Suite' };
 const roomTypeLabel = (rt) => ROOM_KEY_LABELS[rt] || rt || '';
 
-function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone, onGo }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -10401,7 +10401,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             if (!app) return null;
                             const st = lc(app.status);
                             if (/iptal/.test(st)) return null; // iptal edilen başvuru sayılmaz
-                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
                             if (/onay/.test(st)) return { label: '✅ Vize Onaylandı', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
                             const rnd = app.appointmentDate ? ` · Randevu ${formatDate(app.appointmentDate).slice(0, 5)}` : '';
                             return { label: `📑 Başvuru — ${app.status || 'Açık'}${rnd}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
@@ -10411,8 +10411,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const ab = appBadge(); if (ab) return ab;
                             // Süresi bitmiş vize var mı?
                             const expiredVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) !== null && getDaysLeft(v.endDate) <= 0);
-                            if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
-                            return { label: 'Vize Yok', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
+                            return { label: 'Vize Yok', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
                           }
 
                           // Tur tarihine kadar vize geçerli mi?
@@ -10421,7 +10421,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const visaExpiry = getDaysLeft(validVisa.endDate);
                             const tourDays = getDaysLeft(tourEndDate);
                             if (visaExpiry !== null && tourDays !== null && visaExpiry < tourDays) {
-                              return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                              return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', apply: customer };
                             }
                           }
 
@@ -10479,8 +10479,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               {visaStatus ? (
-                                <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: visaStatus.bg, color: visaStatus.color, fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                  {visaStatus.label}
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: visaStatus.bg, color: visaStatus.color, fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                    {visaStatus.label}
+                                  </span>
+                                  {visaStatus.apply && onGo && !res.cancelled && (
+                                    <button onClick={() => onGo('visa', { type: 'visaFor', customer: visaStatus.apply })} title="Bu müşteri için vize başvurusu başlat"
+                                      style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', color: '#60a5fa', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      ➕ Başvuru yap
+                                    </button>
+                                  )}
                                 </span>
                               ) : (
                                 <span style={{ color: '#475569', fontSize: '10px' }}>—</span>
@@ -19788,7 +19796,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
