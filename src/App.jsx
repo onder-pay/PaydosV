@@ -3131,7 +3131,7 @@ function TourExcelModal({ tour, customers, onClose, showToast }) {
         case 'birthDate': return cust?.birthDate ? formatDate(cust.birthDate) : '';
         case 'tc': return cust?.tcKimlik || '';
         case 'passport': return r.passport || safeParseJSON(cust?.passports)[0]?.passportNo || '';
-        case 'roomType': return r.roomType || '';
+        case 'roomType': return roomTypeLabel(r.roomType);
         case 'roommate': return titleCaseTr(r.roommate || '');
         case 'roommate3': return titleCaseTr(r.roommate3 || '');
         case 'child': return r.hasChild ? 'Evet' : 'Hayır';
@@ -8657,6 +8657,10 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
 
+// Eski kayıtlar oda tipini fiyat anahtarıyla tutuyor (doubleRoom) — ekranda etiket göster
+const ROOM_KEY_LABELS = { singleRoom: 'Single', doubleRoom: 'Double', twinRoom: 'Twin', tripleRoom: 'Triple', suiteRoom: 'Suite' };
+const roomTypeLabel = (rt) => ROOM_KEY_LABELS[rt] || rt || '';
+
 function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
@@ -8808,7 +8812,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     customerEmail: '',
     company: '',
     invoiceType: 'personal', // 'personal' veya 'company'
-    roomType: 'doubleRoom',
+    roomType: 'Double',
     roommate: '',
     roommate3: '',
     roommate4: '',
@@ -8959,7 +8963,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     doc.line(20, yPos + 2, 195, yPos + 2);
     yPos += 9;
     doc.setFontSize(10); doc.setTextColor(40);
-    const roomType = room[0]?.roomType || hi.roomType || 'Standard';
+    const roomType = roomTypeLabel(room[0]?.roomType) || hi.roomType || 'Standard';
     doc.text(`Check-in:  ${fmtEN(checkIn)}`, 24, yPos); yPos += 6;
     doc.text(`Check-out: ${fmtEN(checkOut)}`, 24, yPos); yPos += 6;
     doc.text(pdfFit(doc, `Nights: ${nights}   |   Room Type: ${T(roomType)}   |   Guests: ${room.length}`, 166, 10, 8), 24, yPos); doc.setFontSize(10); yPos += 6;
@@ -9040,7 +9044,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
 
     reservations.forEach(r => {
       if (assigned.has(r.id)) return;
-      const type = r.roomType || '-';
+      const type = roomTypeLabel(r.roomType) || '-';
       if (!roomTypes[type]) roomTypes[type] = [];
       const cap = roomCap(type);
       const room = [r]; assigned.add(r.id);
@@ -9524,7 +9528,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           id: Date.now() + Math.random(), sNo: (tour.reservations?.length || 0) + newReservations.length + 1,
           customerId: cust.id, customerName: `${cust.firstName} ${cust.lastName}`.trim(),
           customerPhone: phone || cust.phone || '', customerEmail: email || cust.email || '', company: '',
-          roomType: roomKey, roommate: '', roommate3: '', hasChild: false,
+          roomType: String(roomLabel || '').trim() || roomTypeLabel(roomKey), roommate: '', roommate3: '', hasChild: false,
           passport, hasVisa: false, visaEndDate: '',
           tourPrice, currency: tour.prices?.[roomKey]?.currency || currency,
           payment1: paid, payment2: 0, payment3: 0, notes: '', label: ''
@@ -9573,21 +9577,25 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
 
   const openReservationForm = (tour) => {
     setSelectedTour(tour);
+    // Varsayılan oda tipi: listede Double/Çift varsa o, yoksa ilk tip — fiyat da o tipten
+    const rts = resRoomTypes();
+    const defRt = rts.find(rt => /double|çift|cift/i.test(rt)) || rts[0] || 'Double';
+    const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
     setReservationData({
       customerId: '',
       customerName: '',
       customerPhone: '',
       customerEmail: '',
       company: '',
-      roomType: 'doubleRoom',
+      roomType: defRt,
       roommate: '',
       roommate3: '',
       hasChild: false,
       passport: '',
       hasVisa: false,
       visaEndDate: '',
-      tourPrice: (() => { const p = tour.prices || {}; const hit = p.doubleRoom?.amount > 0 ? p.doubleRoom : Object.values(p).find(x => x?.amount > 0); return hit?.amount || 0; })(),
-      currency: (() => { const p = tour.prices || {}; const hit = p.doubleRoom?.amount > 0 ? p.doubleRoom : Object.values(p).find(x => x?.amount > 0); return hit?.currency || '€'; })(),
+      tourPrice: defPrice?.amount || 0,
+      currency: defPrice?.currency || '€',
       payment1: 0,
       payment2: 0,
       payment3: 0,
@@ -9658,10 +9666,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     }
   };
 
-  const handleRoomTypeChange = (e) => {
-    const roomType = e.target.value;
-    const tourPriceFor = (rt) => {
-      const p = selectedTour?.prices || {};
+  const tourPriceFor = (tour, rt) => {
+      const p = tour?.prices || {};
       // 1) Tur formunun kullandığı key üretimi (Türkçe ad -> key)
       const genKey = String(rt).toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
       // 2) Eski İngilizce key eşlemesi (geriye uyumluluk)
@@ -9684,8 +9690,12 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         if (v?.amount > 0 && (normalizeTr(k).includes(nrt) || nrt.includes(normalizeTr(k)))) return v;
       }
       return null;
-    };
-    let priceData = tourPriceFor(roomType);
+  };
+  const resRoomTypes = () => (appSettings?.roomTypes?.length > 0 ? appSettings.roomTypes : ['Single', 'Double', 'Twin', 'Triple']);
+
+  const handleRoomTypeChange = (e) => {
+    const roomType = e.target.value;
+    let priceData = tourPriceFor(selectedTour, roomType);
     // Hâlâ bulamazsa herhangi bir geçerli fiyatı kullan
     if (!priceData && selectedTour?.prices) {
       const firstNonZero = Object.values(selectedTour.prices).find(p => p?.amount > 0);
@@ -9729,7 +9739,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         if (usaVisa.endDate && getDaysLeft(usaVisa.endDate) > 0) { hasVisa = true; visaEndDate = usaVisa.endDate; } else { hasVisa = false; visaEndDate = ''; }
       }
     }
-    setReservationData({ ...res, passport, hasVisa, visaEndDate });
+    setReservationData({ ...res, roomType: roomTypeLabel(res.roomType), passport, hasVisa, visaEndDate });
     setShowReservationForm(true);
   };
 
@@ -10465,7 +10475,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                               )}
                             </td>
                             <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
-                              {res.roomType || '-'}
+                              {roomTypeLabel(res.roomType) || '-'}
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               {visaStatus ? (
@@ -10545,7 +10555,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const fullyPaid = totalPaid >= (parseFloat(res.tourPrice) || 0) && totalPaid > 0;
                             rows.push([
                               res.customerName,
-                              res.roomType || '',
+                              roomTypeLabel(res.roomType),
                               res.hasVisa ? (res.visaEndDate === 'GREEN_PASSPORT' ? 'Yeşil Pasaport' : `Var${res.visaEndDate ? ` (${formatDate(res.visaEndDate)})` : ''}`) : 'Yok',
                               `${res.tourPrice || 0} ${res.currency || '€'}`,
                               fullyPaid ? 'Ödendi' : `${totalPaid} ${res.currency || '€'}`,
@@ -11114,10 +11124,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                       onChange={handleRoomTypeChange}
                       style={selectStyle}
                     >
-                      {(appSettings?.roomTypes?.length > 0
-                        ? appSettings.roomTypes
-                        : ['Single', 'Double', 'Twin', 'Triple']
-                      ).map(rt => (
+                      {(() => { const rts = resRoomTypes(); return reservationData.roomType && !rts.includes(reservationData.roomType) ? [reservationData.roomType, ...rts] : rts; })().map(rt => (
                         <option key={rt} value={rt}>{rt}</option>
                       ))}
                     </select>
