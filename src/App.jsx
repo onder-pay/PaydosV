@@ -3377,7 +3377,26 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
   );
 }
 
-function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone }) {
+function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
+  // 🖱️ Sağ tık / uzun bas menüsü: { x, y, c }  ·  tura ekle için tur seçici
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const [tourPickFor, setTourPickFor] = useState(null);
+  const [tourPickQ, setTourPickQ] = useState('');
+  const longPressRef = useRef(null);
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('click', close); window.addEventListener('scroll', close, true); window.addEventListener('resize', close); window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); window.removeEventListener('keydown', onKey); };
+  }, [ctxMenu]);
+  const openCtx = (e, c) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, c }); };
+  const ctxHandlers = (c) => ({
+    onContextMenu: (e) => openCtx(e, c),
+    onTouchStart: (e) => { const t = e.touches[0]; const x = t.clientX, y = t.clientY; clearTimeout(longPressRef.current); longPressRef.current = setTimeout(() => { longPressRef.current = 'fired'; setCtxMenu({ x, y, c }); }, 550); },
+    onTouchMove: () => { if (longPressRef.current !== 'fired') clearTimeout(longPressRef.current); },
+    onTouchEnd: (e) => { if (longPressRef.current === 'fired') { e.preventDefault(); longPressRef.current = null; } else clearTimeout(longPressRef.current); },
+  });
   const [activeTab, setActiveTab] = useState('search');
   const [dateRangeFrom, setDateRangeFrom] = useState('');
   const [dateRangeTo, setDateRangeTo] = useState('');
@@ -4929,7 +4948,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const expiringP = cPassports.find(p => { const d = getDaysLeft(p.expiryDate); return d !== null && d > 0 && d <= 180; });
     
     return (
-      <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+      <div key={c.id} onClick={() => setSelectedCustomer(c)} {...ctxHandlers(c)} title="Sağ tık: vize başvurusu / tura ekle" style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
@@ -4948,8 +4967,51 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     );
   };
 
+  const ctxItem = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#e8f1f8', padding: '10px 14px', fontSize: '13px', cursor: 'pointer', borderRadius: '6px' };
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const pickTours = tourPickFor ? tours
+    .filter(t => !t.deleted && (t.endDate || t.startDate || '9999') >= todayYmd)
+    .filter(t => { const q = tourPickQ.trim().toLocaleLowerCase('tr'); return !q || `${t.name || ''} ${t.country || ''} ${t.city || ''}`.toLocaleLowerCase('tr').includes(q); })
+    .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || ''))) : [];
+  const custInTour = (t, c) => (t.reservations || []).some(r => !r.cancelled && String(r.customerId) === String(c.id));
+
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {ctxMenu && (
+        <div onClick={e => e.stopPropagation()} onContextMenu={e => e.preventDefault()} style={{ position: 'fixed', left: Math.min(ctxMenu.x, window.innerWidth - 230), top: Math.min(ctxMenu.y, window.innerHeight - 190), zIndex: 3000, width: '220px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ padding: '6px 14px 8px', fontSize: '11px', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titleCaseTr(ctxMenu.c.firstName)} {titleCaseTr(ctxMenu.c.lastName)}</div>
+          <button style={ctxItem} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); onGo?.('visa', { type: 'visaFor', customer: c }); }}>📑 Vize başvurusu yap</button>
+          <button style={ctxItem} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { setTourPickFor(ctxMenu.c); setTourPickQ(''); setCtxMenu(null); }}>🎫 Tura ekle</button>
+          <button style={{ ...ctxItem, color: '#94a3b8' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); setSelectedCustomer(c); }}>👤 Müşteri kartını aç</button>
+        </div>
+      )}
+      {tourPickFor && (
+        <div onClick={() => setTourPickFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 18px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>🎫 Tura ekle</h3>
+                <button onClick={() => setTourPickFor(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+              </div>
+              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(tourPickFor.firstName)} {titleCaseTr(tourPickFor.lastName)} hangi tura eklensin?</p>
+              <input autoFocus value={tourPickQ} onChange={e => setTourPickQ(e.target.value)} placeholder="Tur ara..." style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px' }}>
+              {pickTours.length === 0 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', padding: '20px' }}>Yaklaşan tur yok</p>}
+              {pickTours.map(t => { const inT = custInTour(t, tourPickFor); return (
+                <button key={t.id} disabled={inT} onClick={() => { const c = tourPickFor; setTourPickFor(null); onGo?.('tours', { type: 'resFor', tourId: t.id, customer: c }); }}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', marginBottom: '6px', color: '#e8f1f8', cursor: inT ? 'not-allowed' : 'pointer', opacity: inT ? 0.5 : 1 }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>{t.name}</span>
+                    <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8' }}>{formatDate(t.startDate)}{t.endDate ? ` – ${formatDate(t.endDate)}` : ''} · {(t.reservations || []).filter(r => !r.cancelled).length} kişi</span>
+                  </span>
+                  <span style={{ fontSize: '11px', color: inT ? '#10b981' : '#3b82f6', whiteSpace: 'nowrap' }}>{inT ? '✓ zaten kayıtlı' : 'Seç →'}</span>
+                </button>
+              ); })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
@@ -6940,7 +7002,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const openNewForm = () => { resetForm(); setShowForm(true); };
 
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
-  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm(); onQuickActionDone?.(); }, [quickAction]);
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
+    else if (quickAction?.type === 'visaFor' && quickAction.customer) { resetForm(); setSelectedCustomer(quickAction.customer); setFormStep('checklist'); setShowForm(true); }
+    onQuickActionDone?.(); }, [quickAction]);
 
   const selectCustomer = (customer) => {
     setSelectedCustomer(customer);
@@ -8796,7 +8860,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   };
 
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
-  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm(); onQuickActionDone?.(); }, [quickAction]);
+  const [pendingResCust, setPendingResCust] = useState(null);
+  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
+    else if (quickAction?.type === 'resFor') {
+      const t = tours.find(x => String(x.id) === String(quickAction.tourId));
+      if (t) { openReservationForm(t); setPendingResCust(String(quickAction.customer?.id ?? '')); }
+      else showToast?.('Tur bulunamadı', 'error');
+    }
+    onQuickActionDone?.(); }, [quickAction]);
+  // Müşteriler'den "Tura ekle": form açıldıktan sonra müşteriyi seçili getir (taze state ile)
+  useEffect(() => { if (showReservationForm && pendingResCust) { handleCustomerSelect({ target: { value: pendingResCust } }); setPendingResCust(null); } }, [showReservationForm, pendingResCust]);
 
   const openEditForm = (tour) => {
     setFormData({...tour});
@@ -19705,7 +19778,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   const renderModule = () => {
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
-      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} {...qa('customers')} />;
+      case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
