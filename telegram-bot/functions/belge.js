@@ -73,8 +73,23 @@ const saveProfile = async (db, d, body) => {
   await cref.set({ ...patch, selfEdits: log, selfEditedAt: now, updatedAt: now }, { merge: true });
   return { state: 'ok', data: await withValidity(db, d), changed: edits.length };
 };
+// İletişim bilgisi (WhatsApp, telefon, saatler) her açılışta Ayarlar > Belge Linkinde İletişim'den güncel okunur:
+// numara değişince eski linkler de yeni numarayı açar. 5 dk önbellek.
+let contactCache = { at: 0, v: null };
+const liveContact = async (db) => {
+  if (contactCache.v && Date.now() - contactCache.at < 5 * 60 * 1000) return contactCache.v;
+  try {
+    const s = await db.collection('app_settings').doc('main').get();
+    const sc = (s.exists && s.data()?.shareContact) || {};
+    const v = {};
+    ['phone', 'whatsapp', 'instagram', 'hours'].forEach(k => { const x = String(sc[k] || '').trim(); if (x) v[k] = x; });
+    contactCache = { at: Date.now(), v };
+    return v;
+  } catch (e) { console.warn('[belge] iletişim ayarı okunamadı', e.message); return {}; }
+};
 const withValidity = async (db, d) => {
   const pub = publicData(d);
+  pub.contact = { ...(pub.contact || {}), ...(await liveContact(db)) };
   if (d.customerDocId) {
     try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); } }
     catch (e) { console.warn('[belge] geçerlilik okunamadı', e.message); }
