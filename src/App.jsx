@@ -3588,10 +3588,36 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   };
 
   // Excel Export
-  const exportToExcel = (data, filename) => {
+  // visaKind: 'schengen' | 'usa' → vize ülkesi / başlangıç / bitiş sütunları eklenir
+  const visaCols = (c, visaKind) => {
+    if (visaKind === 'range') {
+      // Tarih aralığı sekmesi: aralıkla kesişen vizeyi yaz (Schengen önce, sonra ABD)
+      const ov = (a, b) => !!a && !!b && a <= dateRangeTo && b >= dateRangeFrom;
+      const sv = dateRangeVisa !== 'usa' ? safeParseJSON(c.schengenVisas).filter(v => ov(v.startDate, v.endDate)).sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)))[0] : null;
+      if (sv) return visaCols({ schengenVisas: JSON.stringify([sv]) }, 'schengen');
+      return visaCols(c, 'usa');
+    }
+    if (visaKind === 'usa') {
+      const u = safeParseObj(c.usaVisa);
+      const left = getDaysLeft(u.endDate);
+      return { 'Vize Ülkesi': 'ABD', 'Vize Başlangıç': formatDate(u.issueDate || u.startDate), 'Vize Bitiş': formatDate(u.endDate), 'Kalan Gün': left > 0 ? left : 'Doldu' };
+    }
+    if (visaKind === 'schengen') {
+      const vs = safeParseJSON(c.schengenVisas).filter(v => v.country || v.endDate);
+      // Ana vize: geçerli olanlardan en geç biteni, yoksa en son biten
+      const sorted = [...vs].sort((a, b) => String(b.endDate || '').localeCompare(String(a.endDate || '')));
+      const main = sorted[0] || {};
+      const left = getDaysLeft(main.endDate);
+      const others = sorted.slice(1).map(v => `${v.country || '?'} ${formatDate(v.startDate)}–${formatDate(v.endDate)}`).join('; ');
+      return { 'Vize Ülkesi': main.country || '', 'Vize Başlangıç': formatDate(main.startDate), 'Vize Bitiş': formatDate(main.endDate), 'Kalan Gün': left > 0 ? left : (main.endDate ? 'Doldu' : ''), 'Diğer Vizeler': others };
+    }
+    return {};
+  };
+  const exportToExcel = (data, filename, visaKind) => {
     const exportData = data.map(c => ({
       'Ad': c.firstName || '',
       'Soyad': c.lastName || '',
+      ...visaCols(c, visaKind),
       'TC Kimlik': c.tcKimlik || '',
       'Telefon': c.phone || '',
       'E-posta': c.email || '',
@@ -5113,7 +5139,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '12px', color: '#06b6d4' }}>{dateRangeMatches.length} müşteri — {formatDate(dateRangeFrom)} – {formatDate(dateRangeTo)} arası vizesi geçerli</p>
                 {dateRangeMatches.length > 0 && (
-                  <button onClick={() => exportToExcel(dateRangeMatches, `Vize_Gecerli_${dateRangeFrom}_${dateRangeTo}`)} style={{ padding: '6px 12px', background: 'rgba(6,182,212,0.2)', border: 'none', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+                  <button onClick={() => exportToExcel(dateRangeMatches, `Vize_Gecerli_${dateRangeFrom}_${dateRangeTo}`, 'range')} style={{ padding: '6px 12px', background: 'rgba(6,182,212,0.2)', border: 'none', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
                 )}
               </div>
               {dateRangeMatches.length === 0 ? (
@@ -5269,7 +5295,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#10b981' }}>🇪🇺 Schengen vizesi olan müşteriler</p>
             {withSchengen.length > 0 && (
-              <button onClick={() => exportToExcel(withSchengen, `Schengen_Vizeli_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(withSchengen, `Schengen_Vizeli_${new Date().toLocaleDateString('tr')}`, 'schengen')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {withSchengen.length === 0 ? (
@@ -5307,7 +5333,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#eab308' }}>🇪🇺⏰ 3 ay içinde Schengen vizesi bitecek müşteriler</p>
             {schengenExpiring.length > 0 && (
-              <button onClick={() => exportToExcel(schengenExpiring, `Schengen_Uyari_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(234,179,8,0.2)', border: 'none', borderRadius: '6px', color: '#eab308', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(schengenExpiring, `Schengen_Uyari_${new Date().toLocaleDateString('tr')}`, 'schengen')} style={{ padding: '6px 12px', background: 'rgba(234,179,8,0.2)', border: 'none', borderRadius: '6px', color: '#eab308', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {schengenExpiring.length === 0 ? (
@@ -5341,7 +5367,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#8b5cf6' }}>🇺🇸 ABD vizesi olan müşteriler</p>
             {withUsa.length > 0 && (
-              <button onClick={() => exportToExcel(withUsa, `ABD_Vizeli_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#8b5cf6', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(withUsa, `ABD_Vizeli_${new Date().toLocaleDateString('tr')}`, 'usa')} style={{ padding: '6px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#8b5cf6', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {withUsa.length === 0 ? (
@@ -5374,7 +5400,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#ef4444' }}>🇺🇸⏰ 1 ay içinde ABD vizesi bitecek müşteriler</p>
             {usaExpiring.length > 0 && (
-              <button onClick={() => exportToExcel(usaExpiring, `ABD_Uyari_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(usaExpiring, `ABD_Uyari_${new Date().toLocaleDateString('tr')}`, 'usa')} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {usaExpiring.length === 0 ? (
