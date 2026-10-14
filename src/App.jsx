@@ -4571,7 +4571,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 const small = { fontSize: '12px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 
                 const dups = findLikelyDuplicates(c, customers);
+                // Müşteri linkinden (Profil) kendi düzelttiği bilgiler — son 30 gün
+                const SELF_TR = { phone: 'Telefon', email: 'E-posta', city: 'İkamet ili', tkMemberNo: 'Miles&Smiles no' };
+                const selfEdits = (Array.isArray(c.selfEdits) ? c.selfEdits : []).filter(e => e && String(e.at || '') >= new Date(Date.now() - 30 * 86400000).toISOString()).slice(-5).reverse();
                 return (<>
+                  {selfEdits.length > 0 && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', fontSize: '12px', color: '#bfdbfe' }}>
+                      <div style={{ fontWeight: '700', marginBottom: '4px' }}>📝 Müşteri bilgilerini linkten kendisi güncelledi</div>
+                      {selfEdits.map((e, i) => (
+                        <div key={i} style={{ color: '#94a3b8' }}>{formatDate(e.at)} · <b style={{ color: '#e8f1f8' }}>{SELF_TR[e.field] || e.field}</b>: <s>{e.old || '—'}</s> → <span style={{ color: '#e8f1f8' }}>{e.new || '(silindi)'}</span></div>
+                      ))}
+                    </div>
+                  )}
                   {c.tcKimlik && !isValidTc(c.tcKimlik) && (
                     <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '12px', fontSize: '13px', color: '#fca5a5', fontWeight: '600' }}>⚠️ TC Kimlik No geçersiz görünüyor ({c.tcKimlik}) — 11 hane/doğrulama tutmuyor, kontrol ediniz.</div>
                   )}
