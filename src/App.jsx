@@ -8722,6 +8722,67 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 </body></html>`;
 };
 
+// Tur programı PDF'i (teklif verisinden) — Turlar, toplu mail ve link güncellemesi ortak kullanır
+const makeTourProgramPdf = async (tour, returnBlob = false) => {
+  const o = tour.offerData;
+  if (!o) throw new Error('Bu turda program bilgisi yok (tekliften aktarılmadı)');
+  let holder = null;
+  try {
+    const html2canvas = await loadHtml2Canvas();
+    const full = genOfferHTML(o);
+    const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
+    holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
+    holder.innerHTML = `<style>${st ? st[1] : ''}</style>${b ? b[1] : ''}`;
+    document.body.appendChild(holder);
+    await new Promise(r => setTimeout(r, 320));
+    const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    addCanvasPaged(pdf, canvas, 0.92);
+    const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
+    if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
+    pdf.save(`${ad}.pdf`);
+    return null;
+  } finally { if (holder) document.body.removeChild(holder); }
+};
+// Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
+const offerFlightList = (o) => {
+  const flights = [];
+  [[o?.flightOut, 'Gidiş'], [o?.flightRet, 'Dönüş']].forEach(([f, dir]) => {
+    (f?.legs || []).forEach(l => {
+      const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
+      if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
+    });
+  });
+  return flights;
+};
+// Teklif güncellenince: daha önce paylaşılmış rezervasyon linklerindeki (/b/) Tur Programı PDF'i, uçuşlar ve tarihler yenilenir
+const refreshTourShareLinks = async (tour) => {
+  const tokens = [...new Set((tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => r.shareToken))];
+  if (!tokens.length) return 0;
+  const p = tour.offerData ? await makeTourProgramPdf(tour, true) : null;
+  const flights = offerFlightList(tour.offerData);
+  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+  let n = 0;
+  for (const token of tokens) {
+    try {
+      const snap = await getDoc(doc(db, 'paylasimlar', token));
+      if (!snap.exists()) continue;
+      const d = snap.data() || {};
+      if (d.tourId && String(d.tourId) !== String(tour.id)) continue;
+      let docs = Array.isArray(d.docs) ? d.docs.filter(x => x.label !== 'Tur Programı') : [];
+      if (p) {
+        const r = ref(getStorage(), `paylasim/${token}/tur-programi.pdf`);
+        await uploadBytes(r, p.blob, { contentType: 'application/pdf' });
+        docs = [{ icon: '🗺️', label: 'Tur Programı', url: await getDownloadURL(r) }, ...docs];
+      }
+      await setDoc(doc(db, 'paylasimlar', token), { docs, flights, tourName: tour.name || '', startDate: tour.startDate || '', endDate: tour.endDate || '', country: tour.country || '', city: tour.city || '', updatedAt: new Date().toISOString() }, { merge: true });
+      n++;
+    } catch (e) { console.warn('[link güncelle]', token, e.message); }
+  }
+  return n;
+};
+
 // TUR MODÜLÜ - TAM VERSİYON
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
@@ -8742,28 +8803,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   };
   // Tur programı PDF'ini üret (returnBlob=true → blob döner, false → indirir)
   const [progBusy, setProgBusy] = useState('');
-  const tourProgramPdf = async (tour, returnBlob = false) => {
-    const o = tour.offerData;
-    if (!o) throw new Error('Bu turda program bilgisi yok (tekliften aktarılmadı)');
-    let holder = null;
-    try {
-      const html2canvas = await loadH2C();
-      const full = genOfferHTML(o);
-      const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
-      holder = document.createElement('div');
-      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
-      holder.innerHTML = `<style>${st ? st[1] : ''}</style>${b ? b[1] : ''}`;
-      document.body.appendChild(holder);
-      await new Promise(r => setTimeout(r, 320));
-      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      addCanvasPaged(pdf, canvas, 0.92);
-      const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
-      if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
-      pdf.save(`${ad}.pdf`);
-      return null;
-    } finally { if (holder) document.body.removeChild(holder); }
-  };
+  const tourProgramPdf = makeTourProgramPdf;
   const downloadTourProgram = async (tour) => {
     if (!tour.offerData) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
     setProgBusy(tour.id);
@@ -9182,15 +9222,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
       if (res.boardingOutUrl) docs.push({ icon: '🛫', label: 'Gidiş Biniş Kartı', url: res.boardingOutUrl });
       if (res.boardingRetUrl) docs.push({ icon: '🛬', label: 'Dönüş Biniş Kartı', url: res.boardingRetUrl });
-      // Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
-      const flights = [];
-      const o = tour.offerData || {};
-      [[o.flightOut, 'Gidiş'], [o.flightRet, 'Dönüş']].forEach(([f, dir]) => {
-        (f?.legs || []).forEach(l => {
-          const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
-          if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
-        });
-      });
+      const flights = offerFlightList(tour.offerData);
       if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       await setDoc(doc(db, 'paylasimlar', token), {
@@ -12545,7 +12577,26 @@ ${flightRaw}`;
     const now = new Date();
     if (offerId) {
       setQuotes(prev => prev.map(q => q.id === offerId ? { ...q, subject: offer.title, offer, updatedAt: now.toISOString() } : q));
-      showToast?.('Tur teklifi güncellendi', 'success');
+      // Bu tekliften oluşturulmuş tur(lar) varsa: program, tarih ve destinasyon tura da yansır; paylaşılmış linkler yenilenir
+      const linked = (tours || []).filter(t => t.fromQuoteId === offerId);
+      if (!linked.length) { showToast?.('Tur teklifi güncellendi', 'success'); return; }
+      const dest = (offer.destinations || []).filter(d => d.country || d.city)[0] || {};
+      const upd = linked.map(t => ({ ...t, offerData: offer, startDate: offer.startDate || t.startDate, endDate: offer.endDate || t.endDate,
+        country: dest.country || t.country, city: dest.city || t.city, offerUpdatedAt: now.toISOString() }));
+      setTours(prev => prev.map(t => upd.find(u => u.id === t.id) || t));
+      (async () => {
+        let links = 0, linkErr = '';
+        for (const t of upd) {
+          try {
+            const sd = { ...t }; delete sd._docId;
+            await setDoc(doc(db, 'tours', t._docId || String(t.id)), sd, { merge: true });
+          } catch (e) { showToast?.(`❌ "${t.name}" turu kaydedilemedi: ${e.message}`, 'error'); return; }
+          try { links += await refreshTourShareLinks(t); } catch (e) { linkErr = e.message; }
+        }
+        if (linkErr) showToast?.(`⚠️ Tur programı güncellendi ama müşteri linkleri yenilenemedi (${linkErr}) — linki tekrar paylaşınca güncellenir`, 'warning');
+        else showToast?.(`✅ Teklif kaydedildi · ${upd.length} turun programı güncellendi${links ? ` · ${links} müşteri linki yenilendi` : ''}`, 'success');
+      })();
+      showToast?.(`Teklif kaydedildi — ${linked.length} tur ve linkleri güncelleniyor…`, 'info');
     } else {
       const id = Date.now();
       const newQ = {
