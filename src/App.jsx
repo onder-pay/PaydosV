@@ -5145,6 +5145,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ position: 'fixed', left: isMobile ? '8px' : '50%', right: isMobile ? '8px' : 'auto', transform: isMobile ? 'none' : 'translateX(-50%)', bottom: isMobile ? '12px' : '24px', zIndex: 2500, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '14px', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
             <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
+            <button onClick={() => { setSelIds([]); onGo?.('visa', { type: 'visaForMany', customers: selCusts }); }} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📑 Vize başvurusu</button>
             <button onClick={() => exportToExcel(selCusts, `Secili_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)', background: 'none', color: '#10b981', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
             <button onClick={() => setSelIds([])} aria-label="Seçimi temizle" style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>✕</button>
           </div>
@@ -7156,11 +7157,56 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setEditingVisa(null);
   };
 
+  // 👥 Toplu vize başvurusu (Müşteriler'de çoklu seçim → "Vize başvurusu"): kategori + tür bir kez seçilir,
+  // herkese aynı türde "ilk durum" başvurusu açılır; kişiye özel bilgiler (randevu, PNR…) sonra tek tek girilir.
+  const [bulkVisa, setBulkVisa] = useState(null); // { custs, cat, type, country, skip: [id], busy }
+  const openVisaOf = (c, countryName) => visaApplications.filter(v => visaAppBelongsTo(v, c, customers)).find(v => {
+    const st = String(v.status || '').toLocaleLowerCase('tr');
+    if (/iptal|onay|red/.test(st)) return false;
+    if (String(v.createdAt || v.applicationDate || '') < new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)) return false;
+    return !countryName || !v.country || v.country === countryName;
+  });
+  const openBulkVisa = (custs) => { setShowForm(false); setBulkVisa({ custs, cat: null, type: null, country: '', skip: custs.filter(c => openVisaOf(c, '')).map(c => c.id), busy: false }); }; // açık başvurusu olan varsayılan olarak dışarıda
+  const bulkCountryFor = (cat, typeName) => {
+    if (!cat) return '';
+    if (cat.countries.length === 1) return cat.countries[0];
+    const n = normalizeTr(typeName || '');
+    return cat.countries.find(c => n.includes(normalizeTr(c))) || '';
+  };
+  const createBulkVisas = async () => {
+    const bv = bulkVisa; if (!bv?.cat || !bv.type) return;
+    const country = bv.country || bulkCountryFor(bv.cat, bv.type.name);
+    const todo = bv.custs.filter(c => !bv.skip.includes(c.id));
+    if (!todo.length) { showToast?.('Başvuru açılacak kişi seçili değil', 'warning'); return; }
+    setBulkVisa({ ...bv, busy: true });
+    const today = new Date().toISOString().split('T')[0];
+    const recs = todo.map(c => ({
+      customerId: c.id, customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(), customerPhone: c.phone || '', customerEmail: c.email || '',
+      category: bv.cat.id, categoryId: bv.cat.id, country, visaType: '',
+      visaDuration: bv.type.name, visaPrice: bv.type.price || 0, visaCurrency: bv.type.currency || '€',
+      applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
+      processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
+      price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '€',
+      id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
+    }));
+    let fail = 0;
+    for (const r of recs) {
+      try { await setDoc(doc(db, 'visa_applications', String(r.id)), { ...r, updatedAt: new Date().toISOString() }, { merge: true }); }
+      catch (e) { fail++; console.warn('Toplu vize kaydı', r.customerName, e.message); }
+    }
+    setVisaApplications(prev => [...prev, ...recs]);
+    logActivity('create', 'Vize', `${recs.length} kişiye toplu başvuru — ${country} ${bv.type.name}`.trim(), currentUser);
+    showToast?.(`✅ ${recs.length} vize başvurusu açıldı (${country || bv.cat.label} · ${bv.type.name})${fail ? ` — ${fail} tanesi sunucuya yazılamadı` : ''}. Randevu ve diğer bilgileri tek tek girin.`, fail ? 'warning' : 'success');
+    setBulkVisa(null);
+  };
+
   const openNewForm = () => { resetForm(); setShowForm(true); };
 
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
   useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
     else if (quickAction?.type === 'visaFor' && quickAction.customer) { resetForm(); setSelectedCustomer(quickAction.customer); setFormStep('checklist'); setShowForm(true); }
+    else if (quickAction?.type === 'visaForMany' && quickAction.customers?.length) openBulkVisa(quickAction.customers);
     onQuickActionDone?.(); }, [quickAction]);
 
   const selectCustomer = (customer) => {
@@ -8171,6 +8217,67 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {bulkVisa && (() => {
+        const bv = bulkVisa;
+        const types = bv.cat ? (appSettings?.visaDurations?.[bv.cat.id] || []).map(d => typeof d === 'string' ? { name: d, price: 0, currency: '€' } : { name: d.name, price: d.price || 0, currency: d.currency || '€' }) : [];
+        const country = bv.country || (bv.type ? bulkCountryFor(bv.cat, bv.type.name) : '');
+        const n = bv.custs.length - bv.skip.length;
+        const chip = (on, color) => ({ padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', border: `1px solid ${on ? color : 'rgba(255,255,255,0.12)'}`, background: on ? `${color}26` : 'rgba(255,255,255,0.04)', color: on ? color : '#e8f1f8', fontWeight: on ? 700 : 500 });
+        return (
+          <div onClick={() => !bv.busy && setBulkVisa(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '17px' }}>📑 Toplu vize başvurusu</h3>
+                <button onClick={() => setBulkVisa(null)} disabled={bv.busy} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>Herkese aynı türde başvuru açılır. Randevu, PNR ve kişiye özel bilgileri sonra tek tek girersiniz.</p>
+
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>1 · Kategori</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                {visaCategories.map(c => <button key={c.id} onClick={() => setBulkVisa({ ...bv, cat: c, type: null, country: '' })} style={chip(bv.cat?.id === c.id, c.color)}>{c.icon} {c.label}</button>)}
+              </div>
+
+              {bv.cat && (<>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>2 · Vize türü</div>
+                {types.length === 0
+                  ? <p style={{ fontSize: '12px', color: '#f59e0b', margin: '0 0 14px' }}>⚠️ Bu kategoride vize türü yok — Ayarlar → Vize Türleri'nden ekleyin.</p>
+                  : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px', marginBottom: '14px' }}>
+                      {types.map(t => <button key={t.name} onClick={() => setBulkVisa({ ...bv, type: t, country: '' })} style={{ ...chip(bv.type?.name === t.name, bv.cat.color), textAlign: 'left' }}>{t.name}{t.price > 0 && <span style={{ opacity: 0.7, fontSize: '11px' }}> · {t.price} {t.currency}</span>}</button>)}
+                    </div>}
+              </>)}
+
+              {bv.type && bv.cat.countries.length > 1 && (<>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>3 · Ülke</div>
+                <select value={country} onChange={e => setBulkVisa({ ...bv, country: e.target.value })} style={{ ...selectStyle, marginBottom: '14px' }}>
+                  <option value="">Seçin…</option>
+                  {bv.cat.countries.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </>)}
+
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Kişiler ({n}/{bv.custs.length})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '14px' }}>
+                {bv.custs.map(c => {
+                  const open = openVisaOf(c, country);
+                  const on = !bv.skip.includes(c.id);
+                  return (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '13px', opacity: on ? 1 : 0.55 }}>
+                      <input type="checkbox" checked={on} onChange={() => setBulkVisa({ ...bv, skip: on ? [...bv.skip, c.id] : bv.skip.filter(x => x !== c.id) })} style={{ width: '17px', height: '17px', accentColor: '#f59e0b' }} />
+                      <span style={{ flex: 1 }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</span>
+                      {open && <span title={`${open.country || ''} ${open.visaDuration || ''} · ${open.status || ''}`} style={{ fontSize: '11px', color: '#f59e0b' }}>⚠️ açık başvuru var ({open.status || '—'})</span>}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <button onClick={createBulkVisas} disabled={bv.busy || !bv.type || !n || (bv.cat.countries.length > 1 && !country)}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer', color: '#0c1929',
+                  background: (bv.type && n && (bv.cat.countries.length === 1 || country)) ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255,255,255,0.1)' }}>
+                {bv.busy ? '⏳ Açılıyor…' : !bv.type ? 'Kategori ve vize türü seçin' : (bv.cat.countries.length > 1 && !country) ? 'Ülke seçin' : `${n} başvuru aç — ${country || bv.cat.label} · ${bv.type.name}`}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       {/* YAKLAŞAN RANDEVU UYARISI — dikkat çekici, açılışta üstte */}
       {upcomingReminders.length > 0 && (() => {
         const acil = upcomingReminders.filter(v => { const d = getDaysLeft(v.appointmentDate); return d !== null && d <= 2; });
