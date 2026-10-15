@@ -1,4 +1,4 @@
-// ===== Duyuru görülme takibi =====
+// ===== Duyuru görülme takibi + ana ekran kullanımı =====
 // Müşteri / tur linkindeki duyuru kartı ekrana gelince ("seen") ya da tıklanınca ("click") buraya bildirilir.
 // Kayıt: duyurular/<duyuruId>/gorulme/<linkKodu> — kişi başı tek belge (ilk/son görülme, sayaçlar).
 // Sadece gerçek bir paylaşım kodu (paylasimlar/<kod>) ve var olan bir duyuru için yazılır; konum/cihaz bilgisi tutulmaz.
@@ -11,7 +11,22 @@ const CODE_RE = /^[A-Za-z0-9-]{8,60}$/;
 const ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const ALLOWED = [/^https:\/\/crm\.paydostur\.com$/, /^https:\/\/(www\.)?paydostur\.com$/, /^https:\/\/[a-z0-9-]+--paydosv\.netlify\.app$/, /^https:\/\/paydosv\.netlify\.app$/, /^http:\/\/localhost(:\d+)?$/];
 
+// Ana ekran: link ana ekrandaki simgeden (standalone) açılınca "app", Android kurulum anında "install".
+// paylasimlar/<kod> üzerine yazılır — CRM tur sayfasında "X/Y ana ekrana ekledi".
+const handleApp = async (db, k, e) => {
+  if (!CODE_RE.test(k)) return { ok: false, status: 400 };
+  const ref = db.collection('paylasimlar').doc(k);
+  const ps = await ref.get();
+  if (!ps.exists) return { ok: false, status: 404 };
+  const cur = ps.data() || {}, now = new Date().toISOString();
+  const patch = { appLastAt: now, appOpens: FieldValue.increment(e === 'app' ? 1 : 0) };
+  if (!cur.appFirstAt) patch.appFirstAt = now;
+  if (e === 'install' && !cur.installedAt) patch.installedAt = now;
+  await ref.set(patch, { merge: true });
+  return { ok: true, status: 200 };
+};
 const handle = async (db, body) => {
+  if (body.e === 'app' || body.e === 'install') return handleApp(db, String(body.k || ''), body.e);
   const k = String(body.k || ''), d = String(body.d || ''), e = body.e === 'click' ? 'click' : 'seen';
   if (!CODE_RE.test(k) || !ID_RE.test(d)) return { ok: false, status: 400 };
   const [ps, ds] = await Promise.all([db.collection('paylasimlar').doc(k).get(), db.collection('duyurular').doc(d).get()]);

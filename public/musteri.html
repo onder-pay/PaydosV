@@ -251,6 +251,13 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   var inApp = /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent);
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (instCard) instCard.style.display = 'flex'; });
   window.addEventListener('appinstalled', function () { if (instCard) instCard.style.display = 'none'; });
+  // Ana ekran kullanımı: simgeden açılınca (oturumda bir kez) "app", Android kurulumunda "install" — CRM'de sayılır
+  var appPing = function (e) {
+    if (!code) return;
+    try { fetch('https://europe-west1-paydos-crm.cloudfunctions.net/duyuruGor', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k: code, e: e }), keepalive: true }).catch(function () {}); } catch (x) {}
+  };
+  window.addEventListener('appinstalled', function () { appPing('install'); });
+  if (isStandalone) { try { if (!sessionStorage.getItem('paydos_app_' + code)) { sessionStorage.setItem('paydos_app_' + code, '1'); appPing('app'); } } catch (x) { appPing('app'); } }
   var renderInstall = function (parent) {
     if (isStandalone || instDismissed) return;
     instCard = el('div', 'inst');

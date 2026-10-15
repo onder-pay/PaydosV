@@ -2572,6 +2572,18 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
   const tour = sel && sel !== 'all' ? tours.find(t => String(t.id) === sel) : null;
   const res = tour ? (tour.reservations || []).filter(r => !r.cancelled) : [];
   const shared = res.filter(r => r.shareToken).length;
+  // 📲 Ana ekrana ekleyenler: link ana ekran simgesinden açılınca sunucu paylasimlar/<kod>.appFirstAt yazar
+  const [appStats, setAppStats] = useState(null); // { tourId, rows: [{ name, at }] }
+  const [appOpen, setAppOpen] = useState(false);
+  useEffect(() => {
+    setAppOpen(false);
+    if (!tour) { setAppStats(null); return; }
+    let off = false;
+    const toks = res.filter(r => r.shareToken);
+    Promise.all(toks.map(r => getDoc(doc(db, 'paylasimlar', r.shareToken)).then(x => x.exists() && (x.data()?.appFirstAt || x.data()?.installedAt) ? { name: r.customerName, at: x.data().appFirstAt || x.data().installedAt } : null).catch(() => null)))
+      .then(rows => { if (!off) setAppStats({ tourId: tour.id, rows: rows.filter(Boolean) }); });
+    return () => { off = true; };
+  }, [tour?.id]);
   const item = (key, title, sub, on) => (
     <button key={key} onClick={() => setSel(key)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: '#e8f1f8', background: on ? 'rgba(245,158,11,0.15)' : 'transparent', border: `1px solid ${on ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.06)'}`, marginBottom: '6px' }}>
       <div style={{ fontWeight: 700, fontSize: '13px' }}>{title}</div><div style={{ fontSize: '11.5px', color: '#94a3b8' }}>{sub}</div>
@@ -2602,6 +2614,20 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                   <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
                   <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
                 </div>
+                {appStats && appStats.tourId === tour.id && shared > 0 && (
+                  <div style={{ marginTop: '10px', fontSize: '12.5px' }}>
+                    <button onClick={() => setAppOpen(o => !o)} disabled={!appStats.rows.length} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: appStats.rows.length ? 'pointer' : 'default', fontSize: '12.5px' }}>
+                      📲 {appStats.rows.length}/{shared} yolcu linki ana ekrana ekleyip kullandı{appStats.rows.length ? (appOpen ? ' ▲' : ' ▼') : ''}
+                    </button>
+                    {appOpen && (
+                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {appStats.rows.sort((a, b) => String(a.at).localeCompare(String(b.at))).map((r, i) => (
+                          <span key={i} title={new Date(r.at).toLocaleString('tr-TR')} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', color: '#bfdbfe' }}>{titleCaseTr(r.name || '')}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
               </div>
               <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
