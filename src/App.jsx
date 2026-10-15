@@ -2360,6 +2360,21 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
   const [drag, setDrag] = useState(false);
   const load = () => getDocs(collection(db, 'duyurular')).then(q => setList(q.docs.map(d => ({ id: d.id, ...d.data() })).filter(inScope).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))))).catch(e => { setList([]); showToast?.('Duyurular okunamadı: ' + e.message, 'error'); });
   useEffect(() => { load(); }, [scope, fixedTour?.id]);
+  // 👁 Görülme takibi: duyurular/<id>/gorulme/<linkKodu> (linkteki kart ekrana gelince / tıklanınca sunucu yazar)
+  const [seen, setSeen] = useState({}); // { duyuruId: [{ id: linkKodu, name, firstSeenAt, clickCount }] }
+  const [seenOpen, setSeenOpen] = useState(null);
+  useEffect(() => {
+    if (!list?.length) return;
+    let off = false;
+    Promise.all(list.map(d => getDocs(collection(db, 'duyurular', d.id, 'gorulme')).then(q => [d.id, q.docs.map(x => ({ id: x.id, ...x.data() }))]).catch(() => [d.id, null])))
+      .then(rows => { if (!off) setSeen(Object.fromEntries(rows)); });
+    return () => { off = true; };
+  }, [list]);
+  const audienceOf = (d) => {
+    if (d.target !== 'onetour') return null; // tüm linkler için payda bilinmez — sadece görenler sayılır
+    const t = tours.find(x => String(x.id) === String(d.tourId)) || (fixedTour && String(fixedTour.id) === String(d.tourId) ? fixedTour : null);
+    return t ? (t.reservations || []).filter(r => !r.cancelled && r.shareToken) : null;
+  };
   const pick = (f) => { if (!f || !/^image\//.test(f.type)) { showToast?.('Görsel dosyası seçin (JPG, PNG)', 'warning'); return; } setFile(f); setPreview(URL.createObjectURL(f)); };
   const upd = (p) => setForm(f => ({ ...f, ...p }));
   const save = async () => {
@@ -2472,6 +2487,46 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
                 </div>
                 <b style={{ fontSize: '14px' }}>{d.title || '(başlıksız)'}</b>
                 {(d.start || d.end) && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{d.start ? formatDate(d.start) : '…'} → {d.end ? formatDate(d.end) : '…'}</div>}
+                {(() => {
+                  const sv = seen[d.id];
+                  if (sv === undefined) return null;
+                  if (sv === null) return <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>👁 Görülme bilgisi okunamadı</div>;
+                  const aud = audienceOf(d);
+                  const seenIds = new Set(sv.filter(x => x.firstSeenAt).map(x => x.id));
+                  const clicks = sv.filter(x => x.clickCount > 0).length;
+                  const unseen = aud ? aud.filter(r => !seenIds.has(r.shareToken)) : [];
+                  const open = seenOpen === d.id;
+                  return (
+                    <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                      <button onClick={() => setSeenOpen(open ? null : d.id)} style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '6px 10px', color: '#93c5fd', cursor: 'pointer', fontSize: '12px', width: '100%', textAlign: 'left' }}>
+                        👁 {aud ? `${aud.filter(r => seenIds.has(r.shareToken)).length}/${aud.length}` : seenIds.size} gördü · 👆 {clicks} tıkladı{aud && unseen.length ? ` · ${unseen.length} görmedi` : ''} <span style={{ float: 'right' }}>{open ? '▲' : '▼'}</span>
+                      </button>
+                      {open && (
+                        <div style={{ marginTop: '6px', maxHeight: '260px', overflowY: 'auto', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '6px 8px' }}>
+                          {aud && unseen.length > 0 && <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, margin: '4px 0' }}>Görmeyenler ({unseen.length})</div>}
+                          {aud && unseen.map(r => {
+                            const ph = formatWhatsAppPhone(r.customerPhone || '');
+                            const txt = `Merhaba ${titleCaseTr(r.customerName || '')}, tur linkinize yeni bir duyuru eklendi: ${d.title || ''}\n${window.location.origin}/b/${r.shareToken}`;
+                            return (
+                              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span>{titleCaseTr(r.customerName || '')}</span>
+                                {ph ? <a href={waUrl(ph, txt)} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', textDecoration: 'none', fontSize: '12px' }}>💬 Hatırlat</a> : <span style={{ color: '#64748b', fontSize: '11px' }}>telefon yok</span>}
+                              </div>
+                            );
+                          })}
+                          {seenIds.size > 0 && <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, margin: '8px 0 4px' }}>Görenler ({seenIds.size})</div>}
+                          {sv.filter(x => x.firstSeenAt).sort((a, b) => String(b.firstSeenAt).localeCompare(String(a.firstSeenAt))).map(x => (
+                            <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#94a3b8', fontSize: '11px' }}>
+                              <span style={{ color: '#e8f1f8' }}>{titleCaseTr(x.name || 'İsimsiz link')}{x.clickCount > 0 ? ' 👆' : ''}</span>
+                              <span>{new Date(x.firstSeenAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          ))}
+                          {!seenIds.size && !(aud && unseen.length) && <div style={{ color: '#64748b', fontSize: '11px', padding: '4px 0' }}>Henüz gören yok</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
                   <button onClick={() => { setForm({ ...empty, ...d }); setFile(null); setPreview(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
                   <button onClick={() => toggle(d)} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>{d.active ? '⏸ Kapat' : '▶ Yayınla'}</button>

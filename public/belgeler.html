@@ -724,12 +724,28 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       .then(function (j) {
         if (!j || !j.documents) return;
         var n = new Date(), today = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
-        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); return o; }).filter(function (d) {
+        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); o._id = String(d.name || '').split('/').pop(); return o; }).filter(function (d) {
           if (!d.active || (d.start && d.start > today) || (d.end && d.end < today)) return false;
           if (!(d.title || safeUrl(d.image))) return false;
           return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
         }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
         if (!list.length) return;
+        // Görülme takibi: kart ekranın yarısına girince "seen" (oturum başına bir kez), tıklanınca "click".
+        // Sadece hangi link, hangi duyuru, ne zaman — konum/cihaz bilgisi gönderilmez.
+        var GOR = 'https://europe-west1-paydos-crm.cloudfunctions.net/duyuruGor';
+        var ping = function (id, e) {
+          if (!code || !id) return;
+          try { fetch(GOR, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k: code, d: id, e: e }), keepalive: true }).catch(function () {}); } catch (x) {}
+        };
+        var seenKey = function (id) { return 'paydos_dyg_' + code + '_' + id; };
+        var track = function (node, id) {
+          node.addEventListener('click', function () { ping(id, 'click'); }, true);
+          try { if (sessionStorage.getItem(seenKey(id))) return; } catch (x) {}
+          var mark = function () { try { sessionStorage.setItem(seenKey(id), '1'); } catch (x) {} ping(id, 'seen'); };
+          if (!('IntersectionObserver' in window)) return mark();
+          var io = new IntersectionObserver(function (es) { if (es.some(function (x) { return x.isIntersecting; })) { io.disconnect(); mark(); } }, { threshold: 0.5 });
+          io.observe(node);
+        };
         // "Ana ekrana ekleyin" kartı gibi: küçük görsel · başlık + kısa metin · bağlantı butonu
         list.forEach(function (d) {
           var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
@@ -737,7 +753,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           if (img) {
             var ban = el('a', 'dyb'); ban.href = link || img; ban.target = '_blank'; ban.rel = 'noopener';
             var bim = document.createElement('img'); bim.src = img; bim.alt = String(d.title || 'Duyuru'); bim.loading = 'lazy'; ban.appendChild(bim);
-            slot.appendChild(ban); return;
+            slot.appendChild(ban); track(ban, d._id); return;
           }
           var c = el('div', 'inst dyc');
           var ic = el(img ? 'a' : 'div', 'ic');
@@ -749,7 +765,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           if (d.text) tx.appendChild(document.createTextNode(String(d.text)));
           c.appendChild(tx);
           if (link) { var go = el('a', 'go', 'Aç'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; c.appendChild(go); }
-          slot.appendChild(c);
+          slot.appendChild(c); track(c, d._id);
         });
       }).catch(function () {});
   };
