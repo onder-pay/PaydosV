@@ -6772,6 +6772,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const ids = new Set(selectedIds);
     const targets = visaApplications.filter(v => ids.has(v.id));
     if (!targets.length || bulkBusy) return;
+    if (isCancelStatus(patch.status)) {
+      const r = askCancelReason(`${targets.length} başvuru`);
+      if (!r) { if (r !== null) showToast?.('İptal sebebi girmeden durum değiştirilemez', 'warning'); return; }
+      patch = { ...patch, cancelReason: r, cancelledAt: new Date().toISOString() };
+    }
     if (!window.confirm(`${targets.length} başvuru "${label}" olarak işaretlenecek. Devam edilsin mi?`)) return;
     setBulkBusy(true);
     const before = targets.map(v => ({ ...v }));
@@ -7159,6 +7164,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   // 👥 Toplu vize başvurusu (Müşteriler'de çoklu seçim → "Vize başvurusu"): kategori + tür bir kez seçilir,
   // herkese aynı türde "ilk durum" başvurusu açılır; kişiye özel bilgiler (randevu, PNR…) sonra tek tek girilir.
+  // "Müşteri İptal Etti" (iptal içeren her durum) seçilince sebep zorunlu — boş bırakılırsa durum değişmez
+  const isCancelStatus = (st) => String(st || '').toLocaleLowerCase('tr').includes('iptal'); // /iptal/i "İptal"i tanımaz (İ≠I)
+  const askCancelReason = (who, prev = '') => {
+    const r = window.prompt(`${who ? who + ' — ' : ''}İptal sebebi nedir? (zorunlu)`, prev || '');
+    return r === null ? null : r.trim();
+  };
   const [bulkVisa, setBulkVisa] = useState(null); // { custs, cat, type, country, skip: [id], busy }
   const openVisaOf = (c, countryName) => visaApplications.filter(v => visaAppBelongsTo(v, c, customers)).find(v => {
     const st = String(v.status || '').toLocaleLowerCase('tr');
@@ -7425,6 +7436,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     }
     if (!formData.visaType && !formData.visaDuration) {
       showToast?.('Vize türü seçiniz', 'error');
+      return;
+    }
+    // Yeni iptal edilen (ya da yeni kayıt iptal durumunda) başvuruda sebep zorunlu; eski sebepsiz kayıtlar başka alan düzenlenirken engellenmez
+    if (isCancelStatus(formData.status) && !(formData.cancelReason || '').trim() && !(editingVisa && isCancelStatus(editingVisa.status))) {
+      showToast?.('İptal sebebi zorunlu — Başvuru Durumu altındaki kutuya yazın', 'error');
       return;
     }
     setSaving(true);
@@ -8125,11 +8141,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Başvuru Durumu</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {(appSettings?.visaStatuses || ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi']).map(s => (
-                    <button key={s} type="button" onClick={() => setFormData({...formData, status: s})} style={{ padding: '8px 12px', background: formData.status === s ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.05)', border: formData.status === s ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: formData.status === s ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: formData.status === s ? '600' : '400' }}>
+                    <button key={s} type="button" onClick={() => {
+                      if (isCancelStatus(s) && !isCancelStatus(formData.status)) {
+                        const r = askCancelReason(formData.customerName, formData.cancelReason);
+                        if (!r) { if (r !== null) showToast?.('İptal sebebi girmeden durum değiştirilemez', 'warning'); return; }
+                        setFormData({ ...formData, status: s, cancelReason: r, cancelledAt: new Date().toISOString() });
+                        return;
+                      }
+                      setFormData({ ...formData, status: s });
+                    }} style={{ padding: '8px 12px', background: formData.status === s ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.05)', border: formData.status === s ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: formData.status === s ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: formData.status === s ? '600' : '400' }}>
                       {s}
                     </button>
                   ))}
                 </div>
+                {isCancelStatus(formData.status) && (
+                  <div style={{ marginTop: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#f87171', marginBottom: '6px' }}>İptal sebebi *</label>
+                    <input value={formData.cancelReason || ''} onChange={e => setFormData({ ...formData, cancelReason: e.target.value })} placeholder="Ör. seyahatten vazgeçti, fiyatı yüksek buldu, başka acenteye gitti…" style={{ ...inputStyle, borderColor: (formData.cancelReason || '').trim() ? 'rgba(255,255,255,0.15)' : 'rgba(239,68,68,0.6)' }} />
+                  </div>
+                )}
               </div>
 
               {/* Notlar */}
@@ -8540,6 +8570,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                       <span style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
+                      {isCancelStatus(v.status) && v.cancelReason && <span title={v.cancelReason} style={{ fontSize: '10px', color: '#94a3b8', maxWidth: '150px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sebep: {v.cancelReason}</span>}
                       {v.paymentStatus && <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: v.paymentStatus === 'Ödendi' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: v.paymentStatus === 'Ödendi' ? '#10b981' : '#ef4444' }}>{v.paymentStatus}</span>}
                     </div>
                   </div>
@@ -8738,6 +8769,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {visaFutureDate(selectedVisa) && (
                 <div style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.45)', padding: '10px 12px', borderRadius: '8px', color: '#c084fc', fontWeight: 700, fontSize: '13px' }}>
                   ⏳ İleri tarihli — başvuru {formatDate(selectedVisa.processDate)} tarihinde yapılacak ({getDaysLeft(selectedVisa.processDate)} gün). O güne kadar başvuru yapmayın.
+                </div>
+              )}
+              {isCancelStatus(selectedVisa.status) && (
+                <div style={{ background: 'rgba(239,68,68,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#f87171' }}>❌ İptal sebebi{selectedVisa.cancelledAt ? ` · ${formatDate(selectedVisa.cancelledAt)}` : ''}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: selectedVisa.cancelReason ? '#e8f1f8' : '#64748b' }}>{selectedVisa.cancelReason || 'Girilmemiş (eski kayıt) — Düzenle\'den ekleyebilirsiniz'}</p>
                 </div>
               )}
               {selectedVisa.appointmentDate && (
