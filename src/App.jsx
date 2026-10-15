@@ -8788,7 +8788,7 @@ const refreshTourShareLinks = async (tour) => {
         const r = ref(getStorage(), `paylasim/${token}/tur-programi.pdf`);
         await uploadBytes(r, p.blob, { contentType: 'application/pdf' });
         docs = [{ icon: '🗺️', label: 'Tur Programı', url: await getDownloadURL(r) }, ...docs];
-      }
+      } else if (tour.pdfUrl) docs = [{ icon: '🗺️', label: 'Tur Programı', url: tour.pdfUrl }, ...docs];
       await setDoc(doc(db, 'paylasimlar', token), { docs, flights, tourName: tour.name || '', startDate: tour.startDate || '', endDate: tour.endDate || '', country: tour.country || '', city: tour.city || '', updatedAt: new Date().toISOString() }, { merge: true });
       n++;
     } catch (e) { console.warn('[link güncelle]', token, e.message); }
@@ -8804,7 +8804,7 @@ const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler
 const ROOM_KEY_LABELS = { singleRoom: 'Single', doubleRoom: 'Double', twinRoom: 'Twin', tripleRoom: 'Triple', suiteRoom: 'Suite' };
 const roomTypeLabel = (rt) => ROOM_KEY_LABELS[rt] || rt || '';
 
-function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone, onGo }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone, onGo, quotes = [] }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -8817,6 +8817,24 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   // Tur programı PDF'ini üret (returnBlob=true → blob döner, false → indirir)
   const [progBusy, setProgBusy] = useState('');
   const tourProgramPdf = makeTourProgramPdf;
+  // Elle açılmış turu bir tur teklifine bağla: program (offerData) gelir, paylaşılmış linkler yenilenir,
+  // bundan sonra teklif her güncellendiğinde tur da güncellenir (fromQuoteId)
+  const [linkBusy, setLinkBusy] = useState('');
+  const linkTourToQuote = async (tour, q) => {
+    if (!window.confirm(`"${tour.name}" turu "${q.subject || q.offer?.title}" teklifine bağlansın mı?\n\nTurun programı ve uçuşları bu tekliften alınır, müşterilere gönderilmiş linkler güncellenir. Fiyatlar ve rezervasyonlar değişmez.`)) return;
+    setLinkBusy(tour.id);
+    const upd = { ...tour, offerData: q.offer, fromQuoteId: q.id, offerUpdatedAt: new Date().toISOString() };
+    try {
+      setTours(prev => prev.map(t => t.id === tour.id ? upd : t));
+      if (selectedTour?.id === tour.id) setSelectedTour(upd);
+      const sd = { ...upd }; delete sd._docId;
+      await setDoc(doc(db, 'tours', tour._docId || String(tour.id)), sd, { merge: true });
+      let n = 0;
+      try { n = await refreshTourShareLinks(upd); } catch (e) { showToast?.('⚠️ Program bağlandı ama linkler yenilenemedi: ' + e.message, 'warning'); return; }
+      showToast?.(`✅ Program teklife bağlandı${n ? ` · ${n} müşteri linki güncellendi` : ''}`, 'success');
+    } catch (e) { showToast?.('❌ Bağlanamadı: ' + e.message, 'error'); }
+    finally { setLinkBusy(''); }
+  };
   const downloadTourProgram = async (tour) => {
     if (!tour.offerData) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
     setProgBusy(tour.id);
@@ -9225,7 +9243,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (tour.offerData) {
         const p = await tourProgramPdf(tour, true);
         docs.push({ icon: '🗺️', label: 'Tur Programı', url: await up('tur-programi.pdf', p.blob) });
-      }
+      } else if (tour.pdfUrl) docs.push({ icon: '🗺️', label: 'Tur Programı', url: tour.pdfUrl }); // tura elle yüklenmiş program PDF'i
       const hi = tour.voucherHotel || {};
       const room = hi.name ? findResRoom(tour, res.id) : null;
       if (room) {
@@ -10298,6 +10316,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {tour.contractUrl && <button onClick={() => window.open(tour.contractUrl, '_blank')} style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Sözleşme</button>}
+                {!tour.fromQuoteId && (
+                  <select value="" disabled={!!linkBusy} title="Tur programı, uçuşlar ve linkler bu teklifle eşitlenir; teklif güncellenince tur da güncellenir"
+                    onChange={e => { const q = quotes.find(x => String(x.id) === e.target.value); if (q) linkTourToQuote(tour, q); }}
+                    style={{ padding: '8px 10px', background: 'rgba(232,145,42,0.15)', border: '1px solid rgba(232,145,42,0.45)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px', fontWeight: '600', maxWidth: '220px' }}>
+                    <option value="">{linkBusy ? '⏳ Bağlanıyor…' : '🔗 Programı teklife bağla'}</option>
+                    {[...quotes].filter(q => q.type === 'tur-teklifi' && q.offer)
+                      .sort((a, b) => (normalizeTr(b.subject || '') === normalizeTr(tour.name || '')) - (normalizeTr(a.subject || '') === normalizeTr(tour.name || '')) || String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+                      .map(q => <option key={q.id} value={String(q.id)} style={{ background: '#1a3a5c', color: '#e8f1f8' }}>{q.subject || q.offer?.title}{q.offer?.startDate ? ` · ${formatDate(q.offer.startDate)}` : ''}</option>)}
+                  </select>
+                )}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => setExcelTour(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Excel</button>
@@ -19976,7 +20004,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} {...qa('tours')} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
