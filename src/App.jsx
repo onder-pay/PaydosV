@@ -6826,7 +6826,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [idataText, setIdataText] = useState('');
   const [idataParsed, setIdataParsed] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [relinkOpen, setRelinkOpen] = useState(false); // başvurunun müşterisini değiştir
   const [relinkQ, setRelinkQ] = useState('');
   const findVisaCust = (id) => (id == null || id === '') ? null : (customers || []).find(c => String(c.id) === String(id) || (c._docId && c._docId === String(id))) || null;
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -7154,7 +7153,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setFormStep('search');
     setSearchQuery('');
     setSelectedCustomer(null);
-    setRelinkOpen(false); setRelinkQ('');
+    setRelinkQ('');
     setSelectedCategory(null);
     setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
     // Maliyet varsayılanları kategori seçilince (selectCategory) uygulanır
@@ -7430,7 +7429,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const handleSubmit = async () => {
     if (!findVisaCust(formData.customerId)) {
       showToast?.('Başvuru bir CRM müşterisine bağlı olmalı — listeden müşteri seçin', 'error');
-      setRelinkOpen(true);
       setTimeout(() => document.getElementById('visa-relink')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       return;
     }
@@ -7507,7 +7505,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const openEditVisa = (visa) => {
     const customer = findVisaCust(visa.customerId);
-    setRelinkOpen(!customer); setRelinkQ(customer ? '' : (visa.customerName || ''));
+    setRelinkQ(customer ? '' : (visa.customerName || '')); // sahipsiz başvuruda seçim kutusu isimle dolu açılır
     const cat = visaCategories.find(c => c.id === visa.category);
     setSelectedCustomer(customer);
     setSelectedCategory(cat);
@@ -7805,20 +7803,20 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const linked = findVisaCust(formData.customerId);
                 const q = normalizeTr(relinkQ).trim();
                 const qd = relinkQ.replace(/\D/g, '');
-                const results = relinkOpen && q.length >= 2 ? (customers || []).filter(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).includes(q) || (qd.length >= 4 && (String(c.tcKimlik || '').includes(qd) || String(c.phone || '').replace(/\D/g, '').includes(qd)))).slice(0, 8) : [];
+                const results = !linked && q.length >= 2 ? (customers || []).filter(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).includes(q) || (qd.length >= 4 && (String(c.tcKimlik || '').includes(qd) || String(c.phone || '').replace(/\D/g, '').includes(qd)))).slice(0, 8) : [];
                 const pick = (c) => {
                   setSelectedCustomer(c);
                   setFormData(f => ({ ...f, customerId: c.id, customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(), customerPhone: c.phone || '', customerEmail: c.email || '' }));
-                  setRelinkOpen(false); setRelinkQ('');
+                  setRelinkQ('');
                 };
                 return (<>
                   <div id="visa-relink" style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {linked
                       ? <span>Müşteri: <strong style={{ color: '#fff' }}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</strong>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
-                    <button type="button" onClick={() => { setRelinkOpen(o => !o); if (!relinkQ && formData.customerName) setRelinkQ(formData.customerName); }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit' }}>{relinkOpen ? 'Kapat' : '🔁 Müşteriyi değiştir'}</button>
                   </div>
-                  {relinkOpen && (
+                  {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
+                  {!linked && (
                     <div style={{ marginTop: '10px' }}>
                       <input autoFocus value={relinkQ} onChange={e => setRelinkQ(e.target.value)} placeholder="Ad soyad, TC veya telefon ara..." style={{ width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
                       {results.map(c => (
