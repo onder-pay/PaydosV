@@ -3560,7 +3560,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
-  const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
 
   // Dashboard'dan müşteri profili aç
@@ -3680,38 +3679,31 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   });
 
   // Filtreleme fonksiyonu
-  const hasActiveFilter = Object.values(filters).some(v => v && v.trim() !== '');
-  
-  const filtered = customers.filter(c => {
-    if (!hasActiveFilter) return false;
-    
-    const matchField = (field, value) => {
-      if (!value || value.trim() === '') return true;
-      const fieldVal = c[field] || '';
-      return normalizeTr(fieldVal).includes(normalizeTr(value));
-    };
-
-    return matchField('firstName', filters.firstName) &&
-           matchField('lastName', filters.lastName) &&
-           matchField('tcKimlik', filters.tcKimlik) &&
-           matchField('phone', filters.phone) &&
-           matchField('email', filters.email) &&
-           matchField('birthDate', filters.birthDate) &&
-           matchField('birthPlace', filters.birthPlace) &&
-           matchField('city', filters.city) &&
-           matchField('tkMemberNo', filters.tkMemberNo) &&
-           matchField('sector', filters.sector) &&
-           matchField('companyName', filters.companyName);
+  // 🔍 Tek kutu akıllı arama: her kelime ad, soyad, TC, telefon, e-posta, doğum yeri, TK no, firma veya
+  // pasaport no'dan birinde geçmeli ("ahmet öner" → ikisi de). Rakamlar telefon/TC/pasaport'ta rakam olarak aranır.
+  const [q, setQ] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const qTokens = normalizeTr(q).split(/\s+/).filter(t => t.length >= (/^\d+$/.test(t) ? 3 : 2));
+  const hasActiveFilter = qTokens.length > 0 || !!filters.city || !!filters.sector;
+  const digitsOf = (v) => String(v || '').replace(/\D/g, '');
+  const filtered = !hasActiveFilter ? [] : customers.filter(c => {
+    if (filters.city && normalizeTr(c.city || '') !== normalizeTr(filters.city)) return false;
+    if (filters.sector && c.sector !== filters.sector) return false;
+    if (!qTokens.length) return true;
+    const text = normalizeTr([c.firstName, c.lastName, c.email, c.birthPlace || c.dogum_yeri, c.tkMemberNo || c.tk_uyelik_no, c.companyName || c.company, c.tcKimlik,
+      ...safeParseJSON(c.passports).map(pp => pp.passportNo)].filter(Boolean).join(' '));
+    const nums = [digitsOf(c.phone), digitsOf(c.phone).replace(/^(90|0)/, ''), digitsOf(c.tcKimlik)].filter(Boolean).join(' ');
+    return qTokens.every(t => text.includes(t) || (/^\d+$/.test(t) && nums.includes(t.replace(/^(90|0)/, ''))));
+  }).sort((a, b) => {
+    // Adı/soyadı aranan kelimeyle başlayanlar önce
+    const st = (c) => qTokens.some(t => normalizeTr(c.firstName || '').startsWith(t) || normalizeTr(c.lastName || '').startsWith(t)) ? 0 : 1;
+    return st(a) - st(b) || `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'tr');
   });
-
   const clearFilters = () => {
+    setQ('');
     setFilters({ firstName: '', lastName: '', tcKimlik: '', phone: '', email: '', birthDate: '', birthPlace: '', city: '', tkMemberNo: '', sector: '', companyName: '' });
-    setShowResults(false);
   };
 
-  const handleSearch = () => {
-    if (hasActiveFilter) setShowResults(true);
-  };
 
   // Excel Export
   // visaKind: 'schengen' | 'usa' → vize ülkesi / başlangıç / bitiş sütunları eklenir
@@ -4137,12 +4129,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     catch (e) { showToast?.('❌ Firestore\'dan silinemedi: ' + e.message, 'error'); }
   };
 
-  const mainTabStyle = (active) => ({
-    flex: 1, padding: '10px 8px', background: active ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)',
-    border: active ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '8px', color: active ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: active ? '600' : '400',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px'
-  });
 
 
 
@@ -5175,73 +5161,56 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           </div>
         </div>
       )}
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={async () => {
+      {/* Başlık: ad + toplam, sağda tek ana eylem (Yeni) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, display: 'flex', alignItems: 'baseline', gap: '8px' }}>👥 Müşteriler <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>{customers.length.toLocaleString('tr-TR')}</span></h2>
+        <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 18px', color: '#0c1929', fontWeight: '700', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}>➕ Yeni</button>
+      </div>
+      {/* İkincil işlemler: eşit, küçük düğmeler — telefonda tek satır, yana kayar */}
+      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px', marginBottom: '12px', scrollbarWidth: 'none' }}>
+        {[
+          ['🔄', 'Yenile', '#60a5fa', async () => {
             showToast?.('🔄 Yenileniyor...', 'info');
             try {
               const snapshot = await getDocs(collection(db, 'customers'));
-              const items = snapshot.docs
-                .map(d => ({ ...d.data(), _docId: d.id }))
-                .filter(c => c.firstName || c.lastName);
+              const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id })).filter(c => c.firstName || c.lastName);
               setCustomers(items);
               showToast?.(`✅ ${items.length} müşteri yüklendi`, 'success');
-            } catch (e) {
-              showToast?.('❌ Yenileme hatası: ' + e.message, 'error');
-            }
-          }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>🔄 Yenile</button>
-          <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
-          <button onClick={() => setShowDupScan(true)} title="Aynı TC farklı isim, aynı pasaport, mükerrer kayıt ve geçersiz TC'leri listeler" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔍 Mükerrer / TC Kontrol</button>
-          <button onClick={() => setShowDocInbox(true)} title="Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📤 Belge Yükle</button>
-          <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
-          <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
-        </div>
+            } catch (e) { showToast?.('❌ Yenileme hatası: ' + e.message, 'error'); }
+          }, 'Müşterileri sunucudan yeniden yükle'],
+          ['📊', 'Excel', '#34d399', () => setShowExcelModal(true), 'Excel içe / dışa aktar'],
+          ['🤖', 'AI ile ekle', '#a78bfa', () => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }, 'Metin veya pasaport görselinden müşteri ekle'],
+          ['📤', 'Belge yükle', '#4ade80', () => setShowDocInbox(true), 'Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler'],
+          ['🔍', 'Mükerrer / TC', '#f87171', () => setShowDupScan(true), 'Aynı TC farklı isim, aynı pasaport, mükerrer kayıt ve geçersiz TC\'leri listeler'],
+        ].map(([ic, label, color, fn, title]) => (
+          <button key={label} onClick={fn} title={title} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color, cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            <span>{ic}</span>{label}
+          </button>
+        ))}
       </div>
 
-      {/* Ana Sekmeler - Satır 1 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' }}>
-        <button onClick={() => { setActiveTab('search'); setShowResults(false); }} style={mainTabStyle(activeTab === 'search')}>
-          <span style={{ fontSize: '14px' }}>🔍</span>
-          <span>Arama</span>
-        </button>
-        <button onClick={() => setActiveTab('expiring')} style={mainTabStyle(activeTab === 'expiring')}>
-          <span style={{ fontSize: '14px' }}>⚠️</span>
-          <span>Pasaport ({expiringPassports.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('birthday')} style={mainTabStyle(activeTab === 'birthday')}>
-          <span style={{ fontSize: '14px' }}>🎂</span>
-          <span>Doğum Günü ({todayBirthdays.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('schengen')} style={{ ...mainTabStyle(activeTab === 'schengen'), background: activeTab === 'schengen' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'schengen' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'schengen' ? '#10b981' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇪🇺</span>
-          <span>Schengen ({withSchengen.length})</span>
-        </button>
-      </div>
-
-      {/* Ana Sekmeler - Satır 2 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '16px' }}>
-        <button onClick={() => setActiveTab('schengenExpiring')} style={{ ...mainTabStyle(activeTab === 'schengenExpiring'), background: activeTab === 'schengenExpiring' ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'schengenExpiring' ? '1px solid rgba(234,179,8,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'schengenExpiring' ? '#eab308' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇪🇺⏰</span>
-          <span>Sch. 3ay ({schengenExpiring.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('usa')} style={{ ...mainTabStyle(activeTab === 'usa'), background: activeTab === 'usa' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'usa' ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'usa' ? '#8b5cf6' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇺🇸</span>
-          <span>ABD ({withUsa.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('usaExpiring')} style={{ ...mainTabStyle(activeTab === 'usaExpiring'), background: activeTab === 'usaExpiring' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'usaExpiring' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'usaExpiring' ? '#ef4444' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇺🇸⏰</span>
-          <span>ABD 1ay ({usaExpiring.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('greenPassport')} style={{ ...mainTabStyle(activeTab === 'greenPassport'), background: activeTab === 'greenPassport' ? 'rgba(5,150,105,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'greenPassport' ? '1px solid rgba(5,150,105,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'greenPassport' ? '#059669' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🟢</span>
-          <span>Yeşil Pas. ({withGreenPassport.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('dateRange')} style={{ ...mainTabStyle(activeTab === 'dateRange'), background: activeTab === 'dateRange' ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'dateRange' ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'dateRange' ? '#06b6d4' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>📅</span>
-          <span>Vize Tarih{dateRangeFrom && dateRangeTo ? ` (${dateRangeMatches.length})` : ''}</span>
-        </button>
+      {/* Sekmeler: tek satır çip, sayılar rozet — telefonda yana kayar */}
+      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px', scrollbarWidth: 'none' }}>
+        {[
+          ['search', '🔍', 'Arama', null, '#f59e0b'],
+          ['expiring', '⚠️', 'Pasaport', expiringPassports.length, '#ef4444'],
+          ['birthday', '🎂', 'Doğum günü', todayBirthdays.length, '#f472b6'],
+          ['schengen', '🇪🇺', 'Schengen', withSchengen.length, '#10b981'],
+          ['schengenExpiring', '⏰', 'Sch. 3 ay', schengenExpiring.length, '#eab308'],
+          ['usa', '🇺🇸', 'ABD', withUsa.length, '#8b5cf6'],
+          ['usaExpiring', '⏰', 'ABD 1 ay', usaExpiring.length, '#ef4444'],
+          ['greenPassport', '🟢', 'Yeşil pas.', withGreenPassport.length, '#059669'],
+          ['dateRange', '📅', 'Vize tarih', dateRangeFrom && dateRangeTo ? dateRangeMatches.length : null, '#06b6d4'],
+        ].map(([key, ic, label, n, color]) => {
+          const on = activeTab === key;
+          return (
+            <button key={key} onClick={() => setActiveTab(key)} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '13px', fontWeight: on ? 700 : 500, whiteSpace: 'nowrap',
+              background: on ? `${color}26` : 'rgba(255,255,255,0.04)', border: `1px solid ${on ? color + '80' : 'rgba(255,255,255,0.1)'}`, color: on ? color : '#cbd5e1' }}>
+              <span>{ic}</span>{label}
+              {n != null && <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 7px', borderRadius: '999px', background: n > 0 && key !== 'search' ? `${color}33` : 'rgba(255,255,255,0.08)', color: n > 0 ? (on ? color : '#e2e8f0') : '#64748b' }}>{n}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* VİZE TARİH ARALIĞI SEKMESİ */}
@@ -5307,57 +5276,50 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
       )}
 
-      {/* ARAMA SEKMESİ */}
+      {/* ARAMA SEKMESİ — tek kutu, yazdıkça sonuç */}
       {activeTab === 'search' && (
         <>
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '8px' }}>
-              <FormInput label="Ad" value={filters.firstName} onChange={e => setFilters({...filters, firstName: e.target.value})} placeholder="Ad ara..." />
-              <FormInput label="Soyad" value={filters.lastName} onChange={e => setFilters({...filters, lastName: e.target.value})} placeholder="Soyad ara..." />
-              <FormInput label="TC Kimlik" value={filters.tcKimlik} onChange={e => setFilters({...filters, tcKimlik: e.target.value})} placeholder="TC ara..." />
-              <FormInput label="Telefon" value={filters.phone} onChange={e => setFilters({...filters, phone: e.target.value})} placeholder="Telefon ara..." />
-              <FormInput label="E-posta" value={filters.email} onChange={e => setFilters({...filters, email: e.target.value})} placeholder="E-posta ara..." />
-              <FormInput label="Doğum Yeri" value={filters.birthPlace} onChange={e => setFilters({...filters, birthPlace: e.target.value})} placeholder="Doğum yeri ara..." />
-              <div>
-                <label style={labelStyle}>İkametgah İli</label>
-                <select value={filters.city} onChange={e => setFilters({...filters, city: e.target.value})} style={selectStyle}>
-                  <option value="">Tümü</option>
-                  {turkishProvinces.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <FormInput label="TK Üyelik No" value={filters.tkMemberNo} onChange={e => setFilters({...filters, tkMemberNo: e.target.value})} placeholder="TK No ara..." />
-              <div>
-                <label style={labelStyle}>Sektör</label>
-                <select value={filters.sector} onChange={e => setFilters({...filters, sector: e.target.value})} style={selectStyle}>
-                  <option value="">Tümü</option>
-                  {(appSettings?.sectors || []).map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <FormInput label="Firma" value={filters.companyName} onChange={e => setFilters({...filters, companyName: e.target.value})} placeholder="Firma ara..." />
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button onClick={handleSearch} disabled={!hasActiveFilter} style={{ flex: 1, padding: '10px', background: hasActiveFilter ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: hasActiveFilter ? 'white' : '#64748b', fontWeight: '600', cursor: hasActiveFilter ? 'pointer' : 'not-allowed', fontSize: '13px' }}>🔍 Ara ({hasActiveFilter ? filtered.length : 0} sonuç)</button>
-              <button onClick={clearFilters} style={{ padding: '10px 16px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}>✕ Temizle</button>
-              {showResults && filtered.length > 0 && (
-                <button onClick={() => exportToExcel(filtered, `Musteri_Arama_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '10px 16px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
-              )}
-            </div>
+          <div style={{ position: 'relative', marginBottom: '8px' }}>
+            <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', opacity: 0.7, pointerEvents: 'none' }}>🔍</span>
+            <input value={q} onChange={e => setQ(e.target.value)} autoFocus={!isMobile} placeholder="Ad, soyad, TC, telefon, pasaport, e-posta…"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '14px 44px 14px 42px', fontSize: '16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#e8f1f8', outline: 'none' }} />
+            {(q || filters.city || filters.sector) && (
+              <button onClick={clearFilters} aria-label="Temizle" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#cbd5e1', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+            )}
           </div>
-
-          {/* Arama Sonuçları */}
-          {showResults && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {filtered.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>Arama kriterlerine uygun müşteri bulunamadı</p>
-              ) : (
-                filtered.map(c => renderCustomerCard(c))
-              )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '12px' }}>
+            <button onClick={() => setShowFilters(v => !v)} style={{ background: (filters.city || filters.sector) ? 'rgba(245,158,11,0.15)' : 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '5px 10px', color: (filters.city || filters.sector) ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+              ⚙️ Filtre{(filters.city || filters.sector) ? ` (${[filters.city, filters.sector].filter(Boolean).join(', ')})` : ''} {showFilters ? '▲' : '▼'}
+            </button>
+            {hasActiveFilter && <span style={{ color: '#94a3b8' }}>{filtered.length} sonuç</span>}
+            {hasActiveFilter && filtered.length > 0 && (
+              <button onClick={() => exportToExcel(filtered, `Musteri_Arama_${new Date().toLocaleDateString('tr')}`)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '5px 10px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Excel</button>
+            )}
+          </div>
+          {showFilters && (
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '220px 220px', gap: '8px', marginBottom: '12px' }}>
+              <select value={filters.city} onChange={e => setFilters({ ...filters, city: e.target.value })} style={selectStyle}>
+                <option value="">İkamet ili: Tümü</option>
+                {turkishProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <select value={filters.sector} onChange={e => setFilters({ ...filters, sector: e.target.value })} style={selectStyle}>
+                <option value="">Sektör: Tümü</option>
+                {(appSettings?.sectors || []).map(x => <option key={x} value={x}>{x}</option>)}
+              </select>
             </div>
           )}
-          
-          {!showResults && (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-              <p style={{ fontSize: '14px' }}>Yukarıdaki filtrelerden en az birini doldurup "Ara" butonuna tıklayın</p>
+
+          {hasActiveFilter ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filtered.length === 0
+                ? <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>"{q}" ile eşleşen müşteri yok</p>
+                : filtered.slice(0, 150).map(c => renderCustomerCard(c))}
+              {filtered.length > 150 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', padding: '8px' }}>İlk 150 sonuç gösteriliyor — aramayı daraltın (ör. ad + soyad)</p>}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b', fontSize: '13px', lineHeight: 1.7 }}>
+              Yazmaya başlayın — sonuçlar anında gelir.<br />
+              <span style={{ fontSize: '12px' }}>Örnek: <i>ahmet öner</i> · <i>0532 111</i> · <i>U4137</i> · <i>gedik</i></span>
             </div>
           )}
         </>
