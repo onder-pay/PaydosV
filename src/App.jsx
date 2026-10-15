@@ -87,6 +87,38 @@ const pdfExtractPages = async (file, pages) => {
   const base = file.name.replace(/\.pdf$/i, '');
   return new File([await out.save()], `${base}_s${pages.map(p => p + 1).join('-')}.pdf`, { type: 'application/pdf' });
 };
+// Aktarmalı uçuş: aynı yolcuya ait birden fazla biniş kartı tek PDF'te birleşir.
+// parts: [{ file, pages? }] (sırayla) — PDF sayfaları kopyalanır, JPG/PNG tam sayfa eklenir
+const pdfMergeParts = async (parts, name) => {
+  const { PDFDocument } = await loadPdfLib();
+  const out = await PDFDocument.create();
+  for (const pt of parts) {
+    const buf = pt.bytes || await pt.file.arrayBuffer();
+    const type = pt.type || pt.file?.type || '';
+    if (/png|jpe?g/i.test(type)) {
+      const img = /png/i.test(type) ? await out.embedPng(buf) : await out.embedJpg(buf);
+      const pg = out.addPage([img.width, img.height]); pg.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+      continue;
+    }
+    const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+    (await out.copyPages(src, pt.pages || src.getPageIndices())).forEach(pg => out.addPage(pg));
+  }
+  return new File([await out.save()], name, { type: 'application/pdf' });
+};
+// Biniş kartı metninden uçuş zamanı sıralama anahtarı (YYYYMMDDHHMM) — bacakları doğru sıraya koymak için
+const BP_MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12, OCA: 1, SUB: 2, ŞUB: 2, NIS: 4, NİS: 4, HAZ: 6, TEM: 7, AGU: 8, AĞU: 8, EYL: 9, EKI: 10, EKİ: 10, KAS: 11, ARA: 12 };
+const flightSortKey = (text) => {
+  const t = String(text || '').toUpperCase();
+  let y = 0, mo = 0, d = 0, m;
+  if ((m = t.match(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/))) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+  else if ((m = t.match(/\b(\d{1,2})\s?([A-ZÇĞİÖŞÜ]{3})\s?(20\d{2}|\d{2})?\b/g))) {
+    for (const x of m) { const k = x.match(/(\d{1,2})\s?([A-ZÇĞİÖŞÜ]{3})\s?(\d{2,4})?/); if (k && BP_MONTHS[k[2]]) { d = +k[1]; mo = BP_MONTHS[k[2]]; y = k[3] ? (k[3].length === 2 ? 2000 + +k[3] : +k[3]) : new Date().getFullYear(); break; } }
+  }
+  if (!mo) return '';
+  const tm = t.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${y}${p2(mo)}${p2(d)}${tm ? p2(tm[1]) + tm[2] : '0000'}`;
+};
 const pdfFileText = async (file) => {
   const pdfjs = await loadPdfJs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
@@ -9842,7 +9874,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const split = true;
     const rows = [];
     for (const [i, file] of files.entries()) {
-      let resIds = [], note = '';
+      let resIds = [], note = '', sk = '';
       if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
         try {
           if (split) {
@@ -9859,13 +9891,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               }
               const byRes = new Map();
               per.forEach((ids, pi) => { if (ids.length === 1) byRes.set(ids[0], [...(byRes.get(ids[0]) || []), pi]); });
-              [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '' }));
+              [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '', order: i, sortKey: flightSortKey(pgs.map(pi => pages[pi]).join(' ')) }));
               const rest = per.map((ids, pi) => ids.length === 1 ? -1 : pi).filter(pi => pi >= 0);
-              if (rest.length) rows.push({ key: `${i}_rest_${file.name}`, file, pages: rest, resIds: [], note: `${rest.length} sayfada isim bulunamadı — elle seçin` });
+              if (rest.length) rows.push({ key: `${i}_rest_${file.name}`, file, pages: rest, resIds: [], note: `${rest.length} sayfada isim bulunamadı — elle seçin`, order: i, sortKey: '' });
               continue;
             }
           }
-          const words = nameWords(await pdfFileText(file));
+          const txt = await pdfFileText(file);
+          sk = flightSortKey(txt);
+          const words = nameWords(txt);
           if (words.size === 0) note = 'PDF\'de metin yok (taranmış olabilir) — elle seçin';
           else {
             resIds = matchRes(words);
@@ -9873,9 +9907,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           }
         } catch (e) { note = 'PDF okunamadı — elle seçin'; }
       } else note = 'Görsel dosya — elle seçin';
-      rows.push({ key: `${i}_${file.name}`, file, resIds, note });
+      rows.push({ key: `${i}_${file.name}`, file, resIds, note, order: i, sortKey: sk });
     }
-    setBulkTicket({ tourId: tour.id, field, rows, busy: false });
+    setBulkTicket({ tourId: tour.id, field, rows, busy: false, append: false });
   };
   const runBulkTicket = async () => {
     const bt = bulkTicket; if (!bt) return;
@@ -9883,18 +9917,49 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     if (!todo.length) { showToast?.('Eşleşen dosya yok', 'error'); return; }
     setBulkTicket({ ...bt, uploading: true });
     const tour = toursRef.current.find(t => t.id === bt.tourId);
-    const patches = {}; let fail = 0;
-    for (const row of todo) {
+    const patches = {}; let fail = 0, merged = 0, appendFail = 0;
+    // Kişi başı parçaları topla: aktarmalı uçuşta aynı kişiye 2+ biniş kartı düşer → uçuş sırasına göre tek PDF
+    const byPerson = new Map();
+    todo.forEach(row => row.resIds.forEach(id => byPerson.set(id, [...(byPerson.get(id) || []), row])));
+    const legOrder = (a, b) => (a.sortKey && b.sortKey && a.sortKey !== b.sortKey) ? a.sortKey.localeCompare(b.sortKey) : (a.order - b.order);
+    const cache = new Map(); // aynı parça seti birden çok kişiye gidiyorsa (grup bileti) tek yükleme
+    for (const [rid, rowsOf] of byPerson.entries()) {
+      const res = (tour.reservations || []).find(r => r.id === rid);
+      const legs = [...rowsOf].sort(legOrder);
+      const appendTo = bt.append && res?.[bt.field] ? res : null;
+      const sig = legs.map(r => r.key).join('|');
       try {
-        const f = row.pages ? await pdfExtractPages(row.file, row.pages) : row.file;
-        const { url, path } = await storeResDocFile(tour, `toplu_${bt.field}`, f);
-        row.resIds.forEach(id => { patches[id] = { [bt.field]: url, [`${bt.field}Path`]: path }; });
-      } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', row.file.name, e.message); }
+        let up = !appendTo && cache.get(sig);
+        if (!up) {
+          let f;
+          if (legs.length === 1 && !appendTo) f = legs[0].pages ? await pdfExtractPages(legs[0].file, legs[0].pages) : legs[0].file;
+          else {
+            const parts = [];
+            if (appendTo) {
+              // Mevcut biniş kartını indir, yenisini sonuna ekle
+              let bytes = null;
+              try {
+                const p = appendTo[`${bt.field}Path`];
+                if (p) { const { getStorage, ref, getBytes } = await import('firebase/storage'); bytes = await getBytes(ref(getStorage(), p)); }
+              } catch (e) { bytes = null; }
+              if (!bytes) { try { const r = await fetch(appendTo[bt.field]); if (r.ok) bytes = await r.arrayBuffer(); } catch (e) { bytes = null; } }
+              if (!bytes) { appendFail++; continue; }
+              parts.push({ bytes, type: 'application/pdf' });
+            }
+            legs.forEach(r => parts.push({ file: r.file, pages: r.pages }));
+            f = await pdfMergeParts(parts, `aktarmali_${String(res?.customerName || rid).replace(/[^\wçğıöşüÇĞİÖŞÜ]+/g, '_')}.pdf`);
+            merged++;
+          }
+          up = await storeResDocFile(tour, `toplu_${bt.field}`, f);
+          if (!appendTo) cache.set(sig, up);
+        }
+        patches[rid] = { [bt.field]: up.url, [`${bt.field}Path`]: up.path };
+      } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', rid, e.message); }
     }
     try {
       if (Object.keys(patches).length) await patchTourReservations(bt.tourId, patches);
       const dd = RES_DOCS.find(d => d.field === bt.field) || RES_DOCS[0];
-      showToast?.(`${dd.icon} ${Object.keys(patches).length} kişiye ${dd.label.toLocaleLowerCase('tr-TR')} eklendi${fail ? `, ${fail} dosya yüklenemedi` : ''}`, fail ? 'warning' : 'success');
+      showToast?.(`${dd.icon} ${Object.keys(patches).length} kişiye ${dd.label.toLocaleLowerCase('tr-TR')} eklendi${merged ? ` (${merged} kişide aktarmalı kartlar birleştirildi)` : ''}${fail ? `, ${fail} kişide yükleme hatası` : ''}${appendFail ? `, ${appendFail} kişinin mevcut kartı okunamadı — iki bacağı birlikte yükleyin` : ''}`, (fail || appendFail) ? 'warning' : 'success');
       setBulkTicket(null);
     } catch (e) {
       showToast?.('❌ Tura kaydedilemedi: ' + e.message, 'error');
@@ -10126,6 +10191,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               const dd = RES_DOCS.find(d => d.field === bulkTicket.field) || RES_DOCS[0];
               const label = `${dd.icon} ${dd.label}`;
               const ready = bulkTicket.rows.filter(r => r.resIds.length).length;
+              // Aynı kişiye birden fazla dosya/sayfa grubu → aktarmalı, birleştirilecek
+              const legCount = {}; bulkTicket.rows.forEach(r => r.resIds.forEach(id => { legCount[id] = (legCount[id] || 0) + 1; }));
+              const multiIds = Object.keys(legCount).filter(id => legCount[id] > 1);
+              const hasExisting = bulkTicket.rows.some(r => r.resIds.some(id => resList.find(x => x.id === id)?.[bulkTicket.field]));
               return (
                 <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
                   <h4 style={{ margin: '0 0 4px', fontSize: '15px' }}>{label} — toplu yükleme</h4>
@@ -10140,7 +10209,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                               const r = resList.find(x => x.id === id);
                               return (
                                 <span key={id} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '12px', padding: '3px 8px', fontSize: '12px' }}>
-                                  {nameOf(id)}{r?.[bulkTicket.field] ? ' (değişecek)' : ''}
+                                  {nameOf(id)}{legCount[id] > 1 ? ' 🔗' : ''}{r?.[bulkTicket.field] ? (bulkTicket.append ? ' (mevcuda eklenecek)' : ' (değişecek)') : ''}
                                   <button onClick={() => setRow(row.key, x => ({ ...x, resIds: x.resIds.filter(i => i !== id) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px', fontSize: '12px' }}>×</button>
                                 </span>
                               );
@@ -10155,9 +10224,20 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                       ))}
                     </div>
                   )}
+                  {multiIds.length > 0 && (
+                    <div style={{ marginTop: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.35)', fontSize: '12px', color: '#67e8f9' }}>
+                      🔗 Aktarmalı uçuş: {multiIds.length} kişiye birden fazla biniş kartı düştü — her kişinin kartları uçuş sırasına göre tek PDF'te birleştirilecek.
+                    </div>
+                  )}
+                  {hasExisting && (
+                    <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!bulkTicket.append} onChange={e => setBulkTicket(bt => ({ ...bt, append: e.target.checked }))} style={{ marginTop: '2px' }} />
+                      <span>Mevcut biniş kartının <b>sonuna ekle</b> (aktarmalı uçuşun 2. bacağı ayrı geldiyse). İşaretsizse mevcut kart değiştirilir.</span>
+                    </label>
+                  )}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                     <button onClick={runBulkTicket} disabled={bulkTicket.busy || bulkTicket.uploading || !ready} style={{ flex: 1, padding: '10px', background: ready ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
-                      {bulkTicket.uploading ? '⏳ Yükleniyor...' : `⬆️ ${ready} dosyayı yükle`}
+                      {bulkTicket.uploading ? '⏳ Yükleniyor...' : `⬆️ ${Object.keys(legCount).length} kişiye yükle`}
                     </button>
                     <button onClick={() => setBulkTicket(null)} disabled={bulkTicket.uploading} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
                   </div>
