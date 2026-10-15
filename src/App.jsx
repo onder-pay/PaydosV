@@ -3506,7 +3506,9 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
 function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
   // 🖱️ Sağ tık / uzun bas menüsü: { x, y, c }  ·  tura ekle için tur seçici
   const [ctxMenu, setCtxMenu] = useState(null);
-  const [tourPickFor, setTourPickFor] = useState(null);
+  const [tourPickFor, setTourPickFor] = useState(null); // tek müşteri ya da { many: [müşteriler] }
+  const [selIds, setSelIds] = useState([]); // arama sonuçlarında çoklu seçim (ör. aynı firmadan 5 kişi)
+  const toggleSel = (id) => setSelIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const [tourPickQ, setTourPickQ] = useState('');
   const longPressRef = useRef(null);
   useEffect(() => {
@@ -5090,7 +5092,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   };
 
   // Müşteri Kartı Render
-  const renderCustomerCard = (c) => {
+  const renderCustomerCard = (c, selectable) => {
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = safeParseObj(c.usaVisa);
@@ -5099,10 +5101,13 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     return (
       <div key={c.id} onClick={() => setSelectedCustomer(c)} {...ctxHandlers(c)} title="Sağ tık: vize başvurusu / tura ekle" style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-          <div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', minWidth: 0 }}>
+            {selectable && <input type="checkbox" checked={selIds.includes(c.id)} onClick={e => e.stopPropagation()} onChange={() => toggleSel(c.id)} aria-label="Seç" style={{ width: '18px', height: '18px', marginTop: '1px', accentColor: '#f59e0b', flex: 'none', cursor: 'pointer' }} />}
+          <div style={{ minWidth: 0 }}>
             <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} {c.city && `• ${c.city}`}</p>
-            {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
+            {(c.companyName || c.sector) && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{[c.companyName, c.sector].filter(Boolean).join(' · ')}</p>}
+          </div>
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {c.verified === true && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
@@ -5134,6 +5139,17 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <button style={{ ...ctxItem, color: '#94a3b8' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); setSelectedCustomer(c); }}>👤 Müşteri kartını aç</button>
         </div>
       )}
+      {selIds.length > 0 && (() => {
+        const selCusts = selIds.map(id => customers.find(c => c.id === id)).filter(Boolean);
+        return (
+          <div style={{ position: 'fixed', left: isMobile ? '8px' : '50%', right: isMobile ? '8px' : 'auto', transform: isMobile ? 'none' : 'translateX(-50%)', bottom: isMobile ? '12px' : '24px', zIndex: 2500, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '14px', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
+            <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
+            <button onClick={() => exportToExcel(selCusts, `Secili_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)', background: 'none', color: '#10b981', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
+            <button onClick={() => setSelIds([])} aria-label="Seçimi temizle" style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>✕</button>
+          </div>
+        );
+      })()}
       {tourPickFor && (
         <div onClick={() => setTourPickFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
@@ -5142,19 +5158,27 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 <h3 style={{ margin: 0, fontSize: '16px' }}>🎫 Tura ekle</h3>
                 <button onClick={() => setTourPickFor(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
               </div>
-              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(tourPickFor.firstName)} {titleCaseTr(tourPickFor.lastName)} hangi tura eklensin?</p>
+              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tourPickFor.many ? `Seçilen ${tourPickFor.many.length} kişi` : `${titleCaseTr(tourPickFor.firstName)} ${titleCaseTr(tourPickFor.lastName)}`} hangi tura eklensin?</p>
               <input autoFocus value={tourPickQ} onChange={e => setTourPickQ(e.target.value)} placeholder="Tur ara..." style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
             </div>
             <div style={{ overflowY: 'auto', padding: '8px' }}>
               {pickTours.length === 0 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', padding: '20px' }}>Yaklaşan tur yok</p>}
-              {pickTours.map(t => { const inT = custInTour(t, tourPickFor); return (
-                <button key={t.id} disabled={inT} onClick={() => { const c = tourPickFor; setTourPickFor(null); onGo?.('tours', { type: 'resFor', tourId: t.id, customer: c }); }}
+              {pickTours.map(t => {
+                const many = tourPickFor.many;
+                const already = many ? many.filter(c => custInTour(t, c)).length : 0;
+                const inT = many ? already === many.length : custInTour(t, tourPickFor);
+                return (
+                <button key={t.id} disabled={inT} onClick={() => {
+                  const c = tourPickFor; setTourPickFor(null);
+                  if (c.many) { setSelIds([]); onGo?.('tours', { type: 'resForMany', tourId: t.id, customers: c.many }); }
+                  else onGo?.('tours', { type: 'resFor', tourId: t.id, customer: c });
+                }}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', marginBottom: '6px', color: '#e8f1f8', cursor: inT ? 'not-allowed' : 'pointer', opacity: inT ? 0.5 : 1 }}>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>{t.name}</span>
                     <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8' }}>{formatDate(t.startDate)}{t.endDate ? ` – ${formatDate(t.endDate)}` : ''} · {(t.reservations || []).filter(r => !r.cancelled).length} kişi</span>
                   </span>
-                  <span style={{ fontSize: '11px', color: inT ? '#10b981' : '#3b82f6', whiteSpace: 'nowrap' }}>{inT ? '✓ zaten kayıtlı' : 'Seç →'}</span>
+                  <span style={{ fontSize: '11px', color: inT ? '#10b981' : '#3b82f6', whiteSpace: 'nowrap' }}>{inT ? '✓ zaten kayıtlı' : many && already ? `${many.length - already} kişi eklenecek →` : 'Seç →'}</span>
                 </button>
               ); })}
             </div>
@@ -5313,7 +5337,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {filtered.length === 0
                 ? <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>"{q}" ile eşleşen müşteri yok</p>
-                : filtered.slice(0, 150).map(c => renderCustomerCard(c))}
+                : (<>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
+                      <input type="checkbox" checked={filtered.slice(0, 150).every(c => selIds.includes(c.id))}
+                        onChange={e => { const ids = filtered.slice(0, 150).map(c => c.id); setSelIds(p => e.target.checked ? [...new Set([...p, ...ids])] : p.filter(x => !ids.includes(x))); }}
+                        style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }} />
+                      Tümünü seç ({Math.min(filtered.length, 150)})
+                    </label>
+                    {filtered.slice(0, 150).map(c => renderCustomerCard(c, true))}
+                  </>)}
               {filtered.length > 150 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', padding: '8px' }}>İlk 150 sonuç gösteriliyor — aramayı daraltın (ör. ad + soyad)</p>}
             </div>
           ) : (
@@ -9086,6 +9118,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
   const [pendingResCust, setPendingResCust] = useState(null);
   useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
+    else if (quickAction?.type === 'resForMany') {
+      const t = tours.find(x => String(x.id) === String(quickAction.tourId));
+      if (t) addBulkReservations(t, quickAction.customers || []);
+      else showToast?.('Tur bulunamadı', 'error');
+    }
     else if (quickAction?.type === 'resFor') {
       const t = tours.find(x => String(x.id) === String(quickAction.tourId));
       if (t) { openReservationForm(t); setPendingResCust(String(quickAction.customer?.id ?? '')); }
@@ -9787,6 +9824,46 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     XLSX.writeFile(wb, 'Tur_Rezervasyon_Sablonu.xlsx');
   };
 
+  // Müşteriler'den çoklu seçim → "Tura ekle": seçilenler varsayılan oda tipi/fiyatla tek seferde eklenir.
+  // Pasaport ve vize durumu tek tek eklemedeki gibi müşteri kartından okunur; turda zaten olan atlanır.
+  const addBulkReservations = async (tour, custs) => {
+    const inTour = new Set((tour.reservations || []).filter(r => !r.cancelled).map(r => String(r.customerId)));
+    const todo = custs.filter(c => c && !inTour.has(String(c.id)));
+    const skipped = custs.length - todo.length;
+    if (!todo.length) { setSelectedTour(tour); showToast?.('Seçilenlerin hepsi bu turda zaten kayıtlı', 'info'); return; }
+    const rts = resRoomTypes();
+    const defRt = rts.find(rt => /double|çift|cift/i.test(rt)) || rts[0] || 'Double';
+    const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
+    const isSchengen = schengenCountries.includes(tour?.country);
+    const now = Date.now();
+    const added = todo.map((customer, i) => {
+      const passports = safeParseJSON(customer.passports);
+      const validPassport = passports.find(pp => pp.passportNo && getDaysLeft(pp.expiryDate) > 0) || passports[0];
+      const hasGreen = passports.some(pp => pp.passportType?.includes('Yeşil') || (pp.passportNo && pp.passportNo.toUpperCase().startsWith('S')));
+      let hasVisa = false, visaEndDate = '';
+      if (hasGreen && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) { hasVisa = true; visaEndDate = 'GREEN_PASSPORT'; }
+      else if (isSchengen) { const v = safeParseJSON(customer.schengenVisas).find(x => x.endDate && getDaysLeft(x.endDate) > 0); if (v) { hasVisa = true; visaEndDate = v.endDate; } }
+      else if (tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD') { const u = safeParseObj(customer.usaVisa); if (u.endDate && getDaysLeft(u.endDate) > 0) { hasVisa = true; visaEndDate = u.endDate; } }
+      return {
+        id: now + i, sNo: (tour.reservations?.length || 0) + i + 1,
+        customerId: customer.id, customerName: customer.name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
+        customerPhone: customer.phone || '', customerEmail: customer.email || '', company: customer.companyName || customer.company || '',
+        roomType: defRt, roommate: '', roommate3: '', hasChild: false,
+        passport: validPassport?.passportNo || '', hasVisa, visaEndDate,
+        tourPrice: defPrice?.amount || 0, currency: defPrice?.currency || '€',
+        payment1: 0, payment2: 0, payment3: 0, notes: '', createdAt: new Date().toISOString(),
+      };
+    });
+    const updatedTour = { ...tour, reservations: [...(tour.reservations || []), ...added] };
+    setTours(prev => prev.map(t => t.id === tour.id ? updatedTour : t));
+    setSelectedTour(updatedTour);
+    try {
+      const sd = { ...updatedTour }; delete sd._docId;
+      await setDoc(doc(db, 'tours', tour._docId || String(tour.id)), sd, { merge: true });
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+    logActivity('create', 'Tur', `${added.length} kişi toplu eklendi — ${tour.name || ''}`, currentUser);
+    showToast?.(`✅ ${added.length} kişi "${tour.name}" turuna eklendi${skipped ? ` (${skipped} kişi zaten vardı)` : ''} — oda tipi ${defRt}; oda ve fiyatları kontrol edin`, 'success');
+  };
   const openReservationForm = (tour) => {
     setSelectedTour(tour);
     // Varsayılan oda tipi: listede Double/Çift varsa o, yoksa ilk tip — fiyat da o tipten
