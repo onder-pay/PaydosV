@@ -39,6 +39,12 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
+// Otel yemek konseptleri — fiyat listesi, rezervasyon, voucher ve Excel aynı listeyi kullanır
+const MEAL_CONCEPTS = ['ro', 'bb', 'hb', 'fb', 'ai', 'uai'];
+const MEAL_CODE = { ro: 'RO', bb: 'BB', hb: 'HB', fb: 'FB', ai: 'AI', uai: 'UAI' };
+const MEAL_TR = { ro: 'Sadece Oda', bb: 'Kahvaltı', hb: 'Yarım Pansiyon', fb: 'Tam Pansiyon', ai: 'Her Şey Dahil', uai: 'Ultra Her Şey Dahil' };
+const MEAL_EN = { ro: 'Room Only (RO)', bb: 'Bed & Breakfast (BB)', hb: 'Half Board (HB)', fb: 'Full Board (FB)', ai: 'All Inclusive (AI)', uai: 'Ultra All Inclusive (UAI)' };
+
 // Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
 // (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
 const RES_DOCS = [
@@ -9011,7 +9017,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
     };
     const nightsCalc = (a,b) => { try { const d=Math.round((new Date(b)-new Date(a))/86400000); return d>0?d:0; } catch { return 0; } };
-    const mealPlan = (c) => c==='ro'?'Room Only (RO)':c==='bb'?'Bed & Breakfast (BB)':c==='hb'?'Half Board (HB)':c==='fb'?'Full Board (FB)':(c||'Bed & Breakfast (BB)');
+    const mealPlan = (c) => MEAL_EN[c] || c || MEAL_EN.bb;
     const checkIn = hi.checkIn || tour.startDate || '';
     const checkOut = hi.checkOut || tour.endDate || '';
     const nights = nightsCalc(checkIn, checkOut);
@@ -10867,10 +10873,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Giriş Tarihi</label><input type="date" value={hi.checkIn || tour.startDate || ''} onChange={e => updateHotel('checkIn', e.target.value)} style={fieldStyle} /></div>
                           <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Çıkış Tarihi</label><input type="date" value={hi.checkOut || tour.endDate || ''} onChange={e => updateHotel('checkOut', e.target.value)} style={fieldStyle} /></div>
                           <select value={hi.concept || 'bb'} onChange={e => updateHotel('concept', e.target.value)} style={fieldStyle}>
-                            <option value="ro" style={{background:'#1a3a5c'}}>Room Only (RO)</option>
-                            <option value="bb" style={{background:'#1a3a5c'}}>Bed & Breakfast (BB)</option>
-                            <option value="hb" style={{background:'#1a3a5c'}}>Half Board (HB)</option>
-                            <option value="fb" style={{background:'#1a3a5c'}}>Full Board (FB)</option>
+                            {MEAL_CONCEPTS.map(c => <option key={c} value={c} style={{background:'#1a3a5c'}}>{MEAL_EN[c]}</option>)}
                           </select>
                         </div>
                       </div>
@@ -13656,7 +13659,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 
           {concepts.length === 0 ? (
             <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
-              ⚠️ Önce konsept seçin (RO/BB/HB/FB)
+              ⚠️ Önce konsept seçin (RO/BB/HB/FB/AI/UAI)
             </div>
           ) : roomTypes.length === 0 ? (
             <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
@@ -14142,7 +14145,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         const key = `${startDate}__${endDate}__${currency}`;
         if (!groups[key]) groups[key] = { id: generateUniqueId(), startDate, endDate, currency, rates: {} };
         if (!groups[key].rates[roomType]) groups[key].rates[roomType] = {};
-        [['ro','RO'],['bb','BB'],['hb','HB'],['fb','FB']].forEach(([c, C]) => {
+        MEAL_CONCEPTS.map(c => [c, MEAL_CODE[c]]).forEach(([c, C]) => {
           const buy = num(r[`${C} Alış`] || r[`${C} Alis`]);
           const sell = num(r[`${C} Satış`] || r[`${C} Satis`]);
           if (buy > 0 || sell > 0) groups[key].rates[roomType][c] = { buy, sell };
@@ -14165,14 +14168,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   };
   const downloadHotelPriceTemplate = (hotelName) => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+      ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış', 'AI Alış', 'AI Satış', 'UAI Alış', 'UAI Satış'],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Single', '', '', 80, 100, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Double', '', '', 100, 130, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Twin', '', '', 100, 130, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Single', '', '', 85, 105, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Double', '', '', 105, 135, '', '', '', ''],
     ]);
-    ws['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:6},{wch:11},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9}];
+    ws['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:6},{wch:11},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Fiyatlar');
     XLSX.writeFile(wb, 'Otel_Fiyat_Sablonu.xlsx');
@@ -14189,7 +14192,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
-    enabledConcepts: ['bb'], // RO/BB/HB/FB
+    enabledConcepts: ['bb'], // RO/BB/HB/FB/AI/UAI
     priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
     notes: '',
@@ -14504,7 +14507,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
   // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
   const hotelProformaWithFlights = (hotel, resList) => {
-    const conceptTxt = (c) => ({ ro: 'Sadece Oda', bb: 'Kahvaltı', hb: 'Yarım Pansiyon', fb: 'Tam Pansiyon', ai: 'Her Şey Dahil' }[c] || String(c || '').toUpperCase());
+    const conceptTxt = (c) => MEAL_TR[c] || String(c || '').toUpperCase();
     let anyFlight = false;
     const pkgs = resList.map(r => {
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
@@ -14641,7 +14644,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvaltı' : c === 'hb' ? 'Yarım Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
+      const conceptLabel = (c) => MEAL_TR[c] || (c || '').toUpperCase();
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -14767,7 +14770,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       const r = reservation;
       const nights = calcNights(r.checkIn, r.checkOut);
-      const mealPlan = (c) => c === 'ro' ? 'Room Only (RO)' : c === 'bb' ? 'Bed & Breakfast (BB)' : c === 'hb' ? 'Half Board (HB)' : c === 'fb' ? 'Full Board (FB)' : (c || '').toUpperCase();
+      const mealPlan = (c) => MEAL_EN[c] || (c || '').toUpperCase();
       const fmtEN = (d) => {
         if (!d) return '';
         const dt = new Date(d);
@@ -15888,14 +15891,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       Her satır = bir otelin bir tarih aralığındaki bir oda tipinin fiyatları. Aynı (Otel + Başlangıç + Bitiş) gruplandırılır.
                     </p>
                     <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>
-                      Sütunlar: <strong>Otel Adı, Başlangıç, Bitiş, Para, Oda Tipi, RO Alış, RO Satış, BB Alış, BB Satış, HB Alış, HB Satış, FB Alış, FB Satış</strong>
+                      Sütunlar: <strong>Otel Adı, Başlangıç, Bitiş, Para, Oda Tipi, RO Alış, RO Satış, BB Alış, BB Satış, HB Alış, HB Satış, FB Alış, FB Satış, AI Alış, AI Satış, UAI Alış, UAI Satış</strong>
                     </p>
                     <p style={{ margin: '0 0 10px', fontSize: '10px', color: '#f59e0b' }}>
                       ⚠️ Otel adı mevcut otel listesindeki adla aynı olmalı (büyük/küçük harf önemsiz). Tarihler GG.AA.YYYY veya YYYY-AA-GG formatında olabilir.
                     </p>
                     <button onClick={() => {
                       const ws = XLSX.utils.aoa_to_sheet([
-                        ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+                        ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış', 'AI Alış', 'AI Satış', 'UAI Alış', 'UAI Satış'],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Single', 50, 80, 60, 100, '', '', '', ''],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Double', 80, 120, 90, 140, '', '', '', ''],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Triple', 110, 160, 120, 180, '', '', '', ''],
@@ -15979,7 +15982,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             hb_buy: num(r['HB Alış'] || r['HB Alis']),
                             hb_sell: num(r['HB Satış'] || r['HB Satis']),
                             fb_buy: num(r['FB Alış'] || r['FB Alis']),
-                            fb_sell: num(r['FB Satış'] || r['FB Satis'])
+                            fb_sell: num(r['FB Satış'] || r['FB Satis']),
+                            ai_buy: num(r['AI Alış'] || r['AI Alis']),
+                            ai_sell: num(r['AI Satış'] || r['AI Satis']),
+                            uai_buy: num(r['UAI Alış'] || r['UAI Alis']),
+                            uai_sell: num(r['UAI Satış'] || r['UAI Satis'])
                           });
                         }
 
@@ -16046,7 +16053,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         }
                         const rates = groups[key].rates;
                         if (!rates[it.roomType]) rates[it.roomType] = {};
-                        ['ro','bb','hb','fb'].forEach(c => {
+                        MEAL_CONCEPTS.forEach(c => {
                           const buy = it[`${c}_buy`], sell = it[`${c}_sell`];
                           if (buy > 0 || sell > 0) rates[it.roomType][c] = { buy: buy || 0, sell: sell || 0 };
                         });
@@ -16341,12 +16348,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ marginBottom: '14px' }}>
               <label style={{...labelStyle, marginBottom: '6px'}}>Anlaşmalı Konseptler</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {[
-                  {key: 'ro', label: 'RO (Sadece Oda)'},
-                  {key: 'bb', label: 'BB (Kahvaltı)'},
-                  {key: 'hb', label: 'HB (Yarım Pansiyon)'},
-                  {key: 'fb', label: 'FB (Tam Pansiyon)'}
-                ].map(({key, label}) => {
+                {MEAL_CONCEPTS.map(key => ({ key, label: `${MEAL_CODE[key]} (${MEAL_TR[key]})` })).map(({key, label}) => {
                   const enabled = (hotelForm.enabledConcepts || []).includes(key);
                   return (
                     <button key={key} type="button" onClick={() => {
@@ -17104,9 +17106,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
-                      {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
+                      {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : MEAL_CONCEPTS).map(c => (
                         <option key={c} value={c}>
-                          {c === 'ro' ? 'Sadece Oda (RO)' : c === 'bb' ? 'Kahvaltı Dahil (BB)' : c === 'hb' ? 'Yarım Pansiyon (HB)' : 'Tam Pansiyon (FB)'}
+                          {`${MEAL_TR[c] || c.toUpperCase()} (${MEAL_CODE[c] || c.toUpperCase()})`}
                         </option>
                       ))}
                     </select>
