@@ -848,10 +848,25 @@ const isSaneDate = (iso) => {
   const y = parseInt(m[1], 10);
   return y >= 1900 && y <= 2100;
 };
+// ===== TÜRKÇE KARAKTER KURALI (bkz. CLAUDE.md) =====
+// 1) KARŞILAŞTIRMA / ARAMA / EŞLEŞTİRME: iki taraf da normalizeTr → ASCII küçük harf ("İptal","IPTAL","iptal" → "iptal").
+//    Asla düz toLowerCase/toUpperCase ya da /.../i ile Türkçe metin karşılaştırma: JS "İ"↔"i" eşlemez, "I"→"i" yapar.
+// 2) GÖSTERİM: büyük/küçük harf trUpper / trLower (tr-TR yerel ayarı), isimler titleCaseTr.
+// 3) KAYIT: kullanıcının yazdığı Türkçe harfler olduğu gibi saklanır; ASCII sadece dış sistem gerektirirse (MRZ, dosya adı, PDF yedek font).
 const normalizeTr = (s) => (s == null ? '' : String(s))
   .replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u')
   .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
-  .toLowerCase().trim();
+  .toLowerCase().replace(/\u0307/g, '').trim(); // \u0307: "İ".toLowerCase() artığı birleşik nokta
+const trUpper = (s) => (s == null ? '' : String(s)).toLocaleUpperCase('tr-TR');
+const trLower = (s) => (s == null ? '' : String(s)).toLocaleLowerCase('tr-TR');
+// Metin, verilen kelimelerden birini içeriyor mu (Türkçe/İngilizce harf ve büyük-küçük farkı yok sayılır)
+const trHas = (text, ...words) => { const t = normalizeTr(text); return words.some(w => t.includes(normalizeTr(w))); };
+// E-posta: Türkçe klavyede "İ"/"ı" ile yazılsa da ASCII küçük harf ("İnfo@" → "info@")
+const normEmail = (s) => String(s || '').trim().replace(/[İIı]/g, 'i').toLowerCase().replace(/\u0307/g, '');
+// Ayarlardaki özel alan adı → müşteri kaydındaki anahtar. Eski kod "İ"yi "i̇" (noktalı) yazıyordu: okurken ikisine de bakılır.
+const fieldKeyTr = (field) => normalizeTr(field).replace(/\s+/g, '_');
+const fieldKeyLegacy = (field) => String(field).toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
+const extraFieldVal = (obj, field) => obj?.[fieldKeyTr(field)] ?? obj?.[fieldKeyLegacy(field)];
 
 // Vize başvurusu bu müşteriye mi ait? customerId (id/_docId) önce; ID yoksa ya da hiçbir müşteriye denk gelmiyorsa ad-soyad ile eşleştir
 const visaAppBelongsTo = (v, c, customers) => {
@@ -1225,14 +1240,14 @@ function LoginScreen({ onLogin, users }) {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       // users koleksiyonundan profil/rol bul — giriş ekranındaki liste sadece yerel önbellek
       // (yeni cihazda boş); bu yüzden girişten sonra Firestore'dan okunur. Yoksa temel profil.
-      const mail = email.trim().toLowerCase();
+      const mail = normEmail(email);
       let profile = null;
       try {
         const snap = await getDocs(collection(db, 'users'));
-        const d = snap.docs.find(x => (x.data().email || '').toLowerCase() === mail);
+        const d = snap.docs.find(x => normEmail(x.data().email) === mail);
         if (d) profile = { ...d.data(), _docId: d.id };
       } catch (e) { console.warn('Kullanıcı profili okunamadı:', e.message); }
-      if (!profile) profile = users.find(u => (u.email || '').toLowerCase() === mail) || null;
+      if (!profile) profile = users.find(u => normEmail(u.email) === mail) || null;
       if (profile) { const { password: _pw, ...clean } = profile; profile = clean; }
       onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
     } catch (err) {
@@ -1830,7 +1845,7 @@ const detectFlightsGDS = (text) => {
     const code = m[5] + m[6];
     if (seen.has(code + ymd)) continue; seen.add(code + ymd);
     // Biletteki şehirler ASCII büyük harf: Türkçe küçültme "SOFIA"yı "Sofıa" yapmasın
-    const tc = (x) => x.trim().toLowerCase().replace(/(^|[\s-])(\S)/g, (q, a, b) => a + b.toUpperCase());
+    const tc = (x) => titleCaseTr(x.trim());
     out.push({ code, ymd, fromCity: tc(m[1]), from: m[2], toCity: tc(m[3]), to: m[4], dep: tm(m[9]), arr: tm(m[12]) });
   }
   return out;
@@ -4237,7 +4252,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                       );
                     })()}
                   </div>
-                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value.toLowerCase()})} placeholder="ornek@email.com" />
+                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: normEmail(e.target.value)})} placeholder="ornek@email.com" />
                 </div>
               </div>
             </div>
@@ -4276,8 +4291,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         return <FormInput key={idx} label={field} value={formData[k] || ''} onChange={e => setFormData({...formData, [k]: e.target.value})} placeholder={field} />;
                       }
                       // Diğer alanlar için generic input - field ismini key olarak kullan
-                      const fieldKey = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                      return <FormInput key={idx} label={field} value={formData[fieldKey] || ''} onChange={e => setFormData({...formData, [fieldKey]: e.target.value})} placeholder={field} />;
+                      const fieldKey = fieldKeyTr(field), oldKey = fieldKeyLegacy(field);
+                      return <FormInput key={idx} label={field} value={extraFieldVal(formData, field) || ''} onChange={e => { const n = { ...formData, [fieldKey]: e.target.value }; if (oldKey !== fieldKey) delete n[oldKey]; setFormData(n); }} placeholder={field} />;
                     }
                   })}
                 </div>
@@ -4674,7 +4689,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   ['Firma', titleCaseTr(c.companyName)],
                   ['Sektör', c.sector],
                   ['TK Üyelik', c.tkMemberNo || c.tk_uyelik_no],
-                  ['E-posta', (c.email || '').toLowerCase()],
+                  ['E-posta', normEmail(c.email)],
                 ].filter(([, v]) => v && v !== '-');
                 const missing = [!c.tcKimlik && 'TC', !c.birthDate && 'doğum tarihi', !c.email && 'e-posta', !cPassports.length && 'pasaport'].filter(Boolean);
 
@@ -4790,8 +4805,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f)).length > 0 && (() => {
                 const extraFields = appSettings.personalDetailsFields.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f));
                 const hasValues = extraFields.some(f => {
-                  const k = f.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                  return c[k];
+                  return extraFieldVal(c, f);
                 });
                 if (!hasValues) return null;
                 return (
@@ -4802,8 +4816,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       {extraFields.map((field, idx) => {
-                        const k = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                        return c[k] ? <InfoBox key={idx} label={field} value={c[k]} /> : null;
+                        const val = extraFieldVal(c, field);
+                        return val ? <InfoBox key={idx} label={field} value={val} /> : null;
                       })}
                     </div>
                   </div>
@@ -6307,7 +6321,7 @@ function SmtpConfigCard({ appSettings, setAppSettings, showToast, settingsKey = 
       <input
         type={opts.pass && !showPass ? 'password' : 'text'}
         value={smtp[key] || ''}
-        onChange={e => set({ [key]: opts.lower ? e.target.value.toLowerCase() : e.target.value })}
+        onChange={e => set({ [key]: opts.lower ? normEmail(e.target.value) : e.target.value })}
         placeholder={opts.placeholder || ''}
         style={{ width: '100%', maxWidth: '380px', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
       />
@@ -6356,8 +6370,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTypes = allVisaTypes.filter(t =>
-    t.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.cat.toLowerCase().includes(searchTerm.toLowerCase())
+    trHas(t.label, searchTerm) || trHas(t.cat, searchTerm)
   );
 
   const currentTemplate = appSettings?.emailTemplates?.[activeKey] || { subject: '', body: '' };
@@ -6806,9 +6819,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const catLabel = { schengen: 'Schengen', usa: 'Amerika', russia: 'Rusya', uk: 'İngiltere', uae: 'BAE', china: 'Çin', other: 'Diğer' };
     if (v.country && v.country.trim()) {
       const c = v.country.trim();
-      if (/amerika|birleşik devlet|abd|usa/i.test(c)) return 'Amerika';
-      if (/birleşik krallık|ingiltere|i̇ngiltere|united kingdom/i.test(c)) return 'İngiltere';
-      if (/birleşik arap|b\.?a\.?e\.?|uae/i.test(c)) return 'BAE';
+      const cn = normalizeTr(c);
+      if (/amerika|birlesik devlet|\babd\b|\busa\b/.test(cn)) return 'Amerika';
+      if (/birlesik krallik|ingiltere|united kingdom/.test(cn)) return 'İngiltere';
+      if (/birlesik arap|\bb\.?a\.?e\.?\b|\buae\b/.test(cn)) return 'BAE';
       return c;
     }
     const cid = v.categoryId || v.category;
@@ -6818,7 +6832,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     // Kelime sınırıyla eşleştir: kısa ülke adları (Mali, Gana, Çad...) başka kelimelerin içinde yakalanmasın
     const words = ` ${normalizeTr(txt).replace(/[^a-z0-9]+/g, ' ')} `;
     const match = known.find(c => words.includes(` ${normalizeTr(c).replace(/[^a-z0-9]+/g, ' ').trim()} `));
-    if (match) return /amerika|birleşik devlet/i.test(match) ? 'Amerika' : match;
+    if (match) return trHas(match, 'amerika', 'birlesik devlet') ? 'Amerika' : match;
     if (cid && catLabel[cid]) return catLabel[cid];
     return '';
   };
@@ -6923,7 +6937,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       const line = rawLine.trim();
       if (!line) continue;
       // Başlık satırını atla
-      if (/AD\s*SOYAD|PNR|GİDİŞ|RANDEVU TARİHİ/i.test(line) && !pnrRe.test(line.replace(/PNR/i,''))) continue;
+      if (/ad\s*soyad|pnr|gidis|randevu tarihi/.test(normalizeTr(line)) && !pnrRe.test(line.replace(/PNR/i,''))) continue;
       const m = line.match(pnrRe);
       if (!m) continue;
       const pnr = m[1];
@@ -7009,7 +7023,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         appointmentDate: match.appointmentDate || v.appointmentDate,
         appointmentTime: match.appointmentTime || v.appointmentTime,
         // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
-        status: /atama bekliyor/i.test(match.appointmentStatus) ? 'Atama Bekliyor' : (/bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status),
+        status: trHas(match.appointmentStatus, 'atama bekliyor') ? 'Atama Bekliyor' : (trHas(match.appointmentStatus, 'bekliyor') ? 'Randevu Bekliyor' : v.status),
         idataStatus: match.appointmentStatus || ''
       };
     });
@@ -7164,7 +7178,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   // 👥 Toplu vize başvurusu (Müşteriler'de çoklu seçim → "Vize başvurusu"): kategori + tür bir kez seçilir,
   // herkese aynı türde "ilk durum" başvurusu açılır; kişiye özel bilgiler (randevu, PNR…) sonra tek tek girilir.
   // "Müşteri İptal Etti" (iptal içeren her durum) seçilince sebep zorunlu — boş bırakılırsa durum değişmez
-  const isCancelStatus = (st) => String(st || '').toLocaleLowerCase('tr').includes('iptal'); // /iptal/i "İptal"i tanımaz (İ≠I)
+  const isCancelStatus = (st) => trHas(st, 'iptal'); // /iptal/i "İptal"i tanımaz (İ≠I) — bkz. Türkçe karakter kuralı
   const askCancelReason = (who, prev = '') => {
     const r = window.prompt(`${who ? who + ' — ' : ''}İptal sebebi nedir? (zorunlu)`, prev || '');
     return r === null ? null : r.trim();
@@ -9429,7 +9443,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const buildRoomTypes = (tour) => {
     const reservations = (tour.reservations || []).filter(r => !r.cancelled);
     const roomTypes = {}; const assigned = new Set();
-    const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
+    const roomCap = (rt) => { const s = normalizeTr(rt); if (/single|tek ki/.test(s)) return 1; if (/triple|uclu|3 ki/.test(s)) return 3; if (/quad|dortlu|4 ki|aile/.test(s)) return 4; return 2; };
 
     // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
     const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
@@ -9974,7 +9988,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const skipped = custs.length - todo.length;
     if (!todo.length) { setSelectedTour(tour); showToast?.('Seçilenlerin hepsi bu turda zaten kayıtlı', 'info'); return; }
     const rts = resRoomTypes();
-    const defRt = rts.find(rt => /double|çift|cift/i.test(rt)) || rts[0] || 'Double';
+    const defRt = rts.find(rt => /double|cift/.test(normalizeTr(rt))) || rts[0] || 'Double';
     const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
     const isSchengen = schengenCountries.includes(tour?.country);
     const now = Date.now();
@@ -10010,7 +10024,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     setSelectedTour(tour);
     // Varsayılan oda tipi: listede Double/Çift varsa o, yoksa ilk tip — fiyat da o tipten
     const rts = resRoomTypes();
-    const defRt = rts.find(rt => /double|çift|cift/i.test(rt)) || rts[0] || 'Double';
+    const defRt = rts.find(rt => /double|cift/.test(normalizeTr(rt))) || rts[0] || 'Double';
     const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
     setReservationData({
       customerId: '',
@@ -10789,7 +10803,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               // Detaylı satır - müşterinin doğum tarihi, TC, pasaport, firma vs.
               const renderDetailRow = (res) => {
                 const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
-                  customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                  customers.find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName));
                 const birthDate = customer?.birthDate ? formatDate(customer.birthDate) : '—';
                 const tcKimlik = customer?.tcKimlik || '—';
                 const passports = safeParseJSON(customer?.passports);
@@ -10825,14 +10839,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           if (!isSchengen) return null; // Schengen değilse gösterme
 
                           // Türkçe karakter normalize edici
-                          const normalize = (s) => (s || '').toLowerCase()
-                            .replace(/ı/g, 'i').replace(/i̇/g, 'i').replace(/İ/g, 'i')
-                            .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
-                            .replace(/ü/g, 'u').replace(/Ü/g, 'u')
-                            .replace(/ş/g, 's').replace(/Ş/g, 's')
-                            .replace(/ö/g, 'o').replace(/Ö/g, 'o')
-                            .replace(/ç/g, 'c').replace(/Ç/g, 'c')
-                            .trim();
+                          const normalize = normalizeTr;
 
                           // Önce customerId ile, sonra _docId ile, sonra normalize edilmiş isimle bul
                           let customer = customers.find(c => String(c.id) === String(res.customerId));
@@ -11032,7 +11039,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           rows = [['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', 'Durum']];
                           allRes.forEach(res => {
                             const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
-                              customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                              customers.find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName));
                             const passports = safeParseJSON(customer?.passports);
                             rows.push([
                               res.customerName,
@@ -11873,8 +11880,8 @@ function CostCalculator({ initial, onSave, onClose, showToast, isMobile }) {
   // Kişi başı gider toplamı
   const perPersonTotal = c.perPerson.reduce((s, r) => s + n(r.qty) * n(r.unit), 0);
   // Free pax birim maliyeti = otel(single) + uçak birim + fuar birim  (Excel: E16 + C21 + C22)
-  const ucakUnit = n(c.perPerson.find(r => /uçak|ucak/i.test(r.name))?.unit);
-  const fuarUnit = n(c.perPerson.find(r => /fuar/i.test(r.name))?.unit);
+  const ucakUnit = n(c.perPerson.find(r => trHas(r.name, 'ucak'))?.unit);
+  const fuarUnit = n(c.perPerson.find(r => trHas(r.name, 'fuar'))?.unit);
   const freePaxUnit = hotelSingle + ucakUnit + fuarUnit;
   // Ortak gider toplamı (free pax satırının birim fiyatı otomatik)
   const sharedTotal = c.shared.reduce((s, r) => {
@@ -12645,7 +12652,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{titleCaseTr(customer.firstName)} {titleCaseTr(customer.lastName)}</p>
-                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {(customer.email || '').toLowerCase()}</p>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {normEmail(customer.email)}</p>
                         </div>
                         <span style={{ fontSize: '20px' }}>→</span>
                       </div>
@@ -12793,7 +12800,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
   const checkFlights = (fo, fr, o) => {
     const w = [];
     const mins = (s) => { const m = String(s||'').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null; };
-    const plus1 = (s) => /\(\+1\)|ertesi|next day/i.test(String(s||''));
+    const plus1 = (s) => /\(\+1\)|ertesi|next day/.test(normalizeTr(s));
     [[fo,'Gidiş'],[fr,'Dönüş']].forEach(([f,lab]) => {
       const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
       legs.forEach((l, idx) => {
@@ -13726,7 +13733,7 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
 
                 <div>
                   <label style={labelStyle}>Kart Sahibi</label>
-                  <input type="text" value={formData.cardHolder} onChange={e => setFormData({...formData, cardHolder: e.target.value.toUpperCase()})} placeholder="AD SOYAD" style={{...inputStyle, textTransform: 'uppercase'}} />
+                  <input type="text" value={formData.cardHolder} onChange={e => setFormData({...formData, cardHolder: trUpper(e.target.value)})} placeholder="AD SOYAD" style={{...inputStyle, textTransform: 'uppercase'}} />
                 </div>
               </div>
 
@@ -14522,7 +14529,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // Ayarlardan oda tipleri (varsayılan)
   const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
   // Oda tipinden kişi kapasitesi (Single=1, Triple=3, Quad=4, diğerleri=2)
-  const roomCapacity = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki/.test(s)) return 4; return 2; };
+  const roomCapacity = (rt) => { const s = normalizeTr(rt); if (/single|tek ki/.test(s)) return 1; if (/triple|uclu|3 ki/.test(s)) return 3; if (/quad|dortlu|4 ki/.test(s)) return 4; return 2; };
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
@@ -15360,7 +15367,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const filteredHotels = hotels.filter(h => {
     if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
+    const q = normalizeTr(searchQuery);
     return normalizeTr(h.name).includes(normalizeTr(q)) || normalizeTr(h.city).includes(normalizeTr(q)) || normalizeTr(h.country).includes(normalizeTr(q));
   });
 
@@ -16292,7 +16299,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
                         // Otel adı eşleştirme (case-insensitive)
                         const hotelMap = {};
-                        hotels.forEach(h => { hotelMap[h.name.toLowerCase().trim()] = h; });
+                        hotels.forEach(h => { hotelMap[normalizeTr(h.name)] = h; });
 
                         // Satırları işle
                         const items = [];
@@ -16300,7 +16307,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         for (const r of rows) {
                           const name = String(r['Otel Adı'] || r['Otel'] || r['name'] || '').trim();
                           if (!name) continue;
-                          const match = hotelMap[name.toLowerCase()];
+                          const match = hotelMap[normalizeTr(name)];
                           if (!match) { unmatchedHotels.add(name); continue; }
                           items.push({
                             hotelName: name,
@@ -17639,9 +17646,9 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
   const filteredAgencies = searchQuery.length >= 1
     ? agencies.filter(a =>
         normalizeTr(a.name).includes(normalizeTr(searchQuery)) ||
-        a.link?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.institutionCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.userCode?.toLowerCase().includes(searchQuery.toLowerCase())
+        trHas(a.link, searchQuery) ||
+        trHas(a.institutionCode, searchQuery) ||
+        trHas(a.userCode, searchQuery)
       )
     : agencies;
 
@@ -17912,10 +17919,10 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
   };
 
   const filtered = applications.filter(a => {
-    const q = searchQuery.toLowerCase();
+    const q = normalizeTr(searchQuery);
     const matchQ = !q ||
-      (a._name || '').toLowerCase().includes(q) ||
-      (a._email || '').toLowerCase().includes(q) ||
+      normalizeTr(a._name).includes(q) ||
+      normalizeTr(a._email).includes(q) ||
       (a._phone || '').includes(q) ||
       (a._tcKimlik || '').includes(q);
     const matchS = statusFilter === 'all' || a._status === statusFilter;
@@ -18405,7 +18412,7 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   const [aktifKat, setAktifKat] = useState('schengen');
   const [aktifTur, setAktifTur] = useState(''); // '' = kategori varsayılanı, aksi halde vize türü adı
   const [yeniKalem, setYeniKalem] = useState('');
-  const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  const slugify = (s) => normalizeTr(s).replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''); // yalnız yeni kalem anahtarı üretir
 
   // Kategori bazlı kalemler. Eski düz dizi varsa ilk düzenlemede tüm kategorilere kopyalanır (geriye uyum).
   const rawItems = appSettings?.visaCostItems;

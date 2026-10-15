@@ -62,7 +62,9 @@ const buildSureliMail = (v, cust, today) => {
   const appt = String(v.appointmentDate || '').slice(0, 10);
   const from14 = addDays(appt, -14);
   const sonGun = addDays(appt, -1);
-  const ticari = /ticari|fuar|iş/i.test(`${v.visaDuration || ''} ${v.visaType || ''}`);
+  // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz (İ≠i) — önce ASCII küçük harfe indir
+  const tn = String(`${v.visaDuration || ''} ${v.visaType || ''}`).replace(/[İIı]/g, 'i').replace(/[Şş]/g, 's').replace(/[Çç]/g, 'c').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Öö]/g, 'o').toLowerCase();
+  const ticari = /ticari|fuar|\bis\b/.test(tn);
   const al14 = from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`;
   const items = [
     `• SGK hizmet dökümü (e-Devlet, barkodlu) — ${al14}. Randevudan en fazla 14 gün önce alınmış olmalı.`,

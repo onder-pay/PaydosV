@@ -11,9 +11,11 @@ const titleCaseTr = (s) => {
 };
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
+// Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
 const normalizeCountry = (raw) => {
   if (!raw) return '';
-  const s = String(raw).toUpperCase().replace(/[^A-ZÄÖÜÇĞİŞÖÜÁÉÍÓÚÑÅÆØÉÈÊËÔÌÒ\s\/\-]/g, ' ').trim();
+  const s = String(raw).replace(/[^\p{L}\s\/\-]/gu, ' ').trim();
+  const sn = normTr(s);
   const map = [
     { tr: 'Almanya',      keys: ['DEUTSCHLAND', 'GERMANY', 'ALLEMAGNE'] },
     { tr: 'Fransa',       keys: ['FRANCE', 'FRANKREICH', 'FRANCIA'] },
@@ -46,12 +48,12 @@ const normalizeCountry = (raw) => {
     { tr: 'Liechtenstein',keys: ['LIECHTENSTEIN'] }
   ];
   for (const { tr, keys } of map) {
-    if (keys.some(k => s.includes(k))) return tr;
+    if (keys.some(k => sn.includes(normTr(k)))) return tr;
   }
   // Eşleşmedi - "/" varsa ilk parçayı al, başharfler küçük olsun
   const firstPart = s.split('/')[0].trim();
   if (!firstPart) return raw;
-  return firstPart.charAt(0) + firstPart.slice(1).toLowerCase();
+  return titleCaseTr(firstPart);
 };
 admin.initializeApp();
 
@@ -322,7 +324,7 @@ const fromMrz = (s) => {
 // 4+ harfse ülke kodu sızıntısıdır. TURGUT/TURAN/TURHAN gibi (devamı <4) korunur.
 const stripCountryCode = (lastName, nationality) => {
   if (!lastName) return lastName;
-  const isTr = !nationality || /tur|tr|türkiye|turkey/i.test(nationality);
+  const isTr = !nationality || /tur|\btr\b|turkiye|turkey/.test(normTr(nationality)); // /türkiye/i "TÜRKİYE"yi tanımaz
   if (!isTr) return lastName;
   const ln = lastName.trim();
   const m = ln.match(/^T[UÜ]R(.+)$/i);
@@ -585,7 +587,7 @@ const passportExpiryWarn = (expiryDate) => {
 // (CRM'deki placeTr ile aynı mantık). İl değilse (ilçe/yurt dışı) Türkçe başlık biçimine çevrilir.
 const TR_ILLER = ['Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin','Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale','Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum','Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkari','Hatay','Isparta','Mersin','İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli','Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş','Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas','Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak','Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan','Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce'];
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
-const normTr = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().trim();
+const normTr = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().replace(/\u0307/g, '').trim();
 // OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
 const cleanPlaceOcr = (s) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); if (w.length > 1 && w[0].replace(/[^\p{L}]/gu, '').length <= 3) w.shift(); return w.join(' '); };
 const placeTr = (x0) => {
@@ -1342,8 +1344,8 @@ exports.telegramBot = functions
       }
       if (custs.length === 0 && json.firstName && json.lastName) {
         const snap = await cfg.db.collection('customers')
-          .where('firstName', '==', json.firstName.toUpperCase())
-          .where('lastName', '==', json.lastName.toUpperCase())
+          .where('firstName', '==', json.firstName.toLocaleUpperCase('tr-TR'))
+          .where('lastName', '==', json.lastName.toLocaleUpperCase('tr-TR'))
           .get();
         custs = snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
       }
