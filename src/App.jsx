@@ -8635,12 +8635,13 @@ const genOfferHTML = (o) => {
   const flightCard = (f, label) => {
     const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
     if (!legs.length) return '';
+    const ld = legDates({ ...f, legs }); // gece yarısını geçen aktarma bacağı ertesi gün
     return `
     <div class="fcard">
       <div class="fhead">${esc(label)} <span class="fdate">${esc(f.date)}</span>${legs.length > 1 ? '<span class="conn">Aktarmalı</span>' : ''}</div>
       ${legs.map((l, i) => `
         <div class="fleg">
-          ${legs.length > 1 ? `<div class="flegno">${i + 1}. Bacak</div>` : ''}
+          ${legs.length > 1 ? `<div class="flegno">${i + 1}. Bacak${ld[i] && ld[i] !== f.date ? ` · ${esc(ld[i])}` : ''}</div>` : ''}
           ${l.airline ? `<div class="frow"><span>Havayolu</span> <b>${esc(l.airline)}</b></div>` : ''}
           ${l.dep ? `<div class="frow"><span>Kalkış</span> <b>${esc(l.dep)}</b></div>` : ''}
           ${l.arr ? `<div class="frow"><span>Varış</span> <b>${esc(l.arr)}</b></div>` : ''}
@@ -8759,12 +8760,48 @@ const makeTourProgramPdf = async (tour, returnBlob = false) => {
   } finally { if (holder) document.body.removeChild(holder); }
 };
 // Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
+// Aktarmalı uçuşta her bacağın kendi günü: önceki bacağın varışından önce kalkan bacak (gece yarısını geçen
+// aktarma) ya da "+1" ile varan bacaktan sonraki bacak ertesi güne kayar. Teklifte yön başına tek tarih var.
+const TR_GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const parseTrDate = (s) => {
+  const t = String(s || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return { d: new Date(+m[1], +m[2] - 1, +m[3]), iso: true };
+  m = t.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  if (m) return { d: new Date(+m[3], +m[2] - 1, +m[1]), iso: false, dotted: true };
+  m = t.match(/(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*(\d{4})?/);
+  if (m) {
+    const mi = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr') === m[2].toLocaleLowerCase('tr'));
+    if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => t.toLocaleLowerCase('tr').includes(g.toLocaleLowerCase('tr'))) };
+  }
+  return null;
+};
+const fmtLike = (p, d) => {
+  if (p.iso) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (p.dotted) return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return `${d.getDate()} ${TR_AYLAR[d.getMonth()]}${p.year ? ' ' + d.getFullYear() : ''}${p.weekday ? ' ' + TR_GUNLER[d.getDay()] : ''}`;
+};
+const hhmm = (s) => { const m = String(s || '').match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/); return m ? +m[1] * 60 + +m[2] : null; };
+const legDates = (f) => {
+  const legs = f?.legs || [], p = parseTrDate(f?.date);
+  if (!p) return legs.map(() => f?.date || '');
+  let shift = 0, prevArr = null;
+  return legs.map(l => {
+    const dep = hhmm(l.dep), arr = hhmm(l.arr);
+    if (prevArr != null && dep != null && dep < prevArr) shift++;
+    const out = shift ? fmtLike(p, new Date(p.d.getFullYear(), p.d.getMonth(), p.d.getDate() + shift)) : (f.date || '');
+    if (dep != null && arr != null && (/\+\s?1/.test(String(l.arr)) || arr < dep)) shift++;
+    prevArr = arr;
+    return out;
+  });
+};
 const offerFlightList = (o) => {
   const flights = [];
   [[o?.flightOut, 'Gidiş'], [o?.flightRet, 'Dönüş']].forEach(([f, dir]) => {
-    (f?.legs || []).forEach(l => {
+    const dates = legDates(f);
+    (f?.legs || []).forEach((l, i) => {
       const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
-      if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
+      if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: dates[i] || f.date || '', dep: l.dep || '', arr: l.arr || '' });
     });
   });
   return flights;
