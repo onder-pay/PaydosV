@@ -39,6 +39,12 @@ const loadHtml2Canvas = () => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
+// Otel yemek konseptleri — fiyat listesi, rezervasyon, voucher ve Excel aynı listeyi kullanır
+const MEAL_CONCEPTS = ['ro', 'bb', 'hb', 'fb', 'ai', 'uai'];
+const MEAL_CODE = { ro: 'RO', bb: 'BB', hb: 'HB', fb: 'FB', ai: 'AI', uai: 'UAI' };
+const MEAL_TR = { ro: 'Sadece Oda', bb: 'Kahvaltı', hb: 'Yarım Pansiyon', fb: 'Tam Pansiyon', ai: 'Her Şey Dahil', uai: 'Ultra Her Şey Dahil' };
+const MEAL_EN = { ro: 'Room Only (RO)', bb: 'Bed & Breakfast (BB)', hb: 'Half Board (HB)', fb: 'Full Board (FB)', ai: 'All Inclusive (AI)', uai: 'Ultra All Inclusive (UAI)' };
+
 // Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
 // (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
 const RES_DOCS = [
@@ -86,6 +92,38 @@ const pdfExtractPages = async (file, pages) => {
   (await out.copyPages(src, pages)).forEach(pg => out.addPage(pg));
   const base = file.name.replace(/\.pdf$/i, '');
   return new File([await out.save()], `${base}_s${pages.map(p => p + 1).join('-')}.pdf`, { type: 'application/pdf' });
+};
+// Aktarmalı uçuş: aynı yolcuya ait birden fazla biniş kartı tek PDF'te birleşir.
+// parts: [{ file, pages? }] (sırayla) — PDF sayfaları kopyalanır, JPG/PNG tam sayfa eklenir
+const pdfMergeParts = async (parts, name) => {
+  const { PDFDocument } = await loadPdfLib();
+  const out = await PDFDocument.create();
+  for (const pt of parts) {
+    const buf = pt.bytes || await pt.file.arrayBuffer();
+    const type = pt.type || pt.file?.type || '';
+    if (/png|jpe?g/i.test(type)) {
+      const img = /png/i.test(type) ? await out.embedPng(buf) : await out.embedJpg(buf);
+      const pg = out.addPage([img.width, img.height]); pg.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+      continue;
+    }
+    const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+    (await out.copyPages(src, pt.pages || src.getPageIndices())).forEach(pg => out.addPage(pg));
+  }
+  return new File([await out.save()], name, { type: 'application/pdf' });
+};
+// Biniş kartı metninden uçuş zamanı sıralama anahtarı (YYYYMMDDHHMM) — bacakları doğru sıraya koymak için
+const BP_MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12, OCA: 1, SUB: 2, ŞUB: 2, NIS: 4, NİS: 4, HAZ: 6, TEM: 7, AGU: 8, AĞU: 8, EYL: 9, EKI: 10, EKİ: 10, KAS: 11, ARA: 12 };
+const flightSortKey = (text) => {
+  const t = String(text || '').toUpperCase();
+  let y = 0, mo = 0, d = 0, m;
+  if ((m = t.match(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/))) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+  else if ((m = t.match(/\b(\d{1,2})\s?([A-ZÇĞİÖŞÜ]{3})\s?(20\d{2}|\d{2})?\b/g))) {
+    for (const x of m) { const k = x.match(/(\d{1,2})\s?([A-ZÇĞİÖŞÜ]{3})\s?(\d{2,4})?/); if (k && BP_MONTHS[k[2]]) { d = +k[1]; mo = BP_MONTHS[k[2]]; y = k[3] ? (k[3].length === 2 ? 2000 + +k[3] : +k[3]) : new Date().getFullYear(); break; } }
+  }
+  if (!mo) return '';
+  const tm = t.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${y}${p2(mo)}${p2(d)}${tm ? p2(tm[1]) + tm[2] : '0000'}`;
 };
 const pdfFileText = async (file) => {
   const pdfjs = await loadPdfJs();
@@ -3588,10 +3626,36 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   };
 
   // Excel Export
-  const exportToExcel = (data, filename) => {
+  // visaKind: 'schengen' | 'usa' → vize ülkesi / başlangıç / bitiş sütunları eklenir
+  const visaCols = (c, visaKind) => {
+    if (visaKind === 'range') {
+      // Tarih aralığı sekmesi: aralıkla kesişen vizeyi yaz (Schengen önce, sonra ABD)
+      const ov = (a, b) => !!a && !!b && a <= dateRangeTo && b >= dateRangeFrom;
+      const sv = dateRangeVisa !== 'usa' ? safeParseJSON(c.schengenVisas).filter(v => ov(v.startDate, v.endDate)).sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)))[0] : null;
+      if (sv) return visaCols({ schengenVisas: JSON.stringify([sv]) }, 'schengen');
+      return visaCols(c, 'usa');
+    }
+    if (visaKind === 'usa') {
+      const u = safeParseObj(c.usaVisa);
+      const left = getDaysLeft(u.endDate);
+      return { 'Vize Ülkesi': 'ABD', 'Vize Başlangıç': formatDate(u.issueDate || u.startDate), 'Vize Bitiş': formatDate(u.endDate), 'Kalan Gün': left > 0 ? left : 'Doldu' };
+    }
+    if (visaKind === 'schengen') {
+      const vs = safeParseJSON(c.schengenVisas).filter(v => v.country || v.endDate);
+      // Ana vize: geçerli olanlardan en geç biteni, yoksa en son biten
+      const sorted = [...vs].sort((a, b) => String(b.endDate || '').localeCompare(String(a.endDate || '')));
+      const main = sorted[0] || {};
+      const left = getDaysLeft(main.endDate);
+      const others = sorted.slice(1).map(v => `${v.country || '?'} ${formatDate(v.startDate)}–${formatDate(v.endDate)}`).join('; ');
+      return { 'Vize Ülkesi': main.country || '', 'Vize Başlangıç': formatDate(main.startDate), 'Vize Bitiş': formatDate(main.endDate), 'Kalan Gün': left > 0 ? left : (main.endDate ? 'Doldu' : ''), 'Diğer Vizeler': others };
+    }
+    return {};
+  };
+  const exportToExcel = (data, filename, visaKind) => {
     const exportData = data.map(c => ({
       'Ad': c.firstName || '',
       'Soyad': c.lastName || '',
+      ...visaCols(c, visaKind),
       'TC Kimlik': c.tcKimlik || '',
       'Telefon': c.phone || '',
       'E-posta': c.email || '',
@@ -4545,7 +4609,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 const small = { fontSize: '12px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 
                 const dups = findLikelyDuplicates(c, customers);
+                // Müşteri linkinden (Profil) kendi düzelttiği bilgiler — son 30 gün
+                const SELF_TR = { phone: 'Telefon', email: 'E-posta', city: 'İkamet ili', tkMemberNo: 'Miles&Smiles no' };
+                const selfEdits = (Array.isArray(c.selfEdits) ? c.selfEdits : []).filter(e => e && String(e.at || '') >= new Date(Date.now() - 30 * 86400000).toISOString()).slice(-5).reverse();
                 return (<>
+                  {selfEdits.length > 0 && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', fontSize: '12px', color: '#bfdbfe' }}>
+                      <div style={{ fontWeight: '700', marginBottom: '4px' }}>📝 Müşteri bilgilerini linkten kendisi güncelledi</div>
+                      {selfEdits.map((e, i) => (
+                        <div key={i} style={{ color: '#94a3b8' }}>{formatDate(e.at)} · <b style={{ color: '#e8f1f8' }}>{SELF_TR[e.field] || e.field}</b>: <s>{e.old || '—'}</s> → <span style={{ color: '#e8f1f8' }}>{e.new || '(silindi)'}</span></div>
+                      ))}
+                    </div>
+                  )}
                   {c.tcKimlik && !isValidTc(c.tcKimlik) && (
                     <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '12px', fontSize: '13px', color: '#fca5a5', fontWeight: '600' }}>⚠️ TC Kimlik No geçersiz görünüyor ({c.tcKimlik}) — 11 hane/doğrulama tutmuyor, kontrol ediniz.</div>
                   )}
@@ -5113,7 +5188,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '12px', color: '#06b6d4' }}>{dateRangeMatches.length} müşteri — {formatDate(dateRangeFrom)} – {formatDate(dateRangeTo)} arası vizesi geçerli</p>
                 {dateRangeMatches.length > 0 && (
-                  <button onClick={() => exportToExcel(dateRangeMatches, `Vize_Gecerli_${dateRangeFrom}_${dateRangeTo}`)} style={{ padding: '6px 12px', background: 'rgba(6,182,212,0.2)', border: 'none', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+                  <button onClick={() => exportToExcel(dateRangeMatches, `Vize_Gecerli_${dateRangeFrom}_${dateRangeTo}`, 'range')} style={{ padding: '6px 12px', background: 'rgba(6,182,212,0.2)', border: 'none', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
                 )}
               </div>
               {dateRangeMatches.length === 0 ? (
@@ -5269,7 +5344,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#10b981' }}>🇪🇺 Schengen vizesi olan müşteriler</p>
             {withSchengen.length > 0 && (
-              <button onClick={() => exportToExcel(withSchengen, `Schengen_Vizeli_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(withSchengen, `Schengen_Vizeli_${new Date().toLocaleDateString('tr')}`, 'schengen')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {withSchengen.length === 0 ? (
@@ -5307,7 +5382,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#eab308' }}>🇪🇺⏰ 3 ay içinde Schengen vizesi bitecek müşteriler</p>
             {schengenExpiring.length > 0 && (
-              <button onClick={() => exportToExcel(schengenExpiring, `Schengen_Uyari_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(234,179,8,0.2)', border: 'none', borderRadius: '6px', color: '#eab308', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(schengenExpiring, `Schengen_Uyari_${new Date().toLocaleDateString('tr')}`, 'schengen')} style={{ padding: '6px 12px', background: 'rgba(234,179,8,0.2)', border: 'none', borderRadius: '6px', color: '#eab308', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {schengenExpiring.length === 0 ? (
@@ -5341,7 +5416,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#8b5cf6' }}>🇺🇸 ABD vizesi olan müşteriler</p>
             {withUsa.length > 0 && (
-              <button onClick={() => exportToExcel(withUsa, `ABD_Vizeli_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#8b5cf6', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(withUsa, `ABD_Vizeli_${new Date().toLocaleDateString('tr')}`, 'usa')} style={{ padding: '6px 12px', background: 'rgba(139,92,246,0.2)', border: 'none', borderRadius: '6px', color: '#8b5cf6', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {withUsa.length === 0 ? (
@@ -5374,7 +5449,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <p style={{ fontSize: '12px', color: '#ef4444' }}>🇺🇸⏰ 1 ay içinde ABD vizesi bitecek müşteriler</p>
             {usaExpiring.length > 0 && (
-              <button onClick={() => exportToExcel(usaExpiring, `ABD_Uyari_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
+              <button onClick={() => exportToExcel(usaExpiring, `ABD_Uyari_${new Date().toLocaleDateString('tr')}`, 'usa')} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>📥 Excel</button>
             )}
           </div>
           {usaExpiring.length === 0 ? (
@@ -8653,6 +8728,67 @@ ${(o.included.some(x=>x.trim())||o.excluded.some(x=>x.trim()))?`<div class="band
 </body></html>`;
 };
 
+// Tur programı PDF'i (teklif verisinden) — Turlar, toplu mail ve link güncellemesi ortak kullanır
+const makeTourProgramPdf = async (tour, returnBlob = false) => {
+  const o = tour.offerData;
+  if (!o) throw new Error('Bu turda program bilgisi yok (tekliften aktarılmadı)');
+  let holder = null;
+  try {
+    const html2canvas = await loadHtml2Canvas();
+    const full = genOfferHTML(o);
+    const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
+    holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
+    holder.innerHTML = `<style>${st ? st[1] : ''}</style>${b ? b[1] : ''}`;
+    document.body.appendChild(holder);
+    await new Promise(r => setTimeout(r, 320));
+    const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    addCanvasPaged(pdf, canvas, 0.92);
+    const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
+    if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
+    pdf.save(`${ad}.pdf`);
+    return null;
+  } finally { if (holder) document.body.removeChild(holder); }
+};
+// Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
+const offerFlightList = (o) => {
+  const flights = [];
+  [[o?.flightOut, 'Gidiş'], [o?.flightRet, 'Dönüş']].forEach(([f, dir]) => {
+    (f?.legs || []).forEach(l => {
+      const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
+      if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
+    });
+  });
+  return flights;
+};
+// Teklif güncellenince: daha önce paylaşılmış rezervasyon linklerindeki (/b/) Tur Programı PDF'i, uçuşlar ve tarihler yenilenir
+const refreshTourShareLinks = async (tour) => {
+  const tokens = [...new Set((tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => r.shareToken))];
+  if (!tokens.length) return 0;
+  const p = tour.offerData ? await makeTourProgramPdf(tour, true) : null;
+  const flights = offerFlightList(tour.offerData);
+  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+  let n = 0;
+  for (const token of tokens) {
+    try {
+      const snap = await getDoc(doc(db, 'paylasimlar', token));
+      if (!snap.exists()) continue;
+      const d = snap.data() || {};
+      if (d.tourId && String(d.tourId) !== String(tour.id)) continue;
+      let docs = Array.isArray(d.docs) ? d.docs.filter(x => x.label !== 'Tur Programı') : [];
+      if (p) {
+        const r = ref(getStorage(), `paylasim/${token}/tur-programi.pdf`);
+        await uploadBytes(r, p.blob, { contentType: 'application/pdf' });
+        docs = [{ icon: '🗺️', label: 'Tur Programı', url: await getDownloadURL(r) }, ...docs];
+      }
+      await setDoc(doc(db, 'paylasimlar', token), { docs, flights, tourName: tour.name || '', startDate: tour.startDate || '', endDate: tour.endDate || '', country: tour.country || '', city: tour.city || '', updatedAt: new Date().toISOString() }, { merge: true });
+      n++;
+    } catch (e) { console.warn('[link güncelle]', token, e.message); }
+  }
+  return n;
+};
+
 // TUR MODÜLÜ - TAM VERSİYON
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
@@ -8661,7 +8797,7 @@ const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler
 const ROOM_KEY_LABELS = { singleRoom: 'Single', doubleRoom: 'Double', twinRoom: 'Twin', tripleRoom: 'Triple', suiteRoom: 'Suite' };
 const roomTypeLabel = (rt) => ROOM_KEY_LABELS[rt] || rt || '';
 
-function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone }) {
+function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone, onGo }) {
   // Tur programını PDF olarak aç: tekliften gelen TAM teklif verisiyle (uçuş+program+otel+hizmet) genOfferHTML üret
   const openTourProgram = (tour) => {
     const o = tour.offerData;
@@ -8673,28 +8809,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   };
   // Tur programı PDF'ini üret (returnBlob=true → blob döner, false → indirir)
   const [progBusy, setProgBusy] = useState('');
-  const tourProgramPdf = async (tour, returnBlob = false) => {
-    const o = tour.offerData;
-    if (!o) throw new Error('Bu turda program bilgisi yok (tekliften aktarılmadı)');
-    let holder = null;
-    try {
-      const html2canvas = await loadH2C();
-      const full = genOfferHTML(o);
-      const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
-      holder = document.createElement('div');
-      holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
-      holder.innerHTML = `<style>${st ? st[1] : ''}</style>${b ? b[1] : ''}`;
-      document.body.appendChild(holder);
-      await new Promise(r => setTimeout(r, 320));
-      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      addCanvasPaged(pdf, canvas, 0.92);
-      const ad = (tour.name || 'Tur_Programi').replace(/[^\wğüşıöçĞÜŞİÖÇ ]/g, '').replace(/\s+/g, '_');
-      if (returnBlob) return { name: `${ad}_Program.pdf`, blob: pdf.output('blob') };
-      pdf.save(`${ad}.pdf`);
-      return null;
-    } finally { if (holder) document.body.removeChild(holder); }
-  };
+  const tourProgramPdf = makeTourProgramPdf;
   const downloadTourProgram = async (tour) => {
     if (!tour.offerData) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
     setProgBusy(tour.id);
@@ -8902,7 +9017,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
     };
     const nightsCalc = (a,b) => { try { const d=Math.round((new Date(b)-new Date(a))/86400000); return d>0?d:0; } catch { return 0; } };
-    const mealPlan = (c) => c==='ro'?'Room Only (RO)':c==='bb'?'Bed & Breakfast (BB)':c==='hb'?'Half Board (HB)':c==='fb'?'Full Board (FB)':(c||'Bed & Breakfast (BB)');
+    const mealPlan = (c) => MEAL_EN[c] || c || MEAL_EN.bb;
     const checkIn = hi.checkIn || tour.startDate || '';
     const checkOut = hi.checkOut || tour.endDate || '';
     const nights = nightsCalc(checkIn, checkOut);
@@ -9113,15 +9228,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
       if (res.boardingOutUrl) docs.push({ icon: '🛫', label: 'Gidiş Biniş Kartı', url: res.boardingOutUrl });
       if (res.boardingRetUrl) docs.push({ icon: '🛬', label: 'Dönüş Biniş Kartı', url: res.boardingRetUrl });
-      // Uçuş takibi: tekliften gelen uçuşların numarası ("Turkish Airlines (TK 1856)" → TK1856)
-      const flights = [];
-      const o = tour.offerData || {};
-      [[o.flightOut, 'Gidiş'], [o.flightRet, 'Dönüş']].forEach(([f, dir]) => {
-        (f?.legs || []).forEach(l => {
-          const m = String(l.airline || '').toUpperCase().match(/\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?-?(\d{1,4})\b/);
-          if (m) flights.push({ dir, code: `${m[1]}${m[2]}`, date: f.date || '', dep: l.dep || '', arr: l.arr || '' });
-        });
-      });
+      const flights = offerFlightList(tour.offerData);
       if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       await setDoc(doc(db, 'paylasimlar', token), {
@@ -9805,7 +9912,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const split = true;
     const rows = [];
     for (const [i, file] of files.entries()) {
-      let resIds = [], note = '';
+      let resIds = [], note = '', sk = '';
       if (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name)) {
         try {
           if (split) {
@@ -9822,13 +9929,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               }
               const byRes = new Map();
               per.forEach((ids, pi) => { if (ids.length === 1) byRes.set(ids[0], [...(byRes.get(ids[0]) || []), pi]); });
-              [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '' }));
+              [...byRes.entries()].forEach(([rid, pgs], k) => rows.push({ key: `${i}_${k}_${file.name}`, file, pages: pgs, resIds: [rid], note: '', order: i, sortKey: flightSortKey(pgs.map(pi => pages[pi]).join(' ')) }));
               const rest = per.map((ids, pi) => ids.length === 1 ? -1 : pi).filter(pi => pi >= 0);
-              if (rest.length) rows.push({ key: `${i}_rest_${file.name}`, file, pages: rest, resIds: [], note: `${rest.length} sayfada isim bulunamadı — elle seçin` });
+              if (rest.length) rows.push({ key: `${i}_rest_${file.name}`, file, pages: rest, resIds: [], note: `${rest.length} sayfada isim bulunamadı — elle seçin`, order: i, sortKey: '' });
               continue;
             }
           }
-          const words = nameWords(await pdfFileText(file));
+          const txt = await pdfFileText(file);
+          sk = flightSortKey(txt);
+          const words = nameWords(txt);
           if (words.size === 0) note = 'PDF\'de metin yok (taranmış olabilir) — elle seçin';
           else {
             resIds = matchRes(words);
@@ -9836,9 +9945,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           }
         } catch (e) { note = 'PDF okunamadı — elle seçin'; }
       } else note = 'Görsel dosya — elle seçin';
-      rows.push({ key: `${i}_${file.name}`, file, resIds, note });
+      rows.push({ key: `${i}_${file.name}`, file, resIds, note, order: i, sortKey: sk });
     }
-    setBulkTicket({ tourId: tour.id, field, rows, busy: false });
+    setBulkTicket({ tourId: tour.id, field, rows, busy: false, append: false });
   };
   const runBulkTicket = async () => {
     const bt = bulkTicket; if (!bt) return;
@@ -9846,18 +9955,49 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     if (!todo.length) { showToast?.('Eşleşen dosya yok', 'error'); return; }
     setBulkTicket({ ...bt, uploading: true });
     const tour = toursRef.current.find(t => t.id === bt.tourId);
-    const patches = {}; let fail = 0;
-    for (const row of todo) {
+    const patches = {}; let fail = 0, merged = 0, appendFail = 0;
+    // Kişi başı parçaları topla: aktarmalı uçuşta aynı kişiye 2+ biniş kartı düşer → uçuş sırasına göre tek PDF
+    const byPerson = new Map();
+    todo.forEach(row => row.resIds.forEach(id => byPerson.set(id, [...(byPerson.get(id) || []), row])));
+    const legOrder = (a, b) => (a.sortKey && b.sortKey && a.sortKey !== b.sortKey) ? a.sortKey.localeCompare(b.sortKey) : (a.order - b.order);
+    const cache = new Map(); // aynı parça seti birden çok kişiye gidiyorsa (grup bileti) tek yükleme
+    for (const [rid, rowsOf] of byPerson.entries()) {
+      const res = (tour.reservations || []).find(r => r.id === rid);
+      const legs = [...rowsOf].sort(legOrder);
+      const appendTo = bt.append && res?.[bt.field] ? res : null;
+      const sig = legs.map(r => r.key).join('|');
       try {
-        const f = row.pages ? await pdfExtractPages(row.file, row.pages) : row.file;
-        const { url, path } = await storeResDocFile(tour, `toplu_${bt.field}`, f);
-        row.resIds.forEach(id => { patches[id] = { [bt.field]: url, [`${bt.field}Path`]: path }; });
-      } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', row.file.name, e.message); }
+        let up = !appendTo && cache.get(sig);
+        if (!up) {
+          let f;
+          if (legs.length === 1 && !appendTo) f = legs[0].pages ? await pdfExtractPages(legs[0].file, legs[0].pages) : legs[0].file;
+          else {
+            const parts = [];
+            if (appendTo) {
+              // Mevcut biniş kartını indir, yenisini sonuna ekle
+              let bytes = null;
+              try {
+                const p = appendTo[`${bt.field}Path`];
+                if (p) { const { getStorage, ref, getBytes } = await import('firebase/storage'); bytes = await getBytes(ref(getStorage(), p)); }
+              } catch (e) { bytes = null; }
+              if (!bytes) { try { const r = await fetch(appendTo[bt.field]); if (r.ok) bytes = await r.arrayBuffer(); } catch (e) { bytes = null; } }
+              if (!bytes) { appendFail++; continue; }
+              parts.push({ bytes, type: 'application/pdf' });
+            }
+            legs.forEach(r => parts.push({ file: r.file, pages: r.pages }));
+            f = await pdfMergeParts(parts, `aktarmali_${String(res?.customerName || rid).replace(/[^\wçğıöşüÇĞİÖŞÜ]+/g, '_')}.pdf`);
+            merged++;
+          }
+          up = await storeResDocFile(tour, `toplu_${bt.field}`, f);
+          if (!appendTo) cache.set(sig, up);
+        }
+        patches[rid] = { [bt.field]: up.url, [`${bt.field}Path`]: up.path };
+      } catch (e) { fail++; console.warn('Toplu bilet yükleme hatası', rid, e.message); }
     }
     try {
       if (Object.keys(patches).length) await patchTourReservations(bt.tourId, patches);
       const dd = RES_DOCS.find(d => d.field === bt.field) || RES_DOCS[0];
-      showToast?.(`${dd.icon} ${Object.keys(patches).length} kişiye ${dd.label.toLocaleLowerCase('tr-TR')} eklendi${fail ? `, ${fail} dosya yüklenemedi` : ''}`, fail ? 'warning' : 'success');
+      showToast?.(`${dd.icon} ${Object.keys(patches).length} kişiye ${dd.label.toLocaleLowerCase('tr-TR')} eklendi${merged ? ` (${merged} kişide aktarmalı kartlar birleştirildi)` : ''}${fail ? `, ${fail} kişide yükleme hatası` : ''}${appendFail ? `, ${appendFail} kişinin mevcut kartı okunamadı — iki bacağı birlikte yükleyin` : ''}`, (fail || appendFail) ? 'warning' : 'success');
       setBulkTicket(null);
     } catch (e) {
       showToast?.('❌ Tura kaydedilemedi: ' + e.message, 'error');
@@ -10089,6 +10229,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               const dd = RES_DOCS.find(d => d.field === bulkTicket.field) || RES_DOCS[0];
               const label = `${dd.icon} ${dd.label}`;
               const ready = bulkTicket.rows.filter(r => r.resIds.length).length;
+              // Aynı kişiye birden fazla dosya/sayfa grubu → aktarmalı, birleştirilecek
+              const legCount = {}; bulkTicket.rows.forEach(r => r.resIds.forEach(id => { legCount[id] = (legCount[id] || 0) + 1; }));
+              const multiIds = Object.keys(legCount).filter(id => legCount[id] > 1);
+              const hasExisting = bulkTicket.rows.some(r => r.resIds.some(id => resList.find(x => x.id === id)?.[bulkTicket.field]));
               return (
                 <div style={{ background: 'rgba(15,39,68,0.95)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
                   <h4 style={{ margin: '0 0 4px', fontSize: '15px' }}>{label} — toplu yükleme</h4>
@@ -10103,7 +10247,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                               const r = resList.find(x => x.id === id);
                               return (
                                 <span key={id} style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: '12px', padding: '3px 8px', fontSize: '12px' }}>
-                                  {nameOf(id)}{r?.[bulkTicket.field] ? ' (değişecek)' : ''}
+                                  {nameOf(id)}{legCount[id] > 1 ? ' 🔗' : ''}{r?.[bulkTicket.field] ? (bulkTicket.append ? ' (mevcuda eklenecek)' : ' (değişecek)') : ''}
                                   <button onClick={() => setRow(row.key, x => ({ ...x, resIds: x.resIds.filter(i => i !== id) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: '4px', fontSize: '12px' }}>×</button>
                                 </span>
                               );
@@ -10118,9 +10262,20 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                       ))}
                     </div>
                   )}
+                  {multiIds.length > 0 && (
+                    <div style={{ marginTop: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.35)', fontSize: '12px', color: '#67e8f9' }}>
+                      🔗 Aktarmalı uçuş: {multiIds.length} kişiye birden fazla biniş kartı düştü — her kişinin kartları uçuş sırasına göre tek PDF'te birleştirilecek.
+                    </div>
+                  )}
+                  {hasExisting && (
+                    <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!bulkTicket.append} onChange={e => setBulkTicket(bt => ({ ...bt, append: e.target.checked }))} style={{ marginTop: '2px' }} />
+                      <span>Mevcut biniş kartının <b>sonuna ekle</b> (aktarmalı uçuşun 2. bacağı ayrı geldiyse). İşaretsizse mevcut kart değiştirilir.</span>
+                    </label>
+                  )}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                     <button onClick={runBulkTicket} disabled={bulkTicket.busy || bulkTicket.uploading || !ready} style={{ flex: 1, padding: '10px', background: ready ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>
-                      {bulkTicket.uploading ? '⏳ Yükleniyor...' : `⬆️ ${ready} dosyayı yükle`}
+                      {bulkTicket.uploading ? '⏳ Yükleniyor...' : `⬆️ ${Object.keys(legCount).length} kişiye yükle`}
                     </button>
                     <button onClick={() => setBulkTicket(null)} disabled={bulkTicket.uploading} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>İptal</button>
                   </div>
@@ -10401,7 +10556,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             if (!app) return null;
                             const st = lc(app.status);
                             if (/iptal/.test(st)) return null; // iptal edilen başvuru sayılmaz
-                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (/red/.test(st)) return { label: '❌ Vize Reddedildi', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
                             if (/onay/.test(st)) return { label: '✅ Vize Onaylandı', color: '#10b981', bg: 'rgba(16,185,129,0.15)' };
                             const rnd = app.appointmentDate ? ` · Randevu ${formatDate(app.appointmentDate).slice(0, 5)}` : '';
                             return { label: `📑 Başvuru — ${app.status || 'Açık'}${rnd}`, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' };
@@ -10411,8 +10566,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const ab = appBadge(); if (ab) return ab;
                             // Süresi bitmiş vize var mı?
                             const expiredVisa = visas.find(v => v.endDate && getDaysLeft(v.endDate) !== null && getDaysLeft(v.endDate) <= 0);
-                            if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
-                            return { label: 'Vize Yok', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+                            if (expiredVisa) return { label: `Süresi Doldu (${formatDate(expiredVisa.endDate)})`, color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
+                            return { label: 'Vize Yok', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', apply: customer };
                           }
 
                           // Tur tarihine kadar vize geçerli mi?
@@ -10421,7 +10576,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             const visaExpiry = getDaysLeft(validVisa.endDate);
                             const tourDays = getDaysLeft(tourEndDate);
                             if (visaExpiry !== null && tourDays !== null && visaExpiry < tourDays) {
-                              return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+                              return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', apply: customer };
                             }
                           }
 
@@ -10479,8 +10634,16 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               {visaStatus ? (
-                                <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: visaStatus.bg, color: visaStatus.color, fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                  {visaStatus.label}
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: visaStatus.bg, color: visaStatus.color, fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                    {visaStatus.label}
+                                  </span>
+                                  {visaStatus.apply && onGo && !res.cancelled && (
+                                    <button onClick={() => onGo('visa', { type: 'visaFor', customer: visaStatus.apply })} title="Bu müşteri için vize başvurusu başlat"
+                                      style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', color: '#60a5fa', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      ➕ Başvuru yap
+                                    </button>
+                                  )}
                                 </span>
                               ) : (
                                 <span style={{ color: '#475569', fontSize: '10px' }}>—</span>
@@ -10710,10 +10873,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Giriş Tarihi</label><input type="date" value={hi.checkIn || tour.startDate || ''} onChange={e => updateHotel('checkIn', e.target.value)} style={fieldStyle} /></div>
                           <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Çıkış Tarihi</label><input type="date" value={hi.checkOut || tour.endDate || ''} onChange={e => updateHotel('checkOut', e.target.value)} style={fieldStyle} /></div>
                           <select value={hi.concept || 'bb'} onChange={e => updateHotel('concept', e.target.value)} style={fieldStyle}>
-                            <option value="ro" style={{background:'#1a3a5c'}}>Room Only (RO)</option>
-                            <option value="bb" style={{background:'#1a3a5c'}}>Bed & Breakfast (BB)</option>
-                            <option value="hb" style={{background:'#1a3a5c'}}>Half Board (HB)</option>
-                            <option value="fb" style={{background:'#1a3a5c'}}>Full Board (FB)</option>
+                            {MEAL_CONCEPTS.map(c => <option key={c} value={c} style={{background:'#1a3a5c'}}>{MEAL_EN[c]}</option>)}
                           </select>
                         </div>
                       </div>
@@ -12420,7 +12580,26 @@ ${flightRaw}`;
     const now = new Date();
     if (offerId) {
       setQuotes(prev => prev.map(q => q.id === offerId ? { ...q, subject: offer.title, offer, updatedAt: now.toISOString() } : q));
-      showToast?.('Tur teklifi güncellendi', 'success');
+      // Bu tekliften oluşturulmuş tur(lar) varsa: program, tarih ve destinasyon tura da yansır; paylaşılmış linkler yenilenir
+      const linked = (tours || []).filter(t => t.fromQuoteId === offerId);
+      if (!linked.length) { showToast?.('Tur teklifi güncellendi', 'success'); return; }
+      const dest = (offer.destinations || []).filter(d => d.country || d.city)[0] || {};
+      const upd = linked.map(t => ({ ...t, offerData: offer, startDate: offer.startDate || t.startDate, endDate: offer.endDate || t.endDate,
+        country: dest.country || t.country, city: dest.city || t.city, offerUpdatedAt: now.toISOString() }));
+      setTours(prev => prev.map(t => upd.find(u => u.id === t.id) || t));
+      (async () => {
+        let links = 0, linkErr = '';
+        for (const t of upd) {
+          try {
+            const sd = { ...t }; delete sd._docId;
+            await setDoc(doc(db, 'tours', t._docId || String(t.id)), sd, { merge: true });
+          } catch (e) { showToast?.(`❌ "${t.name}" turu kaydedilemedi: ${e.message}`, 'error'); return; }
+          try { links += await refreshTourShareLinks(t); } catch (e) { linkErr = e.message; }
+        }
+        if (linkErr) showToast?.(`⚠️ Tur programı güncellendi ama müşteri linkleri yenilenemedi (${linkErr}) — linki tekrar paylaşınca güncellenir`, 'warning');
+        else showToast?.(`✅ Teklif kaydedildi · ${upd.length} turun programı güncellendi${links ? ` · ${links} müşteri linki yenilendi` : ''}`, 'success');
+      })();
+      showToast?.(`Teklif kaydedildi — ${linked.length} tur ve linkleri güncelleniyor…`, 'info');
     } else {
       const id = Date.now();
       const newQ = {
@@ -13480,7 +13659,7 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 
           {concepts.length === 0 ? (
             <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
-              ⚠️ Önce konsept seçin (RO/BB/HB/FB)
+              ⚠️ Önce konsept seçin (RO/BB/HB/FB/AI/UAI)
             </div>
           ) : roomTypes.length === 0 ? (
             <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
@@ -13966,7 +14145,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         const key = `${startDate}__${endDate}__${currency}`;
         if (!groups[key]) groups[key] = { id: generateUniqueId(), startDate, endDate, currency, rates: {} };
         if (!groups[key].rates[roomType]) groups[key].rates[roomType] = {};
-        [['ro','RO'],['bb','BB'],['hb','HB'],['fb','FB']].forEach(([c, C]) => {
+        MEAL_CONCEPTS.map(c => [c, MEAL_CODE[c]]).forEach(([c, C]) => {
           const buy = num(r[`${C} Alış`] || r[`${C} Alis`]);
           const sell = num(r[`${C} Satış`] || r[`${C} Satis`]);
           if (buy > 0 || sell > 0) groups[key].rates[roomType][c] = { buy, sell };
@@ -13989,14 +14168,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   };
   const downloadHotelPriceTemplate = (hotelName) => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+      ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış', 'AI Alış', 'AI Satış', 'UAI Alış', 'UAI Satış'],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Single', '', '', 80, 100, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Double', '', '', 100, 130, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-16', '2026-10-17', '€', 'Twin', '', '', 100, 130, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Single', '', '', 85, 105, '', '', '', ''],
       [hotelName || 'Otel Adı', '2026-10-17', '2026-10-18', '€', 'Double', '', '', 105, 135, '', '', '', ''],
     ]);
-    ws['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:6},{wch:11},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9}];
+    ws['!cols'] = [{wch:20},{wch:12},{wch:12},{wch:6},{wch:11},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9},{wch:9}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Fiyatlar');
     XLSX.writeFile(wb, 'Otel_Fiyat_Sablonu.xlsx');
@@ -14013,7 +14192,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
-    enabledConcepts: ['bb'], // RO/BB/HB/FB
+    enabledConcepts: ['bb'], // RO/BB/HB/FB/AI/UAI
     priceList: [], // [{ id, startDate, endDate, currency, rates: { 'Single': { bb: 80, hb: 100 }, ... } }]
     season: '',
     notes: '',
@@ -14328,7 +14507,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
   // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
   const hotelProformaWithFlights = (hotel, resList) => {
-    const conceptTxt = (c) => ({ ro: 'Sadece Oda', bb: 'Kahvaltı', hb: 'Yarım Pansiyon', fb: 'Tam Pansiyon', ai: 'Her Şey Dahil' }[c] || String(c || '').toUpperCase());
+    const conceptTxt = (c) => MEAL_TR[c] || String(c || '').toUpperCase();
     let anyFlight = false;
     const pkgs = resList.map(r => {
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
@@ -14465,7 +14644,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => c === 'ro' ? 'Sadece Oda' : c === 'bb' ? 'Kahvaltı' : c === 'hb' ? 'Yarım Pansiyon' : c === 'fb' ? 'Tam Pansiyon' : (c || '').toUpperCase();
+      const conceptLabel = (c) => MEAL_TR[c] || (c || '').toUpperCase();
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -14591,7 +14770,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       const r = reservation;
       const nights = calcNights(r.checkIn, r.checkOut);
-      const mealPlan = (c) => c === 'ro' ? 'Room Only (RO)' : c === 'bb' ? 'Bed & Breakfast (BB)' : c === 'hb' ? 'Half Board (HB)' : c === 'fb' ? 'Full Board (FB)' : (c || '').toUpperCase();
+      const mealPlan = (c) => MEAL_EN[c] || (c || '').toUpperCase();
       const fmtEN = (d) => {
         if (!d) return '';
         const dt = new Date(d);
@@ -15712,14 +15891,14 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       Her satır = bir otelin bir tarih aralığındaki bir oda tipinin fiyatları. Aynı (Otel + Başlangıç + Bitiş) gruplandırılır.
                     </p>
                     <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#94a3b8' }}>
-                      Sütunlar: <strong>Otel Adı, Başlangıç, Bitiş, Para, Oda Tipi, RO Alış, RO Satış, BB Alış, BB Satış, HB Alış, HB Satış, FB Alış, FB Satış</strong>
+                      Sütunlar: <strong>Otel Adı, Başlangıç, Bitiş, Para, Oda Tipi, RO Alış, RO Satış, BB Alış, BB Satış, HB Alış, HB Satış, FB Alış, FB Satış, AI Alış, AI Satış, UAI Alış, UAI Satış</strong>
                     </p>
                     <p style={{ margin: '0 0 10px', fontSize: '10px', color: '#f59e0b' }}>
                       ⚠️ Otel adı mevcut otel listesindeki adla aynı olmalı (büyük/küçük harf önemsiz). Tarihler GG.AA.YYYY veya YYYY-AA-GG formatında olabilir.
                     </p>
                     <button onClick={() => {
                       const ws = XLSX.utils.aoa_to_sheet([
-                        ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış'],
+                        ['Otel Adı', 'Başlangıç', 'Bitiş', 'Para', 'Oda Tipi', 'RO Alış', 'RO Satış', 'BB Alış', 'BB Satış', 'HB Alış', 'HB Satış', 'FB Alış', 'FB Satış', 'AI Alış', 'AI Satış', 'UAI Alış', 'UAI Satış'],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Single', 50, 80, 60, 100, '', '', '', ''],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Double', 80, 120, 90, 140, '', '', '', ''],
                         ['Hilton Istanbul', '2026-06-01', '2026-06-30', '€', 'Triple', 110, 160, 120, 180, '', '', '', ''],
@@ -15803,7 +15982,11 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             hb_buy: num(r['HB Alış'] || r['HB Alis']),
                             hb_sell: num(r['HB Satış'] || r['HB Satis']),
                             fb_buy: num(r['FB Alış'] || r['FB Alis']),
-                            fb_sell: num(r['FB Satış'] || r['FB Satis'])
+                            fb_sell: num(r['FB Satış'] || r['FB Satis']),
+                            ai_buy: num(r['AI Alış'] || r['AI Alis']),
+                            ai_sell: num(r['AI Satış'] || r['AI Satis']),
+                            uai_buy: num(r['UAI Alış'] || r['UAI Alis']),
+                            uai_sell: num(r['UAI Satış'] || r['UAI Satis'])
                           });
                         }
 
@@ -15870,7 +16053,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         }
                         const rates = groups[key].rates;
                         if (!rates[it.roomType]) rates[it.roomType] = {};
-                        ['ro','bb','hb','fb'].forEach(c => {
+                        MEAL_CONCEPTS.forEach(c => {
                           const buy = it[`${c}_buy`], sell = it[`${c}_sell`];
                           if (buy > 0 || sell > 0) rates[it.roomType][c] = { buy: buy || 0, sell: sell || 0 };
                         });
@@ -16165,12 +16348,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             <div style={{ marginBottom: '14px' }}>
               <label style={{...labelStyle, marginBottom: '6px'}}>Anlaşmalı Konseptler</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {[
-                  {key: 'ro', label: 'RO (Sadece Oda)'},
-                  {key: 'bb', label: 'BB (Kahvaltı)'},
-                  {key: 'hb', label: 'HB (Yarım Pansiyon)'},
-                  {key: 'fb', label: 'FB (Tam Pansiyon)'}
-                ].map(({key, label}) => {
+                {MEAL_CONCEPTS.map(key => ({ key, label: `${MEAL_CODE[key]} (${MEAL_TR[key]})` })).map(({key, label}) => {
                   const enabled = (hotelForm.enabledConcepts || []).includes(key);
                   return (
                     <button key={key} type="button" onClick={() => {
@@ -16928,9 +17106,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
-                      {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : ['ro', 'bb', 'hb', 'fb']).map(c => (
+                      {(h.enabledConcepts && h.enabledConcepts.length > 0 ? h.enabledConcepts : MEAL_CONCEPTS).map(c => (
                         <option key={c} value={c}>
-                          {c === 'ro' ? 'Sadece Oda (RO)' : c === 'bb' ? 'Kahvaltı Dahil (BB)' : c === 'hb' ? 'Yarım Pansiyon (HB)' : 'Tam Pansiyon (FB)'}
+                          {`${MEAL_TR[c] || c.toUpperCase()} (${MEAL_CODE[c] || c.toUpperCase()})`}
                         </option>
                       ))}
                     </select>
@@ -19048,7 +19226,7 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
             <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>Aranacak telefon</label>
               <input value={appSettings?.shareContact?.phone ?? '+90 258 263 71 76'} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), phone: e.target.value } })} placeholder="+90 258 263 71 76" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
-            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>WhatsApp numarası (boşsa WhatsApp butonu çıkmaz)</label>
+            <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>WhatsApp numarası — müşteri linkindeki WhatsApp düğmesi bu numarayı açar (eski linkler dahil; boşsa düğme çıkmaz)</label>
               <input value={appSettings?.shareContact?.whatsapp || ''} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), whatsapp: e.target.value } })} placeholder="+90 5xx xxx xx xx" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
             <div><label style={{ fontSize: '11px', color: '#94a3b8' }}>Instagram kullanıcı adı (boşsa "Takip et" butonu çıkmaz)</label>
               <input value={appSettings?.shareContact?.instagram ?? 'paydostur'} onChange={e => setAppSettings({ ...appSettings, shareContact: { ...(appSettings?.shareContact || {}), instagram: e.target.value.replace(/^.*instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#\s].*$/, '') } })} placeholder="paydostur" style={{ width: '100%', padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', boxSizing: 'border-box' }} /></div>
@@ -19788,7 +19966,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} {...qa('tours')} />;
+      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;

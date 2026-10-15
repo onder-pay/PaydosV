@@ -38,10 +38,60 @@ const validityOf = (c) => {
   if (isYmd(us.endDate)) out.push({ kind: 'visa', label: 'ABD vizesi', sub: '', until: us.endDate });
   return out;
 };
+// Profil sekmesi: müşterinin kendi iletişim bilgileri (PIN'li sayfa). TC ve pasaport numarası GİTMEZ.
+const profileOf = (c) => ({
+  firstName: String(c.firstName || ''), lastName: String(c.lastName || ''),
+  birthDate: isYmd(c.birthDate) ? c.birthDate : '', phone: String(c.phone || ''), email: String(c.email || ''),
+  city: String(c.city || ''), tkMemberNo: String(c.tkMemberNo || c.tk_uyelik_no || ''),
+});
+// Müşteri profilini linkten kendisi düzeltir (PIN doğrulandıktan sonra). Sadece iletişim alanları:
+// ad, soyad, doğum tarihi pasaportla aynı olmak zorunda olduğu için buradan değişmez.
+// Her değişiklik müşteri kartına selfEdits (son 20) olarak yazılır — CRM'de görünür.
+const EDITABLE = {
+  phone: (v) => { const t = String(v || '').trim().slice(0, 25); const n = t.replace(/\D/g, ''); return !t || (/^[+\d\s()-]+$/.test(t) && n.length >= 10 && n.length <= 15) ? t : null; },
+  email: (v) => { const t = String(v || '').trim().slice(0, 100); return !t || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t) ? t : null; },
+  city: (v) => { const t = String(v || '').trim().replace(/\s+/g, ' '); return t.length <= 40 && /^[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû .'-]*$/.test(t) ? t : null; },
+  tkMemberNo: (v) => { const t = String(v || '').trim().toUpperCase().replace(/\s+/g, ''); return /^[A-Z0-9]{0,20}$/.test(t) ? t : null; },
+};
+const FIELD_TR = { phone: 'Telefon', email: 'E-posta', city: 'İkamet ili', tkMemberNo: 'Miles&Smiles no' };
+const saveProfile = async (db, d, body) => {
+  if (!d.customerDocId) return { state: 'error', error: 'Müşteri kartı bulunamadı' };
+  const inp = body && typeof body === 'object' ? body : {};
+  const cref = db.collection('customers').doc(String(d.customerDocId));
+  const cs = await cref.get();
+  if (!cs.exists) return { state: 'error', error: 'Müşteri kartı bulunamadı' };
+  const c = cs.data() || {};
+  const cur = profileOf(c), patch = {}, edits = [], now = new Date().toISOString();
+  for (const k of Object.keys(EDITABLE)) {
+    if (!(k in inp)) continue;
+    const v = EDITABLE[k](inp[k]);
+    if (v === null) return { state: 'invalid', field: k, error: `${FIELD_TR[k]} geçersiz` };
+    if (v !== cur[k]) { patch[k] = v; edits.push({ at: now, field: k, old: cur[k], new: v }); }
+  }
+  if (!edits.length) return { state: 'ok', data: await withValidity(db, d), changed: 0 };
+  const log = [...(Array.isArray(c.selfEdits) ? c.selfEdits : []), ...edits].slice(-20);
+  await cref.set({ ...patch, selfEdits: log, selfEditedAt: now, updatedAt: now }, { merge: true });
+  return { state: 'ok', data: await withValidity(db, d), changed: edits.length };
+};
+// İletişim bilgisi (WhatsApp, telefon, saatler) her açılışta Ayarlar > Belge Linkinde İletişim'den güncel okunur:
+// numara değişince eski linkler de yeni numarayı açar. 5 dk önbellek.
+let contactCache = { at: 0, v: null };
+const liveContact = async (db) => {
+  if (contactCache.v && Date.now() - contactCache.at < 5 * 60 * 1000) return contactCache.v;
+  try {
+    const s = await db.collection('app_settings').doc('main').get();
+    const sc = (s.exists && s.data()?.shareContact) || {};
+    const v = {};
+    ['phone', 'whatsapp', 'instagram', 'hours'].forEach(k => { const x = String(sc[k] || '').trim(); if (x) v[k] = x; });
+    contactCache = { at: Date.now(), v };
+    return v;
+  } catch (e) { console.warn('[belge] iletişim ayarı okunamadı', e.message); return {}; }
+};
 const withValidity = async (db, d) => {
   const pub = publicData(d);
+  pub.contact = { ...(pub.contact || {}), ...(await liveContact(db)) };
   if (d.customerDocId) {
-    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) pub.validity = validityOf(c.data() || {}); }
+    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); } }
     catch (e) { console.warn('[belge] geçerlilik okunamadı', e.message); }
   }
   return pub;
@@ -97,10 +147,11 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
     if (d.pinLockUntil && Date.now() < d.pinLockUntil) {
       return res.status(429).json({ state: 'locked', name, minutes: Math.ceil((d.pinLockUntil - Date.now()) / 60000) });
     }
-    if (action !== 'unlock') return res.json({ state: 'pin', name });
+    if (action !== 'unlock' && action !== 'saveprofile') return res.json({ state: 'pin', name });
 
     if (/^\d{4}$/.test(pin) && hashPin(d.pinSalt, pin) === d.pinHash) {
       if (d.pinFails) await ref.set({ pinFails: 0, pinLockUntil: 0 }, { merge: true });
+      if (action === 'saveprofile') return res.json(await saveProfile(db, d, p.profile));
       return res.json({ state: 'ok', data: await withValidity(db, d) });
     }
     const fails = (d.pinFails || 0) + 1;

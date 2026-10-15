@@ -188,6 +188,38 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .in{opacity:0;transform:translateY(8px);animation:up .45s ease forwards}
 @keyframes up{to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.in{animation:none;opacity:1;transform:none}}
+/* Alt sekme çubuğu (WhatsApp gibi sabit) + Profil paneli */
+body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+.tb{position:fixed;left:0;right:0;bottom:0;z-index:50;background:rgba(255,255,255,.96);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+.tb .in2{max-width:560px;margin:0 auto;display:flex}
+.tb a,.tb button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;border:none;background:none;color:var(--muted);font:700 11px 'Manrope',sans-serif;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tb svg.i{width:23px;height:23px}
+.tb .on{color:var(--navy)}
+.tb .call{color:var(--accent)}
+.tb .wa2{color:#1f8a5b}
+.pf{position:fixed;inset:0;z-index:65;background:rgba(10,16,28,.45);display:flex;align-items:flex-end;justify-content:center}
+.pf .sh{width:100%;max-width:560px;max-height:86vh;overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:10px 16px calc(20px + env(safe-area-inset-bottom));animation:shup .25s ease}
+@keyframes shup{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+.pf .gr{width:40px;height:4px;border-radius:2px;background:#d3d0c6;margin:0 auto 14px}
+.pf .hd{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.pf .av{width:52px;height:52px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;flex:none}
+.pf .hd b{display:block;font-size:18px}.pf .hd span{font-size:12px;color:var(--muted)}
+.pf .x{margin-left:auto;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);font-size:15px;cursor:pointer;color:var(--ink)}
+.pf .kv{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;font-size:13.5px}
+.pf .kv+.kv{border-top:1px solid var(--line)}
+.pf .kv span{color:var(--muted)}.pf .kv b{text-align:right;word-break:break-word}
+.pf .lbl{margin:16px 2px 8px;font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted)}
+.pf .fix{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.5;text-align:center}
+.pf .fix a{color:var(--navy);font-weight:700}
+.pf .kv input{flex:1;min-width:0;max-width:62%;text-align:right;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:700 13.5px 'Manrope',sans-serif;color:var(--ink);background:#fff}
+.pf .kv input:focus{outline:none;border-color:var(--navy)}
+.pf .kv.lk b::after{content:' 🔒';font-size:11px}
+.pf .act{display:flex;gap:8px;margin-top:14px}
+.pf .act button{flex:1;height:44px;border-radius:12px;font:700 14px 'Manrope',sans-serif;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.pf .act button.p{background:var(--navy);border-color:var(--navy);color:#fff}
+.pf .act button:disabled{opacity:.6}
+.pf .err{min-height:18px;margin-top:10px;font-size:12.5px;font-weight:600;text-align:center;color:var(--accent)}
+.pf .okm{color:var(--ok)}
 @media (max-width:360px){.name{font-size:25px}.pass .iata{font-size:24px}.doc .btn.o{padding:0 10px}}
 </style>
 </head>
@@ -294,6 +326,9 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
     ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
     phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
     lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    house: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+    chat: '<path d="M4 20l1.5-4A8 8 0 1 1 9 19.5L4 20z"/><path d="M9 10h6M9 13.5h4"/>',
     home: '<path d="M12 3v12M8 11l4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1"/>',
     ig: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>'
   };
@@ -903,6 +938,98 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stro
         ia.appendChild(el('span', 'go', 'Takip et →'));
       }
       add(box, el('div', 'foot', 'PAYDOSTUR.COM'));
+      renderTabBar(f, ph, wa, fullName);
+  };
+
+  // ===== Alt sekme çubuğu: Ana sayfa · Profil · WhatsApp · Ara (kaydırınca da sabit) =====
+  var openProfile = function (f, wa, fullName, editMode, okMsg) {
+    var old = document.querySelector('.pf'); if (old) old.parentNode.removeChild(old);
+    var pr = f.profile || {};
+    var ov = el('div', 'pf'), sh = el('div', 'sh'); ov.appendChild(sh);
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener('keydown', onKey); };
+    var onKey = function (e) { if (e.key === 'Escape') close(); };
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    document.addEventListener('keydown', onKey);
+    sh.appendChild(el('div', 'gr'));
+    var tc = function (t) { return String(t || '').toLocaleLowerCase('tr').replace(/(^|\s)(\S)/g, function (m, s1, c1) { return s1 + c1.toLocaleUpperCase('tr'); }); };
+    var name = tc((String(pr.firstName || '') + ' ' + String(pr.lastName || '')).trim()) || fullName || 'Yolcu';
+    var hd = el('div', 'hd'), av = el('div', 'av', name.split(/\s+/).map(function (x) { return x.charAt(0); }).slice(0, 2).join('').toLocaleUpperCase('tr'));
+    hd.appendChild(av); var ht = el('div'); ht.appendChild(el('b', '', name)); ht.appendChild(el('span', '', editMode ? 'Bilgilerinizi düzenleyin' : 'Kişisel bilgileriniz')); hd.appendChild(ht);
+    var x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Kapat'); x.addEventListener('click', close); hd.appendChild(x);
+    sh.appendChild(hd);
+    var full = function (d) { return d ? d.getDate() + ' ' + AY[d.getMonth()] + ' ' + d.getFullYear() : ''; };
+    // Ad, soyad, doğum tarihi pasaportla aynı olmalı → kilitli. Diğerleri müşteri tarafından düzenlenebilir.
+    var rows = [
+      { k: 'name', l: 'Ad Soyad', v: name, lock: true },
+      { k: 'birthDate', l: 'Doğum tarihi', v: full(parseD(pr.birthDate)), lock: true },
+      { k: 'phone', l: 'Telefon', v: pr.phone, type: 'tel', ph: '05xx xxx xx xx' },
+      { k: 'email', l: 'E-posta', v: pr.email, type: 'email', ph: 'ornek@mail.com' },
+      { k: 'city', l: 'İkamet ili', v: pr.city, ph: 'Denizli' },
+      { k: 'tkMemberNo', l: 'Miles&Smiles no', v: pr.tkMemberNo, ph: 'TK…' },
+    ];
+    var inputs = {};
+    var l1 = el('div', 'list');
+    rows.forEach(function (r) {
+      if (!editMode && !r.v) return;
+      var kv = el('div', 'kv' + (editMode && r.lock ? ' lk' : '')); kv.appendChild(el('span', '', r.l));
+      if (editMode && !r.lock) {
+        var inp = el('input'); inp.type = r.type || 'text'; inp.value = r.v || ''; inp.placeholder = r.ph || ''; inp.autocomplete = 'off';
+        if (r.k === 'tkMemberNo') inp.style.textTransform = 'uppercase';
+        inputs[r.k] = inp; kv.appendChild(inp);
+      } else kv.appendChild(el('b', '', String(r.v || '—')));
+      l1.appendChild(kv);
+    });
+    sh.appendChild(l1);
+    if (!editMode) {
+      var vals = (f.validity || []).filter(function (v) { return v && parseD(v.until); });
+      if (vals.length) {
+        sh.appendChild(el('div', 'lbl', 'Pasaport ve vize'));
+        var l2 = el('div', 'list'), t0 = todayD();
+        vals.forEach(function (v) {
+          var u = parseD(v.until), days = Math.round((u - t0) / 86400000);
+          var kv = el('div', 'kv'); kv.appendChild(el('span', '', v.label + (v.sub ? ' · ' + v.sub : '')));
+          var b = el('b', '', full(u) + (days < 0 ? ' (doldu)' : '')); if (days < 0) b.style.color = 'var(--accent)'; kv.appendChild(b); l2.appendChild(kv);
+        });
+        sh.appendChild(l2);
+      }
+    }
+    var err = el('div', 'err' + (okMsg ? ' okm' : ''), okMsg || ''); sh.appendChild(err);
+    var act = el('div', 'act'); sh.appendChild(act);
+    if (!editMode) {
+      var eb = el('button', 'p', '✏️ Bilgilerimi düzenle'); eb.type = 'button';
+      eb.addEventListener('click', function () { openProfile(f, wa, fullName, true); });
+      act.appendChild(eb);
+    } else {
+      var cb = el('button', '', 'Vazgeç'); cb.type = 'button'; cb.addEventListener('click', function () { openProfile(f, wa, fullName, false); });
+      var sb = el('button', 'p', 'Kaydet'); sb.type = 'button';
+      sb.addEventListener('click', function () {
+        var pin = lsGet(PIN_KEY);
+        if (!pin) { err.textContent = 'Oturum süresi doldu. Sayfayı yenileyip PIN\'inizi girin.'; return; }
+        if (!navigator.onLine) { err.textContent = 'İnternet bağlantısı yok.'; return; }
+        var body = {}; Object.keys(inputs).forEach(function (k) { body[k] = inputs[k].value; });
+        sb.disabled = true; sb.textContent = 'Kaydediliyor…'; err.className = 'err'; err.textContent = '';
+        call({ a: 'saveprofile', pin: pin, profile: body }).then(function (j) {
+          sb.disabled = false; sb.textContent = 'Kaydet';
+          if (j.state === 'ok') { showData(j.data); openProfile(j.data, wa, fullName, false, j.changed ? '✓ Bilgileriniz güncellendi' : 'Değişiklik yok'); return; }
+          if (j.state === 'invalid') { err.textContent = (j.error || 'Geçersiz bilgi') + ' — lütfen kontrol edin.'; if (inputs[j.field]) inputs[j.field].focus(); return; }
+          if (j.state === 'pin' || j.state === 'locked') { err.textContent = 'PIN doğrulanamadı. Sayfayı yenileyip tekrar deneyin.'; return; }
+          err.textContent = j.error || 'Kaydedilemedi, tekrar deneyin.';
+        }).catch(function () { sb.disabled = false; sb.textContent = 'Kaydet'; err.textContent = 'Bağlantı hatası, tekrar deneyin.'; });
+      });
+      act.appendChild(cb); act.appendChild(sb);
+      sh.appendChild(el('div', 'fix', '🔒 Ad, soyad ve doğum tarihi pasaportunuzla aynı olmalı; değişiklik için bizi arayın.'));
+    }
+    document.body.appendChild(ov);
+  };
+  var renderTabBar = function (f, ph, wa, fullName) {
+    var old = document.getElementById('tb'); if (old) old.parentNode.removeChild(old);
+    var tb = el('nav', 'tb'); tb.id = 'tb'; var inn = el('div', 'in2'); tb.appendChild(inn);
+    var item = function (tag, cls, icon, label) { var n = el(tag, cls); if (tag === 'button') n.type = 'button'; n.appendChild(ico(icon)); n.appendChild(el('span', '', label)); inn.appendChild(n); return n; };
+    item('button', 'on', 'house', 'Ana sayfa').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    item('button', '', 'user', 'Profil').addEventListener('click', function () { openProfile(f, wa, fullName); });
+    if (wa.length >= 11) { var w = item('a', 'wa2', 'chat', 'WhatsApp'); w.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Merhaba, seyahatim hakkında bilgi almak istiyorum.'); w.target = '_blank'; w.rel = 'noopener'; }
+    var c = item('a', 'call', 'phone', 'Paydos\'u ara'); c.href = 'tel:' + (ph.length >= 7 ? ph : '+902582637176');
+    document.body.appendChild(tb); document.body.classList.add('hasbar');
   };
 
   // ===== Veri: PIN korumalı belge API'si (Firebase fonksiyonu) =====
