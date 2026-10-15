@@ -936,6 +936,11 @@ const countryCodeMap = { TUR:'Türkiye',DEU:'Almanya',FRA:'Fransa',GBR:'İngilte
 const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || code) : '';
 
 // Toast Component
+// Her bildirim kendi zamanlayıcısıyla da kapanır (üst bileşenin zamanlayıcısı kaçsa bile ekranda kalmasın)
+function ToastAutoClose({ id, ms, onClose }) {
+  useEffect(() => { const t = setTimeout(() => onClose(id), ms + 500); return () => clearTimeout(t); }, [id]);
+  return null;
+}
 function Toast({ toasts, removeToast }) {
   return (
     // Sağ altta dikdörtgen kutular — üstteki butonları (➕ Rezervasyon vb.) ve formların alt Kaydet çubuğunu kapatmasın
@@ -965,6 +970,7 @@ function Toast({ toasts, removeToast }) {
           <span style={{ fontSize: '18px' }}>
             {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'}
           </span>
+          <ToastAutoClose id={toast.id} ms={toast.undo ? 8000 : 4000} onClose={removeToast} />
           <span style={{ flex: 1 }}>{toast.message}</span>
           {toast.undo && (
             <button onClick={(e) => { e.stopPropagation(); toast.undo(); removeToast(toast.id); }} style={{
@@ -978,6 +984,7 @@ function Toast({ toasts, removeToast }) {
               fontWeight: '600'
             }}>↩️ Geri Al</button>
           )}
+          <button onClick={(e) => { e.stopPropagation(); removeToast(toast.id); }} aria-label="Kapat" title="Kapat" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: '0 0 0 4px' }}>✕</button>
         </div>
       ))}
       <style>{`@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
@@ -19455,8 +19462,11 @@ function AppInner() {
   });
 
   // Toast fonksiyonları
+  // Kimlik benzersiz olmalı: aynı milisaniyede iki bildirim gelirse (Date.now() aynı) React aynı anahtarlı
+  // kutulardan birini DOM'da yetim bırakıyordu — ekranda kapanmayan bildirim kalıyordu
+  const toastSeq = useRef(0);
   const showToast = useCallback((message, type = 'info', undo = null) => {
-    const id = Date.now();
+    const id = `${Date.now()}_${++toastSeq.current}`;
     setToasts(prev => [...prev, { id, message, type, undo }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), undo ? 8000 : 4000);
   }, []);
