@@ -814,6 +814,18 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
         var x = String(a.d.addedAt || ''), y = String(b.d.addedAt || '');
         return x !== y ? (x < y ? 1 : -1) : b.i - a.i;
       }).map(function (o) { return o.d; });
+      // 🗂️ Geçmişim: tarihi geçmiş seyahat belgeleri (bilet, biniş kartı, otel, fuar bileti).
+      // until = biletteki son uçuş / otel çıkış tarihi (CRM yazar). Tarih yoksa 45 günden eski eklenenler geçmiş sayılır.
+      // Vize, sigorta, diğer belgeler tarihten bağımsız "Belgeler"de kalır.
+      var TRAVEL = ['✈️', '🛫', '🛬', '🏨', '🎫'];
+      var isPast = function (dc) {
+        if (TRAVEL.indexOf(dc.icon) < 0) return false;
+        var u = parseD(dc.until); if (u) return u < todayD();
+        var a = dc.addedAt ? new Date(dc.addedAt) : null;
+        return !!(a && !isNaN(a) && (todayD() - a) > 45 * 86400000);
+      };
+      var past = sorted.filter(isPast);
+      sorted = sorted.filter(function (d) { return past.indexOf(d) < 0; });
       // Güncel: en son uçak bileti + en son otel belgesi — her zaman en üstte
       var current = ['✈️', '🏨'].map(function (ic) { return sorted.filter(function (d) { return d.icon === ic; })[0]; }).filter(Boolean);
       var rest = sorted.filter(function (d) { return current.indexOf(d) < 0; });
@@ -928,16 +940,33 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
         }
       } catch (x) {}
 
-      // --- Önceki belgeler: güncel bilet/otel dışındaki her şey (biniş kartları dahil), aya göre, en yeni üstte ---
-      if (rest.length) {
-        sec(current.length ? 'Önceki belgeler' : 'Belgeler', rest.length);
+      // Aya göre gruplu liste (en yeni üstte); parent verilirse onun içine
+      var monthList = function (arr, parent, keyOf) {
         var by = {}, order = [];
-        rest.forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
+        arr.forEach(function (dc) { var k = monthKey(keyOf(dc)); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
         order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
         order.forEach(function (k) {
-          if (order.length > 1 || k) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski'));
-          var list = add(box, el('div', 'list'));
+          if (order.length > 1 || k) (parent ? parent.appendChild(el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski')) : add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski')));
+          var list = parent ? parent.appendChild(el('div', 'list')) : add(box, el('div', 'list'));
           by[k].forEach(function (dc) { list.appendChild(docRow(dc)); });
+        });
+      };
+      // --- Belgeler: güncel bilet/otel dışındaki güncel belgeler (biniş kartları, vize, sigorta…) ---
+      if (rest.length) {
+        sec(current.length ? 'Diğer belgeler' : 'Belgeler', rest.length);
+        monthList(rest, null, function (dc) { return dc.addedAt; });
+      }
+      // --- 🗂️ Geçmişim: kapalı gelir, dokununca açılır; seyahat tarihine göre aylar ---
+      if (past.length) {
+        sec('Geçmişim', past.length);
+        var pBtn = add(box, el('button', 'all')); pBtn.type = 'button';
+        pBtn.textContent = '🗂️ Geçmiş seyahat belgelerini göster (' + past.length + ')';
+        var pBox = el('div'); pBox.style.display = 'none'; box.appendChild(pBox);
+        monthList(past, pBox, function (dc) { return dc.until || dc.addedAt; });
+        pBtn.addEventListener('click', function () {
+          var open = pBox.style.display === 'none';
+          pBox.style.display = open ? '' : 'none';
+          pBtn.textContent = open ? '🗂️ Geçmişi gizle' : '🗂️ Geçmiş seyahat belgelerini göster (' + past.length + ')';
         });
       }
       if (docs.length > 1) {

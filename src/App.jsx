@@ -1928,7 +1928,14 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
         dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
         arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
       }));
-      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '' })); // addedAt: linkte aya göre gruplama
+      // until: belgenin seyahat tarihi (biletteki son uçuş / otel çıkışı) — linkte tarihi geçenler "Geçmişim"e iner
+      const untilOf = (d) => {
+        const fy = (trip.flights || []).filter(f => d.id && f.docId === d.id && /^\d{4}-\d{2}-\d{2}$/.test(String(f.ymd || ''))).map(f => f.ymd).sort().pop();
+        if (fy) return fy;
+        if (d.id && trip.hotelDocId === d.id && /^\d{4}-\d{2}-\d{2}$/.test(String(trip.hotelCheckOut || ''))) return trip.hotelCheckOut;
+        return '';
+      };
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '', until: untilOf(d) })); // addedAt: linkte aya göre gruplama
       await setDoc(doc(db, 'paylasimlar', token), {
         kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
         startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
@@ -2966,7 +2973,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
   const setFlight = (i, patch) => up({ flights: trip.flights.map((f, k) => k === i ? { ...f, ...patch } : f) });
 
   const save = async () => {
-    if (!(trip.docs || []).length && !(trip.flights || []).length) { showToast?.('Önce en az bir belge ekleyin', 'warning'); return; }
+    // Belgesiz de verilebilir: müşteri profilini, pasaport/vize sürelerini ve duyuruları görür; belgeler sonra eklenir
     setBusy('Kaydediliyor…');
     try {
       const { link, text } = await publishCustomerLink(c, trip, token.current, appSettings);
