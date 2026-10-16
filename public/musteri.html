@@ -760,6 +760,31 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 
       renderInstall(box);
       renderPush(box);
+      // 🎫 Yaklaşan / devam eden turlar: tur sayfasına (/b/) geçiş. Bitmiş tur 3 gün daha görünür.
+      try {
+        var t0 = todayD();
+        (Array.isArray(f.tours) ? f.tours : []).filter(function (t) {
+          if (!t || !/^[A-Za-z0-9]{8,40}$/.test(String(t.token || ''))) return false;
+          var e = parseD(t.endDate) || parseD(t.startDate); if (!e) return true;
+          var lim = new Date(e); lim.setDate(lim.getDate() + 3); return lim >= t0;
+        }).sort(function (a, b) {
+          var da = (parseD(a.endDate) || t0) < t0 ? 1 : 0, db = (parseD(b.endDate) || t0) < t0 ? 1 : 0; // biten tur en alta
+          return da - db || String(a.startDate || '').localeCompare(String(b.startDate || ''));
+        }).forEach(function (t) {
+          var s1 = parseD(t.startDate), e1 = parseD(t.endDate);
+          var card = el('a'); card.href = '/b/' + t.token;
+          card.style.cssText = 'display:flex;align-items:center;gap:12px;margin:12px 0;padding:14px 16px;border-radius:16px;text-decoration:none;color:inherit;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45)';
+          card.appendChild(el('div', '', '🎫')).style.fontSize = '26px';
+          var tx = el('div'); tx.style.flex = '1';
+          var days = s1 ? Math.round((s1 - t0) / 86400000) : null;
+          tx.appendChild(el('div', '', days != null && days > 0 ? 'Turunuza ' + days + ' gün kaldı' : (e1 && e1 < t0 ? 'Turunuz tamamlandı' : 'Turunuz devam ediyor'))).style.cssText = 'font-size:12px;opacity:.75';
+          tx.appendChild(el('div', '', t.city || t.name || 'Turunuz')).style.cssText = 'font-weight:700;font-size:16px';
+          if (s1) tx.appendChild(el('div', '', fmtD(s1) + (e1 ? ' – ' + fmtD(e1) : '') + (t.name && t.city ? ' · ' + t.name : ''))).style.cssText = 'font-size:12.5px;opacity:.8';
+          card.appendChild(tx);
+          card.appendChild(el('div', '', 'Tur sayfası ›')).style.cssText = 'font-size:13px;font-weight:700;color:#f59e0b;white-space:nowrap';
+          add(box, card);
+        });
+      } catch (x) {}
       var dySlot = el('div'); box.appendChild(dySlot);
       try { renderDuyuru('customer', '', dySlot); } catch (x) {}
       if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));

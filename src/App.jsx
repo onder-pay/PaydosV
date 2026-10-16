@@ -9179,6 +9179,20 @@ const ensureCustomerLink = async (cust, appSettings) => {
   return token;
 };
 
+// Müşteri linkine (/m/) turun linkini ekle: müşteri sonra tekrar tura katılırsa eski simgeden açınca yeni turunu görür
+const addTourToCustomerLink = async (mToken, tour, bToken) => {
+  if (!mToken || !bToken || !tour) return;
+  const ref0 = doc(db, 'paylasimlar', mToken);
+  const snap = await getDoc(ref0);
+  if (!snap.exists()) return;
+  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '' };
+  const list = (Array.isArray(snap.data()?.tours) ? snap.data().tours : []).filter(t => t && t.token !== bToken);
+  const old = (snap.data()?.tours || []).find(t => t && t.token === bToken);
+  if (old && JSON.stringify(old) === JSON.stringify(entry)) return;
+  const tours = [...list, entry].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate))).slice(0, 12);
+  await setDoc(ref0, { tours }, { merge: true });
+};
+
 // TUR MODÜLÜ - TAM VERSİYON
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
@@ -9643,7 +9657,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       const custForLink = (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId)));
       let nextLink = '';
-      try { nextLink = await ensureCustomerLink(custForLink, appSettings); if (nextLink && custForLink) setCustomers?.(prev => prev.map(c => c.id === custForLink.id ? { ...c, shareToken: nextLink } : c)); } catch (e) { console.warn('[müşteri linki]', e.message); }
+      try {
+        nextLink = await ensureCustomerLink(custForLink, appSettings);
+        if (nextLink && custForLink) setCustomers?.(prev => prev.map(c => c.id === custForLink.id ? { ...c, shareToken: nextLink } : c));
+        if (nextLink) await addTourToCustomerLink(nextLink, tour, token);
+      } catch (e) { console.warn('[müşteri linki]', e.message); }
       await setDoc(doc(db, 'paylasimlar', token), {
         ...(nextLink ? { nextLink } : {}),
         customerName: res.customerName || '', tourName: tour.name || '', tourId: String(tour.id),
@@ -10353,6 +10371,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const c = (customers || []).find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
         const tok = await ensureCustomerLink(c, appSettings);
         if (tok && c) setCustomers?.(prev => prev.map(x => x.id === c.id ? { ...x, shareToken: tok } : x));
+        if (tok) await addTourToCustomerLink(tok, t, r.shareToken).catch(() => {});
         return tok;
       };
       for (const r of todo) { try { if (await syncResLinkDocs(r, getNext(r))) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
