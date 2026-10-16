@@ -217,6 +217,8 @@ const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name:
 
 const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
 const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
+// Kayıttaki tür listede birebir yoksa (bot eskiden 'Yesil Pasaport (Hususi)' yazdı) listedeki karşılığı — Türkçe karakter kuralı
+const canonPassportType = (t) => passportTypes.find(x => normalizeTr(x) === normalizeTr(t)) || t;
 const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan'];
 
 // ===== PAKET TUR SÖZLEŞMESİ — SABİT YASAL METİN (birebir, numaralandırma düzeltmeleri hariç) =====
@@ -504,7 +506,7 @@ ${secTitle(S.m6[0])}${P(S.m6.slice(1))}
 <table>${BKS.map(BK => {
     const CURN = { TL: 'TÜRK LİRASI', EUR: 'EURO', USD: 'USD', GBP: 'GBP', CHF: 'CHF' };
     const accs = (Array.isArray(BK.accounts) && BK.accounts.length ? BK.accounts : []).filter(a => a.iban);
-    return accs.map(a => `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — ${CURN[a.currency] || e(a.currency)} HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(a.iban)}${a.accountNo ? `<br>Hesap No: ${e(a.accountNo)}` : ''}</td></tr>`).join('');
+    return accs.map(a => `<tr><th>${e(trUpper(BK.bankName||''))} ${e(trUpper(BK.branch||''))} — ${CURN[a.currency] || e(a.currency)} HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(a.iban)}${a.accountNo ? `<br>Hesap No: ${e(a.accountNo)}` : ''}</td></tr>`).join('');
   }).join('')}</table>
 
 ${c.ozelTalepler ? secTitle(S.m8[0]) + body(S.m8) : ''}
@@ -558,7 +560,7 @@ const PASSPORT_MIN_MONTHS = 6;
 // Yeşil (hususi) pasaport muafiyeti ancak pasaport bu kurala uyuyorsa. Birden fazla yeşil pasaportta en geç biten esas.
 // Döner: { green, ok, exp (Date|null), reason: 'ok'|'nodate'|'expires'|'months' }
 const greenPassportStatus = (passports, tourEndStr) => {
-  const greens = (passports || []).filter(p => p.passportType === 'Yeşil Pasaport (Hususi)' || p.passportType?.includes('Yeşil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
+  const greens = (passports || []).filter(p => trHas(p.passportType, 'yesil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
   if (!greens.length) return { green: false, ok: false, exp: null, reason: '' };
   const exp = greens.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
   if (!exp) return { green: true, ok: false, exp: null, reason: 'nodate' };
@@ -911,10 +913,22 @@ const findLikelyDuplicates = (c, customers) => {
 };
 
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
+// İsim/şehir gösterimi. Metinde Türkçe harf (ç ğ ı ö ş ü / İ) varsa kaynak Türkçe biliyordur: I → ı ("YILMAZ ŞAHİN" → "Yılmaz Şahin").
+// Hiç Türkçe harf yoksa (pasaport MRZ, ASCII Excel: "ISMAIL GEDIKOGLU") I'nın i mi ı mı olduğu bilinemez → I = i kabul edilir
+// ("Ismaıl Gedıkoglu" gibi bozuk sonuç üretilmez). Kayıtta bu belirsiz isimler değiştirilmez: bkz. nameForSave.
+const TR_LETTERS = /[çğıöşüÇĞİÖŞÜ]/;
 const titleCaseTr = (s) => {
   if (!s) return '';
-  const lower = String(s).replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
-  return lower.replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+  const str = String(s);
+  const lower = TR_LETTERS.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
+  return lower.replace(/\u0307/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+};
+// Kayda yazılacak isim: Türkçe harfsiz BÜYÜK harfli ve I içeren isim ("ISMAIL", "YILMAZ") olduğu gibi kalır — tahminle bozulmaz.
+const nameForSave = (s) => {
+  const t = String(s || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  if (!TR_LETTERS.test(t) && /I/.test(t) && t === t.toUpperCase()) return t;
+  return titleCaseTr(t);
 };
 
 // Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
@@ -1313,8 +1327,7 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
     return pList.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
   });
@@ -1681,7 +1694,8 @@ const detectHotel = (text) => {
   const raw = String(text || '').replace(/\s+/g, ' ');
   if (!raw.trim()) return null;
   const low = asciiTr(raw).toLowerCase();
-  const STOPW = 'address|adres|adresse|check|giri[sş]|[cç][ıi]k[ıi][sş]|arrival|departure|tel|telefon|phone|e-?mail|www|room|oda|booking|rezervasyon|reservation|confirmation|guest|misafir|nights?|gece|city|[sş]ehir|country|[uü]lke';
+  // /i bayrağı "İ"yi "i" saymaz (Türkçe karakter kuralı) → i geçen Türkçe etiketlerde [iİı] sınıfı ("GİRİŞ", "ŞEHİR", "MİSAFİR")
+  const STOPW = 'address|adres|adresse|check|g[iİı]r[iİı][sş]|[cç][ıiİ]k[ıiİ][sş]|arrival|departure|tel|telefon|phone|e-?mail|www|room|oda|booking|rezervasyon|reservation|confirmation|guest|m[iİı]saf[iİı]r|nights?|gece|city|[sş]eh[iİı]r|country|[uü]lke';
   const STOP = '(?=\\s+(?:' + STOPW + ')(?![a-zçğıöşü])|\\s{2,}|$)';
   const grab = (re) => { const m = raw.match(re); return m ? m[1].replace(/[\s,;:|-]+$/, '').trim() : ''; };
   let name = grab(new RegExp('(?:hotel\\s*name|otel\\s*ad[ıi]|property(?:\\s*name)?|accommodation|konaklama\\s*yeri|hotel|otel)\\s*[:：]\\s*(.{3,80}?)' + STOP, 'i'));
@@ -2054,7 +2068,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const inp = { width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' };
   const lbl = { display: 'block', fontSize: '12px', color: '#94a3b8', margin: '14px 0 6px', fontWeight: 600 };
   const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '16px' : '20px' };
-  const pickList = subCustomers.filter(c => !q || `${c.firstName} ${c.lastName}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr'))).slice(0, 30);
+  const pickList = subCustomers.filter(c => !q || trHas(`${c.firstName} ${c.lastName}`, q)).slice(0, 30);
   return (
     <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
       <h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
@@ -2582,7 +2596,7 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
   const [yarisma, setYarisma] = useState(false);
   const [tavsiye, setTavsiye] = useState(false);
   const list = tours.filter(t => showOld || !t.endDate || t.endDate >= today)
-    .filter(t => !q || `${t.name} ${t.city} ${t.country}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+    .filter(t => !q || trHas(`${t.name} ${t.city} ${t.country}`, q))
     .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   const tour = sel && sel !== 'all' ? tours.find(t => String(t.id) === sel) : null;
   const res = tour ? (tour.reservations || []).filter(r => !r.cancelled) : [];
@@ -3066,7 +3080,7 @@ const matchCustomers = (index, words) => {
 };
 
 // 🔍 Mükerrer / TC kontrolü — tüm müşterileri tarar
-function DuplicateScanModal({ customers, onOpen, onClose }) {
+function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
   const [tab, setTab] = useState('tcName');
   const data = useMemo(() => {
     const nm = (c) => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).replace(/\s+/g, ' ');
@@ -3083,7 +3097,14 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
     const passport = [...pp.entries()].filter(([, set]) => set.size > 1).map(([k, set]) => [k, [...set]]);
     const nameBirth = group(c => (c.birthDate && nm(c) ? `${nm(c)}|${c.birthDate}` : ''));
     const badTc = (customers || []).filter(c => String(c.tcKimlik || '').trim() && !isValidTc(c.tcKimlik));
-    return { tcName, tcSame, passport, nameBirth, badTc };
+    // 🔤 Şüpheli isim: eski isim düzeltme Türkçe harfsiz BÜYÜK isimde (MRZ/Excel) her I'yı ı yaptı ("ISMAIL" → "Ismaıl").
+    // İzi: isimde ı var ama başka hiçbir Türkçe harf (ç ğ ö ş ü İ) yok. "Yılmaz Kaya" gibi doğru isimler de çıkar → elle karar.
+    const oddName = (customers || []).filter(c => {
+      if (c.nameOk) return false;
+      const full = `${c.firstName || ''} ${c.lastName || ''}`;
+      return /ı/.test(full) && !/[çğöşüÇĞÖŞÜİ]/.test(full);
+    });
+    return { tcName, tcSame, passport, nameBirth, badTc, oddName };
   }, [customers]);
   const tabs = [
     ['tcName', '🚨 Aynı TC, farklı isim', data.tcName.length],
@@ -3091,7 +3112,10 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
     ['passport', 'Aynı pasaport no', data.passport.length],
     ['nameBirth', 'Aynı ad + doğum', data.nameBirth.length],
     ['badTc', 'Geçersiz TC', data.badTc.length],
+    ['oddName', '🔤 Şüpheli isim (ı)', data.oddName.length],
   ];
+  // Önerilen düzeltme: ı → i, Türkçe harfsiz isim kuralıyla yeniden yaz ("Ismaıl Gedıkoglu" → "İsmail Gedikoglu")
+  const fixName = (x) => titleCaseTr(String(x || '').replace(/ı/g, 'i'));
   const ppList = (c) => safeParseJSON(c.passports).map(p => p.passportNo).filter(Boolean).join(', ');
   const row = (c) => (
     <div key={c._docId || c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', fontSize: '12px', color: '#e8f1f8', flexWrap: 'wrap' }}>
@@ -3099,7 +3123,21 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
       <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontWeight: '600', fontSize: '12px', fontFamily: 'inherit' }}>Aç</button>
     </div>
   );
-  const groups = tab === 'badTc' ? null : data[tab];
+  const groups = (tab === 'badTc' || tab === 'oddName') ? null : data[tab];
+  const oddRow = (c) => {
+    const fn = fixName(c.firstName), ln = fixName(c.lastName);
+    return (
+      <div key={c._docId || c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', fontSize: '12.5px', color: '#e8f1f8', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <span style={{ flex: 1, minWidth: '220px' }}>
+          <span style={{ color: '#fca5a5' }}>{c.firstName} {c.lastName}</span> <span style={{ color: '#64748b' }}>→</span> <b style={{ color: '#86efac' }}>{fn} {ln}</b>
+          {c.tcKimlik ? <span style={{ color: '#64748b' }}> · TC {c.tcKimlik}</span> : null}
+        </span>
+        <button type="button" onClick={() => onPatch?.(c, { firstName: fn, lastName: ln, nameOk: true })} style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '12px' }}>✓ Düzelt</button>
+        <button type="button" onClick={() => onPatch?.(c, { nameOk: true })} title="İsim zaten doğru (ör. Yılmaz) — listeden çıkar" style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>Doğru, dokunma</button>
+        <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px' }}>Aç</button>
+      </div>
+    );
+  };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#0f1d2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -3116,7 +3154,12 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
           ))}
         </div>
         <div style={{ padding: '8px 20px 20px', overflowY: 'auto' }}>
-          {tab === 'badTc'
+          {tab === 'oddName'
+            ? (data.oddName.length ? <>
+                <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>Eski isim düzeltmesi Türkçe harfsiz BÜYÜK yazılmış isimlerde (pasaport MRZ, Excel) her I'yı ı yaptı: "ISMAIL" → "Ismaıl". Bu listede ı geçen ama başka Türkçe harfi olmayan isimler var — <b>Yılmaz, Kılıç</b> gibi gerçekten ı'lı isimler de çıkar. Önerilen yazım doğruysa <b>Düzelt</b>, isim zaten doğruysa <b>Doğru, dokunma</b>. İkisi de kaydı listeden çıkarır.</div>
+                {data.oddName.map(oddRow)}
+              </> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Şüpheli isim yok</div>)
+            : tab === 'badTc'
             ? (data.badTc.length ? <><div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0' }}>11 hane değil ya da TC doğrulama basamakları tutmuyor — yanlış girilmiş/okunmuş olabilir.</div>{data.badTc.map(row)}</> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Sorun yok</div>)
             : (groups.length ? groups.map(([k, arr]) => (
               <div key={k} style={{ marginTop: '12px', padding: '10px 14px', background: tab === 'tcName' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${tab === 'tcName' ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px' }}>
@@ -3689,8 +3732,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
     return pList.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
   });
@@ -3788,7 +3830,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           lastName: row['Soyad'] || row['soyad'] || row['SOYAD'] || '',
           tcKimlik: String(row['TC Kimlik'] || row['TC'] || row['tc'] || ''),
           phone: String(row['Telefon'] || row['telefon'] || row['TEL'] || ''),
-          email: row['E-posta'] || row['Email'] || row['email'] || '',
+          email: normEmail(row['E-posta'] || row['Email'] || row['email'] || ''),
           birthDate: row['Doğum Tarihi'] || '',
           birthPlace: row['Doğum Yeri'] || '',
           city: row['İkametgah İli'] || row['İl'] || row['Şehir'] || '',
@@ -3812,7 +3854,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         // Firestore'a yaz (customers otomatik senkronize edilmiyor — yazılmazsa sayfa yenilenince kaybolur)
         const now = new Date().toISOString();
         const toSave = newCustomers.map(c => ({ ...c, _docId: String(c.id), updatedAt: now, verified: false,
-          firstName: titleCaseTr(c.firstName), lastName: titleCaseTr(c.lastName),
+          firstName: nameForSave(c.firstName), lastName: nameForSave(c.lastName),
           passports: '[]', schengenVisas: '[]', usaVisa: '{}' }));
         for (let i = 0; i < toSave.length; i += 400) {
           const batch = writeBatch(db);
@@ -3865,7 +3907,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     setFormData({ ...emptyForm, ...customer, birthPlace: customer.birthPlace || customer.dogum_yeri || '', tkMemberNo: customer.tkMemberNo || customer.tk_uyelik_no || '', tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
     // Pasaport bilgilerini yükle
     const savedPassports = safeParseJSON(customer.passports);
-    setPassports(savedPassports.length > 0 ? savedPassports : [{ ...emptyPassport, id: generateUniqueId() }]);
+    setPassports(savedPassports.length > 0 ? savedPassports.map(p => ({ ...p, passportType: p.passportType ? canonPassportType(p.passportType) : p.passportType })) : [{ ...emptyPassport, id: generateUniqueId() }]);
     // Schengen bilgilerini yükle
     const savedSchengen = safeParseJSON(customer.schengenVisas).filter(v => v.country);
     setSchengenVisas(savedSchengen.length > 0 ? savedSchengen : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }]);
@@ -3972,15 +4014,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
   const fixAllNames = async () => {
     const needsFix = customers.filter(c => {
-      const fn = titleCaseTr(c.firstName || ''), ln = titleCaseTr(c.lastName || '');
+      const fn = nameForSave(c.firstName || ''), ln = nameForSave(c.lastName || '');
       return (fn !== (c.firstName || '') || ln !== (c.lastName || '')) && (c.firstName || c.lastName);
     });
     if (needsFix.length === 0) { showToast?.('Düzeltilecek isim yok — hepsi düzgün ✓', 'success'); return; }
-    if (!window.confirm(`${needsFix.length} müşterinin adı düzeltilecek (örn: "${needsFix[0].firstName} ${needsFix[0].lastName}" → "${titleCaseTr(needsFix[0].firstName)} ${titleCaseTr(needsFix[0].lastName)}").\n\nDevam edilsin mi?`)) return;
+    if (!window.confirm(`${needsFix.length} müşterinin adı düzeltilecek (örn: "${needsFix[0].firstName} ${needsFix[0].lastName}" → "${nameForSave(needsFix[0].firstName)} ${nameForSave(needsFix[0].lastName)}").\n\nDevam edilsin mi?`)) return;
     const now = new Date().toISOString();
     const idOf = (c) => c._docId || String(c.id);
     const fixedMap = {};
-    needsFix.forEach(c => { fixedMap[idOf(c)] = { firstName: titleCaseTr(c.firstName || ''), lastName: titleCaseTr(c.lastName || '') }; });
+    needsFix.forEach(c => { fixedMap[idOf(c)] = { firstName: nameForSave(c.firstName || ''), lastName: nameForSave(c.lastName || '') }; });
     setCustomers(prev => prev.map(c => fixedMap[idOf(c)] ? { ...c, ...fixedMap[idOf(c)], updatedAt: now } : c));
     let ok = 0, fail = 0;
     for (const c of needsFix) {
@@ -4074,8 +4116,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const now = new Date().toISOString();
     const fullData = {
       ...formData,
-      firstName: titleCaseTr(formData.firstName || ''),
-      lastName: titleCaseTr(formData.lastName || ''),
+      firstName: nameForSave(formData.firstName || ''),
+      lastName: nameForSave(formData.lastName || ''),
       passports: JSON.stringify(Array.isArray(passports) ? passports : []),
       schengenVisas: JSON.stringify(Array.isArray(schengenVisas) ? schengenVisas : []),
       usaVisa: usaVisa
@@ -4368,7 +4410,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <DateInput label="Geçerlilik" value={passport.expiryDate || ''} onChange={v => updatePassport(passport.id, 'expiryDate', v)} />
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={labelStyle}>Pasaport Türü</label>
-                      <select value={passport.passportType || ''} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '10px', fontSize: '13px', width: '100%' }}>
+                      <select value={canonPassportType(passport.passportType || '')} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '10px', fontSize: '13px', width: '100%' }}>
                         {passportTypes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
@@ -4587,8 +4629,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = safeParseObj(c.usaVisa);
     const hasGreenPassport = cPassports.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
 
@@ -4739,7 +4780,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
                     <button type="button" onClick={() => setDetailTab('passport')} style={card(ppColor)}>
                       <div style={cardHead}><span>🛂 PASAPORT</span>{cPassports.length > 1 && <span>{cPassports.length} adet</span>}</div>
-                      <div style={big}>{pp ? `${pp.passportType?.includes('Yeşil') ? '🟢 Yeşil' : pp.passportType?.includes('Gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
+                      <div style={big}>{pp ? `${trHas(pp.passportType, 'yesil') ? '🟢 Yeşil' : trHas(pp.passportType, 'gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
                       <div style={{ ...small, color: ppColor, fontWeight: '600' }}>{pp?.expiryDate ? `Bitiş ${formatDate(pp.expiryDate)} · ` : ''}{ppNote}</div>
                     </button>
                     <button type="button" onClick={() => setDetailTab(lastApp ? 'timeline' : 'schengen')} style={card(lastApp ? '#f59e0b' : hasGreenPassport ? '#10b981' : '#64748b')}>
@@ -4841,9 +4882,9 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div key={p.id || idx} style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(59,130,246,0.2)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: p.passportType?.includes('Yeşil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: trHas(p.passportType, 'yesil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
                           <div>
-                            <h4 style={{ margin: 0, fontSize: '14px', color: p.passportType?.includes('Yeşil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
+                            <h4 style={{ margin: 0, fontSize: '14px', color: trHas(p.passportType, 'yesil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
                             <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{p.nationality || 'Türkiye'}</p>
                           </div>
                         </div>
@@ -5139,7 +5180,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const todayYmd = new Date().toISOString().slice(0, 10);
   const pickTours = tourPickFor ? tours
     .filter(t => !t.deleted && (t.endDate || t.startDate || '9999') >= todayYmd)
-    .filter(t => { const q = tourPickQ.trim().toLocaleLowerCase('tr'); return !q || `${t.name || ''} ${t.country || ''} ${t.city || ''}`.toLocaleLowerCase('tr').includes(q); })
+    .filter(t => { const q = tourPickQ.trim(); return !q || trHas(`${t.name || ''} ${t.country || ''} ${t.city || ''}`, q); })
     .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || ''))) : [];
   const custInTour = (t, c) => (t.reservations || []).some(r => !r.cancelled && String(r.customerId) === String(c.id));
 
@@ -5587,7 +5628,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           ) : (
             withGreenPassport.map(c => {
               const pList = safeParseJSON(c.passports);
-              const greenPassport = pList.find(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+              const greenPassport = pList.find(p => trHas(p.passportType, 'yesil'));
               return (
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(5,150,105,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(5,150,105,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5981,8 +6022,9 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate; delete newCust._likelyDup; delete newCust._tcWarn;
                         delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
-                        newCust.firstName = titleCaseTr(newCust.firstName || '');
-                        newCust.lastName = titleCaseTr(newCust.lastName || '');
+                        newCust.firstName = nameForSave(newCust.firstName || '');
+                        newCust.lastName = nameForSave(newCust.lastName || '');
+                        if (newCust.email) newCust.email = normEmail(newCust.email);
                         newCust.passports = JSON.stringify(newCust.passports);
                         newCust.schengenVisas = JSON.stringify(newCust.schengenVisas);
                         newCust.usaVisa = JSON.stringify(newCust.usaVisa);
@@ -6127,7 +6169,13 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
-      {showDupScan && <DuplicateScanModal customers={customers} onOpen={(c) => { setDetailTab('info'); setSelectedCustomer(c); }} onClose={() => setShowDupScan(false)} />}
+      {showDupScan && <DuplicateScanModal customers={customers} onOpen={(c) => { setDetailTab('info'); setSelectedCustomer(c); }} onClose={() => setShowDupScan(false)}
+        onPatch={async (c, patch) => {
+          const id = c._docId || String(c.id);
+          setCustomers(prev => prev.map(x => (x._docId || String(x.id)) === id ? { ...x, ...patch } : x));
+          try { await setDoc(doc(db, 'customers', id), { ...patch, updatedAt: new Date().toISOString() }, { merge: true }); showToast?.(patch.firstName ? `✓ ${patch.firstName} ${patch.lastName} olarak düzeltildi` : 'Listeden çıkarıldı', 'success'); }
+          catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+        }} />}
       {showDocInbox && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} onClose={() => setShowDocInbox(false)} />}
       {shareCust && <CustomerShareModal customer={shareCust} appSettings={appSettings} showToast={showToast} onClose={() => setShareCust(null)}
         onSaved={(patch) => {
@@ -6762,7 +6810,7 @@ const nextBizDay = (ymd) => {
 const visaFutureDate = (v) => {
   if (!v.processDate || v.processDate <= ymdLocal(new Date())) return '';
   if (v.pnr || v.appointmentDate) return '';
-  if (/başvuru yapıldı|randevu alındı|konsolos|sonu[çc]|onay|red|iptal|teslim/.test(String(v.status || '').toLocaleLowerCase('tr-TR'))) return '';
+  if (/basvuru yapildi|randevu alindi|konsolos|sonuc|onay|red|iptal|teslim/.test(normalizeTr(v.status))) return '';
   return v.processDate;
 };
 
@@ -7088,7 +7136,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         'Ülke': extractVisaCountry(v) || '',
         'Vize Türü': v.visaType || (() => {
           const ulke = extractVisaCountry(v);
-          const rest = String(v.visaDuration || '').replace(new RegExp(ulke ? ulke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '^$', 'i'), '').trim();
+          // Tür adından ülkeyi at ("Italya Ticari" − "İtalya" → "Ticari"): normalizeTr uzunluğu korur, aynı konumdan kesilir
+          const vd = String(v.visaDuration || ''), at = ulke ? normalizeTr(vd).indexOf(normalizeTr(ulke)) : -1;
+          const rest = (at >= 0 ? vd.slice(0, at) + vd.slice(at + normalizeTr(ulke).length) : vd).replace(/\s+/g, ' ').trim();
           return rest && rest !== v.visaDuration ? rest : '';
         })(),
         'Vize Süresi': v.visaDuration || '',
@@ -7185,10 +7235,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   };
   const [bulkVisa, setBulkVisa] = useState(null); // { custs, cat, type, country, skip: [id], busy }
   const openVisaOf = (c, countryName) => visaApplications.filter(v => visaAppBelongsTo(v, c, customers)).find(v => {
-    const st = String(v.status || '').toLocaleLowerCase('tr');
-    if (/iptal|onay|red/.test(st)) return false;
+    if (/iptal|onay|red/.test(normalizeTr(v.status))) return false;
     if (String(v.createdAt || v.applicationDate || '') < new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)) return false;
-    return !countryName || !v.country || v.country === countryName;
+    return !countryName || !v.country || normalizeTr(v.country) === normalizeTr(countryName);
   });
   const openBulkVisa = (custs) => { setShowForm(false); setBulkVisa({ custs, cat: null, type: null, country: '', skip: custs.filter(c => openVisaOf(c, '')).map(c => c.id), busy: false }); }; // açık başvurusu olan varsayılan olarak dışarıda
   const bulkCountryFor = (cat, typeName) => {
@@ -7575,15 +7624,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
   }[status] || (() => {
     // Ayarlardan eklenen durumlar için anahtar kelimeye göre renk (hepsi gri kalmasın)
-    const t = String(status || '').toLocaleLowerCase('tr-TR');
+    const t = normalizeTr(status);
     if (/onay/.test(t)) return '#10b981';
     if (/iptal/.test(t)) return '#64748b';
     if (/\bred\b|redd/.test(t)) return '#ef4444';
     if (/konsolos/.test(t)) return '#06b6d4';
-    if (/gönderil|gonderil/.test(t)) return '#3b82f6';
+    if (/gonderil/.test(t)) return '#3b82f6';
     if (/topluyor|evrak/.test(t)) return '#f59e0b';
     if (/atama|bekliyor/.test(t)) return '#a855f7';
-    if (/data|vfs|başvuru|basvuru/.test(t)) return '#6366f1';
+    if (/data|vfs|basvuru/.test(t)) return '#6366f1';
     return '#94a3b8';
   })());
 
@@ -7618,25 +7667,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 // Ülkeye göre grupla — bayrak emojisi bazı sistemlerde (Windows) görünmüyor,
                 // bu yüzden kısa Türkçe ülke kodu + renk kullanılıyor
                 const ulkeKodu = (ulke) => {
-                  const u = (ulke || '').toLocaleLowerCase('tr');
+                  const u = normalizeTr(ulke); // Türkçe karakter kuralı: desenler ASCII
                   if (/almanya|german/.test(u)) return { k: 'ALM', r: '#334155' };
-                  if (/amerika|abd|usa|birleşik devlet/.test(u)) return { k: 'ABD', r: '#1e40af' };
+                  if (/amerika|abd|usa|birlesik devlet/.test(u)) return { k: 'ABD', r: '#1e40af' };
                   if (/italya|itali/.test(u)) return { k: 'İTA', r: '#16a34a' };
                   if (/fransa|franc/.test(u)) return { k: 'FRA', r: '#2563eb' };
                   if (/hollanda|nederland|netherland/.test(u)) return { k: 'HOL', r: '#ea580c' };
-                  if (/ingiltere|birleşik krallık|uk|britan/.test(u)) return { k: 'İNG', r: '#1e3a8a' };
+                  if (/ingiltere|birlesik krallik|uk|britan/.test(u)) return { k: 'İNG', r: '#1e3a8a' };
                   if (/rusya|russ/.test(u)) return { k: 'RUS', r: '#1d4ed8' };
-                  if (/çin|cin|china/.test(u)) return { k: 'ÇİN', r: '#dc2626' };
+                  if (/\bcin\b|china/.test(u)) return { k: 'ÇİN', r: '#dc2626' };
                   if (/bae|dubai|emirlik|arap emir/.test(u)) return { k: 'BAE', r: '#166534' };
                   if (/ispanya|spain/.test(u)) return { k: 'İSP', r: '#b91c1c' };
                   if (/yunanistan|greece|greek/.test(u)) return { k: 'YUN', r: '#0284c7' };
                   if (/avusturya|austria/.test(u)) return { k: 'AVU', r: '#b91c1c' };
-                  if (/belçika|belgium/.test(u)) return { k: 'BEL', r: '#ca8a04' };
-                  if (/çekya|çek|czech/.test(u)) return { k: 'ÇEK', r: '#1e40af' };
+                  if (/belcika|belgium/.test(u)) return { k: 'BEL', r: '#ca8a04' };
+                  if (/cekya|cek|czech/.test(u)) return { k: 'ÇEK', r: '#1e40af' };
                   if (/macaristan|hungar/.test(u)) return { k: 'MAC', r: '#16a34a' };
                   if (/polonya|poland|polska/.test(u)) return { k: 'POL', r: '#dc2626' };
                   if (/portekiz|portugal/.test(u)) return { k: 'POR', r: '#16a34a' };
-                  if (/isviçre|switzerland|swiss/.test(u)) return { k: 'İSV', r: '#dc2626' };
+                  if (/isvicre|switzerland|swiss/.test(u)) return { k: 'İSV', r: '#dc2626' };
                   return { k: 'DİĞ', r: '#64748b' };
                 };
                 const grup = {};
@@ -9002,8 +9051,8 @@ const parseTrDate = (s) => {
   if (m) return { d: new Date(+m[3], +m[2] - 1, +m[1]), iso: false, dotted: true };
   m = t.match(/(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*(\d{4})?/);
   if (m) {
-    const mi = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr') === m[2].toLocaleLowerCase('tr'));
-    if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => t.toLocaleLowerCase('tr').includes(g.toLocaleLowerCase('tr'))) };
+    const mi = TR_AYLAR.findIndex(a => normalizeTr(a) === normalizeTr(m[2]));
+    if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => trHas(t, g)) };
   }
   return null;
 };
@@ -9161,7 +9210,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const newId = generateUniqueId();
         cust = {
           id: newId, _docId: newId,
-          firstName: titleCaseTr(parts[0] || ''), lastName: titleCaseTr(parts.slice(1).join(' ')),
+          firstName: nameForSave(parts[0] || ''), lastName: nameForSave(parts.slice(1).join(' ')),
           phone: r.customerPhone || '', email: r.customerEmail || '', company: r.company || '',
           tcKimlik: '', birthDate: '', birthPlace: '', city: '', sector: '', notes: '', tkMemberNo: '',
           passports: '[]', schengenVisas: '[]', usaVisa: '{}', tags: '[]', activities: '[]',
@@ -9888,7 +9937,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         if (existingNames.has(normalizeTr(name))) { skipped++; continue; }
         existingNames.add(normalizeTr(name)); // aynı dosyada da tekrar varsa engelle
         const phone = String(row['Telefon'] || '').trim();
-        const email = String(row['E-posta'] || row['Email'] || '').trim();
+        const email = normEmail(row['E-posta'] || row['Email'] || '');
         const tcKimlik = String(row['TC Kimlik No'] || row['TC'] || '').trim().replace(/\D/g, '');
         const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
         const priceRaw = row['Tur Bedeli'] ?? row['Fiyat'] ?? 0;
@@ -9910,7 +9959,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           const temizName = name.replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
           const parts = temizName.split(/\s+/);
           const newId = generateUniqueId();
-          cust = { id: newId, _docId: newId, firstName: titleCaseTr(parts[0]), lastName: titleCaseTr(parts.slice(1).join(' ')), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
+          cust = { id: newId, _docId: newId, firstName: nameForSave(parts[0]), lastName: nameForSave(parts.slice(1).join(' ')), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
           newCustomers.push(cust);
           try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
           created++;
@@ -9995,7 +10044,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const added = todo.map((customer, i) => {
       const passports = safeParseJSON(customer.passports);
       const validPassport = passports.find(pp => pp.passportNo && getDaysLeft(pp.expiryDate) > 0) || passports[0];
-      const hasGreen = passports.some(pp => pp.passportType?.includes('Yeşil') || (pp.passportNo && pp.passportNo.toUpperCase().startsWith('S')));
+      const hasGreen = passports.some(pp => trHas(pp.passportType, 'yesil') || (pp.passportNo && pp.passportNo.toUpperCase().startsWith('S')));
       let hasVisa = false, visaEndDate = '';
       if (hasGreen && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) { hasVisa = true; visaEndDate = 'GREEN_PASSPORT'; }
       else if (isSchengen) { const v = safeParseJSON(customer.schengenVisas).find(x => x.endDate && getDaysLeft(x.endDate) > 0); if (v) { hasVisa = true; visaEndDate = v.endDate; } }
@@ -10077,8 +10126,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       const isSchengen = schengenCountries.includes(selectedTour?.country);
       // Yeşil pasaport: passportType "Yeşil" içeriyor VEYA pasaport no S ile başlıyor
       const hasGreenPassport = passports.some(p =>
-        p.passportType === 'Yeşil Pasaport (Hususi)' ||
-        p.passportType?.includes('Yeşil') ||
+        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
         (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
       );
       let hasVisa = false;
@@ -10164,8 +10212,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
       passport = validPassport?.passportNo || passport;
       const hasGreenPassport = passports.some(p =>
-        p.passportType === 'Yeşil Pasaport (Hususi)' ||
-        p.passportType?.includes('Yeşil') ||
+        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
         (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
       );
       // Vize durumu - tur ülkesi Schengen mi?
@@ -10388,7 +10435,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const now = new Date().toISOString();
         const newCust = {
           id: newId, _docId: newId,
-          firstName: titleCaseTr(firstName), lastName: titleCaseTr(lastName),
+          firstName: nameForSave(firstName), lastName: nameForSave(lastName),
           phone: resData.customerPhone || '', email: resData.customerEmail || '',
           company: resData.company || '', tcKimlik: '', birthDate: '', birthPlace: '',
           city: '', sector: '', notes: '', tkMemberNo: '',
@@ -10883,7 +10930,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
 
                           // Geçerli vize yoksa: bu müşterinin son 12 aydaki Schengen/tur ülkesi başvurusu var mı?
                           const appBadge = () => {
-                            const lc = (x) => String(x || '').toLocaleLowerCase('tr-TR');
+                            const lc = normalizeTr; // Türkçe karakter kuralı ("ITALYA" = "İtalya")
                             const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
                             const app = (visaApplications || [])
                               .filter(a => visaAppBelongsTo(a, customer, customers))
@@ -11571,7 +11618,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                       <input 
                         type="email" 
                         value={reservationData.customerEmail} 
-                        onChange={e => setReservationData({...reservationData, customerEmail: e.target.value})}
+                        onChange={e => setReservationData({...reservationData, customerEmail: normEmail(e.target.value)})}
                         placeholder="email@example.com"
                         style={inputStyle}
                       />
@@ -12830,10 +12877,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     });
     // Türkçe tarih metnini gerçek tarihe çevir ("9 Ekim 2026 Cuma" -> Date)
     const trDate = (s) => {
-      const t = String(s || '').toLocaleLowerCase('tr');
-      const m = t.match(/(\d{1,2})\s*([a-zçğıöşü]+)\s*(\d{4})?/);
+      const t = normalizeTr(s); // "16 EKIM" / "16 Ekim" / "AGUSTOS" hepsi tanınır
+      const m = t.match(/(\d{1,2})\s*([a-z]+)\s*(\d{4})?/);
       if (!m) return null;
-      const idx = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr').startsWith(m[2].slice(0, 3)));
+      const idx = TR_AYLAR.findIndex(a => normalizeTr(a).startsWith(m[2].slice(0, 3)));
       if (idx < 0) return null;
       const yil = m[3] ? +m[3] : (o.startDate ? +o.startDate.slice(0, 4) : new Date().getFullYear());
       return new Date(yil, idx, +m[1]);
@@ -18348,7 +18395,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           });
                         }
 
-                        doc2.save(`DS160_${(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
+                        doc2.save(`DS160_${asciiTr(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
                       }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         📄 PDF İndir
                       </button>
@@ -20236,11 +20283,11 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const minD = new Date(d); minD.setDate(minD.getDate() - 30);
     const minStr = `${minD.getFullYear()}-${String(minD.getMonth() + 1).padStart(2, '0')}-${String(minD.getDate()).padStart(2, '0')}`;
-    const skip = /iptal|red|onay|konsolos|sonu[çc]|teslim/;
+    const skip = /iptal|red|onay|konsolos|sonuc|teslim/; // normalizeTr metin üzerinde (ASCII)
     const due = (visaApplications || []).filter(v =>
       /^\d{4}-\d{2}-\d{2}$/.test(v.appointmentDate || '') &&
       v.appointmentDate <= todayStr && v.appointmentDate >= minStr &&
-      !v.autoKonsolosluk && !skip.test(String(v.status || '').toLocaleLowerCase('tr-TR')) // 'İptal' → 'iptal' (Türkçe İ)
+      !v.autoKonsolosluk && !skip.test(normalizeTr(v.status)) // 'İptal' / 'IPTAL' → 'iptal'
     );
     if (!due.length) return;
     const ids = new Set(due.map(v => v.id));

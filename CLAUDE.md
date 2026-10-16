@@ -12,16 +12,23 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
 - Kısayol: `trHas(metin, 'kelime1', 'kelime2')` — metin kelimelerden birini içeriyor mu.
 - **Yasak:** Türkçe olabilecek metinde `.toLowerCase()` / `.toUpperCase()` ile karşılaştırma, `/…/i` düzenli ifade.
   Düzenli ifade gerekiyorsa: `/ascii desen/.test(normalizeTr(metin))` (desen ASCII ve küçük harf: `cift`, `uclu`, `ertesi`).
-- Bot (telegram-bot/functions) aynı işi `normTr` ile yapar; link sayfaları (public/*.html) `toLocaleLowerCase('tr')` + ASCII katlama.
+- Bot (telegram-bot/functions) aynı yardımcıları **`tr.js`**'den alır (`normTr`, `trHas`, `titleCaseTr`, `nameForSave`, `normEmail`, `statusLabels`)
+  — dosyada yeniden tanımlamayın. Link sayfaları (public/*.html) `nk()` ile aynı ASCII katlamayı yapar.
+- Durum etiketiyle sorgu/eşitlik: ayarlardaki yazım farklı olabilir ("ATAMA BEKLİYOR") → `statusLabels(settings, 'Atama Bekliyor')` ile `where('status','in', …)`.
 
 ### 2. Gösterim → yerel ayarlı dönüşüm
 - Büyük harf: `trUpper(x)` = `toLocaleUpperCase('tr-TR')` (`"şahin"` → `"ŞAHİN"`).
 - Küçük harf: `trLower(x)` = `toLocaleLowerCase('tr-TR')`.
 - İsim / şehir: `titleCaseTr(x)` (`"İSMAİL GEDİKOĞLU"` → `"İsmail Gedikoğlu"`).
+  Metinde hiç Türkçe harf yoksa (`"ISMAIL GEDIKOGLU"`, pasaport MRZ / ASCII Excel) `I` = `i` kabul edilir → `"İsmail Gedikoglu"`;
+  `I`'yı `ı` yapıp `"Ismaıl Gedıkoglu"` üretmek YASAK.
 - Sıralama: `a.localeCompare(b, 'tr')`.
 
 ### 3. Kayıt → olduğu gibi
 - Kullanıcının yazdığı Türkçe harfler değiştirilmeden saklanır.
+- İsim kaydı her zaman `nameForSave(x)`: Türkçe harfsiz, BÜYÜK harfli ve `I` içeren isim (`"ISMAIL"`, `"YILMAZ"`) **olduğu gibi** kalır
+  (I'nın i mi ı mı olduğu bilinemez — tahmin edip kaydı bozmayın). Diğerleri `titleCaseTr` ile kaydedilir.
+- Sabit değerler CRM'deki listeyle birebir yazılır (`'Yeşil Pasaport (Hususi)'`, `'Türkiye'`); okurken yine `trHas(x, 'yesil')`.
 - ASCII'ye çevirme (`asciiTr`) yalnızca dış sistem gerektirdiğinde: MRZ/pasaport okuma, dosya adı, Türkçe fontu olmayan PDF yedeği.
 - E-posta her zaman `normEmail(x)`: Türkçe klavyede yazılan `"İnfo@…"` → `"info@…"`.
 

@@ -14,7 +14,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const STATUS = 'Atama Bekliyor';
 const TZ = 'Europe/Istanbul';
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const titleTr = (s) => String(s || '').toLocaleLowerCase('tr-TR').replace(/(^|[\s-])(\S)/g, (m, a, b) => a + b.toLocaleUpperCase('tr-TR'));
+const { titleCaseTr: titleTr, normTr, trHas, normEmail, statusLabels } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
 const istDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); // YYYY-MM-DD
 const istLabel = (d = new Date()) => new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, day: 'numeric', month: 'long', weekday: 'long' }).format(d);
 
@@ -30,7 +30,7 @@ const announceAtama = async ({ db, token, chatId }) => {
   const settings = (await settingsRef.get()).data() || {};
   const firstRun = !settings.atamaDuyuruBasladi;
   const today = istDate();
-  const snap = await db.collection('visa_applications').where('status', '==', STATUS).get();
+  const snap = await db.collection('visa_applications').where('status', 'in', statusLabels(settings, STATUS)).get(); // yazım farkı (ATAMA BEKLİYOR) da yakalanır
   const fresh = [], silent = [];
   snap.forEach(d => {
     const v = d.data() || {};
@@ -77,7 +77,7 @@ const loadCfg = async () => {
 // CRM'deki durum adları ayarlardan değişebilir: adında "başvuru yapılacak" geçen durum esas alınır
 const findTodoStatus = (statuses) => {
   const list = (Array.isArray(statuses) ? statuses : []).map(x => typeof x === 'string' ? x : (x && (x.name || x.label)) || '').filter(Boolean);
-  return list.find(x => /başvuru\s*yapılacak/i.test(x.toLocaleLowerCase('tr-TR'))) || list.find(x => /yapılacak/i.test(x.toLocaleLowerCase('tr-TR'))) || '';
+  return list.find(x => /basvuru\s*yapilacak/.test(normTr(x))) || list.find(x => /yapilacak/.test(normTr(x))) || ''; // 'Basvuru Yapilacak' da
 };
 // İleri tarihli (CRM visaFutureDate ile aynı): işlem tarihi bugünden sonra ve henüz PNR/randevu yok
 const isFuture = (v, today) => !!v.processDate && String(v.processDate) > today && !v.pnr && !v.appointmentDate;

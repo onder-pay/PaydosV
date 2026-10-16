@@ -582,7 +582,10 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     'amerika birleşik devletleri':'US','abd':'US','amerika':'US','kanada':'CA','meksika':'MX','brezilya':'BR','arjantin':'AR','şili':'CL','peru':'PE','kolombiya':'CO','küba':'CU','panama':'PA','dominik cumhuriyeti':'DO','kosta rika':'CR','uruguay':'UY','paraguay':'PY','ekvador':'EC','bolivya':'BO','venezuela':'VE','jamaika':'JM',
     'fas':'MA','tunus':'TN','cezayir':'DZ','güney afrika':'ZA','kenya':'KE','tanzanya':'TZ','etiyopya':'ET','nijerya':'NG','senegal':'SN','mauritius':'MU','seyşeller':'SC','namibya':'NA','botsvana':'BW','zambiya':'ZM','zimbabve':'ZW','uganda':'UG','ruanda':'RW','gana':'GH','libya':'LY','sudan':'SD',
     'avustralya':'AU','yeni zelanda':'NZ','fiji':'FJ','kıbrıs rum kesimi':'CY','kıbrıs':'CY' };
-  var isoOf = function (name) { return ISO[String(name || '').trim().toLocaleLowerCase('tr-TR')] || ''; };
+  // Türkçe karakter kuralı (CLAUDE.md): karşılaştırma ASCII küçük harf — "ITALYA", "Italya", "İtalya", "Isvicre" aynı
+  var nk = function (s) { return String(s || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().replace(/\u0307/g, '').trim(); };
+  var isoN = null;
+  var isoOf = function (name) { if (!isoN) { isoN = {}; for (var k in ISO) isoN[nk(k)] = ISO[k]; } return isoN[nk(name)] || ''; };
   var renderInfo = function (f, parent) {
     var s = parseD(f.startDate), e = parseD(f.endDate) || s;
     var hotel = f.hotel && f.hotel.name ? f.hotel : null;
@@ -596,10 +599,10 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
       hc.appendChild(el('div', 'n', '🏨 ' + hotel.name));
       // Adres zaten şehir/ülkeyi içeriyorsa tekrar ekleme
-      var low = String(hotel.address || '').toLocaleLowerCase('tr-TR');
+      var low = nk(hotel.address);
       var parts = String(hotel.address || '').split(',').map(function (x) { return x.trim(); });
       var hasCountry = parts.some(function (x) { return isoOf(x) && isoOf(x) === isoOf(hotel.country); });
-      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(String(x).toLocaleLowerCase('tr-TR')) < 0; })).filter(Boolean).join(', ');
+      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(nk(x)) < 0; })).filter(Boolean).join(', ');
       if (adr) hc.appendChild(el('div', 'a', adr));
       var hb = el('div', 'b');
       var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
