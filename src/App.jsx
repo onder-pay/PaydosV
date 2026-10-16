@@ -913,21 +913,22 @@ const findLikelyDuplicates = (c, customers) => {
 };
 
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
-// İsim/şehir gösterimi. Metinde Türkçe harf (ç ğ ı ö ş ü / İ) varsa kaynak Türkçe biliyordur: I → ı ("YILMAZ ŞAHİN" → "Yılmaz Şahin").
-// Hiç Türkçe harf yoksa (pasaport MRZ, ASCII Excel: "ISMAIL GEDIKOGLU") I'nın i mi ı mı olduğu bilinemez → I = i kabul edilir
-// ("Ismaıl Gedıkoglu" gibi bozuk sonuç üretilmez). Kayıtta bu belirsiz isimler değiştirilmez: bkz. nameForSave.
+// İsim/şehir gösterimi. Yazı İ ile I'yı AYIRIYORSA (içinde İ ya da ı varsa) I → ı ("YILMAZ ŞAHİN" → "Yılmaz Şahin").
+// Ayırmıyorsa (MRZ/ASCII Excel "ISMAIL GEDIKOGLU", ya da "MERIÇ EMIROGLU" gibi Ç'li ama İ'siz) I = i kabul edilir
+// ("Ismaıl" / "Merıç" gibi bozuk sonuç üretilmez). Kayıtta bu belirsiz isimler değiştirilmez: bkz. nameForSave.
 const TR_LETTERS = /[çğıöşüÇĞİÖŞÜ]/;
+const TR_DOTTED = /[İı]/; // yazan İ/I ayrımını yapıyor mu
 const titleCaseTr = (s) => {
   if (!s) return '';
   const str = String(s);
-  const lower = TR_LETTERS.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
+  const lower = TR_DOTTED.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
   return lower.replace(/\u0307/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
 };
-// Kayda yazılacak isim: Türkçe harfsiz BÜYÜK harfli ve I içeren isim ("ISMAIL", "YILMAZ") olduğu gibi kalır — tahminle bozulmaz.
+// Kayda yazılacak isim: İ/ı ayrımı olmayan BÜYÜK harfli ve I içeren isim ("ISMAIL", "MERIÇ") olduğu gibi kalır — tahminle bozulmaz.
 const nameForSave = (s) => {
   const t = String(s || '').trim().replace(/\s+/g, ' ');
   if (!t) return '';
-  if (!TR_LETTERS.test(t) && /I/.test(t) && t === t.toUpperCase()) return t;
+  if (!TR_DOTTED.test(t) && /I/.test(t) && t === trUpper(t)) return t;
   return titleCaseTr(t);
 };
 
@@ -3102,7 +3103,7 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
     const oddName = (customers || []).filter(c => {
       if (c.nameOk) return false;
       const full = `${c.firstName || ''} ${c.lastName || ''}`;
-      return /ı/.test(full) && !/[çğöşüÇĞÖŞÜİ]/.test(full);
+      return /ı/.test(full) && !/[iİ]/.test(full); // eski kod her I'yı ı yaptı: hiç i/İ kalmayan ı'lı isim ("Merıç Emıroglu")
     });
     return { tcName, tcSame, passport, nameBirth, badTc, oddName };
   }, [customers]);
@@ -3156,7 +3157,7 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
         <div style={{ padding: '8px 20px 20px', overflowY: 'auto' }}>
           {tab === 'oddName'
             ? (data.oddName.length ? <>
-                <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>Eski isim düzeltmesi Türkçe harfsiz BÜYÜK yazılmış isimlerde (pasaport MRZ, Excel) her I'yı ı yaptı: "ISMAIL" → "Ismaıl". Bu listede ı geçen ama başka Türkçe harfi olmayan isimler var — <b>Yılmaz, Kılıç</b> gibi gerçekten ı'lı isimler de çıkar. Önerilen yazım doğruysa <b>Düzelt</b>, isim zaten doğruysa <b>Doğru, dokunma</b>. İkisi de kaydı listeden çıkarır.</div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>Eski isim düzeltmesi Türkçe harfsiz BÜYÜK yazılmış isimlerde (pasaport MRZ, Excel) her I'yı ı yaptı: "ISMAIL" → "Ismaıl". Bu listede ı geçen ama hiç i/İ geçmeyen isimler var — <b>Yılmaz, Kılıç</b> gibi gerçekten ı'lı isimler de çıkar. Önerilen yazım doğruysa <b>Düzelt</b>, isim zaten doğruysa <b>Doğru, dokunma</b>. İkisi de kaydı listeden çıkarır.</div>
                 {data.oddName.map(oddRow)}
               </> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Şüpheli isim yok</div>)
             : tab === 'badTc'

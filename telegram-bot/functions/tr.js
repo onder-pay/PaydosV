@@ -8,19 +8,20 @@ const normTr = (x) => String(x == null ? '' : x)
   .toLowerCase().replace(/̇/g, '').trim();
 const trHas = (text, ...words) => { const t = normTr(text); return words.some(w => t.includes(normTr(w))); };
 
-// İsim / şehir gösterimi: Türkçe harf varsa I → ı; hiç yoksa (MRZ "ISMAIL") I = i kabul edilir ("Ismaıl" üretilmez)
+// İsim / şehir gösterimi: yazı İ/I ayrımı yapıyorsa (İ ya da ı varsa) I → ı; yapmıyorsa (MRZ "ISMAIL", Excel "MERIÇ") I = i
 const TR_LETTERS = /[çğıöşüÇĞİÖŞÜ]/;
+const TR_DOTTED = /[İı]/;
 const titleCaseTr = (s) => {
   if (!s) return '';
   const str = String(s);
-  const lower = TR_LETTERS.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
-  return lower.replace(/̇/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+  const lower = TR_DOTTED.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
+  return lower.replace(/\u0307/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
 };
-// Kayda yazılacak isim: Türkçe harfsiz BÜYÜK harfli ve I içeren isim olduğu gibi kalır (I'nın i mi ı mı olduğu bilinemez)
+// Kayda yazılacak isim: İ/ı ayrımı olmayan BÜYÜK harfli ve I içeren isim olduğu gibi kalır (I'nın i mi ı mı olduğu bilinemez)
 const nameForSave = (s) => {
   const t = String(s || '').trim().replace(/\s+/g, ' ');
   if (!t) return '';
-  if (!TR_LETTERS.test(t) && /I/.test(t) && t === t.toUpperCase()) return t;
+  if (!TR_DOTTED.test(t) && /I/.test(t) && t === t.toLocaleUpperCase('tr-TR')) return t;
   return titleCaseTr(t);
 };
 // E-posta: Türkçe klavyedeki "İ"/"ı" ile yazılsa da ASCII küçük harf
@@ -33,4 +34,4 @@ const statusLabels = (settings, label) => {
   return [...new Set([label, ...list.filter(x => normTr(x) === normTr(label))])].slice(0, 10);
 };
 
-module.exports = { normTr, trHas, titleCaseTr, nameForSave, normEmail, statusLabels, TR_LETTERS };
+module.exports = { normTr, trHas, titleCaseTr, nameForSave, normEmail, statusLabels, TR_LETTERS, TR_DOTTED };
