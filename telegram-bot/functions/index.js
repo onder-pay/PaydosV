@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { normTr, trHas, titleCaseTr, nameForSave, normEmail } = require('./tr');
+const { normTr, trHas, titleCaseTr, nameForSave, normEmail, TR_DOTTED } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -678,7 +678,13 @@ const savePassport = async (db, custs, json, img) => {
     if (i >= 0) ps[i] = { ...ps[i], ...pp, id: ps[i].id }; else ps.unshift(pp);
     const custDocId2 = cust.id || cust._docId;
     if (!custDocId2) return { text: `⚠️ Müşteri ID bulunamadı`, custId: null };
+    // Kayıttaki isim eski kodla bozulmuşsa ("Merıç Emıroglu") pasaporttan okunan doğru Türkçe yazımla düzelt.
+    // Sadece okunan isim İ/ı ayrımı yapıyorsa ve iki isim harf farkı dışında birebir aynıysa (başka kişiyle karışmaz).
+    const oldName = `${cust.firstName || ''} ${cust.lastName || ''}`.trim(), readName = `${fn} ${ln}`.trim();
+    const healName = fn && ln && TR_DOTTED.test(`${json.firstName || ''}${json.lastName || ''}`) && oldName !== readName && normTr(oldName) === normTr(readName);
+    if (healName) { cust = { ...cust, firstName: fn, lastName: ln }; }
     await ref.doc(custDocId2).set({
+      ...(healName ? { firstName: fn, lastName: ln } : {}),
       birthDate: json.birthDate || cust.birthDate || '',
       birthPlace: json.birthPlace || cust.birthPlace || '',
       tcKimlik: (isValidTc(json.tcKimlik) ? json.tcKimlik : '') || cust.tcKimlik || json.tcKimlik || '',
@@ -686,7 +692,7 @@ const savePassport = async (db, custs, json, img) => {
       passports: JSON.stringify(ps),
       verified: false
     }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo}${bpLine}${tcWarn}${renewNote}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}${healName ? `\n✏️ İsim düzeltildi (eski: ${oldName})` : ''}\n📘 ${json.passportNo}${bpLine}${tcWarn}${renewNote}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
   } else {
     const id = genId();
     await ref.doc(String(id)).set({

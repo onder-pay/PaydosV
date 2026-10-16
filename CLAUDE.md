@@ -20,14 +20,16 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
 - Büyük harf: `trUpper(x)` = `toLocaleUpperCase('tr-TR')` (`"şahin"` → `"ŞAHİN"`).
 - Küçük harf: `trLower(x)` = `toLocaleLowerCase('tr-TR')`.
 - İsim / şehir: `titleCaseTr(x)` (`"İSMAİL GEDİKOĞLU"` → `"İsmail Gedikoğlu"`).
-  Metinde hiç Türkçe harf yoksa (`"ISMAIL GEDIKOGLU"`, pasaport MRZ / ASCII Excel) `I` = `i` kabul edilir → `"İsmail Gedikoglu"`;
-  `I`'yı `ı` yapıp `"Ismaıl Gedıkoglu"` üretmek YASAK.
+  `I` → `ı` yalnızca yazı İ/I ayrımı yapıyorsa (içinde `İ` ya da `ı` varsa): `"YILMAZ ŞAHİN"` → `"Yılmaz Şahin"`.
+  Ayrım yoksa (`"ISMAIL GEDIKOGLU"` MRZ/ASCII Excel, `"MERIÇ EMIROGLU"` Ç'li ama İ'siz) `I` = `i` → `"İsmail Gedikoglu"`, `"Meriç Emiroglu"`.
+  `Ç/Ş/Ğ` gibi harflerin varlığı ayrım yapıldığını GÖSTERMEZ. `"Ismaıl"`, `"Merıç"` üretmek YASAK.
 - Sıralama: `a.localeCompare(b, 'tr')`.
 
 ### 3. Kayıt → olduğu gibi
 - Kullanıcının yazdığı Türkçe harfler değiştirilmeden saklanır.
-- İsim kaydı her zaman `nameForSave(x)`: Türkçe harfsiz, BÜYÜK harfli ve `I` içeren isim (`"ISMAIL"`, `"YILMAZ"`) **olduğu gibi** kalır
+- İsim kaydı her zaman `nameForSave(x)`: İ/ı ayrımı olmayan, BÜYÜK harfli ve `I` içeren isim (`"ISMAIL"`, `"MERIÇ"`) **olduğu gibi** kalır
   (I'nın i mi ı mı olduğu bilinemez — tahmin edip kaydı bozmayın). Diğerleri `titleCaseTr` ile kaydedilir.
+- Bot, kayıttaki bozuk ismi pasaporttan okunan İ/ı'lı doğru yazımla düzeltir — yalnız `normTr` ile iki isim birebir aynıysa.
 - Sabit değerler CRM'deki listeyle birebir yazılır (`'Yeşil Pasaport (Hususi)'`, `'Türkiye'`); okurken yine `trHas(x, 'yesil')`.
 - ASCII'ye çevirme (`asciiTr`) yalnızca dış sistem gerektirdiğinde: MRZ/pasaport okuma, dosya adı, Türkçe fontu olmayan PDF yedeği.
 - E-posta her zaman `normEmail(x)`: Türkçe klavyede yazılan `"İnfo@…"` → `"info@…"`.

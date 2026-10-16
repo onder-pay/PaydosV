@@ -961,8 +961,8 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     document.addEventListener('keydown', onKey);
     sh.appendChild(el('div', 'gr'));
-    // İsim gösterimi — CRM titleCaseTr ile aynı kural: Türkçe harf yoksa I = i ("ISMAIL" → "İsmail", "Ismaıl" değil)
-    var tc = function (t) { t = String(t || ''); var tr = /[çğıöşüÇĞİÖŞÜ]/.test(t); var l = (tr ? t.replace(/İ/g, 'i').replace(/I/g, 'ı') : t).toLowerCase().replace(/\u0307/g, ''); return l.replace(/(^|\s)(\S)/g, function (m, s1, c1) { return s1 + (c1 === 'i' ? 'İ' : c1.toLocaleUpperCase('tr')); }); };
+    // İsim gösterimi — CRM titleCaseTr ile aynı kural: İ/ı ayrımı yoksa I = i ("ISMAIL" → "İsmail", "Ismaıl" değil)
+    var tc = function (t) { t = String(t || ''); var tr = /[İı]/.test(t); var l = (tr ? t.replace(/İ/g, 'i').replace(/I/g, 'ı') : t).toLowerCase().replace(/\u0307/g, ''); return l.replace(/(^|\s)(\S)/g, function (m, s1, c1) { return s1 + (c1 === 'i' ? 'İ' : c1.toLocaleUpperCase('tr')); }); };
     var name = tc((String(pr.firstName || '') + ' ' + String(pr.lastName || '')).trim()) || fullName || 'Yolcu';
     var hd = el('div', 'hd'), av = el('div', 'av', name.split(/\s+/).map(function (x) { return x.charAt(0); }).slice(0, 2).join('').toLocaleUpperCase('tr'));
     hd.appendChild(av); var ht = el('div'); ht.appendChild(el('b', '', name)); ht.appendChild(el('span', '', editMode ? 'Bilgilerinizi düzenleyin' : 'Kişisel bilgileriniz')); hd.appendChild(ht);
