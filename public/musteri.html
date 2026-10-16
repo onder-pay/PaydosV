@@ -1255,7 +1255,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   };
 
   // PIN ekranı: mode 'set' (ilk kez belirle) veya 'enter'
-  var pinScreen = function (mode, name, msg) {
+  var pinScreen = function (mode, name, msg, needDob) {
     box.innerHTML = '';
     var card = el('div', 'pinc');
     var pic = el('div', 'pic'); pic.appendChild(ico('lock')); card.appendChild(pic);
@@ -1265,21 +1265,33 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       : 'Seyahat dosyanızı görüntülemek için 4 haneli PIN\'inizi girin.'));
     var mk = function (ph) { var i = document.createElement('input'); i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 4; i.pattern = '[0-9]*'; i.placeholder = ph; i.className = 'pin'; i.addEventListener('input', function () { i.value = i.value.replace(/\D/g, '').slice(0, 4); }); return i; };
     var p1 = mk('PIN'), p2 = mode === 'set' ? mk('PIN tekrar') : null;
+    // Kimlik doğrulama: PIN ilk kez belirlenirken kayıttaki doğum tarihi sorulur (link başkasının eline geçtiyse PIN'i o belirleyemesin)
+    var dob = null;
+    if (mode === 'set' && needDob) {
+      card.appendChild(el('div', 'ps', 'Güvenliğiniz için doğum tarihinizi girin:')).style.margin = '10px 0 4px';
+      dob = document.createElement('input'); dob.type = 'text'; dob.inputMode = 'numeric'; dob.autocomplete = 'bday'; dob.maxLength = 10; dob.placeholder = 'GG.AA.YYYY'; dob.className = 'pin';
+      dob.style.letterSpacing = '2px';
+      dob.addEventListener('input', function () { var d = dob.value.replace(/\D/g, '').slice(0, 8); dob.value = d.length > 4 ? d.slice(0, 2) + '.' + d.slice(2, 4) + '.' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '.' + d.slice(2) : d; });
+      card.appendChild(dob);
+    }
     card.appendChild(p1); if (p2) card.appendChild(p2);
     var err = el('div', 'perr', msg || ''); card.appendChild(err);
     var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve devam et' : 'Devam et'); btn.type = 'button';
     card.appendChild(btn);
     card.appendChild(el('div', 'pnote', mode === 'set' ? 'PIN\'inizi unutursanız Paydos Turizm\'i arayın.' : 'PIN\'inizi unuttuysanız Paydos Turizm\'i arayın: 0 258 263 71 76'));
     box.appendChild(card);
-    setTimeout(function () { p1.focus(); }, 50);
+    setTimeout(function () { (dob || p1).focus(); }, 50);
     var go = function () {
       var v = p1.value;
       if (!/^\d{4}$/.test(v)) { err.textContent = 'PIN 4 rakam olmalı.'; return; }
       if (p2 && p2.value !== v) { err.textContent = 'İki PIN aynı değil.'; return; }
+      var dm = dob && dob.value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (dob && !dm) { err.textContent = 'Doğum tarihini GG.AA.YYYY olarak yazın.'; return; }
       btn.disabled = true; btn.textContent = 'Kontrol ediliyor…';
-      call({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }).then(function (j) {
+      call(Object.assign({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }, dm ? { dob: dm[3] + '-' + dm[2] + '-' + dm[1] } : {})).then(function (j) {
         if (j.state === 'ok') { lsSet(PIN_KEY, v); showData(j.data); return; }
         if (j.state === 'locked') { pinScreen('enter', name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.'); return; }
+        if (j.state === 'setpin') { pinScreen('set', name, (j.error || 'Bir hata oluştu.') + (j.left ? ' Kalan deneme: ' + j.left : ''), j.dob); return; }
         if (j.state === 'pin') { pinScreen('enter', name, j.error === 'wrong' ? 'PIN hatalı.' + (j.left ? ' Kalan deneme: ' + j.left : '') : 'Bu link için PIN zaten belirlenmiş. Lütfen PIN\'inizi girin.'); return; }
         btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bir hata oluştu.';
       }).catch(function () { btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bağlantı hatası.'; });
@@ -1292,7 +1304,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   call(saved ? { a: 'unlock', pin: saved } : { a: 'get' }).then(function (j) {
     if (j.state === 'ok') return showData(j.data);
     if (j.state === 'notfound') { lsSet(DATA_KEY, null); return show('Bu bağlantı bulunamadı veya kaldırılmış.'); }
-    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name); }
+    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name, '', j.dob); }
     if (j.state === 'pin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('enter', j.name, saved ? 'PIN değişmiş olabilir, lütfen yeniden girin.' : ''); }
     if (j.state === 'locked') return pinScreen('enter', j.name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.');
     offlineFallback();

@@ -9215,6 +9215,9 @@ const syncResLinkDocs = async (res, getNext) => {
 const ensureCustomerLink = async (cust, appSettings) => {
   if (!cust) return '';
   if (cust.shareToken) return cust.shareToken;
+  // Doğum tarihi yoksa otomatik açma: PIN'i ilk belirleyen kimliğini doğum tarihiyle kanıtlar (belge.js) —
+  // doğum tarihi olmayan linkte tur linkini bilen herkes PIN koyabilirdi
+  if (!cust.birthDate) return '';
   const token = customerLinkSlug(cust);
   await publishCustomerLink(cust, { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [] }, token, appSettings);
   cust.shareToken = token; // aynı oturumda ikinci kez açılmasın (state ayrıca güncellenir)
