@@ -261,23 +261,27 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     parent.appendChild(card);
     card.style.display = 'none'; // servis yanıt verirse görünür — bozuk düğme göstermeyelim
     pushCall({ a: 'key' }).then(function (j) { if (j && j.key) card.style.display = ''; }).catch(function () {});
+    var goBtn = null;
+    // btn null → sessiz abonelik (izin zaten verilmiş): uyarı gösterilmez
+    var subscribe = function (btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; if (m) alert(m); } };
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Telefon ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
+        return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
+          if (!r[1].key) throw new Error('key');
+          return r[0].pushManager.getSubscription().then(function (x) { return x || r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(r[1].key) }); });
+        }).then(function (sub) {
+          return pushCall({ a: 'subtour', k: code, sub: sub.toJSON() }).then(function (j) { if (!j.ok) throw new Error('sub'); showOn(); });
+        });
+      }).catch(function () { fail('Bildirimler açılamadı. Lütfen tekrar deneyin.'); });
+    };
     var showOff = function () {
       setText('Bildirimleri açın', 'Toplanma saati, uçuş ve tur duyuruları telefonunuza bildirim olarak gelsin.');
       act.innerHTML = '';
       var go = el('button', 'go', 'Aç'); go.type = 'button';
-      go.addEventListener('click', function () {
-        go.disabled = true; go.textContent = '…';
-        var fail = function (m) { go.disabled = false; go.textContent = 'Aç'; if (m) alert(m); };
-        Notification.requestPermission().then(function (perm) {
-          if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Telefon ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
-          return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
-            if (!r[1].key) throw new Error('key');
-            return r[0].pushManager.getSubscription().then(function (x) { return x || r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(r[1].key) }); });
-          }).then(function (sub) {
-            return pushCall({ a: 'subtour', k: code, sub: sub.toJSON() }).then(function (j) { if (!j.ok) throw new Error('sub'); showOn(); });
-          });
-        }).catch(function () { fail('Bildirimler açılamadı. Lütfen tekrar deneyin.'); });
-      });
+      go.addEventListener('click', function () { subscribe(go); });
+      goBtn = go;
       act.appendChild(go);
     };
     var showOn = function () {
@@ -295,10 +299,40 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     };
     if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için telefon ayarlarından bu siteye bildirim izni verin.'); return; }
     showOff();
-    navigator.serviceWorker.getRegistration('/b/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (x) {
-      if (!x || Notification.permission !== 'granted') return;
-      return pushCall({ a: 'status', endpoint: x.endpoint }).then(function (j) { if (j.subscribed) showOn(); });
+    // Otomatik: izin zaten verildiyse sessizce abone ol; hiç sorulmadıysa izin penceresini kendiliğinden aç ("Şimdi değil" → 3 gün sorma)
+    var ASK_KEY = 'paydos_push_ask_' + code;
+    var autoAsk = function () {
+      var last = 0; try { last = +(localStorage.getItem(ASK_KEY) || 0); } catch (e) {}
+      if (!navigator.onLine || Date.now() - last < 3 * 864e5) return;
+      setTimeout(function () {
+        if (Notification.permission !== 'default') return;
+        askSheet('Bildirimlere izin verin', 'Toplanma saati, uçuş ve tur duyuruları telefonunuza bildirim olarak gelsin. İstediğiniz zaman kapatabilirsiniz.', 'İzin ver',
+          function () { subscribe(goBtn); }, function () { try { localStorage.setItem(ASK_KEY, String(Date.now())); } catch (e) {} });
+      }, 1200);
+    };
+    pushCall({ a: 'key' }).then(function (j) {
+      if (!j || !j.key) return; // servis yoksa hiçbir şey sorma
+      return navigator.serviceWorker.getRegistration('/b/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (x) {
+        if (Notification.permission === 'granted') {
+          if (!x) return subscribe(null);
+          return pushCall({ a: 'status', endpoint: x.endpoint }).then(function (k) { if (k.subscribed) showOn(); else subscribe(null); });
+        }
+        if (Notification.permission === 'default') autoAsk();
+      });
     }).catch(function () {});
+  };
+  // Alttan açılan tek dokunuşluk izin penceresi (telefon izni kullanıcı dokunuşu olmadan istenemez)
+  var askSheet = function (title, text, okLabel, onOk, onLater) {
+    var ov = el('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(5,8,25,.6);display:flex;align-items:flex-end;justify-content:center';
+    var sh = el('div'); sh.style.cssText = 'width:100%;max-width:520px;background:#1b1f3b;color:#fff;border-radius:20px 20px 0 0;padding:22px 20px 26px;box-shadow:0 -10px 30px rgba(0,0,0,.4);border-top:1px solid rgba(245,185,66,.35)';
+    var ic = el('div', '', '🔔'); ic.style.cssText = 'font-size:34px;text-align:center'; sh.appendChild(ic);
+    var h = el('div', '', title); h.style.cssText = 'font-weight:800;font-size:18px;text-align:center;margin:6px 0'; sh.appendChild(h);
+    var t = el('div', '', text); t.style.cssText = 'font-size:14px;line-height:1.5;opacity:.8;text-align:center;margin-bottom:16px'; sh.appendChild(t);
+    var ok = el('button', '', okLabel); ok.type = 'button'; ok.style.cssText = 'display:block;width:100%;height:50px;border:none;border-radius:14px;background:#f5b942;color:#1b1f3b;font-weight:800;font-size:16px;cursor:pointer';
+    var later = el('button', '', 'Şimdi değil'); later.type = 'button'; later.style.cssText = 'display:block;width:100%;margin-top:8px;height:42px;border:none;background:none;color:rgba(255,255,255,.6);font-size:14px;cursor:pointer';
+    ok.addEventListener('click', function () { document.body.removeChild(ov); onOk(); });
+    later.addEventListener('click', function () { document.body.removeChild(ov); if (onLater) onLater(); });
+    sh.appendChild(ok); sh.appendChild(later); ov.appendChild(sh); document.body.appendChild(ov);
   };
 
   // Firestore REST değer biçimini düz JS'e çevir

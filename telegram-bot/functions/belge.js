@@ -99,7 +99,7 @@ const withValidity = async (db, d) => {
   const pub = publicData(d);
   pub.contact = { ...(pub.contact || {}), ...(await liveContact(db)) };
   if (d.customerDocId) {
-    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); } }
+    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); pub.kampanyaOnay = !!(c.data() || {}).kampanyaOnay; } }
     catch (e) { console.warn('[belge] geçerlilik okunamadı', e.message); }
   }
   return pub;

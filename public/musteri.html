@@ -759,7 +759,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       hero.appendChild(el('p', 'lead', 'Biletleriniz, otel ve vize belgeleriniz bu sayfada. Yeni belge eklendikçe güncellenir.'));
 
       renderInstall(box);
-      renderPush(box);
+      renderPush(box, f);
       // 🎫 Yaklaşan / devam eden turlar: tur sayfasına (/b/) geçiş. Bitmiş tur 3 gün daha görünür.
       try {
         var t0 = todayD();
@@ -1187,7 +1187,20 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       .then(function (r) { if (r.active) return r; return new Promise(function (ok) { var w = r.installing || r.waiting; if (!w) return ok(r); w.addEventListener('statechange', function () { if (w.state === 'activated') ok(r); }); }); });
   };
   var pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  var renderPush = function (parent) {
+  // Alttan açılan tek dokunuşluk izin penceresi (telefon izni kullanıcı dokunuşu olmadan istenemez)
+  var askSheet = function (title, text, okLabel, onOk, onLater) {
+    var ov = el('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center';
+    var sh = el('div'); sh.style.cssText = 'width:100%;max-width:520px;background:#fff;color:#0f172a;border-radius:20px 20px 0 0;padding:22px 20px 26px;box-shadow:0 -10px 30px rgba(0,0,0,.25);font-family:inherit';
+    var ic = el('div', '', '🔔'); ic.style.cssText = 'font-size:34px;text-align:center'; sh.appendChild(ic);
+    var h = el('div', '', title); h.style.cssText = 'font-weight:800;font-size:18px;text-align:center;margin:6px 0'; sh.appendChild(h);
+    var t = el('div', '', text); t.style.cssText = 'font-size:14px;line-height:1.5;color:#475569;text-align:center;margin-bottom:16px'; sh.appendChild(t);
+    var ok = el('button', '', okLabel); ok.type = 'button'; ok.style.cssText = 'display:block;width:100%;height:50px;border:none;border-radius:14px;background:#0f2744;color:#fff;font-weight:800;font-size:16px;cursor:pointer';
+    var later = el('button', '', 'Şimdi değil'); later.type = 'button'; later.style.cssText = 'display:block;width:100%;margin-top:8px;height:42px;border:none;background:none;color:#64748b;font-size:14px;cursor:pointer';
+    ok.addEventListener('click', function () { document.body.removeChild(ov); onOk(); });
+    later.addEventListener('click', function () { document.body.removeChild(ov); if (onLater) onLater(); });
+    sh.appendChild(ok); sh.appendChild(later); ov.appendChild(sh); document.body.appendChild(ov);
+  };
+  var renderPush = function (parent, f) {
     var card = el('div', 'inst nt');
     var ic = el('div', 'ic'); ic.appendChild(ico('bell')); card.appendChild(ic);
     var tx = el('div', 'tx'); card.appendChild(tx);
@@ -1206,9 +1219,9 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
     ck.appendChild(cb); ck.appendChild(document.createTextNode('Kampanya ve fırsatlardan da haberdar olmak istiyorum.'));
     var subscribe = function (btn) {
       var pin = lsGet(PIN_KEY);
-      if (!pin) { alert('Lütfen sayfayı yenileyip PIN\'inizi girin.'); return; }
+      if (!pin) { if (btn) alert('Lütfen sayfayı yenileyip PIN\'inizi girin.'); return; }
       if (btn) { btn.disabled = true; btn.textContent = '…'; }
-      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; } if (m) alert(m); };
+      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; } if (m && btn) alert(m); }; // sessiz abonelikte (btn yok) uyarı gösterme
       Notification.requestPermission().then(function (perm) {
         if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Tarayıcı ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
         return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
@@ -1227,7 +1240,9 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       setText('Bildirimleri açın', 'Uçuş, otel ve belgelerinizle ilgili size mesaj gönderebilmemiz için lütfen izin verin.');
       act.innerHTML = '';
       var go = el('button', 'go', 'Aç'); go.type = 'button'; go.addEventListener('click', function () { subscribe(go); });
-      act.appendChild(go); cb.checked = false; act.appendChild(ck);
+      goBtn = go;
+      // Yazılı ticari ileti onayı CRM'e işlendiyse kampanya kutusu işaretli gelir; müşteri kaldırabilir
+      act.appendChild(go); cb.checked = !!(f && f.kampanyaOnay); act.appendChild(ck);
     };
     var showOn = function (mk) {
       setText('Bildirimler açık', mk ? 'Seyahat bildirimleri ve kampanyalar bu telefona gelir.' : 'Seyahat bildirimleri bu telefona gelir.', 'ok');
@@ -1246,11 +1261,25 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       act.appendChild(off);
     };
     if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için tarayıcı ayarlarından bu siteye bildirim izni verin.'); return; }
+    var goBtn = null;
     showOff();
-    // Bu telefon zaten abone mi?
+    // Otomatik: izin zaten verildiyse sessizce abone ol; izin hiç sorulmadıysa izin penceresini kendiliğinden aç
+    var ASK_KEY = 'paydos_push_ask_' + code;
+    var autoAsk = function () {
+      var last = +(lsGet(ASK_KEY) || 0);
+      if (!navigator.onLine || Date.now() - last < 3 * 864e5) return; // "Şimdi değil" → 3 gün sorma
+      setTimeout(function () {
+        if (Notification.permission !== 'default') return;
+        askSheet('Bildirimlere izin verin', 'Uçuş saati, otel ve belgelerinizle ilgili bilgiler telefonunuza bildirim olarak gelsin. İstediğiniz zaman kapatabilirsiniz.', 'İzin ver',
+          function () { subscribe(goBtn); }, function () { lsSet(ASK_KEY, String(Date.now())); });
+      }, 1200);
+    };
     navigator.serviceWorker.getRegistration('/m/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (s) {
-      if (!s || Notification.permission !== 'granted') return;
-      return pushCall({ a: 'status', endpoint: s.endpoint }).then(function (j) { if (j.subscribed) showOn(!!j.marketing); });
+      if (Notification.permission === 'granted') {
+        if (!s) return subscribe(null);
+        return pushCall({ a: 'status', endpoint: s.endpoint }).then(function (j) { if (j.subscribed) showOn(!!j.marketing); else subscribe(null); });
+      }
+      if (Notification.permission === 'default') autoAsk();
     }).catch(function () {});
   };
 

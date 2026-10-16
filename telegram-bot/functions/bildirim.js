@@ -4,7 +4,8 @@
 // ek kurulum yok — anahtar çifti ilk çağrıda üretilip Firestore'da (_private/vapid) saklanır.
 //
 // İki ayrı izin (6563 / KVKK): seyahat bildirimi (uçuş, otel, belge) ve KAMPANYA onayı. Kampanya mesajları
-// sadece kampanya kutusunu kendisi işaretleyenlere gider (sunucu zorlar; CRM'den atlanamaz).
+// sadece kampanya kutusu işaretli abonelere gider (sunucu zorlar; CRM'den atlanamaz). CRM'de müşteriye yazılı
+// onay işlendiyse (customers.kampanyaOnay) kutu linkte işaretli gelir; müşteri kaldırırsa o telefona kampanya gitmez.
 // Müşteri linki aboneliği PIN ile yapılır (link PIN'li). Tur linki (/b/, PIN'siz) yalnız tur/seyahat
 // bildirimlerine abone olur (subtour) — kampanya onayı orada alınmaz.
 //

@@ -3636,6 +3636,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [ctxMenu, setCtxMenu] = useState(null);
   const [tourPickFor, setTourPickFor] = useState(null); // tek müşteri ya da { many: [müşteriler] }
   const [selIds, setSelIds] = useState([]); // arama sonuçlarında çoklu seçim (ör. aynı firmadan 5 kişi)
+  // 📣 Ticari ileti (kampanya bildirimi) yazılı onayı: işaretliyse müşteri linkinde kampanya kutusu işaretli gelir, müşteri kaldırabilir
+  const setKampanyaOnay = async (list, on) => {
+    const val = on ? { at: new Date().toISOString(), by: currentUser?.name || currentUser?.email || '' } : null;
+    const ids = new Set(list.map(c => c.id));
+    setCustomers(prev => prev.map(c => ids.has(c.id) ? { ...c, kampanyaOnay: val } : c));
+    try {
+      let b = writeBatch(db), n = 0;
+      for (const c of list) { b.set(doc(db, 'customers', c._docId || String(c.id)), { kampanyaOnay: on ? val : deleteField() }, { merge: true }); if (++n >= 400) { await b.commit(); b = writeBatch(db); n = 0; } }
+      if (n) await b.commit();
+      showToast?.(on ? `📣 ${list.length} müşteriye yazılı kampanya onayı işlendi` : `Kampanya onayı kaldırıldı (${list.length})`, 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+  };
   const toggleSel = (id) => setSelIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const [tourPickQ, setTourPickQ] = useState('');
   const longPressRef = useRef(null);
@@ -4814,7 +4826,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 // Müşteri linkinden (Profil) kendi düzelttiği bilgiler — son 30 gün
                 const SELF_TR = { phone: 'Telefon', email: 'E-posta', city: 'İkamet ili', tkMemberNo: 'Miles&Smiles no' };
                 const selfEdits = (Array.isArray(c.selfEdits) ? c.selfEdits : []).filter(e => e && String(e.at || '') >= new Date(Date.now() - 30 * 86400000).toISOString()).slice(-5).reverse();
+                const ko = c.kampanyaOnay && typeof c.kampanyaOnay === 'object' ? c.kampanyaOnay : null;
                 return (<>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 12px', background: ko ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${ko ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px', fontSize: '12.5px' }}>
+                    <span>📣 Kampanya bildirimi onayı (yazılı): <b style={{ color: ko ? '#c084fc' : '#94a3b8' }}>{ko ? `Var · ${formatDate(ko.at)}${ko.by ? ` · ${ko.by}` : ''}` : 'Yok'}</b></span>
+                    <button onClick={() => { if (ko ? window.confirm('Kampanya onayı kaldırılsın mı?') : window.confirm('Bu müşteriden yazılı ticari ileti (kampanya) onayı alındı mı?')) setKampanyaOnay([c], !ko); }} style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>{ko ? 'Kaldır' : 'Onay alındı'}</button>
+                  </div>
                   {selfEdits.length > 0 && (
                     <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', fontSize: '12px', color: '#bfdbfe' }}>
                       <div style={{ fontWeight: '700', marginBottom: '4px' }}>📝 Müşteri bilgilerini linkten kendisi güncelledi</div>
@@ -5271,6 +5288,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
             <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
             <button onClick={() => { setSelIds([]); onGo?.('visa', { type: 'visaForMany', customers: selCusts }); }} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📑 Vize başvurusu</button>
+            <button onClick={() => { if (window.confirm(`Seçilen ${selCusts.length} müşteriden yazılı ticari ileti (kampanya) onayı alındı mı?\n\nOnaylarsanız müşteri linkinde kampanya bildirimi varsayılan açık gelir; müşteri istediğinde kapatır.`)) setKampanyaOnay(selCusts, true); }} title="Yazılı kampanya onayı işle" style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(168,85,247,0.45)', background: 'none', color: '#c084fc', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📣 Kampanya onayı</button>
             <button onClick={() => exportToExcel(selCusts, `Secili_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)', background: 'none', color: '#10b981', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
             <button onClick={() => setSelIds([])} aria-label="Seçimi temizle" style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>✕</button>
           </div>
