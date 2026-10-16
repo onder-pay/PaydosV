@@ -3,17 +3,15 @@ const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
-// Türkçe uyumlu isim düzeltme: "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const titleCaseTr = (s) => {
-  if (!s) return '';
-  const lower = String(s).replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
-  return lower.replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
-};
+// Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
+const { normTr, trHas, titleCaseTr, nameForSave, normEmail } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
+// Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
 const normalizeCountry = (raw) => {
   if (!raw) return '';
-  const s = String(raw).toUpperCase().replace(/[^A-ZÄÖÜÇĞİŞÖÜÁÉÍÓÚÑÅÆØÉÈÊËÔÌÒ\s\/\-]/g, ' ').trim();
+  const s = String(raw).replace(/[^\p{L}\s\/\-]/gu, ' ').trim();
+  const sn = normTr(s);
   const map = [
     { tr: 'Almanya',      keys: ['DEUTSCHLAND', 'GERMANY', 'ALLEMAGNE'] },
     { tr: 'Fransa',       keys: ['FRANCE', 'FRANKREICH', 'FRANCIA'] },
@@ -46,12 +44,15 @@ const normalizeCountry = (raw) => {
     { tr: 'Liechtenstein',keys: ['LIECHTENSTEIN'] }
   ];
   for (const { tr, keys } of map) {
-    if (keys.some(k => s.includes(k))) return tr;
+    if (keys.some(k => sn.includes(normTr(k)))) return tr;
   }
+  // Türkçe yazılmış ülke adı ("ISPANYA", "Isvicre") → CRM'deki doğru yazım
+  const trName = countryFromTypeName(s);
+  if (trName) return trName;
   // Eşleşmedi - "/" varsa ilk parçayı al, başharfler küçük olsun
   const firstPart = s.split('/')[0].trim();
   if (!firstPart) return raw;
-  return firstPart.charAt(0) + firstPart.slice(1).toLowerCase();
+  return titleCaseTr(firstPart);
 };
 admin.initializeApp();
 
@@ -322,7 +323,7 @@ const fromMrz = (s) => {
 // 4+ harfse ülke kodu sızıntısıdır. TURGUT/TURAN/TURHAN gibi (devamı <4) korunur.
 const stripCountryCode = (lastName, nationality) => {
   if (!lastName) return lastName;
-  const isTr = !nationality || /tur|tr|türkiye|turkey/i.test(nationality);
+  const isTr = !nationality || /tur|\btr\b|turkiye|turkey/.test(normTr(nationality)); // /türkiye/i "TÜRKİYE"yi tanımaz
   if (!isTr) return lastName;
   const ln = lastName.trim();
   const m = ln.match(/^T[UÜ]R(.+)$/i);
@@ -387,8 +388,8 @@ const namesMatch = (a, b) => {
 const detectPT = no => {
   if (!no) return 'Bordo Pasaport (Umuma Mahsus)';
   const f = no.trim()[0]?.toUpperCase();
-  if (f === 'S') return 'Yesil Pasaport (Hususi)';
-  if (f === 'G') return 'Gri Pasaport (Hizmet)';
+  if (f === 'S') return 'Yeşil Pasaport (Hususi)'; // CRM passportTypes ile birebir (eskiden 'Yesil' yazılıyordu)
+  if (f === 'G' || f === 'Z') return 'Gri Pasaport (Hizmet)'; // CRM detectPassportType 'Z' kullanır
   if (f === 'D') return 'Siyah Pasaport (Diplomatik)';
   return 'Bordo Pasaport (Umuma Mahsus)';
 };
@@ -585,7 +586,6 @@ const passportExpiryWarn = (expiryDate) => {
 // (CRM'deki placeTr ile aynı mantık). İl değilse (ilçe/yurt dışı) Türkçe başlık biçimine çevrilir.
 const TR_ILLER = ['Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin','Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale','Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum','Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkari','Hatay','Isparta','Mersin','İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli','Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş','Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas','Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak','Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan','Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce'];
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
-const normTr = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().trim();
 // OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
 const cleanPlaceOcr = (s) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); if (w.length > 1 && w[0].replace(/[^\p{L}]/gu, '').length <= 3) w.shift(); return w.join(' '); };
 const placeTr = (x0) => {
@@ -616,7 +616,7 @@ const savePassport = async (db, custs, json, img) => {
     json.lastName = stripCountryCode(json.lastName, json.nationality);
   }
 
-  const fn = titleCaseTr((json.firstName || '').trim()), ln = titleCaseTr((json.lastName || '').trim());
+  const fn = nameForSave(json.firstName), ln = nameForSave(json.lastName); // MRZ "ISMAIL" olduğu gibi kalır (bkz. tr.js)
 
   // Müşteri bul: TC → pasaport no (isimle eşleştirme YOK — TC farklıysa farklı kişi)
   let cust = null;
@@ -664,7 +664,7 @@ const savePassport = async (db, custs, json, img) => {
   const tcWarn = json.tcKimlik && !isValidTc(json.tcKimlik) ? `\n⚠️ TC geçersiz görünüyor (${json.tcKimlik}) — CRM'den kontrol edin` : '';
 
   const pp = {
-    id: genId(), nationality: json.nationality || 'Turkiye',
+    id: genId(), nationality: !json.nationality || trHas(json.nationality, 'turk', 'tur') ? 'Türkiye' : json.nationality,
     passportType: detectPT(json.passportNo), passportNo: json.passportNo || '',
     issueDate: json.issueDate || '', expiryDate: json.expiryDate || '',
     image: await toStorage(img, 'pasaport'),
@@ -709,7 +709,7 @@ const savePassport = async (db, custs, json, img) => {
 // Başvuru bulunamazsa hiçbir şey değiştirmez; sonuç Telegram cevabına tek satır olarak eklenir.
 const approveVisaApp = async (db, custDocId, categoryId, country) => {
   try {
-    const trl = (x) => String(x || '').toLocaleLowerCase('tr-TR');
+    const trl = normTr; // Türkçe karakter kuralı: 'IPTAL'/'İptal' → 'iptal' (desenler ASCII)
     const statuses = await getVisaStatuses(db);
     const target = statuses.find(st => /onay/.test(trl(st)));
     if (!target) return '';
@@ -921,8 +921,8 @@ const normType = (d) => typeof d === 'string'
 // Schengen tür adından ülkeyi çıkar ("Almanya Ticari" → "Almanya")
 const countryFromTypeName = (name) => {
   const known = ['Almanya','Fransa','İtalya','İspanya','Hollanda','Belçika','Avusturya','Yunanistan','Portekiz','Polonya','Çekya','Macaristan','İsviçre','Danimarka','İsveç','Norveç','Finlandiya'];
-  const up = String(name || '').toLocaleUpperCase('tr');
-  for (const c of known) if (up.includes(c.toLocaleUpperCase('tr'))) return c;
+  const n = normTr(name); // "Italya Ticari" / "ISVICRE" de tanınır (Türkçe karakter kuralı)
+  for (const c of known) if (n.includes(normTr(c))) return c;
   return '';
 };
 
@@ -1158,7 +1158,7 @@ exports.telegramBot = functions
             if (isSchengen && tipIdx >= 0) {
               const TIP_IDS = ['sirket_sahibi_ortagi', 'sigortali_calisan', 'emekli', 'ev_hanimi_bekar'];
               const tipId = TIP_IDS[tipIdx] || 'sirket_sahibi_ortagi';
-              const amacId = /turistik/i.test(typeObj.name) ? 'turistik' : 'ticari';
+              const amacId = trHas(typeObj.name, 'turistik') ? 'turistik' : 'ticari'; // /turistik/i "TURİSTİK"i tanımaz
               try {
                 const veId = await vizeEvrakBasvuruOlustur({
                   amacId, tipId,
@@ -1342,8 +1342,8 @@ exports.telegramBot = functions
       }
       if (custs.length === 0 && json.firstName && json.lastName) {
         const snap = await cfg.db.collection('customers')
-          .where('firstName', '==', json.firstName.toUpperCase())
-          .where('lastName', '==', json.lastName.toUpperCase())
+          .where('firstName', '==', json.firstName.toLocaleUpperCase('tr-TR'))
+          .where('lastName', '==', json.lastName.toLocaleUpperCase('tr-TR'))
           .get();
         custs = snap.docs.map(d => ({ ...d.data(), id: d.id, _docId: d.id }));
       }
@@ -1414,3 +1414,4 @@ exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
 exports.vizeEvrakMail = require('./evrakmail').vizeEvrakMail; // Atama Bekliyor → evrak maili; randevu → süreli evrak maili (15 dk'da bir)
+exports.duyuruGor = require('./duyurugor').duyuruGor; // linkteki duyurunun görülme / tıklanma kaydı

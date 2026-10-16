@@ -21,13 +21,13 @@ const MAIL_LOGO_URL = 'https://crm.paydostur.com/icons/paydos-wordmark.png';
 const ALLOWED_ATTACHMENT_HOSTS = ['firebasestorage.googleapis.com', 'storage.googleapis.com'];
 
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const titleTr = (s) => String(s || '').toLocaleLowerCase('tr-TR').replace(/(^|[\s-])(\S)/g, (m, a, b) => a + b.toLocaleUpperCase('tr-TR'));
+const { titleCaseTr: titleTr, normTr, trHas, normEmail, statusLabels } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
 const istDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); // YYYY-MM-DD
 const trDate = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(ymd || ''); };
 const addDays = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const addMonths = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); };
 const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
-const closed = (v) => /onay|red|iptal/.test(String(v.status || '').toLocaleLowerCase('tr-TR'));
+const closed = (v) => /onay|red|iptal/.test(normTr(v.status)); // 'IPTAL' tr-lower'da 'ıptal' olurdu
 
 // CRM'deki mailHtml ile aynı görünüm
 const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
@@ -62,7 +62,9 @@ const buildSureliMail = (v, cust, today) => {
   const appt = String(v.appointmentDate || '').slice(0, 10);
   const from14 = addDays(appt, -14);
   const sonGun = addDays(appt, -1);
-  const ticari = /ticari|fuar|iş/i.test(`${v.visaDuration || ''} ${v.visaType || ''}`);
+  // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz (İ≠i) — önce ASCII küçük harfe indir
+  const tn = normTr(`${v.visaDuration || ''} ${v.visaType || ''}`);
+  const ticari = /ticari|fuar|\bis\b/.test(tn);
   const al14 = from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`;
   const items = [
     `• SGK hizmet dökümü (e-Devlet, barkodlu) — ${al14}. Randevudan en fazla 14 gün önce alınmış olmalı.`,
@@ -131,10 +133,10 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     if (!custCache.has(id)) { try { const d = await db.collection('customers').doc(id).get(); custCache.set(id, d.exists ? d.data() : null); } catch { custCache.set(id, null); } }
     return custCache.get(id);
   };
-  const emailOf = (v, cust) => [cust?.email, v.customerEmail].map(e => String(e || '').trim()).find(validEmail) || '';
+  const emailOf = (v, cust) => [cust?.email, v.customerEmail].map(normEmail).find(validEmail) || ''; // 'İnfo@' → 'info@'
 
   // 1) Atama Bekliyor → şablon maili
-  const s1 = await db.collection('visa_applications').where('status', '==', STATUS).get();
+  const s1 = await db.collection('visa_applications').where('status', 'in', statusLabels(settings, STATUS)).get(); // yazım farkı (ATAMA BEKLİYOR) da yakalanır
   for (const d of s1.docs) {
     const v = { id: d.id, ...d.data() };
     if (v.evrakMailAt || v.autoMailOff) continue;

@@ -24,6 +24,7 @@ const publicData = (d) => {
 // Tarih, tür ve (PIN'li sayfada müşterinin kendisi için) pasaport görseli gider; pasaport numarası vb. GİTMEZ.
 const parseArr = (v) => { if (Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } } return []; };
 const parseObj = (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return p && typeof p === 'object' && !Array.isArray(p) ? p : {}; } catch { return {}; } } return {}; };
+const { normEmail } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
 const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 const byEndDesc = (k) => (a, b) => String(b[k]).localeCompare(String(a[k]));
 const validityOf = (c) => {
@@ -49,7 +50,7 @@ const profileOf = (c) => ({
 // Her değişiklik müşteri kartına selfEdits (son 20) olarak yazılır — CRM'de görünür.
 const EDITABLE = {
   phone: (v) => { const t = String(v || '').trim().slice(0, 25); const n = t.replace(/\D/g, ''); return !t || (/^[+\d\s()-]+$/.test(t) && n.length >= 10 && n.length <= 15) ? t : null; },
-  email: (v) => { const t = String(v || '').trim().slice(0, 100); return !t || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t) ? t : null; },
+  email: (v) => { const t = normEmail(v).slice(0, 100); return !t || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t) ? t : null; }, // 'İnfo@' → 'info@'
   city: (v) => { const t = String(v || '').trim().replace(/\s+/g, ' '); return t.length <= 40 && /^[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû .'-]*$/.test(t) ? t : null; },
   tkMemberNo: (v) => { const t = String(v || '').trim().toUpperCase().replace(/\s+/g, ''); return /^[A-Z0-9]{0,20}$/.test(t) ? t : null; },
 };

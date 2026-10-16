@@ -217,6 +217,8 @@ const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name:
 
 const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
 const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
+// Kayıttaki tür listede birebir yoksa (bot eskiden 'Yesil Pasaport (Hususi)' yazdı) listedeki karşılığı — Türkçe karakter kuralı
+const canonPassportType = (t) => passportTypes.find(x => normalizeTr(x) === normalizeTr(t)) || t;
 const schengenCountries = ['Almanya', 'Avusturya', 'Belçika', 'Çekya', 'Danimarka', 'Estonya', 'Finlandiya', 'Fransa', 'Hırvatistan', 'Hollanda', 'İspanya', 'İsveç', 'İsviçre', 'İtalya', 'İzlanda', 'Letonya', 'Liechtenstein', 'Litvanya', 'Lüksemburg', 'Macaristan', 'Malta', 'Norveç', 'Polonya', 'Portekiz', 'Slovakya', 'Slovenya', 'Yunanistan'];
 
 // ===== PAKET TUR SÖZLEŞMESİ — SABİT YASAL METİN (birebir, numaralandırma düzeltmeleri hariç) =====
@@ -504,7 +506,7 @@ ${secTitle(S.m6[0])}${P(S.m6.slice(1))}
 <table>${BKS.map(BK => {
     const CURN = { TL: 'TÜRK LİRASI', EUR: 'EURO', USD: 'USD', GBP: 'GBP', CHF: 'CHF' };
     const accs = (Array.isArray(BK.accounts) && BK.accounts.length ? BK.accounts : []).filter(a => a.iban);
-    return accs.map(a => `<tr><th>${e((BK.bankName||'').toUpperCase())} ${e((BK.branch||'').toUpperCase())} — ${CURN[a.currency] || e(a.currency)} HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(a.iban)}${a.accountNo ? `<br>Hesap No: ${e(a.accountNo)}` : ''}</td></tr>`).join('');
+    return accs.map(a => `<tr><th>${e(trUpper(BK.bankName||''))} ${e(trUpper(BK.branch||''))} — ${CURN[a.currency] || e(a.currency)} HESABI</th><td>Şube Kodu: ${e(BK.branchCode)} · SWIFT: ${e(BK.swift)}<br>IBAN: ${e(a.iban)}${a.accountNo ? `<br>Hesap No: ${e(a.accountNo)}` : ''}</td></tr>`).join('');
   }).join('')}</table>
 
 ${c.ozelTalepler ? secTitle(S.m8[0]) + body(S.m8) : ''}
@@ -558,7 +560,7 @@ const PASSPORT_MIN_MONTHS = 6;
 // Yeşil (hususi) pasaport muafiyeti ancak pasaport bu kurala uyuyorsa. Birden fazla yeşil pasaportta en geç biten esas.
 // Döner: { green, ok, exp (Date|null), reason: 'ok'|'nodate'|'expires'|'months' }
 const greenPassportStatus = (passports, tourEndStr) => {
-  const greens = (passports || []).filter(p => p.passportType === 'Yeşil Pasaport (Hususi)' || p.passportType?.includes('Yeşil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
+  const greens = (passports || []).filter(p => trHas(p.passportType, 'yesil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
   if (!greens.length) return { green: false, ok: false, exp: null, reason: '' };
   const exp = greens.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
   if (!exp) return { green: true, ok: false, exp: null, reason: 'nodate' };
@@ -848,10 +850,25 @@ const isSaneDate = (iso) => {
   const y = parseInt(m[1], 10);
   return y >= 1900 && y <= 2100;
 };
+// ===== TÜRKÇE KARAKTER KURALI (bkz. CLAUDE.md) =====
+// 1) KARŞILAŞTIRMA / ARAMA / EŞLEŞTİRME: iki taraf da normalizeTr → ASCII küçük harf ("İptal","IPTAL","iptal" → "iptal").
+//    Asla düz toLowerCase/toUpperCase ya da /.../i ile Türkçe metin karşılaştırma: JS "İ"↔"i" eşlemez, "I"→"i" yapar.
+// 2) GÖSTERİM: büyük/küçük harf trUpper / trLower (tr-TR yerel ayarı), isimler titleCaseTr.
+// 3) KAYIT: kullanıcının yazdığı Türkçe harfler olduğu gibi saklanır; ASCII sadece dış sistem gerektirirse (MRZ, dosya adı, PDF yedek font).
 const normalizeTr = (s) => (s == null ? '' : String(s))
   .replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u')
   .replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
-  .toLowerCase().trim();
+  .toLowerCase().replace(/\u0307/g, '').trim(); // \u0307: "İ".toLowerCase() artığı birleşik nokta
+const trUpper = (s) => (s == null ? '' : String(s)).toLocaleUpperCase('tr-TR');
+const trLower = (s) => (s == null ? '' : String(s)).toLocaleLowerCase('tr-TR');
+// Metin, verilen kelimelerden birini içeriyor mu (Türkçe/İngilizce harf ve büyük-küçük farkı yok sayılır)
+const trHas = (text, ...words) => { const t = normalizeTr(text); return words.some(w => t.includes(normalizeTr(w))); };
+// E-posta: Türkçe klavyede "İ"/"ı" ile yazılsa da ASCII küçük harf ("İnfo@" → "info@")
+const normEmail = (s) => String(s || '').trim().replace(/[İIı]/g, 'i').toLowerCase().replace(/\u0307/g, '');
+// Ayarlardaki özel alan adı → müşteri kaydındaki anahtar. Eski kod "İ"yi "i̇" (noktalı) yazıyordu: okurken ikisine de bakılır.
+const fieldKeyTr = (field) => normalizeTr(field).replace(/\s+/g, '_');
+const fieldKeyLegacy = (field) => String(field).toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
+const extraFieldVal = (obj, field) => obj?.[fieldKeyTr(field)] ?? obj?.[fieldKeyLegacy(field)];
 
 // Vize başvurusu bu müşteriye mi ait? customerId (id/_docId) önce; ID yoksa ya da hiçbir müşteriye denk gelmiyorsa ad-soyad ile eşleştir
 const visaAppBelongsTo = (v, c, customers) => {
@@ -896,10 +913,22 @@ const findLikelyDuplicates = (c, customers) => {
 };
 
 // Sadece görüntüleme için: "ONDER TASCI" / "önder taşçı" -> "Önder Taşçı" (Türkçe imla, i/İ ayrımına dikkat eder)
+// İsim/şehir gösterimi. Metinde Türkçe harf (ç ğ ı ö ş ü / İ) varsa kaynak Türkçe biliyordur: I → ı ("YILMAZ ŞAHİN" → "Yılmaz Şahin").
+// Hiç Türkçe harf yoksa (pasaport MRZ, ASCII Excel: "ISMAIL GEDIKOGLU") I'nın i mi ı mı olduğu bilinemez → I = i kabul edilir
+// ("Ismaıl Gedıkoglu" gibi bozuk sonuç üretilmez). Kayıtta bu belirsiz isimler değiştirilmez: bkz. nameForSave.
+const TR_LETTERS = /[çğıöşüÇĞİÖŞÜ]/;
 const titleCaseTr = (s) => {
   if (!s) return '';
-  const lower = String(s).replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase();
-  return lower.replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+  const str = String(s);
+  const lower = TR_LETTERS.test(str) ? str.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase() : str.toLowerCase();
+  return lower.replace(/\u0307/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
+};
+// Kayda yazılacak isim: Türkçe harfsiz BÜYÜK harfli ve I içeren isim ("ISMAIL", "YILMAZ") olduğu gibi kalır — tahminle bozulmaz.
+const nameForSave = (s) => {
+  const t = String(s || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  if (!TR_LETTERS.test(t) && /I/.test(t) && t === t.toUpperCase()) return t;
+  return titleCaseTr(t);
 };
 
 // Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
@@ -1225,14 +1254,14 @@ function LoginScreen({ onLogin, users }) {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       // users koleksiyonundan profil/rol bul — giriş ekranındaki liste sadece yerel önbellek
       // (yeni cihazda boş); bu yüzden girişten sonra Firestore'dan okunur. Yoksa temel profil.
-      const mail = email.trim().toLowerCase();
+      const mail = normEmail(email);
       let profile = null;
       try {
         const snap = await getDocs(collection(db, 'users'));
-        const d = snap.docs.find(x => (x.data().email || '').toLowerCase() === mail);
+        const d = snap.docs.find(x => normEmail(x.data().email) === mail);
         if (d) profile = { ...d.data(), _docId: d.id };
       } catch (e) { console.warn('Kullanıcı profili okunamadı:', e.message); }
-      if (!profile) profile = users.find(u => (u.email || '').toLowerCase() === mail) || null;
+      if (!profile) profile = users.find(u => normEmail(u.email) === mail) || null;
       if (profile) { const { password: _pw, ...clean } = profile; profile = clean; }
       onLogin(profile || { id: cred.user.uid, email: cred.user.email, name: cred.user.email, role: 'user' });
     } catch (err) {
@@ -1298,8 +1327,7 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
     return pList.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
   });
@@ -1666,7 +1694,8 @@ const detectHotel = (text) => {
   const raw = String(text || '').replace(/\s+/g, ' ');
   if (!raw.trim()) return null;
   const low = asciiTr(raw).toLowerCase();
-  const STOPW = 'address|adres|adresse|check|giri[sş]|[cç][ıi]k[ıi][sş]|arrival|departure|tel|telefon|phone|e-?mail|www|room|oda|booking|rezervasyon|reservation|confirmation|guest|misafir|nights?|gece|city|[sş]ehir|country|[uü]lke';
+  // /i bayrağı "İ"yi "i" saymaz (Türkçe karakter kuralı) → i geçen Türkçe etiketlerde [iİı] sınıfı ("GİRİŞ", "ŞEHİR", "MİSAFİR")
+  const STOPW = 'address|adres|adresse|check|g[iİı]r[iİı][sş]|[cç][ıiİ]k[ıiİ][sş]|arrival|departure|tel|telefon|phone|e-?mail|www|room|oda|booking|rezervasyon|reservation|confirmation|guest|m[iİı]saf[iİı]r|nights?|gece|city|[sş]eh[iİı]r|country|[uü]lke';
   const STOP = '(?=\\s+(?:' + STOPW + ')(?![a-zçğıöşü])|\\s{2,}|$)';
   const grab = (re) => { const m = raw.match(re); return m ? m[1].replace(/[\s,;:|-]+$/, '').trim() : ''; };
   let name = grab(new RegExp('(?:hotel\\s*name|otel\\s*ad[ıi]|property(?:\\s*name)?|accommodation|konaklama\\s*yeri|hotel|otel)\\s*[:：]\\s*(.{3,80}?)' + STOP, 'i'));
@@ -1830,7 +1859,7 @@ const detectFlightsGDS = (text) => {
     const code = m[5] + m[6];
     if (seen.has(code + ymd)) continue; seen.add(code + ymd);
     // Biletteki şehirler ASCII büyük harf: Türkçe küçültme "SOFIA"yı "Sofıa" yapmasın
-    const tc = (x) => x.trim().toLowerCase().replace(/(^|[\s-])(\S)/g, (q, a, b) => a + b.toUpperCase());
+    const tc = (x) => titleCaseTr(x.trim());
     out.push({ code, ymd, fromCity: tc(m[1]), from: m[2], toCity: tc(m[3]), to: m[4], dep: tm(m[9]), arr: tm(m[12]) });
   }
   return out;
@@ -2039,7 +2068,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const inp = { width: '100%', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '14px', boxSizing: 'border-box' };
   const lbl = { display: 'block', fontSize: '12px', color: '#94a3b8', margin: '14px 0 6px', fontWeight: 600 };
   const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '16px' : '20px' };
-  const pickList = subCustomers.filter(c => !q || `${c.firstName} ${c.lastName}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr'))).slice(0, 30);
+  const pickList = subCustomers.filter(c => !q || trHas(`${c.firstName} ${c.lastName}`, q)).slice(0, 30);
   return (
     <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
       <h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
@@ -2360,6 +2389,21 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
   const [drag, setDrag] = useState(false);
   const load = () => getDocs(collection(db, 'duyurular')).then(q => setList(q.docs.map(d => ({ id: d.id, ...d.data() })).filter(inScope).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))))).catch(e => { setList([]); showToast?.('Duyurular okunamadı: ' + e.message, 'error'); });
   useEffect(() => { load(); }, [scope, fixedTour?.id]);
+  // 👁 Görülme takibi: duyurular/<id>/gorulme/<linkKodu> (linkteki kart ekrana gelince / tıklanınca sunucu yazar)
+  const [seen, setSeen] = useState({}); // { duyuruId: [{ id: linkKodu, name, firstSeenAt, clickCount }] }
+  const [seenOpen, setSeenOpen] = useState(null);
+  useEffect(() => {
+    if (!list?.length) return;
+    let off = false;
+    Promise.all(list.map(d => getDocs(collection(db, 'duyurular', d.id, 'gorulme')).then(q => [d.id, q.docs.map(x => ({ id: x.id, ...x.data() }))]).catch(() => [d.id, null])))
+      .then(rows => { if (!off) setSeen(Object.fromEntries(rows)); });
+    return () => { off = true; };
+  }, [list]);
+  const audienceOf = (d) => {
+    if (d.target !== 'onetour') return null; // tüm linkler için payda bilinmez — sadece görenler sayılır
+    const t = tours.find(x => String(x.id) === String(d.tourId)) || (fixedTour && String(fixedTour.id) === String(d.tourId) ? fixedTour : null);
+    return t ? (t.reservations || []).filter(r => !r.cancelled && r.shareToken) : null;
+  };
   const pick = (f) => { if (!f || !/^image\//.test(f.type)) { showToast?.('Görsel dosyası seçin (JPG, PNG)', 'warning'); return; } setFile(f); setPreview(URL.createObjectURL(f)); };
   const upd = (p) => setForm(f => ({ ...f, ...p }));
   const save = async () => {
@@ -2472,6 +2516,46 @@ function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, 
                 </div>
                 <b style={{ fontSize: '14px' }}>{d.title || '(başlıksız)'}</b>
                 {(d.start || d.end) && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{d.start ? formatDate(d.start) : '…'} → {d.end ? formatDate(d.end) : '…'}</div>}
+                {(() => {
+                  const sv = seen[d.id];
+                  if (sv === undefined) return null;
+                  if (sv === null) return <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>👁 Görülme bilgisi okunamadı</div>;
+                  const aud = audienceOf(d);
+                  const seenIds = new Set(sv.filter(x => x.firstSeenAt).map(x => x.id));
+                  const clicks = sv.filter(x => x.clickCount > 0).length;
+                  const unseen = aud ? aud.filter(r => !seenIds.has(r.shareToken)) : [];
+                  const open = seenOpen === d.id;
+                  return (
+                    <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                      <button onClick={() => setSeenOpen(open ? null : d.id)} style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '6px 10px', color: '#93c5fd', cursor: 'pointer', fontSize: '12px', width: '100%', textAlign: 'left' }}>
+                        👁 {aud ? `${aud.filter(r => seenIds.has(r.shareToken)).length}/${aud.length}` : seenIds.size} gördü · 👆 {clicks} tıkladı{aud && unseen.length ? ` · ${unseen.length} görmedi` : ''} <span style={{ float: 'right' }}>{open ? '▲' : '▼'}</span>
+                      </button>
+                      {open && (
+                        <div style={{ marginTop: '6px', maxHeight: '260px', overflowY: 'auto', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '6px 8px' }}>
+                          {aud && unseen.length > 0 && <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, margin: '4px 0' }}>Görmeyenler ({unseen.length})</div>}
+                          {aud && unseen.map(r => {
+                            const ph = formatWhatsAppPhone(r.customerPhone || '');
+                            const txt = `Merhaba ${titleCaseTr(r.customerName || '')}, tur linkinize yeni bir duyuru eklendi: ${d.title || ''}\n${window.location.origin}/b/${r.shareToken}`;
+                            return (
+                              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span>{titleCaseTr(r.customerName || '')}</span>
+                                {ph ? <a href={waUrl(ph, txt)} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', textDecoration: 'none', fontSize: '12px' }}>💬 Hatırlat</a> : <span style={{ color: '#64748b', fontSize: '11px' }}>telefon yok</span>}
+                              </div>
+                            );
+                          })}
+                          {seenIds.size > 0 && <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, margin: '8px 0 4px' }}>Görenler ({seenIds.size})</div>}
+                          {sv.filter(x => x.firstSeenAt).sort((a, b) => String(b.firstSeenAt).localeCompare(String(a.firstSeenAt))).map(x => (
+                            <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#94a3b8', fontSize: '11px' }}>
+                              <span style={{ color: '#e8f1f8' }}>{titleCaseTr(x.name || 'İsimsiz link')}{x.clickCount > 0 ? ' 👆' : ''}</span>
+                              <span>{new Date(x.firstSeenAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          ))}
+                          {!seenIds.size && !(aud && unseen.length) && <div style={{ color: '#64748b', fontSize: '11px', padding: '4px 0' }}>Henüz gören yok</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
                   <button onClick={() => { setForm({ ...empty, ...d }); setFile(null); setPreview(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
                   <button onClick={() => toggle(d)} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>{d.active ? '⏸ Kapat' : '▶ Yayınla'}</button>
@@ -2512,11 +2596,23 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
   const [yarisma, setYarisma] = useState(false);
   const [tavsiye, setTavsiye] = useState(false);
   const list = tours.filter(t => showOld || !t.endDate || t.endDate >= today)
-    .filter(t => !q || `${t.name} ${t.city} ${t.country}`.toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
+    .filter(t => !q || trHas(`${t.name} ${t.city} ${t.country}`, q))
     .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   const tour = sel && sel !== 'all' ? tours.find(t => String(t.id) === sel) : null;
   const res = tour ? (tour.reservations || []).filter(r => !r.cancelled) : [];
   const shared = res.filter(r => r.shareToken).length;
+  // 📲 Ana ekrana ekleyenler: link ana ekran simgesinden açılınca sunucu paylasimlar/<kod>.appFirstAt yazar
+  const [appStats, setAppStats] = useState(null); // { tourId, rows: [{ name, at }] }
+  const [appOpen, setAppOpen] = useState(false);
+  useEffect(() => {
+    setAppOpen(false);
+    if (!tour) { setAppStats(null); return; }
+    let off = false;
+    const toks = res.filter(r => r.shareToken);
+    Promise.all(toks.map(r => getDoc(doc(db, 'paylasimlar', r.shareToken)).then(x => x.exists() && (x.data()?.appFirstAt || x.data()?.installedAt) ? { name: r.customerName, at: x.data().appFirstAt || x.data().installedAt } : null).catch(() => null)))
+      .then(rows => { if (!off) setAppStats({ tourId: tour.id, rows: rows.filter(Boolean) }); });
+    return () => { off = true; };
+  }, [tour?.id]);
   const item = (key, title, sub, on) => (
     <button key={key} onClick={() => setSel(key)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', color: '#e8f1f8', background: on ? 'rgba(245,158,11,0.15)' : 'transparent', border: `1px solid ${on ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.06)'}`, marginBottom: '6px' }}>
       <div style={{ fontWeight: 700, fontSize: '13px' }}>{title}</div><div style={{ fontSize: '11.5px', color: '#94a3b8' }}>{sub}</div>
@@ -2547,6 +2643,20 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                   <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
                   <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
                 </div>
+                {appStats && appStats.tourId === tour.id && shared > 0 && (
+                  <div style={{ marginTop: '10px', fontSize: '12.5px' }}>
+                    <button onClick={() => setAppOpen(o => !o)} disabled={!appStats.rows.length} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: appStats.rows.length ? 'pointer' : 'default', fontSize: '12.5px' }}>
+                      📲 {appStats.rows.length}/{shared} yolcu linki ana ekrana ekleyip kullandı{appStats.rows.length ? (appOpen ? ' ▲' : ' ▼') : ''}
+                    </button>
+                    {appOpen && (
+                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {appStats.rows.sort((a, b) => String(a.at).localeCompare(String(b.at))).map((r, i) => (
+                          <span key={i} title={new Date(r.at).toLocaleString('tr-TR')} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', color: '#bfdbfe' }}>{titleCaseTr(r.name || '')}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
               </div>
               <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
@@ -2970,7 +3080,7 @@ const matchCustomers = (index, words) => {
 };
 
 // 🔍 Mükerrer / TC kontrolü — tüm müşterileri tarar
-function DuplicateScanModal({ customers, onOpen, onClose }) {
+function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
   const [tab, setTab] = useState('tcName');
   const data = useMemo(() => {
     const nm = (c) => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).replace(/\s+/g, ' ');
@@ -2987,7 +3097,14 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
     const passport = [...pp.entries()].filter(([, set]) => set.size > 1).map(([k, set]) => [k, [...set]]);
     const nameBirth = group(c => (c.birthDate && nm(c) ? `${nm(c)}|${c.birthDate}` : ''));
     const badTc = (customers || []).filter(c => String(c.tcKimlik || '').trim() && !isValidTc(c.tcKimlik));
-    return { tcName, tcSame, passport, nameBirth, badTc };
+    // 🔤 Şüpheli isim: eski isim düzeltme Türkçe harfsiz BÜYÜK isimde (MRZ/Excel) her I'yı ı yaptı ("ISMAIL" → "Ismaıl").
+    // İzi: isimde ı var ama başka hiçbir Türkçe harf (ç ğ ö ş ü İ) yok. "Yılmaz Kaya" gibi doğru isimler de çıkar → elle karar.
+    const oddName = (customers || []).filter(c => {
+      if (c.nameOk) return false;
+      const full = `${c.firstName || ''} ${c.lastName || ''}`;
+      return /ı/.test(full) && !/[çğöşüÇĞÖŞÜİ]/.test(full);
+    });
+    return { tcName, tcSame, passport, nameBirth, badTc, oddName };
   }, [customers]);
   const tabs = [
     ['tcName', '🚨 Aynı TC, farklı isim', data.tcName.length],
@@ -2995,7 +3112,10 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
     ['passport', 'Aynı pasaport no', data.passport.length],
     ['nameBirth', 'Aynı ad + doğum', data.nameBirth.length],
     ['badTc', 'Geçersiz TC', data.badTc.length],
+    ['oddName', '🔤 Şüpheli isim (ı)', data.oddName.length],
   ];
+  // Önerilen düzeltme: ı → i, Türkçe harfsiz isim kuralıyla yeniden yaz ("Ismaıl Gedıkoglu" → "İsmail Gedikoglu")
+  const fixName = (x) => titleCaseTr(String(x || '').replace(/ı/g, 'i'));
   const ppList = (c) => safeParseJSON(c.passports).map(p => p.passportNo).filter(Boolean).join(', ');
   const row = (c) => (
     <div key={c._docId || c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', fontSize: '12px', color: '#e8f1f8', flexWrap: 'wrap' }}>
@@ -3003,7 +3123,21 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
       <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontWeight: '600', fontSize: '12px', fontFamily: 'inherit' }}>Aç</button>
     </div>
   );
-  const groups = tab === 'badTc' ? null : data[tab];
+  const groups = (tab === 'badTc' || tab === 'oddName') ? null : data[tab];
+  const oddRow = (c) => {
+    const fn = fixName(c.firstName), ln = fixName(c.lastName);
+    return (
+      <div key={c._docId || c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', fontSize: '12.5px', color: '#e8f1f8', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <span style={{ flex: 1, minWidth: '220px' }}>
+          <span style={{ color: '#fca5a5' }}>{c.firstName} {c.lastName}</span> <span style={{ color: '#64748b' }}>→</span> <b style={{ color: '#86efac' }}>{fn} {ln}</b>
+          {c.tcKimlik ? <span style={{ color: '#64748b' }}> · TC {c.tcKimlik}</span> : null}
+        </span>
+        <button type="button" onClick={() => onPatch?.(c, { firstName: fn, lastName: ln, nameOk: true })} style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '12px' }}>✓ Düzelt</button>
+        <button type="button" onClick={() => onPatch?.(c, { nameOk: true })} title="İsim zaten doğru (ör. Yılmaz) — listeden çıkar" style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>Doğru, dokunma</button>
+        <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px' }}>Aç</button>
+      </div>
+    );
+  };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#0f1d2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -3020,7 +3154,12 @@ function DuplicateScanModal({ customers, onOpen, onClose }) {
           ))}
         </div>
         <div style={{ padding: '8px 20px 20px', overflowY: 'auto' }}>
-          {tab === 'badTc'
+          {tab === 'oddName'
+            ? (data.oddName.length ? <>
+                <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>Eski isim düzeltmesi Türkçe harfsiz BÜYÜK yazılmış isimlerde (pasaport MRZ, Excel) her I'yı ı yaptı: "ISMAIL" → "Ismaıl". Bu listede ı geçen ama başka Türkçe harfi olmayan isimler var — <b>Yılmaz, Kılıç</b> gibi gerçekten ı'lı isimler de çıkar. Önerilen yazım doğruysa <b>Düzelt</b>, isim zaten doğruysa <b>Doğru, dokunma</b>. İkisi de kaydı listeden çıkarır.</div>
+                {data.oddName.map(oddRow)}
+              </> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Şüpheli isim yok</div>)
+            : tab === 'badTc'
             ? (data.badTc.length ? <><div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0' }}>11 hane değil ya da TC doğrulama basamakları tutmuyor — yanlış girilmiş/okunmuş olabilir.</div>{data.badTc.map(row)}</> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Sorun yok</div>)
             : (groups.length ? groups.map(([k, arr]) => (
               <div key={k} style={{ marginTop: '12px', padding: '10px 14px', background: tab === 'tcName' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${tab === 'tcName' ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px' }}>
@@ -3425,7 +3564,9 @@ function BulkDocInbox({ customers, setCustomers, appSettings, showToast, onClose
 function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
   // 🖱️ Sağ tık / uzun bas menüsü: { x, y, c }  ·  tura ekle için tur seçici
   const [ctxMenu, setCtxMenu] = useState(null);
-  const [tourPickFor, setTourPickFor] = useState(null);
+  const [tourPickFor, setTourPickFor] = useState(null); // tek müşteri ya da { many: [müşteriler] }
+  const [selIds, setSelIds] = useState([]); // arama sonuçlarında çoklu seçim (ör. aynı firmadan 5 kişi)
+  const toggleSel = (id) => setSelIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const [tourPickQ, setTourPickQ] = useState('');
   const longPressRef = useRef(null);
   useEffect(() => {
@@ -3479,7 +3620,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [timelineNote, setTimelineNote] = useState(''); // Geçmiş sekmesi elle not girişi
   const [imagePreview, setImagePreview] = useState({ show: false, src: '', title: '' });
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
-  const [showResults, setShowResults] = useState(false);
   const fileInputRef = useRef(null);
 
   // Dashboard'dan müşteri profili aç
@@ -3592,45 +3732,37 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
     return pList.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
   });
 
   // Filtreleme fonksiyonu
-  const hasActiveFilter = Object.values(filters).some(v => v && v.trim() !== '');
-  
-  const filtered = customers.filter(c => {
-    if (!hasActiveFilter) return false;
-    
-    const matchField = (field, value) => {
-      if (!value || value.trim() === '') return true;
-      const fieldVal = c[field] || '';
-      return normalizeTr(fieldVal).includes(normalizeTr(value));
-    };
-
-    return matchField('firstName', filters.firstName) &&
-           matchField('lastName', filters.lastName) &&
-           matchField('tcKimlik', filters.tcKimlik) &&
-           matchField('phone', filters.phone) &&
-           matchField('email', filters.email) &&
-           matchField('birthDate', filters.birthDate) &&
-           matchField('birthPlace', filters.birthPlace) &&
-           matchField('city', filters.city) &&
-           matchField('tkMemberNo', filters.tkMemberNo) &&
-           matchField('sector', filters.sector) &&
-           matchField('companyName', filters.companyName);
+  // 🔍 Tek kutu akıllı arama: her kelime ad, soyad, TC, telefon, e-posta, doğum yeri, TK no, firma veya
+  // pasaport no'dan birinde geçmeli ("ahmet öner" → ikisi de). Rakamlar telefon/TC/pasaport'ta rakam olarak aranır.
+  const [q, setQ] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const qTokens = normalizeTr(q).split(/\s+/).filter(t => t.length >= (/^\d+$/.test(t) ? 3 : 2));
+  const hasActiveFilter = qTokens.length > 0 || !!filters.city || !!filters.sector;
+  const digitsOf = (v) => String(v || '').replace(/\D/g, '');
+  const filtered = !hasActiveFilter ? [] : customers.filter(c => {
+    if (filters.city && normalizeTr(c.city || '') !== normalizeTr(filters.city)) return false;
+    if (filters.sector && c.sector !== filters.sector) return false;
+    if (!qTokens.length) return true;
+    const text = normalizeTr([c.firstName, c.lastName, c.email, c.birthPlace || c.dogum_yeri, c.tkMemberNo || c.tk_uyelik_no, c.companyName || c.company, c.tcKimlik,
+      ...safeParseJSON(c.passports).map(pp => pp.passportNo)].filter(Boolean).join(' '));
+    const nums = [digitsOf(c.phone), digitsOf(c.phone).replace(/^(90|0)/, ''), digitsOf(c.tcKimlik)].filter(Boolean).join(' ');
+    return qTokens.every(t => text.includes(t) || (/^\d+$/.test(t) && nums.includes(t.replace(/^(90|0)/, ''))));
+  }).sort((a, b) => {
+    // Adı/soyadı aranan kelimeyle başlayanlar önce
+    const st = (c) => qTokens.some(t => normalizeTr(c.firstName || '').startsWith(t) || normalizeTr(c.lastName || '').startsWith(t)) ? 0 : 1;
+    return st(a) - st(b) || `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, 'tr');
   });
-
   const clearFilters = () => {
+    setQ('');
     setFilters({ firstName: '', lastName: '', tcKimlik: '', phone: '', email: '', birthDate: '', birthPlace: '', city: '', tkMemberNo: '', sector: '', companyName: '' });
-    setShowResults(false);
   };
 
-  const handleSearch = () => {
-    if (hasActiveFilter) setShowResults(true);
-  };
 
   // Excel Export
   // visaKind: 'schengen' | 'usa' → vize ülkesi / başlangıç / bitiş sütunları eklenir
@@ -3698,7 +3830,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           lastName: row['Soyad'] || row['soyad'] || row['SOYAD'] || '',
           tcKimlik: String(row['TC Kimlik'] || row['TC'] || row['tc'] || ''),
           phone: String(row['Telefon'] || row['telefon'] || row['TEL'] || ''),
-          email: row['E-posta'] || row['Email'] || row['email'] || '',
+          email: normEmail(row['E-posta'] || row['Email'] || row['email'] || ''),
           birthDate: row['Doğum Tarihi'] || '',
           birthPlace: row['Doğum Yeri'] || '',
           city: row['İkametgah İli'] || row['İl'] || row['Şehir'] || '',
@@ -3722,7 +3854,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         // Firestore'a yaz (customers otomatik senkronize edilmiyor — yazılmazsa sayfa yenilenince kaybolur)
         const now = new Date().toISOString();
         const toSave = newCustomers.map(c => ({ ...c, _docId: String(c.id), updatedAt: now, verified: false,
-          firstName: titleCaseTr(c.firstName), lastName: titleCaseTr(c.lastName),
+          firstName: nameForSave(c.firstName), lastName: nameForSave(c.lastName),
           passports: '[]', schengenVisas: '[]', usaVisa: '{}' }));
         for (let i = 0; i < toSave.length; i += 400) {
           const batch = writeBatch(db);
@@ -3775,7 +3907,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     setFormData({ ...emptyForm, ...customer, birthPlace: customer.birthPlace || customer.dogum_yeri || '', tkMemberNo: customer.tkMemberNo || customer.tk_uyelik_no || '', tags: safeParseTags(customer.tags), activities: safeParseActivities(customer.activities) }); 
     // Pasaport bilgilerini yükle
     const savedPassports = safeParseJSON(customer.passports);
-    setPassports(savedPassports.length > 0 ? savedPassports : [{ ...emptyPassport, id: generateUniqueId() }]);
+    setPassports(savedPassports.length > 0 ? savedPassports.map(p => ({ ...p, passportType: p.passportType ? canonPassportType(p.passportType) : p.passportType })) : [{ ...emptyPassport, id: generateUniqueId() }]);
     // Schengen bilgilerini yükle
     const savedSchengen = safeParseJSON(customer.schengenVisas).filter(v => v.country);
     setSchengenVisas(savedSchengen.length > 0 ? savedSchengen : [{ id: 1, country: '', startDate: '', endDate: '', image: '' }]);
@@ -3882,15 +4014,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
 
   const fixAllNames = async () => {
     const needsFix = customers.filter(c => {
-      const fn = titleCaseTr(c.firstName || ''), ln = titleCaseTr(c.lastName || '');
+      const fn = nameForSave(c.firstName || ''), ln = nameForSave(c.lastName || '');
       return (fn !== (c.firstName || '') || ln !== (c.lastName || '')) && (c.firstName || c.lastName);
     });
     if (needsFix.length === 0) { showToast?.('Düzeltilecek isim yok — hepsi düzgün ✓', 'success'); return; }
-    if (!window.confirm(`${needsFix.length} müşterinin adı düzeltilecek (örn: "${needsFix[0].firstName} ${needsFix[0].lastName}" → "${titleCaseTr(needsFix[0].firstName)} ${titleCaseTr(needsFix[0].lastName)}").\n\nDevam edilsin mi?`)) return;
+    if (!window.confirm(`${needsFix.length} müşterinin adı düzeltilecek (örn: "${needsFix[0].firstName} ${needsFix[0].lastName}" → "${nameForSave(needsFix[0].firstName)} ${nameForSave(needsFix[0].lastName)}").\n\nDevam edilsin mi?`)) return;
     const now = new Date().toISOString();
     const idOf = (c) => c._docId || String(c.id);
     const fixedMap = {};
-    needsFix.forEach(c => { fixedMap[idOf(c)] = { firstName: titleCaseTr(c.firstName || ''), lastName: titleCaseTr(c.lastName || '') }; });
+    needsFix.forEach(c => { fixedMap[idOf(c)] = { firstName: nameForSave(c.firstName || ''), lastName: nameForSave(c.lastName || '') }; });
     setCustomers(prev => prev.map(c => fixedMap[idOf(c)] ? { ...c, ...fixedMap[idOf(c)], updatedAt: now } : c));
     let ok = 0, fail = 0;
     for (const c of needsFix) {
@@ -3984,8 +4116,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const now = new Date().toISOString();
     const fullData = {
       ...formData,
-      firstName: titleCaseTr(formData.firstName || ''),
-      lastName: titleCaseTr(formData.lastName || ''),
+      firstName: nameForSave(formData.firstName || ''),
+      lastName: nameForSave(formData.lastName || ''),
       passports: JSON.stringify(Array.isArray(passports) ? passports : []),
       schengenVisas: JSON.stringify(Array.isArray(schengenVisas) ? schengenVisas : []),
       usaVisa: usaVisa
@@ -4056,12 +4188,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     catch (e) { showToast?.('❌ Firestore\'dan silinemedi: ' + e.message, 'error'); }
   };
 
-  const mainTabStyle = (active) => ({
-    flex: 1, padding: '10px 8px', background: active ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)',
-    border: active ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '8px', color: active ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: active ? '600' : '400',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px'
-  });
 
 
 
@@ -4168,7 +4294,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                       );
                     })()}
                   </div>
-                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value.toLowerCase()})} placeholder="ornek@email.com" />
+                  <FormInput label="E-posta" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: normEmail(e.target.value)})} placeholder="ornek@email.com" />
                 </div>
               </div>
             </div>
@@ -4207,8 +4333,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         return <FormInput key={idx} label={field} value={formData[k] || ''} onChange={e => setFormData({...formData, [k]: e.target.value})} placeholder={field} />;
                       }
                       // Diğer alanlar için generic input - field ismini key olarak kullan
-                      const fieldKey = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                      return <FormInput key={idx} label={field} value={formData[fieldKey] || ''} onChange={e => setFormData({...formData, [fieldKey]: e.target.value})} placeholder={field} />;
+                      const fieldKey = fieldKeyTr(field), oldKey = fieldKeyLegacy(field);
+                      return <FormInput key={idx} label={field} value={extraFieldVal(formData, field) || ''} onChange={e => { const n = { ...formData, [fieldKey]: e.target.value }; if (oldKey !== fieldKey) delete n[oldKey]; setFormData(n); }} placeholder={field} />;
                     }
                   })}
                 </div>
@@ -4284,7 +4410,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <DateInput label="Geçerlilik" value={passport.expiryDate || ''} onChange={v => updatePassport(passport.id, 'expiryDate', v)} />
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={labelStyle}>Pasaport Türü</label>
-                      <select value={passport.passportType || ''} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '10px', fontSize: '13px', width: '100%' }}>
+                      <select value={canonPassportType(passport.passportType || '')} onChange={e => updatePassport(passport.id, 'passportType', e.target.value)} style={{ ...selectStyle, padding: '10px', fontSize: '13px', width: '100%' }}>
                         {passportTypes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
@@ -4503,8 +4629,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = safeParseObj(c.usaVisa);
     const hasGreenPassport = cPassports.some(p =>
-      p.passportType === 'Yeşil Pasaport (Hususi)' ||
-      p.passportType?.includes('Yeşil') ||
+      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
       (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
     );
 
@@ -4605,7 +4730,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   ['Firma', titleCaseTr(c.companyName)],
                   ['Sektör', c.sector],
                   ['TK Üyelik', c.tkMemberNo || c.tk_uyelik_no],
-                  ['E-posta', (c.email || '').toLowerCase()],
+                  ['E-posta', normEmail(c.email)],
                 ].filter(([, v]) => v && v !== '-');
                 const missing = [!c.tcKimlik && 'TC', !c.birthDate && 'doğum tarihi', !c.email && 'e-posta', !cPassports.length && 'pasaport'].filter(Boolean);
 
@@ -4655,7 +4780,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px' }}>
                     <button type="button" onClick={() => setDetailTab('passport')} style={card(ppColor)}>
                       <div style={cardHead}><span>🛂 PASAPORT</span>{cPassports.length > 1 && <span>{cPassports.length} adet</span>}</div>
-                      <div style={big}>{pp ? `${pp.passportType?.includes('Yeşil') ? '🟢 Yeşil' : pp.passportType?.includes('Gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
+                      <div style={big}>{pp ? `${trHas(pp.passportType, 'yesil') ? '🟢 Yeşil' : trHas(pp.passportType, 'gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
                       <div style={{ ...small, color: ppColor, fontWeight: '600' }}>{pp?.expiryDate ? `Bitiş ${formatDate(pp.expiryDate)} · ` : ''}{ppNote}</div>
                     </button>
                     <button type="button" onClick={() => setDetailTab(lastApp ? 'timeline' : 'schengen')} style={card(lastApp ? '#f59e0b' : hasGreenPassport ? '#10b981' : '#64748b')}>
@@ -4721,8 +4846,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
               {appSettings?.personalDetailsFields?.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f)).length > 0 && (() => {
                 const extraFields = appSettings.personalDetailsFields.filter(f => !['Doğum Tarihi', 'İkametgah İli', 'Doğum Yeri'].includes(f));
                 const hasValues = extraFields.some(f => {
-                  const k = f.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                  return c[k];
+                  return extraFieldVal(c, f);
                 });
                 if (!hasValues) return null;
                 return (
@@ -4733,8 +4857,8 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       {extraFields.map((field, idx) => {
-                        const k = field.toLowerCase().replace(/\s+/g, '_').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c');
-                        return c[k] ? <InfoBox key={idx} label={field} value={c[k]} /> : null;
+                        const val = extraFieldVal(c, field);
+                        return val ? <InfoBox key={idx} label={field} value={val} /> : null;
                       })}
                     </div>
                   </div>
@@ -4758,9 +4882,9 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                     <div key={p.id || idx} style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.03) 100%)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(59,130,246,0.2)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: p.passportType?.includes('Yeşil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: trHas(p.passportType, 'yesil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
                           <div>
-                            <h4 style={{ margin: 0, fontSize: '14px', color: p.passportType?.includes('Yeşil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
+                            <h4 style={{ margin: 0, fontSize: '14px', color: trHas(p.passportType, 'yesil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
                             <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{p.nationality || 'Türkiye'}</p>
                           </div>
                         </div>
@@ -5023,7 +5147,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   };
 
   // Müşteri Kartı Render
-  const renderCustomerCard = (c) => {
+  const renderCustomerCard = (c, selectable) => {
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = safeParseObj(c.usaVisa);
@@ -5032,10 +5156,13 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     return (
       <div key={c.id} onClick={() => setSelectedCustomer(c)} {...ctxHandlers(c)} title="Sağ tık: vize başvurusu / tura ekle" style={{ background: c.verified !== true ? 'rgba(234,179,8,0.04)' : 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', border: c.verified !== true ? '1px solid rgba(234,179,8,0.25)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-          <div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', minWidth: 0 }}>
+            {selectable && <input type="checkbox" checked={selIds.includes(c.id)} onClick={e => e.stopPropagation()} onChange={() => toggleSel(c.id)} aria-label="Seç" style={{ width: '18px', height: '18px', marginTop: '1px', accentColor: '#f59e0b', flex: 'none', cursor: 'pointer' }} />}
+          <div style={{ minWidth: 0 }}>
             <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} {c.city && `• ${c.city}`}</p>
-            {c.sector && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{c.sector}</p>}
+            {(c.companyName || c.sector) && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{[c.companyName, c.sector].filter(Boolean).join(' · ')}</p>}
+          </div>
           </div>
           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {c.verified === true && <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>✓</span>}
@@ -5053,7 +5180,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const todayYmd = new Date().toISOString().slice(0, 10);
   const pickTours = tourPickFor ? tours
     .filter(t => !t.deleted && (t.endDate || t.startDate || '9999') >= todayYmd)
-    .filter(t => { const q = tourPickQ.trim().toLocaleLowerCase('tr'); return !q || `${t.name || ''} ${t.country || ''} ${t.city || ''}`.toLocaleLowerCase('tr').includes(q); })
+    .filter(t => { const q = tourPickQ.trim(); return !q || trHas(`${t.name || ''} ${t.country || ''} ${t.city || ''}`, q); })
     .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || ''))) : [];
   const custInTour = (t, c) => (t.reservations || []).some(r => !r.cancelled && String(r.customerId) === String(c.id));
 
@@ -5067,6 +5194,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           <button style={{ ...ctxItem, color: '#94a3b8' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); setSelectedCustomer(c); }}>👤 Müşteri kartını aç</button>
         </div>
       )}
+      {selIds.length > 0 && (() => {
+        const selCusts = selIds.map(id => customers.find(c => c.id === id)).filter(Boolean);
+        return (
+          <div style={{ position: 'fixed', left: isMobile ? '8px' : '50%', right: isMobile ? '8px' : 'auto', transform: isMobile ? 'none' : 'translateX(-50%)', bottom: isMobile ? '12px' : '24px', zIndex: 2500, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '14px', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
+            <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
+            <button onClick={() => { setSelIds([]); onGo?.('visa', { type: 'visaForMany', customers: selCusts }); }} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📑 Vize başvurusu</button>
+            <button onClick={() => exportToExcel(selCusts, `Secili_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)', background: 'none', color: '#10b981', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
+            <button onClick={() => setSelIds([])} aria-label="Seçimi temizle" style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>✕</button>
+          </div>
+        );
+      })()}
       {tourPickFor && (
         <div onClick={() => setTourPickFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
@@ -5075,92 +5214,83 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 <h3 style={{ margin: 0, fontSize: '16px' }}>🎫 Tura ekle</h3>
                 <button onClick={() => setTourPickFor(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
               </div>
-              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{titleCaseTr(tourPickFor.firstName)} {titleCaseTr(tourPickFor.lastName)} hangi tura eklensin?</p>
+              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tourPickFor.many ? `Seçilen ${tourPickFor.many.length} kişi` : `${titleCaseTr(tourPickFor.firstName)} ${titleCaseTr(tourPickFor.lastName)}`} hangi tura eklensin?</p>
               <input autoFocus value={tourPickQ} onChange={e => setTourPickQ(e.target.value)} placeholder="Tur ara..." style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
             </div>
             <div style={{ overflowY: 'auto', padding: '8px' }}>
               {pickTours.length === 0 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', padding: '20px' }}>Yaklaşan tur yok</p>}
-              {pickTours.map(t => { const inT = custInTour(t, tourPickFor); return (
-                <button key={t.id} disabled={inT} onClick={() => { const c = tourPickFor; setTourPickFor(null); onGo?.('tours', { type: 'resFor', tourId: t.id, customer: c }); }}
+              {pickTours.map(t => {
+                const many = tourPickFor.many;
+                const already = many ? many.filter(c => custInTour(t, c)).length : 0;
+                const inT = many ? already === many.length : custInTour(t, tourPickFor);
+                return (
+                <button key={t.id} disabled={inT} onClick={() => {
+                  const c = tourPickFor; setTourPickFor(null);
+                  if (c.many) { setSelIds([]); onGo?.('tours', { type: 'resForMany', tourId: t.id, customers: c.many }); }
+                  else onGo?.('tours', { type: 'resFor', tourId: t.id, customer: c });
+                }}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px 12px', marginBottom: '6px', color: '#e8f1f8', cursor: inT ? 'not-allowed' : 'pointer', opacity: inT ? 0.5 : 1 }}>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: '13px', fontWeight: 600 }}>{t.name}</span>
                     <span style={{ display: 'block', fontSize: '11px', color: '#94a3b8' }}>{formatDate(t.startDate)}{t.endDate ? ` – ${formatDate(t.endDate)}` : ''} · {(t.reservations || []).filter(r => !r.cancelled).length} kişi</span>
                   </span>
-                  <span style={{ fontSize: '11px', color: inT ? '#10b981' : '#3b82f6', whiteSpace: 'nowrap' }}>{inT ? '✓ zaten kayıtlı' : 'Seç →'}</span>
+                  <span style={{ fontSize: '11px', color: inT ? '#10b981' : '#3b82f6', whiteSpace: 'nowrap' }}>{inT ? '✓ zaten kayıtlı' : many && already ? `${many.length - already} kişi eklenecek →` : 'Seç →'}</span>
                 </button>
               ); })}
             </div>
           </div>
         </div>
       )}
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <h2 style={{ fontSize: '20px', margin: 0 }}>👥 Müşteriler ({customers.length})</h2>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={async () => {
+      {/* Başlık: ad + toplam, sağda tek ana eylem (Yeni) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+        <h2 style={{ fontSize: '20px', margin: 0, display: 'flex', alignItems: 'baseline', gap: '8px' }}>👥 Müşteriler <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>{customers.length.toLocaleString('tr-TR')}</span></h2>
+        <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 18px', color: '#0c1929', fontWeight: '700', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}>➕ Yeni</button>
+      </div>
+      {/* İkincil işlemler: eşit, küçük düğmeler — telefonda tek satır, yana kayar */}
+      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px', marginBottom: '12px', scrollbarWidth: 'none' }}>
+        {[
+          ['🔄', 'Yenile', '#60a5fa', async () => {
             showToast?.('🔄 Yenileniyor...', 'info');
             try {
               const snapshot = await getDocs(collection(db, 'customers'));
-              const items = snapshot.docs
-                .map(d => ({ ...d.data(), _docId: d.id }))
-                .filter(c => c.firstName || c.lastName);
+              const items = snapshot.docs.map(d => ({ ...d.data(), _docId: d.id })).filter(c => c.firstName || c.lastName);
               setCustomers(items);
               showToast?.(`✅ ${items.length} müşteri yüklendi`, 'success');
-            } catch (e) {
-              showToast?.('❌ Yenileme hatası: ' + e.message, 'error');
-            }
-          }} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>🔄 Yenile</button>
-          <button onClick={() => setShowExcelModal(true)} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📊 Excel</button>
-          <button onClick={() => setShowDupScan(true)} title="Aynı TC farklı isim, aynı pasaport, mükerrer kayıt ve geçersiz TC'leri listeler" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔍 Mükerrer / TC Kontrol</button>
-          <button onClick={() => setShowDocInbox(true)} title="Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler" style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '8px', padding: '8px 12px', color: '#22c55e', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📤 Belge Yükle</button>
-          <button onClick={() => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', padding: '8px 12px', color: '#8b5cf6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🤖 AI</button>
-          <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni</button>
-        </div>
+            } catch (e) { showToast?.('❌ Yenileme hatası: ' + e.message, 'error'); }
+          }, 'Müşterileri sunucudan yeniden yükle'],
+          ['📊', 'Excel', '#34d399', () => setShowExcelModal(true), 'Excel içe / dışa aktar'],
+          ['🤖', 'AI ile ekle', '#a78bfa', () => { setAiText(''); setAiResult(null); setAiImages([]); setShowAiModal(true); }, 'Metin veya pasaport görselinden müşteri ekle'],
+          ['📤', 'Belge yükle', '#4ade80', () => setShowDocInbox(true), 'Bilet, biniş kartı, otel belgesi… isimden müşteriyi bulup linkine ekler'],
+          ['🔍', 'Mükerrer / TC', '#f87171', () => setShowDupScan(true), 'Aynı TC farklı isim, aynı pasaport, mükerrer kayıt ve geçersiz TC\'leri listeler'],
+        ].map(([ic, label, color, fn, title]) => (
+          <button key={label} onClick={fn} title={title} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color, cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            <span>{ic}</span>{label}
+          </button>
+        ))}
       </div>
 
-      {/* Ana Sekmeler - Satır 1 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' }}>
-        <button onClick={() => { setActiveTab('search'); setShowResults(false); }} style={mainTabStyle(activeTab === 'search')}>
-          <span style={{ fontSize: '14px' }}>🔍</span>
-          <span>Arama</span>
-        </button>
-        <button onClick={() => setActiveTab('expiring')} style={mainTabStyle(activeTab === 'expiring')}>
-          <span style={{ fontSize: '14px' }}>⚠️</span>
-          <span>Pasaport ({expiringPassports.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('birthday')} style={mainTabStyle(activeTab === 'birthday')}>
-          <span style={{ fontSize: '14px' }}>🎂</span>
-          <span>Doğum Günü ({todayBirthdays.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('schengen')} style={{ ...mainTabStyle(activeTab === 'schengen'), background: activeTab === 'schengen' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'schengen' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'schengen' ? '#10b981' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇪🇺</span>
-          <span>Schengen ({withSchengen.length})</span>
-        </button>
-      </div>
-
-      {/* Ana Sekmeler - Satır 2 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '16px' }}>
-        <button onClick={() => setActiveTab('schengenExpiring')} style={{ ...mainTabStyle(activeTab === 'schengenExpiring'), background: activeTab === 'schengenExpiring' ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'schengenExpiring' ? '1px solid rgba(234,179,8,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'schengenExpiring' ? '#eab308' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇪🇺⏰</span>
-          <span>Sch. 3ay ({schengenExpiring.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('usa')} style={{ ...mainTabStyle(activeTab === 'usa'), background: activeTab === 'usa' ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'usa' ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'usa' ? '#8b5cf6' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇺🇸</span>
-          <span>ABD ({withUsa.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('usaExpiring')} style={{ ...mainTabStyle(activeTab === 'usaExpiring'), background: activeTab === 'usaExpiring' ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'usaExpiring' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'usaExpiring' ? '#ef4444' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🇺🇸⏰</span>
-          <span>ABD 1ay ({usaExpiring.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('greenPassport')} style={{ ...mainTabStyle(activeTab === 'greenPassport'), background: activeTab === 'greenPassport' ? 'rgba(5,150,105,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'greenPassport' ? '1px solid rgba(5,150,105,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'greenPassport' ? '#059669' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>🟢</span>
-          <span>Yeşil Pas. ({withGreenPassport.length})</span>
-        </button>
-        <button onClick={() => setActiveTab('dateRange')} style={{ ...mainTabStyle(activeTab === 'dateRange'), background: activeTab === 'dateRange' ? 'rgba(6,182,212,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'dateRange' ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(255,255,255,0.1)', color: activeTab === 'dateRange' ? '#06b6d4' : '#94a3b8' }}>
-          <span style={{ fontSize: '14px' }}>📅</span>
-          <span>Vize Tarih{dateRangeFrom && dateRangeTo ? ` (${dateRangeMatches.length})` : ''}</span>
-        </button>
+      {/* Sekmeler: tek satır çip, sayılar rozet — telefonda yana kayar */}
+      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px', scrollbarWidth: 'none' }}>
+        {[
+          ['search', '🔍', 'Arama', null, '#f59e0b'],
+          ['expiring', '⚠️', 'Pasaport', expiringPassports.length, '#ef4444'],
+          ['birthday', '🎂', 'Doğum günü', todayBirthdays.length, '#f472b6'],
+          ['schengen', '🇪🇺', 'Schengen', withSchengen.length, '#10b981'],
+          ['schengenExpiring', '⏰', 'Sch. 3 ay', schengenExpiring.length, '#eab308'],
+          ['usa', '🇺🇸', 'ABD', withUsa.length, '#8b5cf6'],
+          ['usaExpiring', '⏰', 'ABD 1 ay', usaExpiring.length, '#ef4444'],
+          ['greenPassport', '🟢', 'Yeşil pas.', withGreenPassport.length, '#059669'],
+          ['dateRange', '📅', 'Vize tarih', dateRangeFrom && dateRangeTo ? dateRangeMatches.length : null, '#06b6d4'],
+        ].map(([key, ic, label, n, color]) => {
+          const on = activeTab === key;
+          return (
+            <button key={key} onClick={() => setActiveTab(key)} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '13px', fontWeight: on ? 700 : 500, whiteSpace: 'nowrap',
+              background: on ? `${color}26` : 'rgba(255,255,255,0.04)', border: `1px solid ${on ? color + '80' : 'rgba(255,255,255,0.1)'}`, color: on ? color : '#cbd5e1' }}>
+              <span>{ic}</span>{label}
+              {n != null && <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 7px', borderRadius: '999px', background: n > 0 && key !== 'search' ? `${color}33` : 'rgba(255,255,255,0.08)', color: n > 0 ? (on ? color : '#e2e8f0') : '#64748b' }}>{n}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* VİZE TARİH ARALIĞI SEKMESİ */}
@@ -5226,57 +5356,58 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
       )}
 
-      {/* ARAMA SEKMESİ */}
+      {/* ARAMA SEKMESİ — tek kutu, yazdıkça sonuç */}
       {activeTab === 'search' && (
         <>
-          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '8px' }}>
-              <FormInput label="Ad" value={filters.firstName} onChange={e => setFilters({...filters, firstName: e.target.value})} placeholder="Ad ara..." />
-              <FormInput label="Soyad" value={filters.lastName} onChange={e => setFilters({...filters, lastName: e.target.value})} placeholder="Soyad ara..." />
-              <FormInput label="TC Kimlik" value={filters.tcKimlik} onChange={e => setFilters({...filters, tcKimlik: e.target.value})} placeholder="TC ara..." />
-              <FormInput label="Telefon" value={filters.phone} onChange={e => setFilters({...filters, phone: e.target.value})} placeholder="Telefon ara..." />
-              <FormInput label="E-posta" value={filters.email} onChange={e => setFilters({...filters, email: e.target.value})} placeholder="E-posta ara..." />
-              <FormInput label="Doğum Yeri" value={filters.birthPlace} onChange={e => setFilters({...filters, birthPlace: e.target.value})} placeholder="Doğum yeri ara..." />
-              <div>
-                <label style={labelStyle}>İkametgah İli</label>
-                <select value={filters.city} onChange={e => setFilters({...filters, city: e.target.value})} style={selectStyle}>
-                  <option value="">Tümü</option>
-                  {turkishProvinces.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <FormInput label="TK Üyelik No" value={filters.tkMemberNo} onChange={e => setFilters({...filters, tkMemberNo: e.target.value})} placeholder="TK No ara..." />
-              <div>
-                <label style={labelStyle}>Sektör</label>
-                <select value={filters.sector} onChange={e => setFilters({...filters, sector: e.target.value})} style={selectStyle}>
-                  <option value="">Tümü</option>
-                  {(appSettings?.sectors || []).map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <FormInput label="Firma" value={filters.companyName} onChange={e => setFilters({...filters, companyName: e.target.value})} placeholder="Firma ara..." />
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button onClick={handleSearch} disabled={!hasActiveFilter} style={{ flex: 1, padding: '10px', background: hasActiveFilter ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', color: hasActiveFilter ? 'white' : '#64748b', fontWeight: '600', cursor: hasActiveFilter ? 'pointer' : 'not-allowed', fontSize: '13px' }}>🔍 Ara ({hasActiveFilter ? filtered.length : 0} sonuç)</button>
-              <button onClick={clearFilters} style={{ padding: '10px 16px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '13px' }}>✕ Temizle</button>
-              {showResults && filtered.length > 0 && (
-                <button onClick={() => exportToExcel(filtered, `Musteri_Arama_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '10px 16px', background: 'rgba(16,185,129,0.2)', border: 'none', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
-              )}
-            </div>
+          <div style={{ position: 'relative', marginBottom: '8px' }}>
+            <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', opacity: 0.7, pointerEvents: 'none' }}>🔍</span>
+            <input value={q} onChange={e => setQ(e.target.value)} autoFocus={!isMobile} placeholder="Ad, soyad, TC, telefon, pasaport, e-posta…"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '14px 44px 14px 42px', fontSize: '16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#e8f1f8', outline: 'none' }} />
+            {(q || filters.city || filters.sector) && (
+              <button onClick={clearFilters} aria-label="Temizle" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#cbd5e1', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+            )}
           </div>
-
-          {/* Arama Sonuçları */}
-          {showResults && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {filtered.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>Arama kriterlerine uygun müşteri bulunamadı</p>
-              ) : (
-                filtered.map(c => renderCustomerCard(c))
-              )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '12px' }}>
+            <button onClick={() => setShowFilters(v => !v)} style={{ background: (filters.city || filters.sector) ? 'rgba(245,158,11,0.15)' : 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '5px 10px', color: (filters.city || filters.sector) ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>
+              ⚙️ Filtre{(filters.city || filters.sector) ? ` (${[filters.city, filters.sector].filter(Boolean).join(', ')})` : ''} {showFilters ? '▲' : '▼'}
+            </button>
+            {hasActiveFilter && <span style={{ color: '#94a3b8' }}>{filtered.length} sonuç</span>}
+            {hasActiveFilter && filtered.length > 0 && (
+              <button onClick={() => exportToExcel(filtered, `Musteri_Arama_${new Date().toLocaleDateString('tr')}`)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '5px 10px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>📥 Excel</button>
+            )}
+          </div>
+          {showFilters && (
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '220px 220px', gap: '8px', marginBottom: '12px' }}>
+              <select value={filters.city} onChange={e => setFilters({ ...filters, city: e.target.value })} style={selectStyle}>
+                <option value="">İkamet ili: Tümü</option>
+                {turkishProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <select value={filters.sector} onChange={e => setFilters({ ...filters, sector: e.target.value })} style={selectStyle}>
+                <option value="">Sektör: Tümü</option>
+                {(appSettings?.sectors || []).map(x => <option key={x} value={x}>{x}</option>)}
+              </select>
             </div>
           )}
-          
-          {!showResults && (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-              <p style={{ fontSize: '14px' }}>Yukarıdaki filtrelerden en az birini doldurup "Ara" butonuna tıklayın</p>
+
+          {hasActiveFilter ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filtered.length === 0
+                ? <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>"{q}" ile eşleşen müşteri yok</p>
+                : (<>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}>
+                      <input type="checkbox" checked={filtered.slice(0, 150).every(c => selIds.includes(c.id))}
+                        onChange={e => { const ids = filtered.slice(0, 150).map(c => c.id); setSelIds(p => e.target.checked ? [...new Set([...p, ...ids])] : p.filter(x => !ids.includes(x))); }}
+                        style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }} />
+                      Tümünü seç ({Math.min(filtered.length, 150)})
+                    </label>
+                    {filtered.slice(0, 150).map(c => renderCustomerCard(c, true))}
+                  </>)}
+              {filtered.length > 150 && <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', padding: '8px' }}>İlk 150 sonuç gösteriliyor — aramayı daraltın (ör. ad + soyad)</p>}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b', fontSize: '13px', lineHeight: 1.7 }}>
+              Yazmaya başlayın — sonuçlar anında gelir.<br />
+              <span style={{ fontSize: '12px' }}>Örnek: <i>ahmet öner</i> · <i>0532 111</i> · <i>U4137</i> · <i>gedik</i></span>
             </div>
           )}
         </>
@@ -5497,7 +5628,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
           ) : (
             withGreenPassport.map(c => {
               const pList = safeParseJSON(c.passports);
-              const greenPassport = pList.find(p => p.passportType === 'Yeşil Pasaport (Hususi)');
+              const greenPassport = pList.find(p => trHas(p.passportType, 'yesil'));
               return (
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(5,150,105,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(5,150,105,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5891,8 +6022,9 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                         };
                         delete newCust._passports; delete newCust._schengen; delete newCust._usaVisa; delete newCust._duplicate; delete newCust._likelyDup; delete newCust._tcWarn;
                         delete newCust._duplicateCustomer; delete newCust._addPassportTo; delete newCust._dupTcMsg;
-                        newCust.firstName = titleCaseTr(newCust.firstName || '');
-                        newCust.lastName = titleCaseTr(newCust.lastName || '');
+                        newCust.firstName = nameForSave(newCust.firstName || '');
+                        newCust.lastName = nameForSave(newCust.lastName || '');
+                        if (newCust.email) newCust.email = normEmail(newCust.email);
                         newCust.passports = JSON.stringify(newCust.passports);
                         newCust.schengenVisas = JSON.stringify(newCust.schengenVisas);
                         newCust.usaVisa = JSON.stringify(newCust.usaVisa);
@@ -6037,7 +6169,13 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
 
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
-      {showDupScan && <DuplicateScanModal customers={customers} onOpen={(c) => { setDetailTab('info'); setSelectedCustomer(c); }} onClose={() => setShowDupScan(false)} />}
+      {showDupScan && <DuplicateScanModal customers={customers} onOpen={(c) => { setDetailTab('info'); setSelectedCustomer(c); }} onClose={() => setShowDupScan(false)}
+        onPatch={async (c, patch) => {
+          const id = c._docId || String(c.id);
+          setCustomers(prev => prev.map(x => (x._docId || String(x.id)) === id ? { ...x, ...patch } : x));
+          try { await setDoc(doc(db, 'customers', id), { ...patch, updatedAt: new Date().toISOString() }, { merge: true }); showToast?.(patch.firstName ? `✓ ${patch.firstName} ${patch.lastName} olarak düzeltildi` : 'Listeden çıkarıldı', 'success'); }
+          catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+        }} />}
       {showDocInbox && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} onClose={() => setShowDocInbox(false)} />}
       {shareCust && <CustomerShareModal customer={shareCust} appSettings={appSettings} showToast={showToast} onClose={() => setShareCust(null)}
         onSaved={(patch) => {
@@ -6231,7 +6369,7 @@ function SmtpConfigCard({ appSettings, setAppSettings, showToast, settingsKey = 
       <input
         type={opts.pass && !showPass ? 'password' : 'text'}
         value={smtp[key] || ''}
-        onChange={e => set({ [key]: opts.lower ? e.target.value.toLowerCase() : e.target.value })}
+        onChange={e => set({ [key]: opts.lower ? normEmail(e.target.value) : e.target.value })}
         placeholder={opts.placeholder || ''}
         style={{ width: '100%', maxWidth: '380px', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
       />
@@ -6280,8 +6418,7 @@ function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, showToa
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTypes = allVisaTypes.filter(t =>
-    t.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.cat.toLowerCase().includes(searchTerm.toLowerCase())
+    trHas(t.label, searchTerm) || trHas(t.cat, searchTerm)
   );
 
   const currentTemplate = appSettings?.emailTemplates?.[activeKey] || { subject: '', body: '' };
@@ -6673,7 +6810,7 @@ const nextBizDay = (ymd) => {
 const visaFutureDate = (v) => {
   if (!v.processDate || v.processDate <= ymdLocal(new Date())) return '';
   if (v.pnr || v.appointmentDate) return '';
-  if (/başvuru yapıldı|randevu alındı|konsolos|sonu[çc]|onay|red|iptal|teslim/.test(String(v.status || '').toLocaleLowerCase('tr-TR'))) return '';
+  if (/basvuru yapildi|randevu alindi|konsolos|sonuc|onay|red|iptal|teslim/.test(normalizeTr(v.status))) return '';
   return v.processDate;
 };
 
@@ -6696,6 +6833,11 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const ids = new Set(selectedIds);
     const targets = visaApplications.filter(v => ids.has(v.id));
     if (!targets.length || bulkBusy) return;
+    if (isCancelStatus(patch.status)) {
+      const r = askCancelReason(`${targets.length} başvuru`);
+      if (!r) { if (r !== null) showToast?.('İptal sebebi girmeden durum değiştirilemez', 'warning'); return; }
+      patch = { ...patch, cancelReason: r, cancelledAt: new Date().toISOString() };
+    }
     if (!window.confirm(`${targets.length} başvuru "${label}" olarak işaretlenecek. Devam edilsin mi?`)) return;
     setBulkBusy(true);
     const before = targets.map(v => ({ ...v }));
@@ -6725,9 +6867,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     const catLabel = { schengen: 'Schengen', usa: 'Amerika', russia: 'Rusya', uk: 'İngiltere', uae: 'BAE', china: 'Çin', other: 'Diğer' };
     if (v.country && v.country.trim()) {
       const c = v.country.trim();
-      if (/amerika|birleşik devlet|abd|usa/i.test(c)) return 'Amerika';
-      if (/birleşik krallık|ingiltere|i̇ngiltere|united kingdom/i.test(c)) return 'İngiltere';
-      if (/birleşik arap|b\.?a\.?e\.?|uae/i.test(c)) return 'BAE';
+      const cn = normalizeTr(c);
+      if (/amerika|birlesik devlet|\babd\b|\busa\b/.test(cn)) return 'Amerika';
+      if (/birlesik krallik|ingiltere|united kingdom/.test(cn)) return 'İngiltere';
+      if (/birlesik arap|\bb\.?a\.?e\.?\b|\buae\b/.test(cn)) return 'BAE';
       return c;
     }
     const cid = v.categoryId || v.category;
@@ -6737,7 +6880,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     // Kelime sınırıyla eşleştir: kısa ülke adları (Mali, Gana, Çad...) başka kelimelerin içinde yakalanmasın
     const words = ` ${normalizeTr(txt).replace(/[^a-z0-9]+/g, ' ')} `;
     const match = known.find(c => words.includes(` ${normalizeTr(c).replace(/[^a-z0-9]+/g, ' ').trim()} `));
-    if (match) return /amerika|birleşik devlet/i.test(match) ? 'Amerika' : match;
+    if (match) return trHas(match, 'amerika', 'birlesik devlet') ? 'Amerika' : match;
     if (cid && catLabel[cid]) return catLabel[cid];
     return '';
   };
@@ -6745,7 +6888,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [idataText, setIdataText] = useState('');
   const [idataParsed, setIdataParsed] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [relinkOpen, setRelinkOpen] = useState(false); // başvurunun müşterisini değiştir
   const [relinkQ, setRelinkQ] = useState('');
   const findVisaCust = (id) => (id == null || id === '') ? null : (customers || []).find(c => String(c.id) === String(id) || (c._docId && c._docId === String(id))) || null;
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -6843,7 +6985,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       const line = rawLine.trim();
       if (!line) continue;
       // Başlık satırını atla
-      if (/AD\s*SOYAD|PNR|GİDİŞ|RANDEVU TARİHİ/i.test(line) && !pnrRe.test(line.replace(/PNR/i,''))) continue;
+      if (/ad\s*soyad|pnr|gidis|randevu tarihi/.test(normalizeTr(line)) && !pnrRe.test(line.replace(/PNR/i,''))) continue;
       const m = line.match(pnrRe);
       if (!m) continue;
       const pnr = m[1];
@@ -6929,7 +7071,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         appointmentDate: match.appointmentDate || v.appointmentDate,
         appointmentTime: match.appointmentTime || v.appointmentTime,
         // Randevu durumu "Atama Bekliyor" ise statüyü güncelle
-        status: /atama bekliyor/i.test(match.appointmentStatus) ? 'Atama Bekliyor' : (/bekliyor/i.test(match.appointmentStatus) ? 'Randevu Bekliyor' : v.status),
+        status: trHas(match.appointmentStatus, 'atama bekliyor') ? 'Atama Bekliyor' : (trHas(match.appointmentStatus, 'bekliyor') ? 'Randevu Bekliyor' : v.status),
         idataStatus: match.appointmentStatus || ''
       };
     });
@@ -6994,7 +7136,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
         'Ülke': extractVisaCountry(v) || '',
         'Vize Türü': v.visaType || (() => {
           const ulke = extractVisaCountry(v);
-          const rest = String(v.visaDuration || '').replace(new RegExp(ulke ? ulke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '^$', 'i'), '').trim();
+          // Tür adından ülkeyi at ("Italya Ticari" − "İtalya" → "Ticari"): normalizeTr uzunluğu korur, aynı konumdan kesilir
+          const vd = String(v.visaDuration || ''), at = ulke ? normalizeTr(vd).indexOf(normalizeTr(ulke)) : -1;
+          const rest = (at >= 0 ? vd.slice(0, at) + vd.slice(at + normalizeTr(ulke).length) : vd).replace(/\s+/g, ' ').trim();
           return rest && rest !== v.visaDuration ? rest : '';
         })(),
         'Vize Süresi': v.visaDuration || '',
@@ -7073,7 +7217,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setFormStep('search');
     setSearchQuery('');
     setSelectedCustomer(null);
-    setRelinkOpen(false); setRelinkQ('');
+    setRelinkQ('');
     setSelectedCategory(null);
     setChecklist({ passportValid: null, passportCondition: null, addressChecked: null });
     // Maliyet varsayılanları kategori seçilince (selectCategory) uygulanır
@@ -7081,11 +7225,61 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     setEditingVisa(null);
   };
 
+  // 👥 Toplu vize başvurusu (Müşteriler'de çoklu seçim → "Vize başvurusu"): kategori + tür bir kez seçilir,
+  // herkese aynı türde "ilk durum" başvurusu açılır; kişiye özel bilgiler (randevu, PNR…) sonra tek tek girilir.
+  // "Müşteri İptal Etti" (iptal içeren her durum) seçilince sebep zorunlu — boş bırakılırsa durum değişmez
+  const isCancelStatus = (st) => trHas(st, 'iptal'); // /iptal/i "İptal"i tanımaz (İ≠I) — bkz. Türkçe karakter kuralı
+  const askCancelReason = (who, prev = '') => {
+    const r = window.prompt(`${who ? who + ' — ' : ''}İptal sebebi nedir? (zorunlu)`, prev || '');
+    return r === null ? null : r.trim();
+  };
+  const [bulkVisa, setBulkVisa] = useState(null); // { custs, cat, type, country, skip: [id], busy }
+  const openVisaOf = (c, countryName) => visaApplications.filter(v => visaAppBelongsTo(v, c, customers)).find(v => {
+    if (/iptal|onay|red/.test(normalizeTr(v.status))) return false;
+    if (String(v.createdAt || v.applicationDate || '') < new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)) return false;
+    return !countryName || !v.country || normalizeTr(v.country) === normalizeTr(countryName);
+  });
+  const openBulkVisa = (custs) => { setShowForm(false); setBulkVisa({ custs, cat: null, type: null, country: '', skip: custs.filter(c => openVisaOf(c, '')).map(c => c.id), busy: false }); }; // açık başvurusu olan varsayılan olarak dışarıda
+  const bulkCountryFor = (cat, typeName) => {
+    if (!cat) return '';
+    if (cat.countries.length === 1) return cat.countries[0];
+    const n = normalizeTr(typeName || '');
+    return cat.countries.find(c => n.includes(normalizeTr(c))) || '';
+  };
+  const createBulkVisas = async () => {
+    const bv = bulkVisa; if (!bv?.cat || !bv.type) return;
+    const country = bv.country || bulkCountryFor(bv.cat, bv.type.name);
+    const todo = bv.custs.filter(c => !bv.skip.includes(c.id));
+    if (!todo.length) { showToast?.('Başvuru açılacak kişi seçili değil', 'warning'); return; }
+    setBulkVisa({ ...bv, busy: true });
+    const today = new Date().toISOString().split('T')[0];
+    const recs = todo.map(c => ({
+      customerId: c.id, customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(), customerPhone: c.phone || '', customerEmail: c.email || '',
+      category: bv.cat.id, categoryId: bv.cat.id, country, visaType: '',
+      visaDuration: bv.type.name, visaPrice: bv.type.price || 0, visaCurrency: bv.type.currency || '€',
+      applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
+      processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
+      price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '€',
+      id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
+    }));
+    let fail = 0;
+    for (const r of recs) {
+      try { await setDoc(doc(db, 'visa_applications', String(r.id)), { ...r, updatedAt: new Date().toISOString() }, { merge: true }); }
+      catch (e) { fail++; console.warn('Toplu vize kaydı', r.customerName, e.message); }
+    }
+    setVisaApplications(prev => [...prev, ...recs]);
+    logActivity('create', 'Vize', `${recs.length} kişiye toplu başvuru — ${country} ${bv.type.name}`.trim(), currentUser);
+    showToast?.(`✅ ${recs.length} vize başvurusu açıldı (${country || bv.cat.label} · ${bv.type.name})${fail ? ` — ${fail} tanesi sunucuya yazılamadı` : ''}. Randevu ve diğer bilgileri tek tek girin.`, fail ? 'warning' : 'success');
+    setBulkVisa(null);
+  };
+
   const openNewForm = () => { resetForm(); setShowForm(true); };
 
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
   useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
     else if (quickAction?.type === 'visaFor' && quickAction.customer) { resetForm(); setSelectedCustomer(quickAction.customer); setFormStep('checklist'); setShowForm(true); }
+    else if (quickAction?.type === 'visaForMany' && quickAction.customers?.length) openBulkVisa(quickAction.customers);
     onQuickActionDone?.(); }, [quickAction]);
 
   const selectCustomer = (customer) => {
@@ -7298,12 +7492,16 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const handleSubmit = async () => {
     if (!findVisaCust(formData.customerId)) {
       showToast?.('Başvuru bir CRM müşterisine bağlı olmalı — listeden müşteri seçin', 'error');
-      setRelinkOpen(true);
       setTimeout(() => document.getElementById('visa-relink')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       return;
     }
     if (!formData.visaType && !formData.visaDuration) {
       showToast?.('Vize türü seçiniz', 'error');
+      return;
+    }
+    // Yeni iptal edilen (ya da yeni kayıt iptal durumunda) başvuruda sebep zorunlu; eski sebepsiz kayıtlar başka alan düzenlenirken engellenmez
+    if (isCancelStatus(formData.status) && !(formData.cancelReason || '').trim() && !(editingVisa && isCancelStatus(editingVisa.status))) {
+      showToast?.('İptal sebebi zorunlu — Başvuru Durumu altındaki kutuya yazın', 'error');
       return;
     }
     setSaving(true);
@@ -7370,7 +7568,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   const openEditVisa = (visa) => {
     const customer = findVisaCust(visa.customerId);
-    setRelinkOpen(!customer); setRelinkQ(customer ? '' : (visa.customerName || ''));
+    setRelinkQ(customer ? '' : (visa.customerName || '')); // sahipsiz başvuruda seçim kutusu isimle dolu açılır
     const cat = visaCategories.find(c => c.id === visa.category);
     setSelectedCustomer(customer);
     setSelectedCategory(cat);
@@ -7426,15 +7624,15 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
     'Başvuru Yapıldı': '#6366f1', 'Sonuç Bekliyor': '#14b8a6', 'Onaylandı': '#10b981', 'Reddedildi': '#ef4444'
   }[status] || (() => {
     // Ayarlardan eklenen durumlar için anahtar kelimeye göre renk (hepsi gri kalmasın)
-    const t = String(status || '').toLocaleLowerCase('tr-TR');
+    const t = normalizeTr(status);
     if (/onay/.test(t)) return '#10b981';
     if (/iptal/.test(t)) return '#64748b';
     if (/\bred\b|redd/.test(t)) return '#ef4444';
     if (/konsolos/.test(t)) return '#06b6d4';
-    if (/gönderil|gonderil/.test(t)) return '#3b82f6';
+    if (/gonderil/.test(t)) return '#3b82f6';
     if (/topluyor|evrak/.test(t)) return '#f59e0b';
     if (/atama|bekliyor/.test(t)) return '#a855f7';
-    if (/data|vfs|başvuru|basvuru/.test(t)) return '#6366f1';
+    if (/data|vfs|basvuru/.test(t)) return '#6366f1';
     return '#94a3b8';
   })());
 
@@ -7469,25 +7667,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 // Ülkeye göre grupla — bayrak emojisi bazı sistemlerde (Windows) görünmüyor,
                 // bu yüzden kısa Türkçe ülke kodu + renk kullanılıyor
                 const ulkeKodu = (ulke) => {
-                  const u = (ulke || '').toLocaleLowerCase('tr');
+                  const u = normalizeTr(ulke); // Türkçe karakter kuralı: desenler ASCII
                   if (/almanya|german/.test(u)) return { k: 'ALM', r: '#334155' };
-                  if (/amerika|abd|usa|birleşik devlet/.test(u)) return { k: 'ABD', r: '#1e40af' };
+                  if (/amerika|abd|usa|birlesik devlet/.test(u)) return { k: 'ABD', r: '#1e40af' };
                   if (/italya|itali/.test(u)) return { k: 'İTA', r: '#16a34a' };
                   if (/fransa|franc/.test(u)) return { k: 'FRA', r: '#2563eb' };
                   if (/hollanda|nederland|netherland/.test(u)) return { k: 'HOL', r: '#ea580c' };
-                  if (/ingiltere|birleşik krallık|uk|britan/.test(u)) return { k: 'İNG', r: '#1e3a8a' };
+                  if (/ingiltere|birlesik krallik|uk|britan/.test(u)) return { k: 'İNG', r: '#1e3a8a' };
                   if (/rusya|russ/.test(u)) return { k: 'RUS', r: '#1d4ed8' };
-                  if (/çin|cin|china/.test(u)) return { k: 'ÇİN', r: '#dc2626' };
+                  if (/\bcin\b|china/.test(u)) return { k: 'ÇİN', r: '#dc2626' };
                   if (/bae|dubai|emirlik|arap emir/.test(u)) return { k: 'BAE', r: '#166534' };
                   if (/ispanya|spain/.test(u)) return { k: 'İSP', r: '#b91c1c' };
                   if (/yunanistan|greece|greek/.test(u)) return { k: 'YUN', r: '#0284c7' };
                   if (/avusturya|austria/.test(u)) return { k: 'AVU', r: '#b91c1c' };
-                  if (/belçika|belgium/.test(u)) return { k: 'BEL', r: '#ca8a04' };
-                  if (/çekya|çek|czech/.test(u)) return { k: 'ÇEK', r: '#1e40af' };
+                  if (/belcika|belgium/.test(u)) return { k: 'BEL', r: '#ca8a04' };
+                  if (/cekya|cek|czech/.test(u)) return { k: 'ÇEK', r: '#1e40af' };
                   if (/macaristan|hungar/.test(u)) return { k: 'MAC', r: '#16a34a' };
                   if (/polonya|poland|polska/.test(u)) return { k: 'POL', r: '#dc2626' };
                   if (/portekiz|portugal/.test(u)) return { k: 'POR', r: '#16a34a' };
-                  if (/isviçre|switzerland|swiss/.test(u)) return { k: 'İSV', r: '#dc2626' };
+                  if (/isvicre|switzerland|swiss/.test(u)) return { k: 'İSV', r: '#dc2626' };
                   return { k: 'DİĞ', r: '#64748b' };
                 };
                 const grup = {};
@@ -7668,20 +7866,20 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const linked = findVisaCust(formData.customerId);
                 const q = normalizeTr(relinkQ).trim();
                 const qd = relinkQ.replace(/\D/g, '');
-                const results = relinkOpen && q.length >= 2 ? (customers || []).filter(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).includes(q) || (qd.length >= 4 && (String(c.tcKimlik || '').includes(qd) || String(c.phone || '').replace(/\D/g, '').includes(qd)))).slice(0, 8) : [];
+                const results = !linked && q.length >= 2 ? (customers || []).filter(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`).includes(q) || (qd.length >= 4 && (String(c.tcKimlik || '').includes(qd) || String(c.phone || '').replace(/\D/g, '').includes(qd)))).slice(0, 8) : [];
                 const pick = (c) => {
                   setSelectedCustomer(c);
                   setFormData(f => ({ ...f, customerId: c.id, customerName: `${c.firstName || ''} ${c.lastName || ''}`.trim(), customerPhone: c.phone || '', customerEmail: c.email || '' }));
-                  setRelinkOpen(false); setRelinkQ('');
+                  setRelinkQ('');
                 };
                 return (<>
                   <div id="visa-relink" style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {linked
                       ? <span>Müşteri: <strong style={{ color: '#fff' }}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</strong>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
-                    <button type="button" onClick={() => { setRelinkOpen(o => !o); if (!relinkQ && formData.customerName) setRelinkQ(formData.customerName); }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit' }}>{relinkOpen ? 'Kapat' : '🔁 Müşteriyi değiştir'}</button>
                   </div>
-                  {relinkOpen && (
+                  {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
+                  {!linked && (
                     <div style={{ marginTop: '10px' }}>
                       <input autoFocus value={relinkQ} onChange={e => setRelinkQ(e.target.value)} placeholder="Ad soyad, TC veya telefon ara..." style={{ width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
                       {results.map(c => (
@@ -8004,11 +8202,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Başvuru Durumu</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {(appSettings?.visaStatuses || ['Evrak Topluyor', 'Evrak Tamamlandı', 'Randevu Alındı', 'Başvuru Yapıldı', 'Sonuç Bekliyor', 'Onaylandı', 'Reddedildi', 'Ödenmedi']).map(s => (
-                    <button key={s} type="button" onClick={() => setFormData({...formData, status: s})} style={{ padding: '8px 12px', background: formData.status === s ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.05)', border: formData.status === s ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: formData.status === s ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: formData.status === s ? '600' : '400' }}>
+                    <button key={s} type="button" onClick={() => {
+                      if (isCancelStatus(s) && !isCancelStatus(formData.status)) {
+                        const r = askCancelReason(formData.customerName, formData.cancelReason);
+                        if (!r) { if (r !== null) showToast?.('İptal sebebi girmeden durum değiştirilemez', 'warning'); return; }
+                        setFormData({ ...formData, status: s, cancelReason: r, cancelledAt: new Date().toISOString() });
+                        return;
+                      }
+                      setFormData({ ...formData, status: s });
+                    }} style={{ padding: '8px 12px', background: formData.status === s ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.05)', border: formData.status === s ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: formData.status === s ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '11px', fontWeight: formData.status === s ? '600' : '400' }}>
                       {s}
                     </button>
                   ))}
                 </div>
+                {isCancelStatus(formData.status) && (
+                  <div style={{ marginTop: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#f87171', marginBottom: '6px' }}>İptal sebebi *</label>
+                    <input value={formData.cancelReason || ''} onChange={e => setFormData({ ...formData, cancelReason: e.target.value })} placeholder="Ör. seyahatten vazgeçti, fiyatı yüksek buldu, başka acenteye gitti…" style={{ ...inputStyle, borderColor: (formData.cancelReason || '').trim() ? 'rgba(255,255,255,0.15)' : 'rgba(239,68,68,0.6)' }} />
+                  </div>
+                )}
               </div>
 
               {/* Notlar */}
@@ -8096,6 +8308,67 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {bulkVisa && (() => {
+        const bv = bulkVisa;
+        const types = bv.cat ? (appSettings?.visaDurations?.[bv.cat.id] || []).map(d => typeof d === 'string' ? { name: d, price: 0, currency: '€' } : { name: d.name, price: d.price || 0, currency: d.currency || '€' }) : [];
+        const country = bv.country || (bv.type ? bulkCountryFor(bv.cat, bv.type.name) : '');
+        const n = bv.custs.length - bv.skip.length;
+        const chip = (on, color) => ({ padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', fontSize: '13px', border: `1px solid ${on ? color : 'rgba(255,255,255,0.12)'}`, background: on ? `${color}26` : 'rgba(255,255,255,0.04)', color: on ? color : '#e8f1f8', fontWeight: on ? 700 : 500 });
+        return (
+          <div onClick={() => !bv.busy && setBulkVisa(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', padding: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '17px' }}>📑 Toplu vize başvurusu</h3>
+                <button onClick={() => setBulkVisa(null)} disabled={bv.busy} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#94a3b8' }}>Herkese aynı türde başvuru açılır. Randevu, PNR ve kişiye özel bilgileri sonra tek tek girersiniz.</p>
+
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>1 · Kategori</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                {visaCategories.map(c => <button key={c.id} onClick={() => setBulkVisa({ ...bv, cat: c, type: null, country: '' })} style={chip(bv.cat?.id === c.id, c.color)}>{c.icon} {c.label}</button>)}
+              </div>
+
+              {bv.cat && (<>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>2 · Vize türü</div>
+                {types.length === 0
+                  ? <p style={{ fontSize: '12px', color: '#f59e0b', margin: '0 0 14px' }}>⚠️ Bu kategoride vize türü yok — Ayarlar → Vize Türleri'nden ekleyin.</p>
+                  : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px', marginBottom: '14px' }}>
+                      {types.map(t => <button key={t.name} onClick={() => setBulkVisa({ ...bv, type: t, country: '' })} style={{ ...chip(bv.type?.name === t.name, bv.cat.color), textAlign: 'left' }}>{t.name}{t.price > 0 && <span style={{ opacity: 0.7, fontSize: '11px' }}> · {t.price} {t.currency}</span>}</button>)}
+                    </div>}
+              </>)}
+
+              {bv.type && bv.cat.countries.length > 1 && (<>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>3 · Ülke</div>
+                <select value={country} onChange={e => setBulkVisa({ ...bv, country: e.target.value })} style={{ ...selectStyle, marginBottom: '14px' }}>
+                  <option value="">Seçin…</option>
+                  {bv.cat.countries.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </>)}
+
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Kişiler ({n}/{bv.custs.length})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '14px' }}>
+                {bv.custs.map(c => {
+                  const open = openVisaOf(c, country);
+                  const on = !bv.skip.includes(c.id);
+                  return (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '13px', opacity: on ? 1 : 0.55 }}>
+                      <input type="checkbox" checked={on} onChange={() => setBulkVisa({ ...bv, skip: on ? [...bv.skip, c.id] : bv.skip.filter(x => x !== c.id) })} style={{ width: '17px', height: '17px', accentColor: '#f59e0b' }} />
+                      <span style={{ flex: 1 }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</span>
+                      {open && <span title={`${open.country || ''} ${open.visaDuration || ''} · ${open.status || ''}`} style={{ fontSize: '11px', color: '#f59e0b' }}>⚠️ açık başvuru var ({open.status || '—'})</span>}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <button onClick={createBulkVisas} disabled={bv.busy || !bv.type || !n || (bv.cat.countries.length > 1 && !country)}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer', color: '#0c1929',
+                  background: (bv.type && n && (bv.cat.countries.length === 1 || country)) ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255,255,255,0.1)' }}>
+                {bv.busy ? '⏳ Açılıyor…' : !bv.type ? 'Kategori ve vize türü seçin' : (bv.cat.countries.length > 1 && !country) ? 'Ülke seçin' : `${n} başvuru aç — ${country || bv.cat.label} · ${bv.type.name}`}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       {/* YAKLAŞAN RANDEVU UYARISI — dikkat çekici, açılışta üstte */}
       {upcomingReminders.length > 0 && (() => {
         const acil = upcomingReminders.filter(v => { const d = getDaysLeft(v.appointmentDate); return d !== null && d <= 2; });
@@ -8358,6 +8631,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                       <span style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
+                      {isCancelStatus(v.status) && v.cancelReason && <span title={v.cancelReason} style={{ fontSize: '10px', color: '#94a3b8', maxWidth: '150px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sebep: {v.cancelReason}</span>}
                       {v.paymentStatus && <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: v.paymentStatus === 'Ödendi' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: v.paymentStatus === 'Ödendi' ? '#10b981' : '#ef4444' }}>{v.paymentStatus}</span>}
                     </div>
                   </div>
@@ -8556,6 +8830,12 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {visaFutureDate(selectedVisa) && (
                 <div style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.45)', padding: '10px 12px', borderRadius: '8px', color: '#c084fc', fontWeight: 700, fontSize: '13px' }}>
                   ⏳ İleri tarihli — başvuru {formatDate(selectedVisa.processDate)} tarihinde yapılacak ({getDaysLeft(selectedVisa.processDate)} gün). O güne kadar başvuru yapmayın.
+                </div>
+              )}
+              {isCancelStatus(selectedVisa.status) && (
+                <div style={{ background: 'rgba(239,68,68,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#f87171' }}>❌ İptal sebebi{selectedVisa.cancelledAt ? ` · ${formatDate(selectedVisa.cancelledAt)}` : ''}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: selectedVisa.cancelReason ? '#e8f1f8' : '#64748b' }}>{selectedVisa.cancelReason || 'Girilmemiş (eski kayıt) — Düzenle\'den ekleyebilirsiniz'}</p>
                 </div>
               )}
               {selectedVisa.appointmentDate && (
@@ -8771,8 +9051,8 @@ const parseTrDate = (s) => {
   if (m) return { d: new Date(+m[3], +m[2] - 1, +m[1]), iso: false, dotted: true };
   m = t.match(/(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*(\d{4})?/);
   if (m) {
-    const mi = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr') === m[2].toLocaleLowerCase('tr'));
-    if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => t.toLocaleLowerCase('tr').includes(g.toLocaleLowerCase('tr'))) };
+    const mi = TR_AYLAR.findIndex(a => normalizeTr(a) === normalizeTr(m[2]));
+    if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => trHas(t, g)) };
   }
   return null;
 };
@@ -8930,7 +9210,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const newId = generateUniqueId();
         cust = {
           id: newId, _docId: newId,
-          firstName: titleCaseTr(parts[0] || ''), lastName: titleCaseTr(parts.slice(1).join(' ')),
+          firstName: nameForSave(parts[0] || ''), lastName: nameForSave(parts.slice(1).join(' ')),
           phone: r.customerPhone || '', email: r.customerEmail || '', company: r.company || '',
           tcKimlik: '', birthDate: '', birthPlace: '', city: '', sector: '', notes: '', tkMemberNo: '',
           passports: '[]', schengenVisas: '[]', usaVisa: '{}', tags: '[]', activities: '[]',
@@ -9043,6 +9323,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
   const [pendingResCust, setPendingResCust] = useState(null);
   useEffect(() => { if (!quickAction) return; if (quickAction === 'new') openNewForm();
+    else if (quickAction?.type === 'resForMany') {
+      const t = tours.find(x => String(x.id) === String(quickAction.tourId));
+      if (t) addBulkReservations(t, quickAction.customers || []);
+      else showToast?.('Tur bulunamadı', 'error');
+    }
     else if (quickAction?.type === 'resFor') {
       const t = tours.find(x => String(x.id) === String(quickAction.tourId));
       if (t) { openReservationForm(t); setPendingResCust(String(quickAction.customer?.id ?? '')); }
@@ -9207,7 +9492,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
   const buildRoomTypes = (tour) => {
     const reservations = (tour.reservations || []).filter(r => !r.cancelled);
     const roomTypes = {}; const assigned = new Set();
-    const roomCap = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki|aile/.test(s)) return 4; return 2; };
+    const roomCap = (rt) => { const s = normalizeTr(rt); if (/single|tek ki/.test(s)) return 1; if (/triple|uclu|3 ki/.test(s)) return 3; if (/quad|dortlu|4 ki|aile/.test(s)) return 4; return 2; };
 
     // Bir kişinin oda arkadaşı isimleri (tüm slotlar)
     const arkadasIsimleri = (c) => [c.roommate, c.roommate3, c.roommate4].filter(Boolean);
@@ -9652,7 +9937,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         if (existingNames.has(normalizeTr(name))) { skipped++; continue; }
         existingNames.add(normalizeTr(name)); // aynı dosyada da tekrar varsa engelle
         const phone = String(row['Telefon'] || '').trim();
-        const email = String(row['E-posta'] || row['Email'] || '').trim();
+        const email = normEmail(row['E-posta'] || row['Email'] || '');
         const tcKimlik = String(row['TC Kimlik No'] || row['TC'] || '').trim().replace(/\D/g, '');
         const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
         const priceRaw = row['Tur Bedeli'] ?? row['Fiyat'] ?? 0;
@@ -9674,7 +9959,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
           const temizName = name.replace(/\s*\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
           const parts = temizName.split(/\s+/);
           const newId = generateUniqueId();
-          cust = { id: newId, _docId: newId, firstName: titleCaseTr(parts[0]), lastName: titleCaseTr(parts.slice(1).join(' ')), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
+          cust = { id: newId, _docId: newId, firstName: nameForSave(parts[0]), lastName: nameForSave(parts.slice(1).join(' ')), phone, email, tcKimlik, createdAt: new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString(), verified: false, passports: '[]', schengenVisas: '[]', usaVisa: '{}' };
           newCustomers.push(cust);
           try { await setDoc(doc(db, 'customers', newId), cust); } catch (e) {}
           created++;
@@ -9744,11 +10029,51 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     XLSX.writeFile(wb, 'Tur_Rezervasyon_Sablonu.xlsx');
   };
 
+  // Müşteriler'den çoklu seçim → "Tura ekle": seçilenler varsayılan oda tipi/fiyatla tek seferde eklenir.
+  // Pasaport ve vize durumu tek tek eklemedeki gibi müşteri kartından okunur; turda zaten olan atlanır.
+  const addBulkReservations = async (tour, custs) => {
+    const inTour = new Set((tour.reservations || []).filter(r => !r.cancelled).map(r => String(r.customerId)));
+    const todo = custs.filter(c => c && !inTour.has(String(c.id)));
+    const skipped = custs.length - todo.length;
+    if (!todo.length) { setSelectedTour(tour); showToast?.('Seçilenlerin hepsi bu turda zaten kayıtlı', 'info'); return; }
+    const rts = resRoomTypes();
+    const defRt = rts.find(rt => /double|cift/.test(normalizeTr(rt))) || rts[0] || 'Double';
+    const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
+    const isSchengen = schengenCountries.includes(tour?.country);
+    const now = Date.now();
+    const added = todo.map((customer, i) => {
+      const passports = safeParseJSON(customer.passports);
+      const validPassport = passports.find(pp => pp.passportNo && getDaysLeft(pp.expiryDate) > 0) || passports[0];
+      const hasGreen = passports.some(pp => trHas(pp.passportType, 'yesil') || (pp.passportNo && pp.passportNo.toUpperCase().startsWith('S')));
+      let hasVisa = false, visaEndDate = '';
+      if (hasGreen && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) { hasVisa = true; visaEndDate = 'GREEN_PASSPORT'; }
+      else if (isSchengen) { const v = safeParseJSON(customer.schengenVisas).find(x => x.endDate && getDaysLeft(x.endDate) > 0); if (v) { hasVisa = true; visaEndDate = v.endDate; } }
+      else if (tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD') { const u = safeParseObj(customer.usaVisa); if (u.endDate && getDaysLeft(u.endDate) > 0) { hasVisa = true; visaEndDate = u.endDate; } }
+      return {
+        id: now + i, sNo: (tour.reservations?.length || 0) + i + 1,
+        customerId: customer.id, customerName: customer.name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim(),
+        customerPhone: customer.phone || '', customerEmail: customer.email || '', company: customer.companyName || customer.company || '',
+        roomType: defRt, roommate: '', roommate3: '', hasChild: false,
+        passport: validPassport?.passportNo || '', hasVisa, visaEndDate,
+        tourPrice: defPrice?.amount || 0, currency: defPrice?.currency || '€',
+        payment1: 0, payment2: 0, payment3: 0, notes: '', createdAt: new Date().toISOString(),
+      };
+    });
+    const updatedTour = { ...tour, reservations: [...(tour.reservations || []), ...added] };
+    setTours(prev => prev.map(t => t.id === tour.id ? updatedTour : t));
+    setSelectedTour(updatedTour);
+    try {
+      const sd = { ...updatedTour }; delete sd._docId;
+      await setDoc(doc(db, 'tours', tour._docId || String(tour.id)), sd, { merge: true });
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); return; }
+    logActivity('create', 'Tur', `${added.length} kişi toplu eklendi — ${tour.name || ''}`, currentUser);
+    showToast?.(`✅ ${added.length} kişi "${tour.name}" turuna eklendi${skipped ? ` (${skipped} kişi zaten vardı)` : ''} — oda tipi ${defRt}; oda ve fiyatları kontrol edin`, 'success');
+  };
   const openReservationForm = (tour) => {
     setSelectedTour(tour);
     // Varsayılan oda tipi: listede Double/Çift varsa o, yoksa ilk tip — fiyat da o tipten
     const rts = resRoomTypes();
-    const defRt = rts.find(rt => /double|çift|cift/i.test(rt)) || rts[0] || 'Double';
+    const defRt = rts.find(rt => /double|cift/.test(normalizeTr(rt))) || rts[0] || 'Double';
     const defPrice = tourPriceFor(tour, defRt) || Object.values(tour.prices || {}).find(x => x?.amount > 0);
     setReservationData({
       customerId: '',
@@ -9801,8 +10126,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       const isSchengen = schengenCountries.includes(selectedTour?.country);
       // Yeşil pasaport: passportType "Yeşil" içeriyor VEYA pasaport no S ile başlıyor
       const hasGreenPassport = passports.some(p =>
-        p.passportType === 'Yeşil Pasaport (Hususi)' ||
-        p.passportType?.includes('Yeşil') ||
+        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
         (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
       );
       let hasVisa = false;
@@ -9888,8 +10212,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
       passport = validPassport?.passportNo || passport;
       const hasGreenPassport = passports.some(p =>
-        p.passportType === 'Yeşil Pasaport (Hususi)' ||
-        p.passportType?.includes('Yeşil') ||
+        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
         (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
       );
       // Vize durumu - tur ülkesi Schengen mi?
@@ -10112,7 +10435,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const now = new Date().toISOString();
         const newCust = {
           id: newId, _docId: newId,
-          firstName: titleCaseTr(firstName), lastName: titleCaseTr(lastName),
+          firstName: nameForSave(firstName), lastName: nameForSave(lastName),
           phone: resData.customerPhone || '', email: resData.customerEmail || '',
           company: resData.company || '', tcKimlik: '', birthDate: '', birthPlace: '',
           city: '', sector: '', notes: '', tkMemberNo: '',
@@ -10527,7 +10850,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
               // Detaylı satır - müşterinin doğum tarihi, TC, pasaport, firma vs.
               const renderDetailRow = (res) => {
                 const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
-                  customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                  customers.find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName));
                 const birthDate = customer?.birthDate ? formatDate(customer.birthDate) : '—';
                 const tcKimlik = customer?.tcKimlik || '—';
                 const passports = safeParseJSON(customer?.passports);
@@ -10563,14 +10886,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           if (!isSchengen) return null; // Schengen değilse gösterme
 
                           // Türkçe karakter normalize edici
-                          const normalize = (s) => (s || '').toLowerCase()
-                            .replace(/ı/g, 'i').replace(/i̇/g, 'i').replace(/İ/g, 'i')
-                            .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
-                            .replace(/ü/g, 'u').replace(/Ü/g, 'u')
-                            .replace(/ş/g, 's').replace(/Ş/g, 's')
-                            .replace(/ö/g, 'o').replace(/Ö/g, 'o')
-                            .replace(/ç/g, 'c').replace(/Ç/g, 'c')
-                            .trim();
+                          const normalize = normalizeTr;
 
                           // Önce customerId ile, sonra _docId ile, sonra normalize edilmiş isimle bul
                           let customer = customers.find(c => String(c.id) === String(res.customerId));
@@ -10614,7 +10930,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
 
                           // Geçerli vize yoksa: bu müşterinin son 12 aydaki Schengen/tur ülkesi başvurusu var mı?
                           const appBadge = () => {
-                            const lc = (x) => String(x || '').toLocaleLowerCase('tr-TR');
+                            const lc = normalizeTr; // Türkçe karakter kuralı ("ITALYA" = "İtalya")
                             const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
                             const app = (visaApplications || [])
                               .filter(a => visaAppBelongsTo(a, customer, customers))
@@ -10770,7 +11086,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                           rows = [['Ad Soyad', 'Doğum Tarihi', 'TC No', 'Pasaport No', 'Firma', 'Telefon', 'E-posta', 'Durum']];
                           allRes.forEach(res => {
                             const customer = customers.find(c => String(c.id) === String(res.customerId)) ||
-                              customers.find(c => `${c.firstName || ''} ${c.lastName || ''}`.trim().toUpperCase() === (res.customerName || '').toUpperCase());
+                              customers.find(c => normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`) === normalizeTr(res.customerName));
                             const passports = safeParseJSON(customer?.passports);
                             rows.push([
                               res.customerName,
@@ -11302,7 +11618,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
                       <input 
                         type="email" 
                         value={reservationData.customerEmail} 
-                        onChange={e => setReservationData({...reservationData, customerEmail: e.target.value})}
+                        onChange={e => setReservationData({...reservationData, customerEmail: normEmail(e.target.value)})}
                         placeholder="email@example.com"
                         style={inputStyle}
                       />
@@ -11611,8 +11927,8 @@ function CostCalculator({ initial, onSave, onClose, showToast, isMobile }) {
   // Kişi başı gider toplamı
   const perPersonTotal = c.perPerson.reduce((s, r) => s + n(r.qty) * n(r.unit), 0);
   // Free pax birim maliyeti = otel(single) + uçak birim + fuar birim  (Excel: E16 + C21 + C22)
-  const ucakUnit = n(c.perPerson.find(r => /uçak|ucak/i.test(r.name))?.unit);
-  const fuarUnit = n(c.perPerson.find(r => /fuar/i.test(r.name))?.unit);
+  const ucakUnit = n(c.perPerson.find(r => trHas(r.name, 'ucak'))?.unit);
+  const fuarUnit = n(c.perPerson.find(r => trHas(r.name, 'fuar'))?.unit);
   const freePaxUnit = hotelSingle + ucakUnit + fuarUnit;
   // Ortak gider toplamı (free pax satırının birim fiyatı otomatik)
   const sharedTotal = c.shared.reduce((s, r) => {
@@ -12383,7 +12699,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{titleCaseTr(customer.firstName)} {titleCaseTr(customer.lastName)}</p>
-                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {(customer.email || '').toLowerCase()}</p>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {normEmail(customer.email)}</p>
                         </div>
                         <span style={{ fontSize: '20px' }}>→</span>
                       </div>
@@ -12531,7 +12847,7 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
   const checkFlights = (fo, fr, o) => {
     const w = [];
     const mins = (s) => { const m = String(s||'').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null; };
-    const plus1 = (s) => /\(\+1\)|ertesi|next day/i.test(String(s||''));
+    const plus1 = (s) => /\(\+1\)|ertesi|next day/.test(normalizeTr(s));
     [[fo,'Gidiş'],[fr,'Dönüş']].forEach(([f,lab]) => {
       const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
       legs.forEach((l, idx) => {
@@ -12561,10 +12877,10 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
     });
     // Türkçe tarih metnini gerçek tarihe çevir ("9 Ekim 2026 Cuma" -> Date)
     const trDate = (s) => {
-      const t = String(s || '').toLocaleLowerCase('tr');
-      const m = t.match(/(\d{1,2})\s*([a-zçğıöşü]+)\s*(\d{4})?/);
+      const t = normalizeTr(s); // "16 EKIM" / "16 Ekim" / "AGUSTOS" hepsi tanınır
+      const m = t.match(/(\d{1,2})\s*([a-z]+)\s*(\d{4})?/);
       if (!m) return null;
-      const idx = TR_AYLAR.findIndex(a => a.toLocaleLowerCase('tr').startsWith(m[2].slice(0, 3)));
+      const idx = TR_AYLAR.findIndex(a => normalizeTr(a).startsWith(m[2].slice(0, 3)));
       if (idx < 0) return null;
       const yil = m[3] ? +m[3] : (o.startDate ? +o.startDate.slice(0, 4) : new Date().getFullYear());
       return new Date(yil, idx, +m[1]);
@@ -13464,7 +13780,7 @@ function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, a
 
                 <div>
                   <label style={labelStyle}>Kart Sahibi</label>
-                  <input type="text" value={formData.cardHolder} onChange={e => setFormData({...formData, cardHolder: e.target.value.toUpperCase()})} placeholder="AD SOYAD" style={{...inputStyle, textTransform: 'uppercase'}} />
+                  <input type="text" value={formData.cardHolder} onChange={e => setFormData({...formData, cardHolder: trUpper(e.target.value)})} placeholder="AD SOYAD" style={{...inputStyle, textTransform: 'uppercase'}} />
                 </div>
               </div>
 
@@ -14260,7 +14576,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // Ayarlardan oda tipleri (varsayılan)
   const hotelRoomTypes = appSettings?.hotelRoomTypes || ['Single', 'Double', 'Triple', 'Suite'];
   // Oda tipinden kişi kapasitesi (Single=1, Triple=3, Quad=4, diğerleri=2)
-  const roomCapacity = (rt) => { const s = (rt || '').toLowerCase(); if (/single|tek ki/.test(s)) return 1; if (/triple|üçlü|3 ki/.test(s)) return 3; if (/quad|dörtlü|4 ki/.test(s)) return 4; return 2; };
+  const roomCapacity = (rt) => { const s = normalizeTr(rt); if (/single|tek ki/.test(s)) return 1; if (/triple|uclu|3 ki/.test(s)) return 3; if (/quad|dortlu|4 ki/.test(s)) return 4; return 2; };
 
   const emptyHotel = {
     name: '', city: '', country: '', stars: '4', phone: '', address: '', bookingCode: '',
@@ -15098,7 +15414,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const filteredHotels = hotels.filter(h => {
     if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
+    const q = normalizeTr(searchQuery);
     return normalizeTr(h.name).includes(normalizeTr(q)) || normalizeTr(h.city).includes(normalizeTr(q)) || normalizeTr(h.country).includes(normalizeTr(q));
   });
 
@@ -16030,7 +16346,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
                         // Otel adı eşleştirme (case-insensitive)
                         const hotelMap = {};
-                        hotels.forEach(h => { hotelMap[h.name.toLowerCase().trim()] = h; });
+                        hotels.forEach(h => { hotelMap[normalizeTr(h.name)] = h; });
 
                         // Satırları işle
                         const items = [];
@@ -16038,7 +16354,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         for (const r of rows) {
                           const name = String(r['Otel Adı'] || r['Otel'] || r['name'] || '').trim();
                           if (!name) continue;
-                          const match = hotelMap[name.toLowerCase()];
+                          const match = hotelMap[normalizeTr(name)];
                           if (!match) { unmatchedHotels.add(name); continue; }
                           items.push({
                             hotelName: name,
@@ -17377,9 +17693,9 @@ function AgenciesModule({ agencies, setAgencies, isMobile, showToast, addToUndo 
   const filteredAgencies = searchQuery.length >= 1
     ? agencies.filter(a =>
         normalizeTr(a.name).includes(normalizeTr(searchQuery)) ||
-        a.link?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.institutionCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.userCode?.toLowerCase().includes(searchQuery.toLowerCase())
+        trHas(a.link, searchQuery) ||
+        trHas(a.institutionCode, searchQuery) ||
+        trHas(a.userCode, searchQuery)
       )
     : agencies;
 
@@ -17650,10 +17966,10 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
   };
 
   const filtered = applications.filter(a => {
-    const q = searchQuery.toLowerCase();
+    const q = normalizeTr(searchQuery);
     const matchQ = !q ||
-      (a._name || '').toLowerCase().includes(q) ||
-      (a._email || '').toLowerCase().includes(q) ||
+      normalizeTr(a._name).includes(q) ||
+      normalizeTr(a._email).includes(q) ||
       (a._phone || '').includes(q) ||
       (a._tcKimlik || '').includes(q);
     const matchS = statusFilter === 'all' || a._status === statusFilter;
@@ -18079,7 +18395,7 @@ function DS160Module({ isMobile, showToast, appSettings, setAppSettings }) {
                           });
                         }
 
-                        doc2.save(`DS160_${(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
+                        doc2.save(`DS160_${asciiTr(app._name||'belge').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}.pdf`);
                       }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         📄 PDF İndir
                       </button>
@@ -18143,7 +18459,7 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   const [aktifKat, setAktifKat] = useState('schengen');
   const [aktifTur, setAktifTur] = useState(''); // '' = kategori varsayılanı, aksi halde vize türü adı
   const [yeniKalem, setYeniKalem] = useState('');
-  const slugify = (s) => s.toLowerCase().replace(/[ğ]/g,'g').replace(/[ü]/g,'u').replace(/[ş]/g,'s').replace(/[ı]/g,'i').replace(/[ö]/g,'o').replace(/[ç]/g,'c').replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  const slugify = (s) => normalizeTr(s).replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''); // yalnız yeni kalem anahtarı üretir
 
   // Kategori bazlı kalemler. Eski düz dizi varsa ilk düzenlemede tüm kategorilere kopyalanır (geriye uyum).
   const rawItems = appSettings?.visaCostItems;
@@ -19967,11 +20283,11 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const minD = new Date(d); minD.setDate(minD.getDate() - 30);
     const minStr = `${minD.getFullYear()}-${String(minD.getMonth() + 1).padStart(2, '0')}-${String(minD.getDate()).padStart(2, '0')}`;
-    const skip = /iptal|red|onay|konsolos|sonu[çc]|teslim/;
+    const skip = /iptal|red|onay|konsolos|sonuc|teslim/; // normalizeTr metin üzerinde (ASCII)
     const due = (visaApplications || []).filter(v =>
       /^\d{4}-\d{2}-\d{2}$/.test(v.appointmentDate || '') &&
       v.appointmentDate <= todayStr && v.appointmentDate >= minStr &&
-      !v.autoKonsolosluk && !skip.test(String(v.status || '').toLocaleLowerCase('tr-TR')) // 'İptal' → 'iptal' (Türkçe İ)
+      !v.autoKonsolosluk && !skip.test(normalizeTr(v.status)) // 'İptal' / 'IPTAL' → 'iptal'
     );
     if (!due.length) return;
     const ids = new Set(due.map(v => v.id));

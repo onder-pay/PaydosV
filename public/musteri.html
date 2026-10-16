@@ -251,6 +251,13 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   var inApp = /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent);
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredPrompt = e; if (instCard) instCard.style.display = 'flex'; });
   window.addEventListener('appinstalled', function () { if (instCard) instCard.style.display = 'none'; });
+  // Ana ekran kullanımı: simgeden açılınca (oturumda bir kez) "app", Android kurulumunda "install" — CRM'de sayılır
+  var appPing = function (e) {
+    if (!code) return;
+    try { fetch('https://europe-west1-paydos-crm.cloudfunctions.net/duyuruGor', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k: code, e: e }), keepalive: true }).catch(function () {}); } catch (x) {}
+  };
+  window.addEventListener('appinstalled', function () { appPing('install'); });
+  if (isStandalone) { try { if (!sessionStorage.getItem('paydos_app_' + code)) { sessionStorage.setItem('paydos_app_' + code, '1'); appPing('app'); } } catch (x) { appPing('app'); } }
   var renderInstall = function (parent) {
     if (isStandalone || instDismissed) return;
     instCard = el('div', 'inst');
@@ -552,7 +559,10 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
     'amerika birleşik devletleri':'US','abd':'US','amerika':'US','kanada':'CA','meksika':'MX','brezilya':'BR','arjantin':'AR','şili':'CL','peru':'PE','kolombiya':'CO','küba':'CU','panama':'PA','dominik cumhuriyeti':'DO','kosta rika':'CR','uruguay':'UY','paraguay':'PY','ekvador':'EC','bolivya':'BO','venezuela':'VE','jamaika':'JM',
     'fas':'MA','tunus':'TN','cezayir':'DZ','güney afrika':'ZA','kenya':'KE','tanzanya':'TZ','etiyopya':'ET','nijerya':'NG','senegal':'SN','mauritius':'MU','seyşeller':'SC','namibya':'NA','botsvana':'BW','zambiya':'ZM','zimbabve':'ZW','uganda':'UG','ruanda':'RW','gana':'GH','libya':'LY','sudan':'SD',
     'avustralya':'AU','yeni zelanda':'NZ','fiji':'FJ','kıbrıs rum kesimi':'CY','kıbrıs':'CY' };
-  var isoOf = function (name) { return ISO[String(name || '').trim().toLocaleLowerCase('tr-TR')] || ''; };
+  // Türkçe karakter kuralı (CLAUDE.md): karşılaştırma ASCII küçük harf — "ITALYA", "Italya", "İtalya", "Isvicre" aynı
+  var nk = function (s) { return String(s || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().replace(/\u0307/g, '').trim(); };
+  var isoN = null;
+  var isoOf = function (name) { if (!isoN) { isoN = {}; for (var k in ISO) isoN[nk(k)] = ISO[k]; } return isoN[nk(name)] || ''; };
   var renderInfo = function (f, parent) {
     var s = parseD(f.startDate), e = parseD(f.endDate) || s;
     var hotel = f.hotel && f.hotel.name ? f.hotel : null;
@@ -566,10 +576,10 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       var hc = el('div', 'hotel'); hc.style.marginTop = '10px';
       hc.appendChild(el('div', 'n', hotel.name));
       // Adres zaten şehir/ülkeyi içeriyorsa tekrar ekleme
-      var low = String(hotel.address || '').toLocaleLowerCase('tr-TR');
+      var low = nk(hotel.address);
       var parts = String(hotel.address || '').split(',').map(function (x) { return x.trim(); });
       var hasCountry = parts.some(function (x) { return isoOf(x) && isoOf(x) === isoOf(hotel.country); });
-      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(String(x).toLocaleLowerCase('tr-TR')) < 0; })).filter(Boolean).join(', ');
+      var adr = [hotel.address].concat([hotel.city, hasCountry ? '' : hotel.country].filter(function (x) { return x && low.indexOf(nk(x)) < 0; })).filter(Boolean).join(', ');
       if (adr) hc.appendChild(el('div', 'a', adr));
       var hb = el('div', 'b');
       var q = encodeURIComponent([hotel.name, hotel.address, hotel.city, hotel.country].filter(Boolean).join(', '));
@@ -887,7 +897,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       var infoSlot = el('div'); box.appendChild(infoSlot);
       try {
         if (dest && dest.city) {
-          var sameCity = String(f.city || '').toLocaleLowerCase('tr-TR') === String(dest.city).toLocaleLowerCase('tr-TR');
+          var sameCity = nk(f.city) === nk(dest.city);
           renderInfo({ startDate: ymd(dest.start), endDate: ymd(dest.end), city: dest.city, country: sameCity ? f.country : '',
             hotel: null, _abroadOnly: true, _infoTitle: 'Gideceğiniz yer · ' + dest.city }, infoSlot);
         }
@@ -951,7 +961,8 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     document.addEventListener('keydown', onKey);
     sh.appendChild(el('div', 'gr'));
-    var tc = function (t) { return String(t || '').toLocaleLowerCase('tr').replace(/(^|\s)(\S)/g, function (m, s1, c1) { return s1 + c1.toLocaleUpperCase('tr'); }); };
+    // İsim gösterimi — CRM titleCaseTr ile aynı kural: Türkçe harf yoksa I = i ("ISMAIL" → "İsmail", "Ismaıl" değil)
+    var tc = function (t) { t = String(t || ''); var tr = /[çğıöşüÇĞİÖŞÜ]/.test(t); var l = (tr ? t.replace(/İ/g, 'i').replace(/I/g, 'ı') : t).toLowerCase().replace(/\u0307/g, ''); return l.replace(/(^|\s)(\S)/g, function (m, s1, c1) { return s1 + (c1 === 'i' ? 'İ' : c1.toLocaleUpperCase('tr')); }); };
     var name = tc((String(pr.firstName || '') + ' ' + String(pr.lastName || '')).trim()) || fullName || 'Yolcu';
     var hd = el('div', 'hd'), av = el('div', 'av', name.split(/\s+/).map(function (x) { return x.charAt(0); }).slice(0, 2).join('').toLocaleUpperCase('tr'));
     hd.appendChild(av); var ht = el('div'); ht.appendChild(el('b', '', name)); ht.appendChild(el('span', '', editMode ? 'Bilgilerinizi düzenleyin' : 'Kişisel bilgileriniz')); hd.appendChild(ht);
@@ -1062,12 +1073,28 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       .then(function (j) {
         if (!j || !j.documents) return;
         var n = new Date(), today = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
-        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); return o; }).filter(function (d) {
+        var list = j.documents.map(function (d) { var o = {}; for (var k in (d.fields || {})) o[k] = val(d.fields[k]); o._id = String(d.name || '').split('/').pop(); return o; }).filter(function (d) {
           if (!d.active || (d.start && d.start > today) || (d.end && d.end < today)) return false;
           if (!(d.title || safeUrl(d.image))) return false;
           return d.target === 'all' || d.target === kind || (d.target === 'onetour' && kind === 'tour' && tourId && String(d.tourId) === String(tourId));
         }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 8);
         if (!list.length) return;
+        // Görülme takibi: kart ekranın yarısına girince "seen" (oturum başına bir kez), tıklanınca "click".
+        // Sadece hangi link, hangi duyuru, ne zaman — konum/cihaz bilgisi gönderilmez.
+        var GOR = 'https://europe-west1-paydos-crm.cloudfunctions.net/duyuruGor';
+        var ping = function (id, e) {
+          if (!code || !id) return;
+          try { fetch(GOR, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k: code, d: id, e: e }), keepalive: true }).catch(function () {}); } catch (x) {}
+        };
+        var seenKey = function (id) { return 'paydos_dyg_' + code + '_' + id; };
+        var track = function (node, id) {
+          node.addEventListener('click', function () { ping(id, 'click'); }, true);
+          try { if (sessionStorage.getItem(seenKey(id))) return; } catch (x) {}
+          var mark = function () { try { sessionStorage.setItem(seenKey(id), '1'); } catch (x) {} ping(id, 'seen'); };
+          if (!('IntersectionObserver' in window)) return mark();
+          var io = new IntersectionObserver(function (es) { if (es.some(function (x) { return x.isIntersecting; })) { io.disconnect(); mark(); } }, { threshold: 0.5 });
+          io.observe(node);
+        };
         // "Ana ekrana ekleyin" kartı gibi: küçük görsel · başlık + kısa metin · bağlantı butonu
         list.forEach(function (d) {
           var img = safeUrl(d.image), link = /^https:\/\//.test(String(d.link || '')) ? String(d.link) : '';
@@ -1075,7 +1102,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
           if (img) {
             var ban = el('a', 'dyb'); ban.href = link || img; ban.target = '_blank'; ban.rel = 'noopener';
             var bim = document.createElement('img'); bim.src = img; bim.alt = String(d.title || 'Duyuru'); bim.loading = 'lazy'; ban.appendChild(bim);
-            slot.appendChild(ban); return;
+            slot.appendChild(ban); track(ban, d._id); return;
           }
           var c = el('div', 'inst dyc');
           var ic = el(img ? 'a' : 'div', 'ic');
@@ -1087,7 +1114,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
           if (d.text) tx.appendChild(document.createTextNode(String(d.text)));
           c.appendChild(tx);
           if (link) { var go = el('a', 'go', 'Aç'); go.href = link; go.target = '_blank'; go.rel = 'noopener'; c.appendChild(go); }
-          slot.appendChild(c);
+          slot.appendChild(c); track(c, d._id);
         });
       }).catch(function () {});
   };
