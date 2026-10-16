@@ -5,14 +5,16 @@
 //
 // İki ayrı izin (6563 / KVKK): seyahat bildirimi (uçuş, otel, belge) ve KAMPANYA onayı. Kampanya mesajları
 // sadece kampanya kutusunu kendisi işaretleyenlere gider (sunucu zorlar; CRM'den atlanamaz).
-// Abonelik PIN ile yapılır (link PIN'li); tur linkleri bu fonksiyona hiç dokunmaz.
+// Müşteri linki aboneliği PIN ile yapılır (link PIN'li). Tur linki (/b/, PIN'siz) yalnız tur/seyahat
+// bildirimlerine abone olur (subtour) — kampanya onayı orada alınmaz.
 //
 // İşlemler (POST JSON, a=…):
 //   key                      → VAPID açık anahtar (herkese açık)
 //   sub   {k, pin, sub, marketing} → abone ol / kampanya onayını güncelle (PIN gerekli)
 //   status {endpoint}        → bu cihaz abone mi, kampanya onayı var mı
 //   unsub {endpoint}         → aboneliği sil
-//   stats / send / log / auto → sadece CRM (Authorization: Bearer <Firebase ID token>)
+//   subtour {k, sub}         → tur linkinden abone ol (PIN'siz; tourId ile, kampanya yok)
+//   stats / send {tourId?} / log / auto → sadece CRM (Authorization: Bearer <Firebase ID token>)
 //
 // Otomatik hatırlatma (bildirimOtomatik, her gün 10:00): bildirimi açık müşterinin Schengen/ABD vizesi
 // 60·30·7 gün, pasaportu 6 ay·3 ay kala bilgilendirme bildirimi. Tarihler müşteri kartından (linkte görünen
@@ -36,6 +38,9 @@ const validSub = (s) => s && typeof s.endpoint === 'string' && /^https:\/\//.tes
 // Bildirime dokununca açılacak adres: kendi sitemiz dışında bir yere gönderilmez
 const VAPID_SUBJECT = 'mailto:info@paydostur.com';
 const safeUrl = (u, fallback) => (/^https:\/\/((www\.)?paydostur\.com|crm\.paydostur\.com)(\/|$)/.test(String(u || '')) ? String(u) : fallback);
+
+// Bildirime dokununca: tur linkinden abone olana kendi tur sayfası (tur bitince müşteri sayfasına yönlenir), diğerine müşteri sayfası
+const linkOf = (x) => `${SITE}/${x.kind === 'tour' ? 'b' : 'm'}/${x.code}`;
 
 let vapidCache = null;
 const getVapid = async (db) => {
@@ -123,6 +128,12 @@ exports.bildirim = functions.region('europe-west1').https.onRequest(async (req, 
       const prev = await ref.get();
       const now = new Date().toISOString();
       const marketing = !!p.marketing;
+      // Aynı telefon tur linkinden de abone olduysa (aynı müşteri + aynı tarayıcı) o abonelik silinir — bildirim iki kez gelmesin
+      const ua0 = String(req.get('user-agent') || '').slice(0, 200);
+      if (d.customerDocId) {
+        const dup = await subs.where('customerId', '==', String(d.customerDocId)).get().catch(() => null);
+        if (dup) await Promise.all(dup.docs.filter(x => x.data().kind === 'tour' && x.data().ua === ua0).map(x => x.ref.delete().catch(() => {})));
+      }
       const wasMarketing = prev.exists && !!prev.data().marketing;
       await ref.set({
         kind: 'customer', code, customerId: String(d.customerDocId || ''), customerName: String(d.customerName || ''),
@@ -137,6 +148,31 @@ exports.bildirim = functions.region('europe-west1').https.onRequest(async (req, 
       return res.json({ ok: true, marketing });
     }
 
+    // Tur linki (/b/<kod>, PIN'siz): yolcu tur bildirimlerine abone olur (toplanma saati, uçuş, duyuru).
+    // Kampanya onayı burada alınmaz — kampanya yalnız PIN'li müşteri linkinden açılır.
+    if (a === 'subtour') {
+      const code = String(p.k || '');
+      if (!/^[A-Za-z0-9]{8,40}$/.test(code) || !validSub(p.sub)) return res.status(400).json({ error: 'Geçersiz istek' });
+      const snap = await db.collection('paylasimlar').doc(code).get();
+      if (!snap.exists || snap.data().kind === 'customer') return res.status(404).json({ error: 'notfound' });
+      const d = snap.data();
+      let customerId = '';
+      if (d.nextLink && CODE_RE.test(String(d.nextLink))) {
+        const m = await db.collection('paylasimlar').doc(String(d.nextLink)).get().catch(() => null);
+        if (m && m.exists) customerId = String(m.data().customerDocId || '');
+      }
+      const ua = String(req.get('user-agent') || '').slice(0, 200);
+      const ref = subs.doc(subId(p.sub.endpoint));
+      const prev = await ref.get();
+      const now = new Date().toISOString();
+      await ref.set({
+        kind: 'tour', code, tourId: String(d.tourId || ''), customerId, customerName: String(d.customerName || ''),
+        endpoint: p.sub.endpoint, keys: { p256dh: p.sub.keys.p256dh, auth: p.sub.keys.auth },
+        marketing: false, ua, createdAt: prev.exists ? (prev.data().createdAt || now) : now, updatedAt: now,
+      }, { merge: true });
+      return res.json({ ok: true });
+    }
+
     // ---- CRM işlemleri ----
     const who = await staffUser(req);
     if (!who) return res.status(401).json({ error: 'Giriş gerekli' });
@@ -144,8 +180,12 @@ exports.bildirim = functions.region('europe-west1').https.onRequest(async (req, 
     if (a === 'stats') {
       const all = await subs.get();
       const by = {};
-      all.forEach(s => { const x = s.data(); const k = x.customerId || ''; by[k] = by[k] || { n: 0, m: 0, name: x.customerName || '' }; by[k].n++; if (x.marketing) by[k].m++; });
-      return res.json({ total: all.size, marketing: all.docs.filter(s => s.data().marketing).length, byCustomer: by, auto: await autoOn(db) });
+      const byTour = {};
+      all.forEach(s => {
+        const x = s.data(); const k = x.customerId || ''; by[k] = by[k] || { n: 0, m: 0, t: 0, name: x.customerName || '' }; by[k].n++; if (x.marketing) by[k].m++; if (x.kind === 'tour') by[k].t++;
+        if (x.kind === 'tour' && x.tourId) byTour[x.tourId] = (byTour[x.tourId] || 0) + 1;
+      });
+      return res.json({ total: all.size, marketing: all.docs.filter(s => s.data().marketing).length, byCustomer: by, byTour, auto: await autoOn(db) });
     }
 
     if (a === 'auto') {
@@ -163,10 +203,13 @@ exports.bildirim = functions.region('europe-west1').https.onRequest(async (req, 
       const title = String(p.title || '').trim().slice(0, 80), body = String(p.body || '').trim().slice(0, 300);
       if (!title || !body) return res.status(400).json({ error: 'Başlık ve mesaj gerekli' });
       const ids = Array.isArray(p.customerIds) ? new Set(p.customerIds.map(String)) : null;
+      const tourId = p.tourId ? String(p.tourId) : '';
       const all = await subs.get();
-      const targets = all.docs.filter(s => { const x = s.data(); return (!ids || ids.has(x.customerId)) && (type !== 'kampanya' || x.marketing); });
-      const { sent, failed, removed } = await pushTo(db, targets, (x) => ({ title, body, url: safeUrl(p.url, `${SITE}/m/${x.code}`), tag: type }));
-      await db.collection('bildirim_log').add({ at: new Date().toISOString(), by: who, type, title, body, url: p.url || '', target: ids ? ids.size : 'all', matched: targets.length, sent, failed, removed });
+      // Tur hedefi: tur linkinden abone olanlar + o turdaki müşterilerin müşteri linki abonelikleri
+      const inTarget = (x) => tourId ? (x.tourId === tourId || (ids && x.customerId && ids.has(x.customerId))) : (!ids || ids.has(x.customerId));
+      const targets = all.docs.filter(s => { const x = s.data(); return inTarget(x) && (type !== 'kampanya' || x.marketing); });
+      const { sent, failed, removed } = await pushTo(db, targets, (x) => ({ title, body, url: safeUrl(p.url, linkOf(x)), tag: type }));
+      await db.collection('bildirim_log').add({ at: new Date().toISOString(), by: who, type, title, body, url: p.url || '', target: tourId ? `tur:${String(p.tourName || tourId).slice(0, 80)}` : ids ? ids.size : 'all', matched: targets.length, sent, failed, removed });
       return res.json({ matched: targets.length, sent, failed, removed });
     }
 
@@ -209,7 +252,7 @@ const runAuto = async (db) => {
       const key = `${v.kind}:${v.label}:${v.until}:${step}`;
       if (done[key]) continue;
       const msg = reminderOf(v, n);
-      const r = await pushTo(db, docs, (x) => ({ ...msg, url: `${SITE}/m/${x.code}`, tag: `oto-${v.kind}` }));
+      const r = await pushTo(db, docs, (x) => ({ ...msg, url: linkOf(x), tag: `oto-${v.kind}` }));
       // Bu ve daha büyük eşikler bir daha gönderilmez
       steps.filter(s => s >= step).forEach(s => { mark[`${v.kind}:${v.label}:${v.until}:${s}`] = new Date().toISOString(); });
       sent += r.sent; reminders++;

@@ -2049,13 +2049,29 @@ const BILDIRIM_HEDEF = [
   ['usa90', 'ABD vizesi 90 gün içinde bitenler'],
   ['passport6', 'Pasaportu 6 ay içinde bitenler'],
   ['pick', 'Seçtiğim müşteriler'],
+  ['tour', 'Bir turun yolcuları'],
 ];
-function BildirimlerModule({ customers, showToast, isMobile }) {
+function BildirimlerModule({ customers, tours = [], showToast, isMobile, fixedTour }) {
   const [stats, setStats] = useState(null);
   const [log, setLog] = useState([]);
   const [err, setErr] = useState('');
   const [type, setType] = useState('bilgi');
-  const [hedef, setHedef] = useState('all');
+  const [hedef, setHedef] = useState(fixedTour ? 'tour' : 'all');
+  const [tourSel, setTourSel] = useState(fixedTour ? String(fixedTour.id) : '');
+  const selTour = fixedTour || tours.find(t => String(t.id) === tourSel) || null;
+  // Turun yolcuları: rezervasyondaki müşteri → bildirim anahtarı (müşteri linki abonelikleri için)
+  const tourKeys = useMemo(() => {
+    const set = new Set();
+    (selTour?.reservations || []).filter(r => !r.cancelled).forEach(r => {
+      const c = customers.find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
+      if (c) set.add(custKey(c));
+    });
+    return set;
+  }, [selTour, customers]);
+  const tourOpts = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return tours.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  }, [tours]);
   const [picked, setPicked] = useState([]);
   const [q, setQ] = useState('');
   const [title, setTitle] = useState('');
@@ -2079,6 +2095,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const matchHedef = (c) => {
     if (hedef === 'all') return true;
     if (hedef === 'pick') return picked.includes(custKey(c));
+    if (hedef === 'tour') return tourKeys.has(custKey(c));
     if (hedef === 'schengen60') return safeParseJSON(c.schengenVisas).some(v => { const n = daysUntil(v.endDate); return n !== null && n >= 0 && n <= 60; });
     if (hedef === 'usa90') { const n = daysUntil(safeParseObj(c.usaVisa).endDate); return n !== null && n >= 0 && n <= 90; }
     if (hedef === 'passport6') return safeParseJSON(c.passports).some(p => { const n = daysUntil(p.expiryDate); return n !== null && n >= 0 && n <= 183; });
@@ -2087,14 +2104,19 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const targets = subCustomers.filter(matchHedef);
   const devices = hedef === 'all'
     ? (type === 'kampanya' ? stats?.marketing || 0 : stats?.total || 0)
-    : targets.reduce((n, c) => n + (type === 'kampanya' ? by[custKey(c)].m : by[custKey(c)].n), 0);
+    : hedef === 'tour'
+      // tur linkinden abone olanlar + bu yolcuların müşteri linki abonelikleri (tur aboneliği iki kez sayılmaz)
+      ? (type === 'kampanya' ? targets.reduce((n, c) => n + by[custKey(c)].m, 0) : (stats?.byTour?.[String(selTour?.id)] || 0) + targets.reduce((n, c) => n + by[custKey(c)].n - (by[custKey(c)].t || 0), 0))
+      : targets.reduce((n, c) => n + (type === 'kampanya' ? by[custKey(c)].m : by[custKey(c)].n), 0);
   const send = async () => {
     if (!title.trim() || !body.trim()) { showToast?.('Başlık ve mesaj yazın', 'warning'); return; }
     if (!devices) { showToast?.('Bu hedefte bildirim alacak cihaz yok', 'warning'); return; }
     if (!window.confirm(`${type === 'kampanya' ? '🎁 KAMPANYA' : 'ℹ️ Bilgilendirme'} bildirimi ${devices} cihaza gönderilsin mi?\n\n${title}\n${body}`)) return;
     setBusy(true);
     try {
-      const r = await bildirimCall({ a: 'send', type, title, body, url: url.trim(), customerIds: hedef === 'all' ? null : targets.map(custKey) });
+      if (hedef === 'tour' && !selTour) { showToast?.('Tur seçin', 'warning'); setBusy(false); return; }
+      const r = await bildirimCall({ a: 'send', type, title, body, url: url.trim(), customerIds: hedef === 'all' ? null : targets.map(custKey),
+        ...(hedef === 'tour' ? { tourId: String(selTour.id), tourName: selTour.name || '' } : {}) });
       showToast?.(`📣 ${r.sent} cihaza gönderildi${r.failed ? ` · ${r.failed} ulaşmadı` : ''}`, r.sent ? 'success' : 'warning');
       setTitle(''); setBody(''); setUrl(''); load();
     } catch (e) { showToast?.('❌ Gönderilemedi: ' + e.message, 'error'); }
@@ -2105,10 +2127,11 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '16px' : '20px' };
   const pickList = subCustomers.filter(c => !q || trHas(`${c.firstName} ${c.lastName}`, q)).slice(0, 30);
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
-      <h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
-      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Müşteri linkinden bildirime izin veren telefonlara mesaj gönderin. iPhone'da bildirim için linkin ana ekrana eklenmiş olması gerekir.</p>
+    <div style={{ padding: fixedTour ? 0 : isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+      {!fixedTour && <><h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
+      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Müşteri linkinden veya tur linkinden bildirime izin veren telefonlara mesaj gönderin. iPhone'da bildirim için linkin ana ekrana eklenmiş olması gerekir.</p></>}
       {err && <div style={{ ...card, borderColor: 'rgba(239,68,68,0.4)', color: '#fca5a5', marginBottom: '16px', fontSize: '13px' }}>Bildirim servisine ulaşılamadı: {err}. (Firebase fonksiyonu "bildirim" yüklü mü?)</div>}
+      {!fixedTour && <>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '18px' }}>
         {[['🔔', 'Bildirim açık cihaz', stats?.total, '#3b82f6'], ['🎁', 'Kampanya onaylı', stats?.marketing, '#f59e0b'], ['👥', 'Müşteri', subCustomers.length, '#10b981']].map(([i, l, v, c]) => (
           <div key={l} style={{ ...card, padding: '14px 16px' }}><div style={{ fontSize: '24px', fontWeight: 700, color: c }}>{stats ? v : '…'}</div><div style={{ fontSize: '12px', color: '#94a3b8' }}>{i} {l}</div></div>
@@ -2123,6 +2146,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
         </div>
         <button onClick={toggleAuto} disabled={!stats} style={{ flex: 'none', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', border: 'none', color: '#fff', background: stats?.auto ? '#10b981' : '#475569', opacity: stats ? 1 : 0.5 }}>{stats ? (stats.auto ? '✓ Açık' : 'Kapalı') : '…'}</button>
       </div>
+      </>}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', alignItems: 'start' }}>
         <div style={card}>
           <label style={{ ...lbl, marginTop: 0 }}>Tür</label>
@@ -2135,9 +2159,17 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
           </div>
           {type === 'kampanya' && <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#fbbf24' }}>Reklam/kampanya içeriğini "Bilgilendirme" olarak göndermeyin — onay vermeyen müşteriye ticari ileti yasal risktir.</div>}
           <label style={lbl}>Kime</label>
+          {fixedTour ? <div style={{ ...inp, background: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.35)' }}>🎫 {fixedTour.name} yolcuları</div> : (
           <select value={hedef} onChange={e => setHedef(e.target.value)} style={inp}>
             {BILDIRIM_HEDEF.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-          </select>
+          </select>)}
+          {hedef === 'tour' && !fixedTour && (
+            <select value={tourSel} onChange={e => setTourSel(e.target.value)} style={{ ...inp, marginTop: '8px' }}>
+              <option value="">— Tur seçin —</option>
+              {tourOpts.map(t => <option key={t.id} value={String(t.id)}>{t.name} · {formatDate(t.startDate)}</option>)}
+            </select>
+          )}
+          {hedef === 'tour' && selTour && <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#94a3b8' }}>Tur linkinden bildirimi açan yolcular + bu turdaki müşterilerin müşteri linki bildirimleri.</div>}
           {hedef === 'pick' && (
             <div style={{ marginTop: '8px' }}>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Müşteri ara (sadece bildirimi açık olanlar)" style={inp} />
@@ -2158,7 +2190,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://paydostur.com/..." style={inp} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px', flexWrap: 'wrap' }}>
             <button onClick={send} disabled={busy || !stats} style={{ padding: '11px 22px', borderRadius: '10px', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 700, fontSize: '14px', color: '#fff', background: type === 'kampanya' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#2563eb)', opacity: busy || !stats ? 0.6 : 1 }}>{busy ? 'Gönderiliyor…' : '📣 Gönder'}</button>
-            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{stats ? <><b style={{ color: '#e8f1f8' }}>{devices}</b> cihaz{hedef !== 'all' ? ` · ${targets.length} müşteri` : ''}</> : 'yükleniyor…'}</span>
+            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{stats ? <><b style={{ color: '#e8f1f8' }}>{devices}</b> cihaz{hedef !== 'all' && hedef !== 'tour' ? ` · ${targets.length} müşteri` : ''}</> : 'yükleniyor…'}</span>
           </div>
         </div>
         <div style={card}>
@@ -2617,13 +2649,14 @@ function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser
       </div>
       {tab === 'duyuru'
         ? <div style={{ padding: isMobile ? '16px' : '20px 24px' }}><DuyurularModule scope="customer" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} /></div>
-        : <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />}
+        : <BildirimlerModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} />}
     </div>
   );
 }
 
 // ===== 🎫 Tur Linki (sol menü): tur seçilir → o turun duyuruları, yarışma, tavsiyeler, link durumu =====
-function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) {
+function TurLinkiModule({ tours = [], customers = [], showToast, isMobile, currentUser, bare }) {
+  const [bildirimAc, setBildirimAc] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [sel, setSel] = useState('');
   const [q, setQ] = useState('');
@@ -2677,6 +2710,7 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
                   <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
+                  <button onClick={() => setBildirimAc(o => !o)} style={btn('rgba(59,130,246,0.15)', 'rgba(59,130,246,0.45)', '#93c5fd')}>📣 Yolculara bildirim {bildirimAc ? '▲' : '▼'}</button>
                 </div>
                 {appStats && appStats.tourId === tour.id && shared > 0 && (
                   <div style={{ marginTop: '10px', fontSize: '12.5px' }}>
@@ -2694,6 +2728,7 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                 )}
                 {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
               </div>
+              {bildirimAc && <div style={{ marginBottom: '16px' }}><BildirimlerModule key={'b' + tour.id} fixedTour={tour} customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} /></div>}
               <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
               {yarisma && <YarismaModal tour={tour} onClose={() => setYarisma(false)} showToast={showToast} isMobile={isMobile} />}
               {tavsiye && <TavsiyelerModal focusCity={tour.city || ''} onClose={() => setTavsiye(false)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
@@ -2718,7 +2753,7 @@ function LinkDuyuruModule({ customers, tours, showToast, isMobile, currentUser }
       </div>
       {tab === 'musteri'
         ? <MusteriLinkiModule bare customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
-        : <TurLinkiModule bare tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+        : <TurLinkiModule bare tours={tours} customers={customers} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
     </div>
   );
 }
@@ -20582,9 +20617,9 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'linkduyuru': return <LinkDuyuruModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'musterilinki': return <MusteriLinkiModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
-      case 'turlinki': return <TurLinkiModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'turlinki': return <TurLinkiModule tours={tours} customers={customers} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'duyurular': return <DuyurularModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
-      case 'bildirimler': return <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />;
+      case 'bildirimler': return <BildirimlerModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} />;
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;

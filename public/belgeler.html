@@ -235,6 +235,72 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     parent.appendChild(instCard);
   };
 
+  // ===== 🔔 Bildirimler: toplanma saati, uçuş, tur duyuruları CRM'den telefona gelir =====
+  var PUSH_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
+  var pushCall = function (body) {
+    return fetch(PUSH_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }); });
+  };
+  var b64ToU8 = function (s) { var p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')), o = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
+  var swReg = function () {
+    return navigator.serviceWorker.getRegistration('/b/').then(function (r) { return r || navigator.serviceWorker.register('/belge-sw.js', { scope: '/b/' }); })
+      .then(function (r) { if (r.active) return r; return new Promise(function (ok) { var w = r.installing || r.waiting; if (!w) return ok(r); w.addEventListener('statechange', function () { if (w.state === 'activated') ok(r); }); }); });
+  };
+  var pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  var renderPush = function (parent) {
+    var card = el('div', 'inst');
+    card.appendChild(el('div', 'ic', '🔔'));
+    var tx = el('div', 'tx'); card.appendChild(tx);
+    var act = el('div'); act.style.display = 'contents'; card.appendChild(act);
+    var setText = function (t, s) { tx.innerHTML = ''; tx.appendChild(el('b', '', t)); if (s) tx.appendChild(document.createTextNode(s)); };
+    if (!pushOk) {
+      // iPhone: bildirim yalnız ana ekrana eklenmiş sayfada çalışır
+      if (isIOS && !isStandalone) { setText('Bildirim almak ister misiniz?', 'Önce bu sayfayı ana ekrana ekleyin (Paylaş ⬆️ → "Ana Ekrana Ekle"), sonra ana ekrandaki simgeden açıp bildirimleri açın.'); parent.appendChild(card); }
+      return;
+    }
+    parent.appendChild(card);
+    card.style.display = 'none'; // servis yanıt verirse görünür — bozuk düğme göstermeyelim
+    pushCall({ a: 'key' }).then(function (j) { if (j && j.key) card.style.display = ''; }).catch(function () {});
+    var showOff = function () {
+      setText('Bildirimleri açın', 'Toplanma saati, uçuş ve tur duyuruları telefonunuza bildirim olarak gelsin.');
+      act.innerHTML = '';
+      var go = el('button', 'go', 'Aç'); go.type = 'button';
+      go.addEventListener('click', function () {
+        go.disabled = true; go.textContent = '…';
+        var fail = function (m) { go.disabled = false; go.textContent = 'Aç'; if (m) alert(m); };
+        Notification.requestPermission().then(function (perm) {
+          if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Telefon ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
+          return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
+            if (!r[1].key) throw new Error('key');
+            return r[0].pushManager.getSubscription().then(function (x) { return x || r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(r[1].key) }); });
+          }).then(function (sub) {
+            return pushCall({ a: 'subtour', k: code, sub: sub.toJSON() }).then(function (j) { if (!j.ok) throw new Error('sub'); showOn(); });
+          });
+        }).catch(function () { fail('Bildirimler açılamadı. Lütfen tekrar deneyin.'); });
+      });
+      act.appendChild(go);
+    };
+    var showOn = function () {
+      setText('Bildirimler açık ✅', 'Tur duyuruları bu telefona gelir.');
+      act.innerHTML = '';
+      var off = el('button', 'x', '✕'); off.type = 'button'; off.title = 'Bildirimleri kapat'; off.setAttribute('aria-label', 'Bildirimleri kapat');
+      off.addEventListener('click', function () {
+        if (!confirm('Tur bildirimleri kapatılsın mı?')) return;
+        swReg().then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (x) {
+          if (!x) return showOff();
+          return pushCall({ a: 'unsub', endpoint: x.endpoint }).then(function () { return x.unsubscribe(); }).then(showOff);
+        }).catch(showOff);
+      });
+      act.appendChild(off);
+    };
+    if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için telefon ayarlarından bu siteye bildirim izni verin.'); return; }
+    showOff();
+    navigator.serviceWorker.getRegistration('/b/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (x) {
+      if (!x || Notification.permission !== 'granted') return;
+      return pushCall({ a: 'status', endpoint: x.endpoint }).then(function (j) { if (j.subscribed) showOn(); });
+    }).catch(function () {});
+  };
+
   // Firestore REST değer biçimini düz JS'e çevir
   var val = function (v) {
     if (!v) return null;
@@ -929,6 +995,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       }
 
       renderInstall(box);
+      try { renderPush(box); } catch (x) {}
       // Canlı yarışma kartı (rehber yarışma açınca belirir)
       var quizSlot = el('div'); box.appendChild(quizSlot);
       try { renderQuiz(f, quizSlot); } catch (x) {}
