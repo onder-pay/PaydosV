@@ -9928,7 +9928,10 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       let newCustomers = [...customers];
       const newReservations = [];
       let created = 0, matched = 0, skipped = 0;
-      const tcConflicts = [];
+      const tcConflicts = [], phoneWarn = [];
+      // Telefon: "+90 5064413266", "5326462814", "+90 533 515 22 77" → "+90 506 441 32 66". TR cep değilse olduğu gibi kalır, uyarılır.
+      const phoneDigits = (x) => { let d = String(x || '').replace(/\D/g, ''); if (d.startsWith('90') && d.length === 12) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = d.slice(1); return d; };
+      const fmtPhone = (x) => { const d = phoneDigits(x); return /^5\d{9}$/.test(d) ? formatPhoneNumber(d) : String(x || '').trim(); };
       // Turda zaten var olan isimler (mükerrer yüklemeyi önle)
       const existingNames = new Set((tour.reservations || []).filter(r => !r.cancelled).map(r => normalizeTr(r.customerName || '')));
       for (const row of rows) {
@@ -9937,7 +9940,9 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         // Bu turda zaten varsa atla
         if (existingNames.has(normalizeTr(name))) { skipped++; continue; }
         existingNames.add(normalizeTr(name)); // aynı dosyada da tekrar varsa engelle
-        const phone = String(row['Telefon'] || '').trim();
+        const phoneRaw = String(row['Telefon'] || '').trim();
+        const phone = fmtPhone(phoneRaw);
+        if (phoneRaw && !/^5\d{9}$/.test(phoneDigits(phoneRaw))) phoneWarn.push(`${name}: telefon "${phoneRaw}" geçerli bir cep numarası değil — kontrol edin`);
         const email = normEmail(row['E-posta'] || row['Email'] || '');
         const tcKimlik = String(row['TC Kimlik No'] || row['TC'] || '').trim().replace(/\D/g, '');
         const roomLabel = String(row['Oda Tipi'] || 'Double').trim();
@@ -9946,7 +9951,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const paid = parseFloat(row['Ödenen'] ?? row['1. Ödeme'] ?? 0) || 0;
         const passport = String(row['Pasaport No'] || '').trim();
         // Müşteri eşleştir veya oluştur
-        let cust = newCustomers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(name));
+        // Aynı isimde birden fazla müşteri olabilir ("Mehmet Sarı"): telefonu tutan seçilir; tutmuyorsa uyarılır
+        const sameName = newCustomers.filter(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(name));
+        const pd = phoneDigits(phoneRaw);
+        let cust = (pd && sameName.find(c => phoneDigits(c.phone) === pd)) || sameName[0];
+        if (cust && pd && cust.phone && phoneDigits(cust.phone) !== pd) phoneWarn.push(`${name}: CRM'deki aynı isimli müşterinin telefonu farklı (${cust.phone} ≠ ${phoneRaw})${sameName.length > 1 ? ` · bu isimde ${sameName.length} müşteri var` : ''} — aynı kişi mi kontrol edin`);
         // TC eşsizdir: aynı TC varsa o kişidir; isim farklıysa uyar
         const byTc = tcKimlik.length === 11 ? newCustomers.find(c => String(c.tcKimlik || '').trim() === tcKimlik) : null;
         if (byTc && (!cust || cust !== byTc)) {
@@ -9993,6 +10002,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       setCustomers(newCustomers);
       setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: [...(t.reservations || []), ...newReservations] } : t));
       showToast(`${newReservations.length} rezervasyon eklendi (${created} yeni müşteri, ${matched} eşleşen)${skipped > 0 ? ` · ${skipped} mükerrer atlandı` : ''}`, 'success');
+      if (phoneWarn.length) alert(`📞 Kontrol edilecek (${phoneWarn.length}):\n\n${phoneWarn.slice(0, 30).join('\n')}${phoneWarn.length > 30 ? `\n… +${phoneWarn.length - 30}` : ''}`);
       if (tcConflicts.length) alert(`⚠️ TC uyuşmazlığı (${tcConflicts.length}) — TC eşsizdir, isim veya TC hatalı olabilir, kontrol ediniz:\n\n${tcConflicts.slice(0, 30).join('\n')}${tcConflicts.length > 30 ? `\n… +${tcConflicts.length - 30}` : ''}`);
     } catch (e) {
       showToast('Excel okunamadı: ' + e.message, 'error');
