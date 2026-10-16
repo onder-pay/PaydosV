@@ -9150,7 +9150,7 @@ const RES_LINK_DOCS = [
   ['flightTicketUrl', '✈️', 'Uçak Bileti'], ['boardingOutUrl', '🛫', 'Gidiş Biniş Kartı'],
   ['boardingRetUrl', '🛬', 'Dönüş Biniş Kartı'], ['fuarTicketUrl', '🎫', 'Fuar Giriş Bileti'],
 ];
-const syncResLinkDocs = async (res) => {
+const syncResLinkDocs = async (res, getNext) => {
   if (!res?.shareToken) return false;
   const snap = await getDoc(doc(db, 'paylasimlar', res.shareToken));
   if (!snap.exists()) return false;
@@ -9158,9 +9158,25 @@ const syncResLinkDocs = async (res) => {
   const keep = (Array.isArray(snap.data()?.docs) ? snap.data().docs : []).filter(x => !labels.has(x.label));
   const add = RES_LINK_DOCS.filter(([f]) => res[f]).map(([f, icon, label]) => ({ icon, label, url: res[f] }));
   const cur = (snap.data()?.docs || []).filter(x => labels.has(x.label));
-  if (JSON.stringify(cur.map(x => [x.label, x.url])) === JSON.stringify(add.map(x => [x.label, x.url]))) return false; // zaten güncel
-  await setDoc(doc(db, 'paylasimlar', res.shareToken), { docs: [...keep, ...add], updatedAt: new Date().toISOString() }, { merge: true });
-  return true;
+  const patch = {};
+  const docsChanged = JSON.stringify(cur.map(x => [x.label, x.url])) !== JSON.stringify(add.map(x => [x.label, x.url]));
+  if (docsChanged) patch.docs = [...keep, ...add];
+  // Tur bitince ana ekrandaki tur simgesi yolcunun müşteri linkine (/m/) geçsin
+  if (!snap.data()?.nextLink && getNext) { const n = await getNext(); if (n) patch.nextLink = n; }
+  if (!Object.keys(patch).length) return false;
+  await setDoc(doc(db, 'paylasimlar', res.shareToken), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+  return docsChanged;
+};
+
+// Yolcunun müşteri linki (/m/) kodu: varsa onu, yoksa boş bir müşteri linki açar (PIN'i müşteri ilk girişte belirler).
+// Tur linki (/b/) tur bittikten sonra buna yönlenir — ana ekrana eklenen simge Paydos hesabı olarak yaşamaya devam eder.
+const ensureCustomerLink = async (cust, appSettings) => {
+  if (!cust) return '';
+  if (cust.shareToken) return cust.shareToken;
+  const token = customerLinkSlug(cust);
+  await publishCustomerLink(cust, { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [] }, token, appSettings);
+  cust.shareToken = token; // aynı oturumda ikinci kez açılmasın (state ayrıca güncellenir)
+  return token;
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
@@ -9625,7 +9641,11 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       RES_LINK_DOCS.forEach(([f, icon, label]) => { if (res[f]) docs.push({ icon, label, url: res[f] }); });
       const flights = offerFlightList(tour.offerData);
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
+      const custForLink = (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId)));
+      let nextLink = '';
+      try { nextLink = await ensureCustomerLink(custForLink, appSettings); if (nextLink && custForLink) setCustomers?.(prev => prev.map(c => c.id === custForLink.id ? { ...c, shareToken: nextLink } : c)); } catch (e) { console.warn('[müşteri linki]', e.message); }
       await setDoc(doc(db, 'paylasimlar', token), {
+        ...(nextLink ? { nextLink } : {}),
         customerName: res.customerName || '', tourName: tour.name || '', tourId: String(tour.id),
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
         docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
@@ -10329,7 +10349,13 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     if (!todo.length) return;
     (async () => {
       let n = 0;
-      for (const r of todo) { try { if (await syncResLinkDocs(r)) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
+      const getNext = (r) => async () => {
+        const c = (customers || []).find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
+        const tok = await ensureCustomerLink(c, appSettings);
+        if (tok && c) setCustomers?.(prev => prev.map(x => x.id === c.id ? { ...x, shareToken: tok } : x));
+        return tok;
+      };
+      for (const r of todo) { try { if (await syncResLinkDocs(r, getNext(r))) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
       if (n) showToast?.(`🔗 ${n} müşteri linkine bilet/biniş kartı işlendi`, 'success');
     })();
   }, [selectedTour?.id]);

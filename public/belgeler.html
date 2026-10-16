@@ -887,6 +887,19 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
       var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
+      // Tur bitti (+3 gün): ana ekrandaki simge yolcunun Paydos müşteri sayfasına (/m/) geçer. ?kal=1 → tur sayfasında kal
+      var bitis = parseD(f.endDate) || parseD(f.startDate);
+      if (f.nextLink && /^[A-Za-z0-9-]{8,60}$/.test(f.nextLink) && bitis && !/[?&]kal=1/.test(location.search)) {
+        var sinir = new Date(bitis); sinir.setDate(sinir.getDate() + 4); // bitiş + 3 gün dolunca
+        if (new Date() >= sinir) {
+          box.innerHTML = '';
+          var gm = add(box, el('div', 'msg', '💛 Turunuz tamamlandı. Paydos sayfanıza yönlendiriliyorsunuz…'));
+          var kal = el('a', '', 'Tur belgelerini görmek için dokunun'); kal.href = location.pathname + '?kal=1';
+          kal.style.cssText = 'display:block;margin-top:12px;color:#93c5fd;font-size:14px'; gm.appendChild(kal);
+          setTimeout(function () { location.replace('/m/' + f.nextLink); }, 1500);
+          return;
+        }
+      }
       meta.prefix = f.city || f.tourName || 'Paydos';
       box.innerHTML = '';
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
