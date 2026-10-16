@@ -9102,6 +9102,9 @@ const refreshTourShareLinks = async (tour) => {
       const d = snap.data() || {};
       if (d.tourId && String(d.tourId) !== String(tour.id)) continue;
       let docs = Array.isArray(d.docs) ? d.docs.filter(x => x.label !== 'Tur Programı') : [];
+      // Bilet/biniş kartları rezervasyondaki güncel hâliyle
+      const res = (tour.reservations || []).find(r => !r.cancelled && r.shareToken === token);
+      if (res) { const L = new Set(RES_LINK_DOCS.map(x => x[2])); docs = [...docs.filter(x => !L.has(x.label)), ...RES_LINK_DOCS.filter(([f]) => res[f]).map(([f, icon, label]) => ({ icon, label, url: res[f] }))]; }
       if (p) {
         const r = ref(getStorage(), `paylasim/${token}/tur-programi.pdf`);
         await uploadBytes(r, p.blob, { contentType: 'application/pdf' });
@@ -9112,6 +9115,25 @@ const refreshTourShareLinks = async (tour) => {
     } catch (e) { console.warn('[link güncelle]', token, e.message); }
   }
   return n;
+};
+
+// Rezervasyona sonradan yüklenen/silinen bilet ve biniş kartları, daha önce paylaşılmış linke (/b/) de yansısın.
+// Link paylaşıldığı andaki belgelerin kopyasını tutar; bu yalnız rezervasyon belgelerini yeniler (program/otel aynı kalır).
+const RES_LINK_DOCS = [
+  ['flightTicketUrl', '✈️', 'Uçak Bileti'], ['boardingOutUrl', '🛫', 'Gidiş Biniş Kartı'],
+  ['boardingRetUrl', '🛬', 'Dönüş Biniş Kartı'], ['fuarTicketUrl', '🎫', 'Fuar Giriş Bileti'],
+];
+const syncResLinkDocs = async (res) => {
+  if (!res?.shareToken) return false;
+  const snap = await getDoc(doc(db, 'paylasimlar', res.shareToken));
+  if (!snap.exists()) return false;
+  const labels = new Set(RES_LINK_DOCS.map(x => x[2]));
+  const keep = (Array.isArray(snap.data()?.docs) ? snap.data().docs : []).filter(x => !labels.has(x.label));
+  const add = RES_LINK_DOCS.filter(([f]) => res[f]).map(([f, icon, label]) => ({ icon, label, url: res[f] }));
+  const cur = (snap.data()?.docs || []).filter(x => labels.has(x.label));
+  if (JSON.stringify(cur.map(x => [x.label, x.url])) === JSON.stringify(add.map(x => [x.label, x.url]))) return false; // zaten güncel
+  await setDoc(doc(db, 'paylasimlar', res.shareToken), { docs: [...keep, ...add], updatedAt: new Date().toISOString() }, { merge: true });
+  return true;
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
@@ -9573,11 +9595,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         const { doc: vdoc } = generateTourVoucher(tour, hi, room.room, room.roomNo, true);
         docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
       }
-      if (res.flightTicketUrl) docs.push({ icon: '✈️', label: 'Uçak Bileti', url: res.flightTicketUrl });
-      if (res.boardingOutUrl) docs.push({ icon: '🛫', label: 'Gidiş Biniş Kartı', url: res.boardingOutUrl });
-      if (res.boardingRetUrl) docs.push({ icon: '🛬', label: 'Dönüş Biniş Kartı', url: res.boardingRetUrl });
+      RES_LINK_DOCS.forEach(([f, icon, label]) => { if (res[f]) docs.push({ icon, label, url: res[f] }); });
       const flights = offerFlightList(tour.offerData);
-      if (res.fuarTicketUrl) docs.push({ icon: '🎫', label: 'Fuar Giriş Bileti', url: res.fuarTicketUrl });
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       await setDoc(doc(db, 'paylasimlar', token), {
         customerName: res.customerName || '', tourName: tour.name || '', tourId: String(tour.id),
@@ -10268,7 +10287,25 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const docId = targetTour._docId || String(targetTour.id);
     const sd = { ...updatedTour }; delete sd._docId;
     await setDoc(doc(db, 'tours', docId), sd, { merge: true });
+    // Bilet/biniş kartı değiştiyse paylaşılmış linkleri de güncelle
+    const docFields = RES_LINK_DOCS.map(x => x[0]);
+    const touched = updatedTour.reservations.filter(r => r.shareToken && patches[r.id] && Object.keys(patches[r.id]).some(k => docFields.includes(k)));
+    if (touched.length) await Promise.all(touched.map(r => syncResLinkDocs(r).catch(e => console.warn('[link belge]', r.shareToken, e.message))));
   };
+  // Tur açılınca: bu düzeltmeden önce yüklenen bilet/biniş kartları da paylaşılmış linklere işlensin (oturumda tur başına bir kez)
+  const linkSyncedRef = useRef(new Set());
+  useEffect(() => {
+    const t = selectedTour;
+    if (!t || linkSyncedRef.current.has(t.id)) return;
+    linkSyncedRef.current.add(t.id);
+    const todo = (t.reservations || []).filter(r => !r.cancelled && r.shareToken);
+    if (!todo.length) return;
+    (async () => {
+      let n = 0;
+      for (const r of todo) { try { if (await syncResLinkDocs(r)) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
+      if (n) showToast?.(`🔗 ${n} müşteri linkine bilet/biniş kartı işlendi`, 'success');
+    })();
+  }, [selectedTour?.id]);
   const uploadResDoc = async (tour, res, field, file) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
