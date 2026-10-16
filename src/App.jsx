@@ -19395,6 +19395,17 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                 />
                 <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>Bildirimlerin gönderileceği grup veya kanal ID'si.</p>
               </div>
+              <div>
+                <label style={labelStyle}>Bot izinli kişiler (Telegram ID)</label>
+                <textarea
+                  value={appSettings?.telegramIzinliIdler || ''}
+                  onChange={e => setAppSettings({ ...appSettings, telegramIzinliIdler: e.target.value })}
+                  placeholder={'123456789 Önder\n987654321 Ayşe'}
+                  rows={3}
+                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px', resize: 'vertical' }}
+                />
+                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>Bot yalnızca vize grubunda{appSettings?.telegramVizeGrupId ? ` (${appSettings.telegramVizeGrupAdi || appSettings.telegramVizeGrupId})` : ' (henüz kayıtlı değil — grupta /grup yazın)'} ve buradaki kişilere çalışır. Her satıra bir ID, yanına isim yazabilirsiniz. ID'yi öğrenmek için kişi bota <b>/id</b> yazsın.</p>
+              </div>
               <div style={{ padding: '12px', background: 'rgba(0,136,204,0.1)', borderRadius: '10px', border: '1px solid rgba(0,136,204,0.2)' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
                   ℹ️ Bu değerler <strong style={{ color: '#94a3b8' }}>Firestore → app_settings</strong> koleksiyonuna kaydedilir. Firebase Cloud Functions bu alanları okuyarak çalışır.

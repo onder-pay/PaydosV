@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { normTr, trHas, titleCaseTr, nameForSave, normEmail, TR_DOTTED } = require('./tr');
+const { normTr, trHas, titleCaseTr, nameForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -318,18 +318,23 @@ const fromMrz = (s) => {
 
 // MRZ ülke kodu sızması temizleyici
 // MRZ formatı: P<TUR<SOYAD<<AD  →  bot bazen "TUR" ülke kodunu soyada ekler
-// Örnek: gerçek soyad "OKCU" iken bot "TUROKCU" / "TÜROKÇU" okur
-// Türk pasaportlarında ülke kodu TUR'dur. Soyad "TUR" ile başlayıp devamı
-// 4+ harfse ülke kodu sızıntısıdır. TURGUT/TURAN/TURHAN gibi (devamı <4) korunur.
+// Örnek: gerçek soyad "OKCU" iken bot "TUROKCU" okur.
+// Sızıntı MRZ'den gelir → ASCII'dir. Soyadda Türkçe harf varsa (TÜRKKAN, TÜRKOĞLU)
+// görsel alandan okunmuştur, sızıntı OLAMAZ. Türk/Tur ile başlayan gerçek soyadlar
+// (TURKMEN, TURGUTLU, TURANLI …) da korunur — yanlış kesmek, kesmemekten çok daha kötü.
+const TUR_REAL_PREFIX = /^tur(k|gut|han|an|gay|al|na)/;
 const stripCountryCode = (lastName, nationality) => {
   if (!lastName) return lastName;
   const isTr = !nationality || /tur|\btr\b|turkiye|turkey/.test(normTr(nationality)); // /türkiye/i "TÜRKİYE"yi tanımaz
   if (!isTr) return lastName;
   const ln = lastName.trim();
-  const m = ln.match(/^T[UÜ]R(.+)$/i);
-  if (m && m[1].length >= 4) {
-    console.log(`[BOT] TUR ulke kodu temizlendi: "${ln}" -> "${m[1]}"`);
-    return m[1];
+  if (TR_LETTERS.test(ln)) return ln;
+  const first = ln.split(/\s+/)[0];
+  const m = first.match(/^TUR([A-Z]+)$/i);
+  if (m && m[1].length >= 4 && !TUR_REAL_PREFIX.test(normTr(first))) {
+    const out = ln.replace(/^TUR/i, '');
+    console.log(`[BOT] TUR ulke kodu temizlendi: "${ln}" -> "${out}"`);
+    return out;
   }
   return ln;
 };
@@ -1022,6 +1027,19 @@ const getCustomerById = async (db, custId) => {
   return null;
 };
 
+// ========== YETKİ ==========
+// Bot yalnızca: kayıtlı vize grubu (+ bildirim grubu) ve CRM → Ayarlar → Müşteri → "Bot izinli kişiler"e
+// yazılan Telegram kullanıcı ID'leri. Diğer herkese "yetkiniz yok + ID'niz" cevabı verilir.
+const idList = (x) => (Array.isArray(x) ? x.join(',') : String(x || '')).match(/-?\d{5,}/g) || [];
+const botAccess = (settings, chatId, userId) => {
+  const s = settings || {};
+  const groups = [s.telegramVizeGrupId, s.telegramChatId].map(x => String(x || '').trim()).filter(Boolean);
+  const users = idList(s.telegramIzinliIdler);
+  const chat = String(chatId || ''), user = String(userId || '');
+  return { ok: (chat && groups.includes(chat)) || (user && users.includes(user)), users, groups };
+};
+const denyText = (chatId, userId) => `⛔ Bu botu kullanma yetkiniz yok.\nTelegram ID'niz: ${userId || '-'}${String(chatId) !== String(userId) ? `\nSohbet ID: ${chatId}` : ''}\nYetki için bu numarayı Paydos'a iletin.`;
+
 // ========== WEBHOOK ==========
 exports.telegramBot = functions
   .region('europe-west1')
@@ -1042,6 +1060,11 @@ exports.telegramBot = functions
         const cbChatId = cq.message?.chat?.id;
         const cbMsgId = cq.message?.message_id;
         const parts = data.split('|'); // format: va|<step>|<...>
+        const settingsCb = (await cfg.db.collection('app_settings').doc('main').get()).data() || {};
+        if (!botAccess(settingsCb, cbChatId, cq.from?.id).ok) {
+          await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id, text: '⛔ Yetkiniz yok', show_alert: true });
+          return res.status(200).send('OK');
+        }
         // Telegram'a "aldım" bildir (spinner kapansın)
         await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id });
 
@@ -1253,6 +1276,26 @@ exports.telegramBot = functions
 
     const msg = req.body?.message;
     console.log('Webhook received:', msg ? ('chat:' + msg.chat?.id + ' photo:' + (msg.photo ? 'YES' : 'NO') + ' text:' + (msg.text || '-')) : 'NO MESSAGE');
+    if (msg && msg.chat) {
+      const settingsMsg = (await cfg.db.collection('app_settings').doc('main').get()).data() || {};
+      const acc = botAccess(settingsMsg, msg.chat.id, msg.from?.id);
+      const isPrivate = msg.chat.type === 'private';
+      const txt = typeof msg.text === 'string' ? msg.text.trim() : '';
+      // /id herkese açık: yetki için ID öğrenmenin yolu
+      if (/^\/(id|start)(?:@\w+)?(?=\s|$)/i.test(txt)) {
+        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: acc.ok ? `✅ Yetkilisiniz.\nTelegram ID'niz: ${msg.from?.id}\nSohbet ID: ${msg.chat.id}` : denyText(msg.chat.id, msg.from?.id) });
+        return res.status(200).send('OK');
+      }
+      // /grup: grup henüz kayıtlı değilse yalnız izinli kişi kaydedebilir (yabancı grubun kendini kaydetmesi engellenir)
+      const isGrupCmd = /^\/grup(?:@\w+)?(?=\s|$)/i.test(txt);
+      const grupBootstrap = isGrupCmd && !String(settingsMsg.telegramVizeGrupId || '') && (!acc.users.length || acc.users.includes(String(msg.from?.id || '')));
+      if (!acc.ok && !grupBootstrap) {
+        console.log('[BOT] yetkisiz:', 'chat:' + msg.chat.id, 'user:' + (msg.from?.id || '-'));
+        // Grupta her mesaja cevap verip spam yapma: yalnız özelde ya da fotoğraf/komut gelince
+        if (isPrivate || msg.photo || txt.startsWith('/')) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText(msg.chat.id, msg.from?.id) });
+        return res.status(200).send('OK');
+      }
+    }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
     const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
     if (cmd) {
