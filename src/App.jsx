@@ -1297,7 +1297,37 @@ function LoginScreen({ onLogin, users }) {
   );
 }
 
-function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate, onGo }) {
+// ⚡ Dashboard kısayolları — her kullanıcı Ayarlar → Kısayollarım'dan kendi listesini seçer (users/<id>.shortcuts).
+// act: modülde açılacak form (quickAction); null → sadece modüle git; 'link' → DS-160 linki kopyala; url → yeni sekme
+const SHORTCUTS = [
+  { id: 'visa-new', mod: 'visa', act: 'new', icon: '🌍', label: 'Yeni Vize Başvurusu', color: '#10b981' },
+  { id: 'cust-new', mod: 'customers', act: 'new', icon: '👤', label: 'Yeni Müşteri', color: '#3b82f6' },
+  { id: 'ds160-link', mod: 'ds160', act: 'link', icon: '🇺🇸', label: 'Amerika Vize Linki', color: '#8b5cf6' },
+  { id: 'tour-new', mod: 'tours', act: 'new', icon: '🎫', label: 'Yeni Tur', color: '#f59e0b' },
+  { id: 'offer-new', mod: 'quotes', act: 'offer', icon: '🧾', label: 'Yeni Tur Teklifi', color: '#e8912a' },
+  { id: 'quote-new', mod: 'quotes', act: 'new', icon: '📄', label: 'Yeni Teklif / Proforma', color: '#ef4444' },
+  { id: 'contract-new', mod: 'quotes', act: 'contract', icon: '📜', label: 'Yeni Sözleşme', color: '#6366f1' },
+  { id: 'tavsiye', mod: 'tavsiyeler', act: null, icon: '⭐', label: 'Tavsiye Ekle', color: '#fb923c' },
+  { id: 'go-customers', mod: 'customers', act: null, icon: '👥', label: 'Müşteriler', color: '#3b82f6' },
+  { id: 'go-visa', mod: 'visa', act: null, icon: '🛂', label: 'Vize Başvuruları', color: '#10b981' },
+  { id: 'go-ds160', mod: 'ds160', act: null, icon: '🗽', label: 'Amerika Vize (DS-160)', color: '#8b5cf6' },
+  { id: 'go-tours', mod: 'tours', act: null, icon: '🧳', label: 'Turlar', color: '#f59e0b' },
+  { id: 'go-hotels', mod: 'hotels', act: null, icon: '🏨', label: 'Oteller ve Uçuşlar', color: '#06b6d4' },
+  { id: 'go-quotes', mod: 'quotes', act: null, icon: '🗂️', label: 'Teklif & Proforma', color: '#ef4444' },
+  { id: 'go-duyuru', mod: 'linkduyuru', act: null, icon: '📢', label: 'Duyurular / Linkler', color: '#f59e0b' },
+  { id: 'go-agencies', mod: 'agencies', act: null, icon: '🏢', label: 'Acentelikler', color: '#64748b' },
+  { id: 'go-cards', mod: 'cards', act: null, icon: '💳', label: 'Kredi Kartları', color: '#a855f7' },
+  { id: 'go-bank', mod: 'bankinfo', act: null, icon: '🏦', label: 'Banka Bilgileri', color: '#e8912a' },
+  { id: 'go-log', mod: 'activitylog', act: null, icon: '📋', label: 'İşlemler', color: '#94a3b8' },
+  { id: 'vizeevrak', mod: null, url: 'https://vize.paydostur.com/#/panel', icon: '📁', label: 'Vize Evrak Paneli', color: '#14b8a6' },
+];
+const DEFAULT_SHORTCUTS = ['visa-new', 'cust-new', 'ds160-link', 'tour-new', 'offer-new', 'quote-new', 'contract-new', 'tavsiye'];
+const userShortcuts = (u) => {
+  const ids = Array.isArray(u?.shortcuts) ? u.shortcuts : DEFAULT_SHORTCUTS;
+  return ids.map(id => SHORTCUTS.find(x => x.id === id)).filter(Boolean);
+};
+
+function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate, onGo, currentUser }) {
   const [inboxFiles, setInboxFiles] = useState(null); // 📤 sürükle-bırak ile gelen dosyalar → Belge Yükle penceresi
   const [dragOn, setDragOn] = useState(false);
   const [showBirthdays, setShowBirthdays] = useState(false);
@@ -1433,15 +1463,12 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
           const link = `${url}${url.includes('?') ? '&' : '?'}id=${'a' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36)}`;
           navigator.clipboard.writeText(link).then(() => showToast?.('🇺🇸 Yeni DS-160 linki kopyalandı — müşteriye gönderin', 'success'), () => window.prompt('Linki kopyalayın:', link));
         };
-        const items = [
-          ['visa', 'new', '🌍', 'Yeni Vize Başvurusu', '#10b981'], ['customers', 'new', '👤', 'Yeni Müşteri', '#3b82f6'], ['ds160', 'link', '🇺🇸', 'Amerika Vize Linki', '#8b5cf6'],
-          ['tours', 'new', '🎫', 'Yeni Tur', '#f59e0b'], ['quotes', 'offer', '🧾', 'Yeni Tur Teklifi', '#e8912a'], ['quotes', 'new', '📄', 'Yeni Teklif / Proforma', '#ef4444'],
-          ['quotes', 'contract', '📜', 'Yeni Sözleşme', '#6366f1'], ['tavsiyeler', null, '⭐', 'Tavsiye Ekle', '#fb923c'],
-        ];
+        const items = userShortcuts(currentUser);
+        if (!items.length) return null;
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-            {items.map(([id, act, icon, label, color]) => (
-              <button key={id + act} onClick={() => act === 'link' ? ds160Link() : onGo(id, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
+            {items.map(({ id, mod, act, url, icon, label, color }) => (
+              <button key={id} onClick={() => url ? window.open(url, '_blank', 'noopener') : act === 'link' ? ds160Link() : onGo(mod, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: isMobile ? '8px 12px' : '9px 14px', background: `${color}1a`, border: `1px solid ${color}55`, borderRadius: '999px', color: '#e8f1f8', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background .12s, border-color .12s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = `${color}33`; e.currentTarget.style.borderColor = color; }}
                 onMouseLeave={e => { e.currentTarget.style.background = `${color}1a`; e.currentTarget.style.borderColor = `${color}55`; }}>
@@ -18620,6 +18647,69 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   );
 }
 
+// Ayarlar → ⚡ Kısayollarım: her kullanıcı Dashboard'daki hızlı düğmeleri kendisi seçer ve sıralar
+function ShortcutSettings({ currentUser, setCurrentUser, setUsers, showToast, isMobile }) {
+  const [ids, setIds] = useState(() => userShortcuts(currentUser).map(x => x.id));
+  const [busy, setBusy] = useState(false);
+  const dirty = JSON.stringify(ids) !== JSON.stringify(userShortcuts(currentUser).map(x => x.id));
+  const move = (i, d) => setIds(a => { const b = [...a]; const j = i + d; if (j < 0 || j >= b.length) return a; [b[i], b[j]] = [b[j], b[i]]; return b; });
+  const save = async (list) => {
+    if (!currentUser) return;
+    setBusy(true);
+    try {
+      await setDoc(doc(db, 'users', currentUser._docId || String(currentUser.id)), { shortcuts: list, updatedAt: new Date().toISOString() }, { merge: true });
+      const u = { ...currentUser, shortcuts: list };
+      setCurrentUser(u);
+      try { localStorage.setItem('paydos_current_user', JSON.stringify(u)); } catch (e) { /* yok */ }
+      setUsers?.(prev => (prev || []).map(x => x.id === currentUser.id ? { ...x, shortcuts: list } : x));
+      setIds(list);
+      showToast?.('⚡ Kısayollar kaydedildi', 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  const chip = (x) => ({ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderRadius: '10px', background: `${x.color}14`, border: `1px solid ${x.color}44`, fontSize: '13px', color: '#e8f1f8' });
+  const sm = { padding: '4px 9px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' };
+  const selected = ids.map(id => SHORTCUTS.find(x => x.id === id)).filter(Boolean);
+  const rest = SHORTCUTS.filter(x => !ids.includes(x.id));
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: isMobile ? '16px' : '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: '15px' }}>⚡ Dashboard kısayollarım</h3>
+      <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>Bu liste yalnız sizin hesabınız için geçerlidir ({currentUser?.name || currentUser?.username || ''}). Diğer kullanıcılar kendi kısayollarını seçer.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
+        <div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, marginBottom: '8px' }}>Dashboard'da görünenler ({selected.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {selected.map((x, i) => (
+              <div key={x.id} style={chip(x)}>
+                <span style={{ fontSize: '15px' }}>{x.icon}</span><span style={{ flex: 1 }}>{x.label}</span>
+                <button onClick={() => move(i, -1)} disabled={i === 0} style={{ ...sm, opacity: i === 0 ? 0.35 : 1 }} title="Yukarı">↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === selected.length - 1} style={{ ...sm, opacity: i === selected.length - 1 ? 0.35 : 1 }} title="Aşağı">↓</button>
+                <button onClick={() => setIds(a => a.filter(y => y !== x.id))} style={{ ...sm, color: '#f87171' }} title="Kaldır">✕</button>
+              </div>
+            ))}
+            {!selected.length && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '10px' }}>Kısayol yok — Dashboard'da düğme görünmez. Sağdan ekleyin.</div>}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, marginBottom: '8px' }}>Eklenebilecekler</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {rest.map(x => (
+              <button key={x.id} onClick={() => setIds(a => [...a, x.id])} style={{ ...chip(x), cursor: 'pointer', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize: '15px' }}>{x.icon}</span><span style={{ flex: 1 }}>{x.label}</span><span style={{ color: '#10b981', fontWeight: 700 }}>＋</span>
+              </button>
+            ))}
+            {!rest.length && <div style={{ fontSize: '12px', color: '#64748b' }}>Hepsi eklendi.</div>}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '18px', flexWrap: 'wrap' }}>
+        <button onClick={() => save(ids)} disabled={busy || !dirty} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: dirty ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'rgba(255,255,255,0.08)', color: dirty ? '#1a1a1a' : '#64748b', fontWeight: 700, cursor: dirty && !busy ? 'pointer' : 'default' }}>{busy ? 'Kaydediliyor…' : '💾 Kaydet'}</button>
+        <button onClick={() => setIds(DEFAULT_SHORTCUTS)} style={{ padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>↺ Varsayılan</button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
@@ -18773,6 +18863,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={() => setActiveTab('users')} style={{ padding: '12px 16px', background: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '#10b981' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '600' : '400' }}>
           👥 Kullanıcılar
+        </button>
+        <button onClick={() => setActiveTab('shortcuts')} style={{ padding: '12px 16px', background: activeTab === 'shortcuts' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'shortcuts' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'shortcuts' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'shortcuts' ? '600' : '400' }}>
+          ⚡ Kısayollarım
         </button>
         {isAdmin && (
           <>
@@ -19406,6 +19499,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         </div>
       )}
 
+      {/* ⚡ KISAYOLLARIM — kullanıcıya özel Dashboard kısayolları */}
+      {activeTab === 'shortcuts' && <ShortcutSettings currentUser={currentUser} setCurrentUser={setCurrentUser} setUsers={setUsers} showToast={showToast} isMobile={isMobile} />}
+
       {/* MÜŞTERİ — Telegram Bot + AI API Key */}
       {activeTab === 'musteri' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -19965,6 +20061,17 @@ function AppInner() {
     }
   }, []);
 
+  // Kısayollar başka cihazda değiştirilmiş olabilir: oturum açıkken profilden bir kez tazele
+  useEffect(() => {
+    const u = currentUser; if (!isLoggedIn || !u?.id) return;
+    getDoc(doc(db, 'users', u._docId || String(u.id))).then(snap => {
+      const sc = snap.exists() ? snap.data()?.shortcuts : undefined;
+      if (Array.isArray(sc) && JSON.stringify(sc) !== JSON.stringify(u.shortcuts)) {
+        setCurrentUser(prev => { const nu = { ...prev, shortcuts: sc }; try { localStorage.setItem('paydos_current_user', JSON.stringify(nu)); } catch (e) { /* yok */ } return nu; });
+      }
+    }).catch(() => {});
+  }, [isLoggedIn, currentUser?.id]);
+
   // localStorage'dan yükle - EN ÖNCE (hızlı cache)
   useEffect(() => { const saved = localStorage.getItem('paydos_customers'); if (saved) { try { setCustomers(JSON.parse(saved)); } catch(e) {} } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_visa_applications'); if (saved) { try { setVisaApplications(JSON.parse(saved)); } catch(e) {} } }, []);
@@ -20412,7 +20519,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
@@ -20430,7 +20537,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 
