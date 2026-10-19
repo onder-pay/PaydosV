@@ -619,8 +619,15 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
           var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', 'Saat farkı'));
           var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
           box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
-          var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
-          box1.appendChild(el('div', 's', (off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')) + ' · Şu an orada ' + nowStr));
+          box1.appendChild(el('div', 's', off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')));
+          // İki saat yan yana: orası + Türkiye (dakikada bir güncellenir)
+          var clk = el('div', 's'); clk.style.cssText = 'margin-top:6px;font-weight:700;opacity:1';
+          var tick = function () {
+            var fmt = function (z) { return new Intl.DateTimeFormat('tr-TR', { timeZone: z, hour: '2-digit', minute: '2-digit' }).format(new Date()); };
+            clk.textContent = '📍 Orada ' + fmt(loc.timezone) + '   ·   🇹🇷 Türkiye ' + fmt('Europe/Istanbul');
+          };
+          tick(); setInterval(tick, 30000);
+          box1.appendChild(clk);
           grid.appendChild(box1); reveal();
         } catch (x) {}
       }
