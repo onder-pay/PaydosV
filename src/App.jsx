@@ -831,6 +831,9 @@ const formatPhoneNumber = (value) => {
   return formatted ? '+90 ' + formatted : '+90 5';
 };
 
+// Ekranda telefon: TR cep numarası ise "+90 5XX XXX XX XX", değilse olduğu gibi (kayıt değişmez)
+const showPhone = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('90') && d.length === 12) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = d.slice(1); return /^5\d{9}$/.test(d) ? formatPhoneNumber(d) : String(v || ''); };
+
 // Pasaport No formatla: İlk harf büyük, 9 karakter
 const formatPassportNo = (value) => {
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -4718,15 +4721,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, #0a1628 0%, #132742 50%, #0a1628 100%)', zIndex: 300, overflow: 'auto' }}>
         {/* Header */}
-        <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone}</p>
+        <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '16px', flex: 1, minWidth: 0 }}>
+            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: isMobile ? '16px' : '18px', color: '#ffffff', fontWeight: '600', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>{showPhone(c.phone)}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: isMobile ? '6px' : '8px', flex: 'none' }}>
             <button onClick={async () => {
               const newVerified = c.verified !== true;
               const updated = customers.map(x => x.id === c.id ? {...x, verified: newVerified} : x);
@@ -4737,10 +4740,10 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 await setDoc(doc(db, 'customers', docId), { verified: newVerified }, { merge: true });
               } catch(e) { console.warn('verified kayıt hatası', e); }
             }} style={{ background: c.verified === true ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)', border: `1px solid ${c.verified === true ? 'rgba(16,185,129,0.4)' : 'rgba(234,179,8,0.4)'}`, borderRadius: '10px', padding: '10px 16px', color: c.verified === true ? '#10b981' : '#eab308', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
-              {c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
+              {isMobile ? (c.verified === true ? '✓' : '⚠️ Kontrol') : c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
             </button>
             <button onClick={() => setShareCust(c)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '10px', padding: '10px 14px', color: '#22c55e', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }} title="Bilet, otel belgesi, vize… tek linkte gönder">🔗 {isMobile ? 'Link' : 'Müşteri Linki'}</button>
-            <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
+            {!isMobile && <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>}
           </div>
         </div>
 
@@ -4783,7 +4786,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
 
         {/* Content */}
-        <div style={{ padding: '20px', paddingBottom: '100px' }}>
+        <div style={{ padding: isMobile ? '14px' : '20px', paddingBottom: '130px' }}>
           {/* KİŞİSEL BİLGİLER */}
           {detailTab === 'info' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -4857,7 +4860,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   )}
                   {/* Hızlı işlemler */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {c.phone}</a>}
+                    {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {showPhone(c.phone)}</a>}
                     {c.phone && <a href={`tel:${String(c.phone).replace(/[^\d+]/g, '')}`} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8' }}>📞 Ara</a>}
                     {c.email && <a href={`mailto:${c.email}`} style={{ ...chip, background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.3)', color: '#60a5fa' }}>✉️ E-posta</a>}
                     {c.tcKimlik && <button type="button" onClick={() => { try { navigator.clipboard.writeText(String(c.tcKimlik)); showToast('TC kopyalandı', 'success'); } catch { /* izin yok */ } }} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8', fontFamily: 'inherit' }}>📋 TC kopyala</button>}
@@ -4890,7 +4893,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                       <div style={cardHead}><span>✈️ TUR</span>{myTours.length > 0 && <span>{myTours.length} tur</span>}</div>
                       {nextTour || lastTour ? (<>
                         <div style={big}>{(nextTour || lastTour).name || 'Tur'}</div>
-                        <div style={{ ...small, color: nextTour ? '#10b981' : '#94a3b8', fontWeight: nextTour ? '600' : '400' }}>{nextTour ? 'Yaklaşan · ' : 'Son tur · '}{formatDate((nextTour || lastTour).startDate)}{(nextTour || lastTour).country ? ` · ${(nextTour || lastTour).country}` : ''}</div>
+                        <div style={{ ...small, color: nextTour ? '#10b981' : '#94a3b8', fontWeight: nextTour ? '600' : '400' }}>{nextTour ? ((nextTour.startDate || '') <= today ? 'Devam ediyor · ' : 'Yaklaşan · ') : 'Son tur · '}{formatDate((nextTour || lastTour).startDate)}{(nextTour || lastTour).country ? ` · ${(nextTour || lastTour).country}` : ''}</div>
                       </>) : (<>
                         <div style={big}>—</div>
                         <div style={small}>Tur kaydı yok</div>
@@ -5219,12 +5222,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
 
         {/* Bottom Action Buttons */}
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0) 0%, rgba(10,22,40,0.95) 20%, rgba(10,22,40,1) 100%)', padding: '20px', paddingTop: '40px' }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#0a1628', borderTop: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '10px 14px calc(10px + env(safe-area-inset-bottom))' : '14px 20px', zIndex: 5 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>✏️</span> Düzenle
             </button>
-            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: '#2a1520', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>🗑️</span> Sil
             </button>
           </div>
