@@ -653,6 +653,25 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
           box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          // 🧮 Çevirici: iki kutu, hangisine yazılırsa diğeri hesaplanır ("1.250,50" Türkçe yazımı da olur)
+          var num = function (v) { var t = String(v || '').replace(/\s/g, ''); if (/,/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); var n = parseFloat(t); return isFinite(n) ? n : NaN; };
+          var out = function (n) { return isFinite(n) ? n.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : ''; };
+          var conv = el('div'); conv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:12px';
+          var field = function (label) {
+            var w = el('label'); w.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 12px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(127,127,127,.08)';
+            var i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal'; i.autocomplete = 'off';
+            i.style.cssText = 'flex:1;min-width:0;width:100%;border:none;outline:none;background:transparent;color:inherit;font-family:inherit;font-size:18px;font-weight:700';
+            var u = el('span', '', label); u.style.cssText = 'font-size:13px;font-weight:700;opacity:.7;white-space:nowrap';
+            w.appendChild(i); w.appendChild(u); return { w: w, i: i };
+          };
+          var fa = field(cur === 'CNY' ? 'RMB' : cur), fb = field('₺'); // Çin yuanı piyasada RMB diye bilinir
+          var eq = el('span', '', '⇄'); eq.style.cssText = 'font-size:18px;opacity:.6;flex:none';
+          fa.i.value = '100'; fb.i.value = out(100 * tr);
+          fa.i.addEventListener('input', function () { var n = num(fa.i.value); fb.i.value = fa.i.value ? out(n * tr) : ''; });
+          fb.i.addEventListener('input', function () { var n = num(fb.i.value); fa.i.value = fb.i.value ? out(n / tr) : ''; });
+          [fa.i, fb.i].forEach(function (i) { i.addEventListener('focus', function () { i.select(); }); });
+          conv.appendChild(fa.w); conv.appendChild(eq); conv.appendChild(fb.w);
+          box3.appendChild(conv);
           grid.appendChild(box3); reveal(); showDisc();
         }).catch(function () {});
       }
