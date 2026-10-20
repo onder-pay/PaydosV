@@ -14304,6 +14304,13 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
+// ✍️ Otel rezervasyonundaki münferit uçuşlar (elle yazılan) ve satış fiyatları — otel fiyatına (price) eklenmez, ayrı kalem
+const resManualFlights = (r) => [['Gidiş', r?.flightOut, r?.flightOutPrice], ['Dönüş', r?.flightRet, r?.flightRetPrice]]
+  .filter(([, t]) => t && String(t).trim()).map(([dir, t, pr]) => ({ dir, text: String(t).trim(), price: parseFloat(pr) || 0 }));
+const resFlightSum = (r) => resManualFlights(r).reduce((t, f) => t + f.price, 0);
+// Müşteriden alınacak toplam: otel + münferit uçuşlar (ödendi/kalan bununla hesaplanır)
+const resGrand = (r) => (parseFloat(r?.price) || 0) + resFlightSum(r);
+
 function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, setCustomers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
   // ===== GRUP UÇUŞ =====
@@ -14862,7 +14869,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     let updatedHotel, savedRes;
     // ✍️ Münferit uçuş: grup uçuşu yerine elle yazılan uçuş bilgisi rezervasyonda saklanır
-    const resBase = { ...resData, flightOut: resFlights.out === 'M' ? String(resData.flightOut || '').trim() : '', flightRet: resFlights.ret === 'M' ? String(resData.flightRet || '').trim() : '' };
+    const mOut = resFlights.out === 'M', mRet = resFlights.ret === 'M';
+    const resBase = { ...resData,
+      flightOut: mOut ? String(resData.flightOut || '').trim() : '', flightOutPrice: mOut ? (parseFloat(resData.flightOutPrice) || 0) : 0,
+      flightRet: mRet ? String(resData.flightRet || '').trim() : '', flightRetPrice: mRet ? (parseFloat(resData.flightRetPrice) || 0) : 0 };
     if (editingRes) {
       savedRes = { ...resBase, id: editingRes.id };
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
@@ -15083,11 +15093,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
   // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
   const hotelProformaWithFlights = (hotel, resList) => {
-    const conceptTxt = (c) => MEAL_TR[c] || String(c || '').toUpperCase();
+    const conceptTxt = (c) => MEAL_TR[c] || trUpper(c);
     let anyFlight = false;
     const pkgs = resList.map(r => {
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
       const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
+      // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
+      resManualFlights(r).forEach((f, i) => { anyFlight = true; items.push({ kind: 'flight', refId: `${hotel.id}-${r.id}-m${i}`, label: `✈️ ${f.dir} uçuşu · ${f.text}`, amount: f.price, currency: r.currency || '€' }); });
       (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
         if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
         if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
@@ -15220,7 +15232,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => MEAL_TR[c] || (c || '').toUpperCase();
+      const conceptLabel = (c) => MEAL_TR[c] || trUpper(c);
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -17089,7 +17101,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             {reservations.length > 0 && (
               <button onClick={() => {
                 const rows = [];
-                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar']);
+                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar', 'Uçuş (münferit)', 'Uçuş fiyatı']);
                 reservations.forEach(r => {
                   const nights = calcNights(r.checkIn, r.checkOut);
                   const total = parseFloat(r.price) || 0;
@@ -17110,7 +17122,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     paid,
                     total - paid,
                     r.tag || '',
-                    [r.flightOut && `Gidiş uçuş: ${r.flightOut}`, r.flightRet && `Dönüş uçuş: ${r.flightRet}`, r.notes].filter(Boolean).join(' · ')
+                    r.notes || '',
+                    resManualFlights(r).map(f => `${f.dir}: ${f.text}`).join(' · '),
+                    resFlightSum(r) || ''
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -17435,7 +17449,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         {reservations.length > 0 && (() => {
           const words = resWords, shown = shownRes;
           const sum = (f) => shown.reduce((t, r) => t + f(r), 0);
-          const sell = sum(r => parseFloat(r.price) || 0), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
+          const sell = sum(r => resGrand(r)), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
           const cur = reservations[0]?.currency || '€';
           return (
             <div style={{ marginBottom: '10px' }}>
@@ -17478,9 +17492,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
-                    const total = parseFloat(r.price) || 0;
+                    const total = resGrand(r); // otel + münferit uçuş
                     const buy = parseFloat(r.buyPrice) || 0;
-                    const profit = total - buy;
+                    const profit = (parseFloat(r.price) || 0) - buy; // kâr: otel (uçuş alışı bilinmiyor)
                     const fullyPaid = paid >= total && total > 0;
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: selectedResIds.includes(r.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
@@ -17496,7 +17510,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             {r.customerName}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
-                          {(r.flightOut || r.flightRet) && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>✈️ {[r.flightOut && `Gidiş: ${r.flightOut}`, r.flightRet && `Dönüş: ${r.flightRet}`].filter(Boolean).join(' · ')}</div>}
+                          {resManualFlights(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>✈️ {resManualFlights(r).map(f => `${f.dir}: ${f.text}${f.price ? ` (${f.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
@@ -17791,8 +17805,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
                       </select>
                       {resFlights[key] === 'M' && (
-                        <input autoFocus={!resData[tKey(key)]} value={resData[tKey(key)] || ''} onChange={e => setResData({ ...resData, [tKey(key)]: e.target.value })}
-                          placeholder={dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15'} style={inputStyle} />
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input autoFocus={!resData[tKey(key)]} value={resData[tKey(key)] || ''} onChange={e => setResData({ ...resData, [tKey(key)]: e.target.value })}
+                            placeholder={dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15'} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+                          <div style={{ position: 'relative', width: '110px', flex: 'none' }}>
+                            <input type="number" inputMode="decimal" min="0" value={resData[tKey(key) + 'Price'] || ''} onChange={e => setResData({ ...resData, [tKey(key) + 'Price']: e.target.value })}
+                              placeholder="Fiyat" title="Müşteriye satış fiyatı (proformaya ayrı satır olarak girer)" style={{ ...inputStyle, paddingRight: '28px' }} />
+                            <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
+                          </div>
+                        </div>
                       )}
                     </div>);
                   const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
