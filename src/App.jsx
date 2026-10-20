@@ -17786,8 +17786,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const sel = (key, dir, d) => (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                       <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
-                        <option value="">{dir} uçuşu — ekleme</option>
-                        <option value="M">✍️ Münferit — uçuşu elle yaz</option>
+                        <option value="">{dir}: Uçuş yok</option>
+                        <option value="M">{dir}: ✍️ Münferit (elle yaz)</option>
                         {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
                       </select>
                       {resFlights[key] === 'M' && (
