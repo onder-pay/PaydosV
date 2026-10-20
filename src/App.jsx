@@ -14854,18 +14854,20 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
   const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
+  const openEditRes = (r) => { setResFlights({ out: r.flightOut ? 'M' : '', ret: r.flightRet ? 'M' : '', pkg: true }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
     if (!resData.checkIn || !resData.checkOut) { showToast?.('Giriş/çıkış tarihleri zorunlu', 'error'); return; }
     if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     let updatedHotel, savedRes;
+    // ✍️ Münferit uçuş: grup uçuşu yerine elle yazılan uçuş bilgisi rezervasyonda saklanır
+    const resBase = { ...resData, flightOut: resFlights.out === 'M' ? String(resData.flightOut || '').trim() : '', flightRet: resFlights.ret === 'M' ? String(resData.flightRet || '').trim() : '' };
     if (editingRes) {
-      savedRes = { ...resData, id: editingRes.id };
+      savedRes = { ...resBase, id: editingRes.id };
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
     } else {
-      savedRes = { ...resData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+      savedRes = { ...resBase, id: generateUniqueId(), createdAt: new Date().toISOString() };
       updatedHotel = { ...selectedHotel, reservations: [...(selectedHotel.reservations || []), savedRes] };
     }
     const list = hotels.map(h => h.id === selectedHotel.id ? updatedHotel : h);
@@ -14881,7 +14883,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
     const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
     let pk;
-    [resFlights.out, resFlights.ret].filter(Boolean).forEach(fid => {
+    [resFlights.out, resFlights.ret].filter(x => x && x !== 'M').forEach(fid => {
       const fl = groupFlights.find(f => String(f.id) === String(fid));
       if (fl) { const r = addPeopleToFlight(fl, fp, pk); if (r) pk = r.next; }
     });
@@ -17100,7 +17102,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     r.checkOut || '',
                     nights,
                     r.roomType || '',
-                    r.concept ? r.concept.toUpperCase() : '',
+                    r.concept ? trUpper(r.concept) : '',
                     buy,
                     total,
                     total - buy,
@@ -17108,7 +17110,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     paid,
                     total - paid,
                     r.tag || '',
-                    r.notes || ''
+                    [r.flightOut && `Gidiş uçuş: ${r.flightOut}`, r.flightRet && `Dönüş uçuş: ${r.flightRet}`, r.notes].filter(Boolean).join(' · ')
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -17494,12 +17496,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             {r.customerName}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
+                          {(r.flightOut || r.flightRet) && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>✈️ {[r.flightOut && `Gidiş: ${r.flightOut}`, r.flightRet && `Dönüş: ${r.flightRet}`].filter(Boolean).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
                           {r.roomType}
-                          {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{r.concept.toUpperCase()}</span>}
+                          {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{trUpper(r.concept)}</span>}
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>{total} {r.currency || '€'}</td>
                         <td style={{ padding: '10px 12px' }}>
@@ -17779,19 +17782,26 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const near = (d) => (a, b) => Math.abs(new Date(a.date) - new Date(d || today)) - Math.abs(new Date(b.date) - new Date(d || today));
                   const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
                   const lab = (f) => { const a = (f.reservations || []).filter(x => !x.cancelled).length; return `${formatDate(f.date)} · ${f.airline || ''} ${f.flightNo || ''} · ${f.from}→${f.to} · ${a}/${f.capacity || '∞'}${f.date === resData.checkIn || f.date === resData.checkOut ? ' ⭐' : ''}`; };
+                  const tKey = key => key === 'out' ? 'flightOut' : 'flightRet';
                   const sel = (key, dir, d) => (
-                    <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
-                      <option value="">{dir} uçuşu — ekleme</option>
-                      {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
-                    </select>);
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
+                        <option value="">{dir} uçuşu — ekleme</option>
+                        <option value="M">✍️ Münferit — uçuşu elle yaz</option>
+                        {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
+                      </select>
+                      {resFlights[key] === 'M' && (
+                        <input autoFocus={!resData[tKey(key)]} value={resData[tKey(key)] || ''} onChange={e => setResData({ ...resData, [tKey(key)]: e.target.value })}
+                          placeholder={dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15'} style={inputStyle} />
+                      )}
+                    </div>);
                   const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
                   return (
                     <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                      <label style={labelStyle}>✈️ Grup uçuşuna da ekle <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan)</span></label>
-                      {!opts('Gidiş').length && !opts('Dönüş').length
-                        ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>İleri tarihli grup uçuşu yok — önce <b>Grup Uçuşları</b> sekmesinden uçuşu ekleyin, sonra burada seçin.</div>
-                        : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>}
-                      {(resFlights.out || resFlights.ret) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
+                      <label style={labelStyle}>✈️ Uçuş <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — grup uçuşu seçilirse odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan · münferit ise elle yazın)</span></label>
+                      {!opts('Gidiş').length && !opts('Dönüş').length && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri tarihli grup uçuşu yok — <b>Grup Uçuşları</b> sekmesinden ekleyebilir ya da münferit uçuşu elle yazabilirsiniz.</div>}
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
 
