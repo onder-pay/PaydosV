@@ -14304,12 +14304,22 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
-// ✍️ Otel rezervasyonundaki münferit uçuşlar (elle yazılan) ve satış fiyatları — otel fiyatına (price) eklenmez, ayrı kalem
-const resManualFlights = (r) => [['Gidiş', r?.flightOut, r?.flightOutPrice], ['Dönüş', r?.flightRet, r?.flightRetPrice]]
-  .filter(([, t]) => t && String(t).trim()).map(([dir, t, pr]) => ({ dir, text: String(t).trim(), price: parseFloat(pr) || 0 }));
-const resFlightSum = (r) => resManualFlights(r).reduce((t, f) => t + f.price, 0);
-// Müşteriden alınacak toplam: otel + münferit uçuşlar (ödendi/kalan bununla hesaplanır)
-const resGrand = (r) => (parseFloat(r?.price) || 0) + resFlightSum(r);
+// ✍️ Otel rezervasyonuna elle eklenen kalemler: münferit uçuş ve transfer (gidiş / dönüş ayrı).
+// Her biri: metin + alış (opsiyonel) + satış. Otel fiyatına (price) eklenmez; proformaya ayrı satır olarak girer.
+const RES_EXTRA_DEFS = [
+  { key: 'flightOut', kind: 'flight', dir: 'Gidiş', icon: '✈️', name: 'Gidiş uçuşu' },
+  { key: 'flightRet', kind: 'flight', dir: 'Dönüş', icon: '✈️', name: 'Dönüş uçuşu' },
+  { key: 'transferOut', kind: 'transfer', dir: 'Gidiş', icon: '🚐', name: 'Gidiş transferi', def: 'Havalimanı → Otel' },
+  { key: 'transferRet', kind: 'transfer', dir: 'Dönüş', icon: '🚐', name: 'Dönüş transferi', def: 'Otel → Havalimanı' },
+];
+const resExtras = (r) => RES_EXTRA_DEFS
+  .filter(d => d.kind === 'flight' ? String(r?.[d.key] || '').trim() : r?.[d.key + 'On'])
+  .map(d => ({ ...d, text: String(r?.[d.key] || '').trim() || d.def || '', buy: parseFloat(r?.[d.key + 'Buy']) || 0, price: parseFloat(r?.[d.key + 'Price']) || 0 }));
+const resExtraSum = (r) => resExtras(r).reduce((t, x) => t + x.price, 0);
+// Müşteriden alınacak toplam: otel + elle eklenen kalemler (ödendi/kalan bununla hesaplanır)
+const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
+// Kâr: otel + alışı girilmiş kalemler (alışı boş kalemin kârı bilinmiyor → katılmaz)
+const resProfit = (r) => (parseFloat(r?.price) || 0) - (parseFloat(r?.buyPrice) || 0) + resExtras(r).filter(x => x.buy > 0).reduce((t, x) => t + x.price - x.buy, 0);
 
 function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, setCustomers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
@@ -14869,10 +14879,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     let updatedHotel, savedRes;
     // ✍️ Münferit uçuş: grup uçuşu yerine elle yazılan uçuş bilgisi rezervasyonda saklanır
-    const mOut = resFlights.out === 'M', mRet = resFlights.ret === 'M';
-    const resBase = { ...resData,
-      flightOut: mOut ? String(resData.flightOut || '').trim() : '', flightOutPrice: mOut ? (parseFloat(resData.flightOutPrice) || 0) : 0,
-      flightRet: mRet ? String(resData.flightRet || '').trim() : '', flightRetPrice: mRet ? (parseFloat(resData.flightRetPrice) || 0) : 0 };
+    // Seçilmeyen kalemin bilgileri temizlenir (eski fiyat proformaya sızmasın)
+    const on = { flightOut: resFlights.out === 'M', flightRet: resFlights.ret === 'M', transferOut: !!resData.transferOutOn, transferRet: !!resData.transferRetOn };
+    const resBase = { ...resData };
+    RES_EXTRA_DEFS.forEach(d => {
+      const k = d.key, use = on[k];
+      resBase[k] = use ? String(resData[k] || '').trim() : '';
+      resBase[k + 'Buy'] = use ? (parseFloat(resData[k + 'Buy']) || 0) : 0;
+      resBase[k + 'Price'] = use ? (parseFloat(resData[k + 'Price']) || 0) : 0;
+      if (d.kind === 'transfer') resBase[k + 'On'] = use;
+    });
     if (editingRes) {
       savedRes = { ...resBase, id: editingRes.id };
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
@@ -15099,7 +15115,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
       const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
       // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
-      resManualFlights(r).forEach((f, i) => { anyFlight = true; items.push({ kind: 'flight', refId: `${hotel.id}-${r.id}-m${i}`, label: `✈️ ${f.dir} uçuşu · ${f.text}`, amount: f.price, currency: r.currency || '€' }); });
+      resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}`, amount: x.price, currency: r.currency || '€' }); });
       (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
         if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
         if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
@@ -17101,10 +17117,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             {reservations.length > 0 && (
               <button onClick={() => {
                 const rows = [];
-                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar', 'Uçuş (münferit)', 'Uçuş fiyatı']);
+                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar', 'Uçuş / transfer (ek)', 'Ek satış (Satış\'a dahil)']);
                 reservations.forEach(r => {
                   const nights = calcNights(r.checkIn, r.checkOut);
-                  const total = parseFloat(r.price) || 0;
                   const buy = parseFloat(r.buyPrice) || 0;
                   const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                   rows.push([
@@ -17115,16 +17130,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     nights,
                     r.roomType || '',
                     r.concept ? trUpper(r.concept) : '',
-                    buy,
-                    total,
-                    total - buy,
+                    buy + resExtras(r).reduce((t, x) => t + x.buy, 0),
+                    resGrand(r),
+                    resProfit(r),
                     r.currency || '€',
                     paid,
-                    total - paid,
+                    resGrand(r) - paid,
                     r.tag || '',
                     r.notes || '',
-                    resManualFlights(r).map(f => `${f.dir}: ${f.text}`).join(' · '),
-                    resFlightSum(r) || ''
+                    resExtras(r).map(x => `${x.name}: ${x.text}${x.price ? ` (${x.price})` : ''}`).join(' · '),
+                    resExtraSum(r) || ''
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -17492,9 +17507,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
-                    const total = resGrand(r); // otel + münferit uçuş
+                    const total = resGrand(r); // otel + münferit uçuş + transfer
                     const buy = parseFloat(r.buyPrice) || 0;
-                    const profit = (parseFloat(r.price) || 0) - buy; // kâr: otel (uçuş alışı bilinmiyor)
+                    const profit = resProfit(r); // alışı girilmiş ek kalemler kâra katılır
                     const fullyPaid = paid >= total && total > 0;
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: selectedResIds.includes(r.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
@@ -17510,7 +17525,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             {r.customerName}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
-                          {resManualFlights(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>✈️ {resManualFlights(r).map(f => `${f.dir}: ${f.text}${f.price ? ` (${f.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
+                          {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
@@ -17796,7 +17811,19 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const near = (d) => (a, b) => Math.abs(new Date(a.date) - new Date(d || today)) - Math.abs(new Date(b.date) - new Date(d || today));
                   const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
                   const lab = (f) => { const a = (f.reservations || []).filter(x => !x.cancelled).length; return `${formatDate(f.date)} · ${f.airline || ''} ${f.flightNo || ''} · ${f.from}→${f.to} · ${a}/${f.capacity || '∞'}${f.date === resData.checkIn || f.date === resData.checkOut ? ' ⭐' : ''}`; };
-                  const tKey = key => key === 'out' ? 'flightOut' : 'flightRet';
+                  // Alış (opsiyonel) + satış kutuları — rezervasyon para biriminde
+                  const money = (k) => [['Buy', 'Alış', 'Bizim maliyetimiz (opsiyonel — girilirse kâra katılır)', 'rgba(239,68,68,0.35)'], ['Price', 'Satış', 'Müşteriye satış — proformaya ayrı satır olarak girer', 'rgba(16,185,129,0.35)']].map(([sf, lb, tt, bc]) => (
+                    <div key={sf} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                      <input type="number" inputMode="decimal" min="0" value={resData[k + sf] || ''} onChange={e => setResData({ ...resData, [k + sf]: e.target.value })}
+                        placeholder={lb} title={tt} style={{ ...inputStyle, paddingRight: '24px', borderColor: bc }} />
+                      <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
+                    </div>));
+                  const row = (k, ph) => (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <input autoFocus={!resData[k]} value={resData[k] || ''} onChange={e => setResData({ ...resData, [k]: e.target.value })} placeholder={ph}
+                        style={{ ...inputStyle, flex: '1 1 100%', minWidth: 0 }} />
+                      {money(k)}
+                    </div>);
                   const sel = (key, dir, d) => (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
                       <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
@@ -17804,17 +17831,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         <option value="M">{dir}: ✍️ Münferit (elle yaz)</option>
                         {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
                       </select>
-                      {resFlights[key] === 'M' && (
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <input autoFocus={!resData[tKey(key)]} value={resData[tKey(key)] || ''} onChange={e => setResData({ ...resData, [tKey(key)]: e.target.value })}
-                            placeholder={dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15'} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
-                          <div style={{ position: 'relative', width: '110px', flex: 'none' }}>
-                            <input type="number" inputMode="decimal" min="0" value={resData[tKey(key) + 'Price'] || ''} onChange={e => setResData({ ...resData, [tKey(key) + 'Price']: e.target.value })}
-                              placeholder="Fiyat" title="Müşteriye satış fiyatı (proformaya ayrı satır olarak girer)" style={{ ...inputStyle, paddingRight: '28px' }} />
-                            <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
-                          </div>
-                        </div>
-                      )}
+                      {resFlights[key] === 'M' && row(key === 'out' ? 'flightOut' : 'flightRet', dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15')}
+                    </div>);
+                  const trf = (k, dir, ph) => (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <select value={resData[k + 'On'] ? '1' : ''} onChange={e => setResData({ ...resData, [k + 'On']: !!e.target.value })} style={inputStyle}>
+                        <option value="">{dir}: Transfer yok</option>
+                        <option value="1">{dir}: 🚐 Transfer var</option>
+                      </select>
+                      {resData[k + 'On'] && row(k, ph)}
                     </div>);
                   const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
                   return (
@@ -17822,6 +17847,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <label style={labelStyle}>✈️ Uçuş <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — grup uçuşu seçilirse odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan · münferit ise elle yazın)</span></label>
                       {!opts('Gidiş').length && !opts('Dönüş').length && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri tarihli grup uçuşu yok — <b>Grup Uçuşları</b> sekmesinden ekleyebilir ya da münferit uçuşu elle yazabilirsiniz.</div>}
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      <label style={{ ...labelStyle, marginTop: '12px' }}>🚐 Transfer <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — gidiş ve dönüş ayrı · alış girilmezse kâra katılmaz)</span></label>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{trf('transferOut', 'Gidiş', 'Havalimanı → Otel (araç, saat…)')}{trf('transferRet', 'Dönüş', 'Otel → Havalimanı (araç, saat…)')}</div>
                       {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
