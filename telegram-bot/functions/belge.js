@@ -26,6 +26,13 @@ const parseArr = (v) => { if (Array.isArray(v)) return v; if (typeof v === 'stri
 const parseObj = (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) return v; if (typeof v === 'string') { try { const p = JSON.parse(v); return p && typeof p === 'object' && !Array.isArray(p) ? p : {}; } catch { return {}; } } return {}; };
 const { normEmail } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
 const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+// "1985-03-07", "1985-03-07T…", "07.03.1985", "7/3/1985" → "1985-03-07" (kayıttaki doğum tarihi biçimi değişebilir)
+const toYmd = (v) => {
+  const t = String(v || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const m = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+};
 const byEndDesc = (k) => (a, b) => String(b[k]).localeCompare(String(a[k]));
 const validityOf = (c) => {
   const out = [];
@@ -92,7 +99,7 @@ const withValidity = async (db, d) => {
   const pub = publicData(d);
   pub.contact = { ...(pub.contact || {}), ...(await liveContact(db)) };
   if (d.customerDocId) {
-    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); } }
+    try { const c = await db.collection('customers').doc(String(d.customerDocId)).get(); if (c.exists) { pub.validity = validityOf(c.data() || {}); pub.profile = profileOf(c.data() || {}); pub.kampanyaOnay = !!(c.data() || {}).kampanyaOnay; } }
     catch (e) { console.warn('[belge] geçerlilik okunamadı', e.message); }
   }
   return pub;
@@ -125,10 +132,26 @@ exports.belge = functions.region('europe-west1').https.onRequest(async (req, res
 
     const name = firstName(d.customerName);
 
-    // PIN henüz yok → müşteri belirler
+    // PIN henüz yok → müşteri belirler. Kayıtta doğum tarihi varsa önce o doğrulanır: tur linki tur bitince bu
+    // linke yönlendiği için link kodu tur linkini bilen herkese görünür — PIN'i ilk gelen belirleyip pasaport
+    // görselini görmesin / iletişim bilgisini değiştirmesin. Yanlış doğum tarihi PIN denemesi gibi sayılır (kilit).
     if (!d.pinHash) {
-      if (action !== 'setpin') return res.json({ state: 'setpin', name });
-      if (!/^\d{4}$/.test(pin)) return res.status(400).json({ state: 'setpin', name, error: 'PIN 4 rakam olmalı' });
+      let dobNeed = '';
+      if (d.customerDocId) {
+        const cs = await db.collection('customers').doc(String(d.customerDocId)).get().catch(() => null);
+        dobNeed = cs && cs.exists ? toYmd(cs.data().birthDate) : '';
+      }
+      if (d.pinLockUntil && Date.now() < d.pinLockUntil) {
+        return res.status(429).json({ state: 'locked', name, minutes: Math.ceil((d.pinLockUntil - Date.now()) / 60000) });
+      }
+      if (action !== 'setpin') return res.json({ state: 'setpin', name, dob: !!dobNeed });
+      if (dobNeed && toYmd(p.dob) !== dobNeed) {
+        const fails = (d.pinFails || 0) + 1, lock = fails >= MAX_FAILS ? Date.now() + LOCK_MS : 0;
+        await ref.set({ pinFails: lock ? 0 : fails, pinLockUntil: lock }, { merge: true });
+        if (lock) return res.status(429).json({ state: 'locked', name, minutes: 15 });
+        return res.status(401).json({ state: 'setpin', name, dob: true, error: 'Doğum tarihi kayıtla eşleşmedi.', left: MAX_FAILS - fails });
+      }
+      if (!/^\d{4}$/.test(pin)) return res.status(400).json({ state: 'setpin', name, dob: !!dobNeed, error: 'PIN 4 rakam olmalı' });
       const salt = crypto.randomBytes(8).toString('hex');
       // Aynı anda iki kişi belirlemeye çalışırsa ilk gelen kazanır
       const ok = await db.runTransaction(async (tx) => {

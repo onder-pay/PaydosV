@@ -619,8 +619,15 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
           var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', 'Saat farkı'));
           var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
           box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
-          var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
-          box1.appendChild(el('div', 's', (off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')) + ' · Şu an orada ' + nowStr));
+          box1.appendChild(el('div', 's', off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')));
+          // İki saat yan yana: orası + Türkiye (dakikada bir güncellenir)
+          var clk = el('div', 's'); clk.style.cssText = 'margin-top:6px;font-weight:700;opacity:1';
+          var tick = function () {
+            var fmt = function (z) { return new Intl.DateTimeFormat('tr-TR', { timeZone: z, hour: '2-digit', minute: '2-digit' }).format(new Date()); };
+            clk.textContent = '📍 Orada ' + fmt(loc.timezone) + '   ·   🇹🇷 Türkiye ' + fmt('Europe/Istanbul');
+          };
+          tick(); setInterval(tick, 30000);
+          box1.appendChild(clk);
           grid.appendChild(box1); reveal();
         } catch (x) {}
       }
@@ -646,6 +653,25 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
           box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          // 🧮 Çevirici: iki kutu, hangisine yazılırsa diğeri hesaplanır ("1.250,50" Türkçe yazımı da olur)
+          var num = function (v) { var t = String(v || '').replace(/\s/g, ''); if (/,/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); var n = parseFloat(t); return isFinite(n) ? n : NaN; };
+          var out = function (n) { return isFinite(n) ? n.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : ''; };
+          var conv = el('div'); conv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:12px';
+          var field = function (label) {
+            var w = el('label'); w.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 12px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(127,127,127,.08)';
+            var i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal'; i.autocomplete = 'off';
+            i.style.cssText = 'flex:1;min-width:0;width:100%;border:none;outline:none;background:transparent;color:inherit;font-family:inherit;font-size:18px;font-weight:700';
+            var u = el('span', '', label); u.style.cssText = 'font-size:13px;font-weight:700;opacity:.7;white-space:nowrap';
+            w.appendChild(i); w.appendChild(u); return { w: w, i: i };
+          };
+          var fa = field(cur === 'CNY' ? 'RMB' : cur), fb = field('₺'); // Çin yuanı piyasada RMB diye bilinir
+          var eq = el('span', '', '⇄'); eq.style.cssText = 'font-size:18px;opacity:.6;flex:none';
+          fa.i.value = '100'; fb.i.value = out(100 * tr);
+          fa.i.addEventListener('input', function () { var n = num(fa.i.value); fb.i.value = fa.i.value ? out(n * tr) : ''; });
+          fb.i.addEventListener('input', function () { var n = num(fb.i.value); fa.i.value = fb.i.value ? out(n / tr) : ''; });
+          [fa.i, fb.i].forEach(function (i) { i.addEventListener('focus', function () { i.select(); }); });
+          conv.appendChild(fa.w); conv.appendChild(eq); conv.appendChild(fb.w);
+          box3.appendChild(conv);
           grid.appendChild(box3); reveal(); showDisc();
         }).catch(function () {});
       }
@@ -759,7 +785,32 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       hero.appendChild(el('p', 'lead', 'Biletleriniz, otel ve vize belgeleriniz bu sayfada. Yeni belge eklendikçe güncellenir.'));
 
       renderInstall(box);
-      renderPush(box);
+      renderPush(box, f);
+      // 🎫 Yaklaşan / devam eden turlar: tur sayfasına (/b/) geçiş. Bitmiş tur 3 gün daha görünür.
+      try {
+        var t0 = todayD();
+        (Array.isArray(f.tours) ? f.tours : []).filter(function (t) {
+          if (!t || !/^[A-Za-z0-9]{8,40}$/.test(String(t.token || ''))) return false;
+          var e = parseD(t.endDate) || parseD(t.startDate); if (!e) return true;
+          var lim = new Date(e); lim.setDate(lim.getDate() + 3); return lim >= t0;
+        }).sort(function (a, b) {
+          var da = (parseD(a.endDate) || t0) < t0 ? 1 : 0, db = (parseD(b.endDate) || t0) < t0 ? 1 : 0; // biten tur en alta
+          return da - db || String(a.startDate || '').localeCompare(String(b.startDate || ''));
+        }).forEach(function (t) {
+          var s1 = parseD(t.startDate), e1 = parseD(t.endDate);
+          var card = el('a'); card.href = '/b/' + t.token;
+          card.style.cssText = 'display:flex;align-items:center;gap:12px;margin:12px 0;padding:14px 16px;border-radius:16px;text-decoration:none;color:inherit;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45)';
+          card.appendChild(el('div', '', '🎫')).style.fontSize = '26px';
+          var tx = el('div'); tx.style.flex = '1';
+          var days = s1 ? Math.round((s1 - t0) / 86400000) : null;
+          tx.appendChild(el('div', '', days != null && days > 0 ? 'Turunuza ' + days + ' gün kaldı' : (e1 && e1 < t0 ? 'Turunuz tamamlandı' : 'Turunuz devam ediyor'))).style.cssText = 'font-size:12px;opacity:.75';
+          tx.appendChild(el('div', '', t.city || t.name || 'Turunuz')).style.cssText = 'font-weight:700;font-size:16px';
+          if (s1) tx.appendChild(el('div', '', fmtD(s1) + (e1 ? ' – ' + fmtD(e1) : '') + (t.name && t.city ? ' · ' + t.name : ''))).style.cssText = 'font-size:12.5px;opacity:.8';
+          card.appendChild(tx);
+          card.appendChild(el('div', '', 'Tur sayfası ›')).style.cssText = 'font-size:13px;font-weight:700;color:#f59e0b;white-space:nowrap';
+          add(box, card);
+        });
+      } catch (x) {}
       var dySlot = el('div'); box.appendChild(dySlot);
       try { renderDuyuru('customer', '', dySlot); } catch (x) {}
       if (!navigator.onLine) add(box, el('div', 'offline', 'İnternet yok — en son kaydedilen bilgiler gösteriliyor.'));
@@ -789,6 +840,18 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
         var x = String(a.d.addedAt || ''), y = String(b.d.addedAt || '');
         return x !== y ? (x < y ? 1 : -1) : b.i - a.i;
       }).map(function (o) { return o.d; });
+      // 🗂️ Geçmişim: tarihi geçmiş seyahat belgeleri (bilet, biniş kartı, otel, fuar bileti).
+      // until = biletteki son uçuş / otel çıkış tarihi (CRM yazar). Tarih yoksa 45 günden eski eklenenler geçmiş sayılır.
+      // Vize, sigorta, diğer belgeler tarihten bağımsız "Belgeler"de kalır.
+      var TRAVEL = ['✈️', '🛫', '🛬', '🏨', '🎫'];
+      var isPast = function (dc) {
+        if (TRAVEL.indexOf(dc.icon) < 0) return false;
+        var u = parseD(dc.until); if (u) return u < todayD();
+        var a = dc.addedAt ? new Date(dc.addedAt) : null;
+        return !!(a && !isNaN(a) && (todayD() - a) > 45 * 86400000);
+      };
+      var past = sorted.filter(isPast);
+      sorted = sorted.filter(function (d) { return past.indexOf(d) < 0; });
       // Güncel: en son uçak bileti + en son otel belgesi — her zaman en üstte
       var current = ['✈️', '🏨'].map(function (ic) { return sorted.filter(function (d) { return d.icon === ic; })[0]; }).filter(Boolean);
       var rest = sorted.filter(function (d) { return current.indexOf(d) < 0; });
@@ -903,16 +966,33 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
         }
       } catch (x) {}
 
-      // --- Önceki belgeler: güncel bilet/otel dışındaki her şey (biniş kartları dahil), aya göre, en yeni üstte ---
-      if (rest.length) {
-        sec(current.length ? 'Önceki belgeler' : 'Belgeler', rest.length);
+      // Aya göre gruplu liste (en yeni üstte); parent verilirse onun içine
+      var monthList = function (arr, parent, keyOf) {
         var by = {}, order = [];
-        rest.forEach(function (dc) { var k = monthKey(dc.addedAt); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
+        arr.forEach(function (dc) { var k = monthKey(keyOf(dc)); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(dc); });
         order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : a < b ? 1 : -1; });
         order.forEach(function (k) {
-          if (order.length > 1 || k) add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski'));
-          var list = add(box, el('div', 'list'));
+          if (order.length > 1 || k) (parent ? parent.appendChild(el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski')) : add(box, el('div', 'mon', k ? AY[+k.slice(5) - 1] + ' ' + k.slice(0, 4) : 'Daha eski')));
+          var list = parent ? parent.appendChild(el('div', 'list')) : add(box, el('div', 'list'));
           by[k].forEach(function (dc) { list.appendChild(docRow(dc)); });
+        });
+      };
+      // --- Belgeler: güncel bilet/otel dışındaki güncel belgeler (biniş kartları, vize, sigorta…) ---
+      if (rest.length) {
+        sec(current.length ? 'Diğer belgeler' : 'Belgeler', rest.length);
+        monthList(rest, null, function (dc) { return dc.addedAt; });
+      }
+      // --- 🗂️ Geçmişim: kapalı gelir, dokununca açılır; seyahat tarihine göre aylar ---
+      if (past.length) {
+        sec('Geçmişim', past.length);
+        var pBtn = add(box, el('button', 'all')); pBtn.type = 'button';
+        pBtn.textContent = '🗂️ Geçmiş seyahat belgelerini göster (' + past.length + ')';
+        var pBox = el('div'); pBox.style.display = 'none'; box.appendChild(pBox);
+        monthList(past, pBox, function (dc) { return dc.until || dc.addedAt; });
+        pBtn.addEventListener('click', function () {
+          var open = pBox.style.display === 'none';
+          pBox.style.display = open ? '' : 'none';
+          pBtn.textContent = open ? '🗂️ Geçmişi gizle' : '🗂️ Geçmiş seyahat belgelerini göster (' + past.length + ')';
         });
       }
       if (docs.length > 1) {
@@ -1133,7 +1213,20 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       .then(function (r) { if (r.active) return r; return new Promise(function (ok) { var w = r.installing || r.waiting; if (!w) return ok(r); w.addEventListener('statechange', function () { if (w.state === 'activated') ok(r); }); }); });
   };
   var pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  var renderPush = function (parent) {
+  // Alttan açılan tek dokunuşluk izin penceresi (telefon izni kullanıcı dokunuşu olmadan istenemez)
+  var askSheet = function (title, text, okLabel, onOk, onLater) {
+    var ov = el('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center';
+    var sh = el('div'); sh.style.cssText = 'width:100%;max-width:520px;background:#fff;color:#0f172a;border-radius:20px 20px 0 0;padding:22px 20px 26px;box-shadow:0 -10px 30px rgba(0,0,0,.25);font-family:inherit';
+    var ic = el('div', '', '🔔'); ic.style.cssText = 'font-size:34px;text-align:center'; sh.appendChild(ic);
+    var h = el('div', '', title); h.style.cssText = 'font-weight:800;font-size:18px;text-align:center;margin:6px 0'; sh.appendChild(h);
+    var t = el('div', '', text); t.style.cssText = 'font-size:14px;line-height:1.5;color:#475569;text-align:center;margin-bottom:16px'; sh.appendChild(t);
+    var ok = el('button', '', okLabel); ok.type = 'button'; ok.style.cssText = 'display:block;width:100%;height:50px;border:none;border-radius:14px;background:#0f2744;color:#fff;font-weight:800;font-size:16px;cursor:pointer';
+    var later = el('button', '', 'Şimdi değil'); later.type = 'button'; later.style.cssText = 'display:block;width:100%;margin-top:8px;height:42px;border:none;background:none;color:#64748b;font-size:14px;cursor:pointer';
+    ok.addEventListener('click', function () { document.body.removeChild(ov); onOk(); });
+    later.addEventListener('click', function () { document.body.removeChild(ov); if (onLater) onLater(); });
+    sh.appendChild(ok); sh.appendChild(later); ov.appendChild(sh); document.body.appendChild(ov);
+  };
+  var renderPush = function (parent, f) {
     var card = el('div', 'inst nt');
     var ic = el('div', 'ic'); ic.appendChild(ico('bell')); card.appendChild(ic);
     var tx = el('div', 'tx'); card.appendChild(tx);
@@ -1152,9 +1245,9 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
     ck.appendChild(cb); ck.appendChild(document.createTextNode('Kampanya ve fırsatlardan da haberdar olmak istiyorum.'));
     var subscribe = function (btn) {
       var pin = lsGet(PIN_KEY);
-      if (!pin) { alert('Lütfen sayfayı yenileyip PIN\'inizi girin.'); return; }
+      if (!pin) { if (btn) alert('Lütfen sayfayı yenileyip PIN\'inizi girin.'); return; }
       if (btn) { btn.disabled = true; btn.textContent = '…'; }
-      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; } if (m) alert(m); };
+      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; } if (m && btn) alert(m); }; // sessiz abonelikte (btn yok) uyarı gösterme
       Notification.requestPermission().then(function (perm) {
         if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Tarayıcı ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
         return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
@@ -1173,7 +1266,9 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       setText('Bildirimleri açın', 'Uçuş, otel ve belgelerinizle ilgili size mesaj gönderebilmemiz için lütfen izin verin.');
       act.innerHTML = '';
       var go = el('button', 'go', 'Aç'); go.type = 'button'; go.addEventListener('click', function () { subscribe(go); });
-      act.appendChild(go); cb.checked = false; act.appendChild(ck);
+      goBtn = go;
+      // Yazılı ticari ileti onayı CRM'e işlendiyse kampanya kutusu işaretli gelir; müşteri kaldırabilir
+      act.appendChild(go); cb.checked = !!(f && f.kampanyaOnay); act.appendChild(ck);
     };
     var showOn = function (mk) {
       setText('Bildirimler açık', mk ? 'Seyahat bildirimleri ve kampanyalar bu telefona gelir.' : 'Seyahat bildirimleri bu telefona gelir.', 'ok');
@@ -1192,16 +1287,30 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       act.appendChild(off);
     };
     if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için tarayıcı ayarlarından bu siteye bildirim izni verin.'); return; }
+    var goBtn = null;
     showOff();
-    // Bu telefon zaten abone mi?
+    // Otomatik: izin zaten verildiyse sessizce abone ol; izin hiç sorulmadıysa izin penceresini kendiliğinden aç
+    var ASK_KEY = 'paydos_push_ask_' + code;
+    var autoAsk = function () {
+      var last = +(lsGet(ASK_KEY) || 0);
+      if (!navigator.onLine || Date.now() - last < 3 * 864e5) return; // "Şimdi değil" → 3 gün sorma
+      setTimeout(function () {
+        if (Notification.permission !== 'default') return;
+        askSheet('Bildirimlere izin verin', 'Uçuş saati, otel ve belgelerinizle ilgili bilgiler telefonunuza bildirim olarak gelsin. İstediğiniz zaman kapatabilirsiniz.', 'İzin ver',
+          function () { subscribe(goBtn); }, function () { lsSet(ASK_KEY, String(Date.now())); });
+      }, 1200);
+    };
     navigator.serviceWorker.getRegistration('/m/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (s) {
-      if (!s || Notification.permission !== 'granted') return;
-      return pushCall({ a: 'status', endpoint: s.endpoint }).then(function (j) { if (j.subscribed) showOn(!!j.marketing); });
+      if (Notification.permission === 'granted') {
+        if (!s) return subscribe(null);
+        return pushCall({ a: 'status', endpoint: s.endpoint }).then(function (j) { if (j.subscribed) showOn(!!j.marketing); else subscribe(null); });
+      }
+      if (Notification.permission === 'default') autoAsk();
     }).catch(function () {});
   };
 
   // PIN ekranı: mode 'set' (ilk kez belirle) veya 'enter'
-  var pinScreen = function (mode, name, msg) {
+  var pinScreen = function (mode, name, msg, needDob) {
     box.innerHTML = '';
     var card = el('div', 'pinc');
     var pic = el('div', 'pic'); pic.appendChild(ico('lock')); card.appendChild(pic);
@@ -1211,21 +1320,33 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       : 'Seyahat dosyanızı görüntülemek için 4 haneli PIN\'inizi girin.'));
     var mk = function (ph) { var i = document.createElement('input'); i.type = 'password'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.maxLength = 4; i.pattern = '[0-9]*'; i.placeholder = ph; i.className = 'pin'; i.addEventListener('input', function () { i.value = i.value.replace(/\D/g, '').slice(0, 4); }); return i; };
     var p1 = mk('PIN'), p2 = mode === 'set' ? mk('PIN tekrar') : null;
+    // Kimlik doğrulama: PIN ilk kez belirlenirken kayıttaki doğum tarihi sorulur (link başkasının eline geçtiyse PIN'i o belirleyemesin)
+    var dob = null;
+    if (mode === 'set' && needDob) {
+      card.appendChild(el('div', 'ps', 'Güvenliğiniz için doğum tarihinizi girin:')).style.margin = '10px 0 4px';
+      dob = document.createElement('input'); dob.type = 'text'; dob.inputMode = 'numeric'; dob.autocomplete = 'bday'; dob.maxLength = 10; dob.placeholder = 'GG.AA.YYYY'; dob.className = 'pin';
+      dob.style.letterSpacing = '2px';
+      dob.addEventListener('input', function () { var d = dob.value.replace(/\D/g, '').slice(0, 8); dob.value = d.length > 4 ? d.slice(0, 2) + '.' + d.slice(2, 4) + '.' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '.' + d.slice(2) : d; });
+      card.appendChild(dob);
+    }
     card.appendChild(p1); if (p2) card.appendChild(p2);
     var err = el('div', 'perr', msg || ''); card.appendChild(err);
     var btn = el('button', 'pbtn', mode === 'set' ? 'PIN\'i kaydet ve devam et' : 'Devam et'); btn.type = 'button';
     card.appendChild(btn);
     card.appendChild(el('div', 'pnote', mode === 'set' ? 'PIN\'inizi unutursanız Paydos Turizm\'i arayın.' : 'PIN\'inizi unuttuysanız Paydos Turizm\'i arayın: 0 258 263 71 76'));
     box.appendChild(card);
-    setTimeout(function () { p1.focus(); }, 50);
+    setTimeout(function () { (dob || p1).focus(); }, 50);
     var go = function () {
       var v = p1.value;
       if (!/^\d{4}$/.test(v)) { err.textContent = 'PIN 4 rakam olmalı.'; return; }
       if (p2 && p2.value !== v) { err.textContent = 'İki PIN aynı değil.'; return; }
+      var dm = dob && dob.value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (dob && !dm) { err.textContent = 'Doğum tarihini GG.AA.YYYY olarak yazın.'; return; }
       btn.disabled = true; btn.textContent = 'Kontrol ediliyor…';
-      call({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }).then(function (j) {
+      call(Object.assign({ a: mode === 'set' ? 'setpin' : 'unlock', pin: v }, dm ? { dob: dm[3] + '-' + dm[2] + '-' + dm[1] } : {})).then(function (j) {
         if (j.state === 'ok') { lsSet(PIN_KEY, v); showData(j.data); return; }
         if (j.state === 'locked') { pinScreen('enter', name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.'); return; }
+        if (j.state === 'setpin') { pinScreen('set', name, (j.error || 'Bir hata oluştu.') + (j.left ? ' Kalan deneme: ' + j.left : ''), j.dob); return; }
         if (j.state === 'pin') { pinScreen('enter', name, j.error === 'wrong' ? 'PIN hatalı.' + (j.left ? ' Kalan deneme: ' + j.left : '') : 'Bu link için PIN zaten belirlenmiş. Lütfen PIN\'inizi girin.'); return; }
         btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bir hata oluştu.';
       }).catch(function () { btn.disabled = false; btn.textContent = 'Tekrar deneyin'; err.textContent = 'Bağlantı hatası.'; });
@@ -1238,7 +1359,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   call(saved ? { a: 'unlock', pin: saved } : { a: 'get' }).then(function (j) {
     if (j.state === 'ok') return showData(j.data);
     if (j.state === 'notfound') { lsSet(DATA_KEY, null); return show('Bu bağlantı bulunamadı veya kaldırılmış.'); }
-    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name); }
+    if (j.state === 'setpin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('set', j.name, '', j.dob); }
     if (j.state === 'pin') { lsSet(PIN_KEY, null); lsSet(DATA_KEY, null); return pinScreen('enter', j.name, saved ? 'PIN değişmiş olabilir, lütfen yeniden girin.' : ''); }
     if (j.state === 'locked') return pinScreen('enter', j.name, 'Çok fazla hatalı deneme. ' + (j.minutes || 15) + ' dakika sonra tekrar deneyin.');
     offlineFallback();

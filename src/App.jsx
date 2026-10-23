@@ -831,6 +831,9 @@ const formatPhoneNumber = (value) => {
   return formatted ? '+90 ' + formatted : '+90 5';
 };
 
+// Ekranda telefon: TR cep numarası ise "+90 5XX XXX XX XX", değilse olduğu gibi (kayıt değişmez)
+const showPhone = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('90') && d.length === 12) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = d.slice(1); return /^5\d{9}$/.test(d) ? formatPhoneNumber(d) : String(v || ''); };
+
 // Pasaport No formatla: İlk harf büyük, 9 karakter
 const formatPassportNo = (value) => {
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1297,7 +1300,37 @@ function LoginScreen({ onLogin, users }) {
   );
 }
 
-function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate, onGo }) {
+// ⚡ Dashboard kısayolları — her kullanıcı Ayarlar → Kısayollarım'dan kendi listesini seçer (users/<id>.shortcuts).
+// act: modülde açılacak form (quickAction); null → sadece modüle git; 'link' → DS-160 linki kopyala; url → yeni sekme
+const SHORTCUTS = [
+  { id: 'visa-new', mod: 'visa', act: 'new', icon: '🌍', label: 'Yeni Vize Başvurusu', color: '#10b981' },
+  { id: 'cust-new', mod: 'customers', act: 'new', icon: '👤', label: 'Yeni Müşteri', color: '#3b82f6' },
+  { id: 'ds160-link', mod: 'ds160', act: 'link', icon: '🇺🇸', label: 'Amerika Vize Linki', color: '#8b5cf6' },
+  { id: 'tour-new', mod: 'tours', act: 'new', icon: '🎫', label: 'Yeni Tur', color: '#f59e0b' },
+  { id: 'offer-new', mod: 'quotes', act: 'offer', icon: '🧾', label: 'Yeni Tur Teklifi', color: '#e8912a' },
+  { id: 'quote-new', mod: 'quotes', act: 'new', icon: '📄', label: 'Yeni Teklif / Proforma', color: '#ef4444' },
+  { id: 'contract-new', mod: 'quotes', act: 'contract', icon: '📜', label: 'Yeni Sözleşme', color: '#6366f1' },
+  { id: 'tavsiye', mod: 'tavsiyeler', act: null, icon: '⭐', label: 'Tavsiye Ekle', color: '#fb923c' },
+  { id: 'go-customers', mod: 'customers', act: null, icon: '👥', label: 'Müşteriler', color: '#3b82f6' },
+  { id: 'go-visa', mod: 'visa', act: null, icon: '🛂', label: 'Vize Başvuruları', color: '#10b981' },
+  { id: 'go-ds160', mod: 'ds160', act: null, icon: '🗽', label: 'Amerika Vize (DS-160)', color: '#8b5cf6' },
+  { id: 'go-tours', mod: 'tours', act: null, icon: '🧳', label: 'Turlar', color: '#f59e0b' },
+  { id: 'go-hotels', mod: 'hotels', act: null, icon: '🏨', label: 'Oteller ve Uçuşlar', color: '#06b6d4' },
+  { id: 'go-quotes', mod: 'quotes', act: null, icon: '🗂️', label: 'Teklif & Proforma', color: '#ef4444' },
+  { id: 'go-duyuru', mod: 'linkduyuru', act: null, icon: '📢', label: 'Duyurular / Linkler', color: '#f59e0b' },
+  { id: 'go-agencies', mod: 'agencies', act: null, icon: '🏢', label: 'Acentelikler', color: '#64748b' },
+  { id: 'go-cards', mod: 'cards', act: null, icon: '💳', label: 'Kredi Kartları', color: '#a855f7' },
+  { id: 'go-bank', mod: 'bankinfo', act: null, icon: '🏦', label: 'Banka Bilgileri', color: '#e8912a' },
+  { id: 'go-log', mod: 'activitylog', act: null, icon: '📋', label: 'İşlemler', color: '#94a3b8' },
+  { id: 'vizeevrak', mod: null, url: 'https://vize.paydostur.com/#/panel', icon: '📁', label: 'Vize Evrak Paneli', color: '#14b8a6' },
+];
+const DEFAULT_SHORTCUTS = ['visa-new', 'cust-new', 'ds160-link', 'tour-new', 'offer-new', 'quote-new', 'contract-new', 'tavsiye'];
+const userShortcuts = (u) => {
+  const ids = Array.isArray(u?.shortcuts) ? u.shortcuts : DEFAULT_SHORTCUTS;
+  return ids.map(id => SHORTCUTS.find(x => x.id === id)).filter(Boolean);
+};
+
+function DashboardModule({ customers, setCustomers, appSettings, showToast, isMobile, onNavigate, onGo, currentUser }) {
   const [inboxFiles, setInboxFiles] = useState(null); // 📤 sürükle-bırak ile gelen dosyalar → Belge Yükle penceresi
   const [dragOn, setDragOn] = useState(false);
   const [showBirthdays, setShowBirthdays] = useState(false);
@@ -1433,15 +1466,12 @@ function DashboardModule({ customers, setCustomers, appSettings, showToast, isMo
           const link = `${url}${url.includes('?') ? '&' : '?'}id=${'a' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36)}`;
           navigator.clipboard.writeText(link).then(() => showToast?.('🇺🇸 Yeni DS-160 linki kopyalandı — müşteriye gönderin', 'success'), () => window.prompt('Linki kopyalayın:', link));
         };
-        const items = [
-          ['visa', 'new', '🌍', 'Yeni Vize Başvurusu', '#10b981'], ['customers', 'new', '👤', 'Yeni Müşteri', '#3b82f6'], ['ds160', 'link', '🇺🇸', 'Amerika Vize Linki', '#8b5cf6'],
-          ['tours', 'new', '🎫', 'Yeni Tur', '#f59e0b'], ['quotes', 'offer', '🧾', 'Yeni Tur Teklifi', '#e8912a'], ['quotes', 'new', '📄', 'Yeni Teklif / Proforma', '#ef4444'],
-          ['quotes', 'contract', '📜', 'Yeni Sözleşme', '#6366f1'], ['tavsiyeler', null, '⭐', 'Tavsiye Ekle', '#fb923c'],
-        ];
+        const items = userShortcuts(currentUser);
+        if (!items.length) return null;
         return (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-            {items.map(([id, act, icon, label, color]) => (
-              <button key={id + act} onClick={() => act === 'link' ? ds160Link() : onGo(id, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
+            {items.map(({ id, mod, act, url, icon, label, color }) => (
+              <button key={id} onClick={() => url ? window.open(url, '_blank', 'noopener') : act === 'link' ? ds160Link() : onGo(mod, act)} title={act === 'link' ? 'Müşteriye özel yeni DS-160 linki kopyalar' : label}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: isMobile ? '8px 12px' : '9px 14px', background: `${color}1a`, border: `1px solid ${color}55`, borderRadius: '999px', color: '#e8f1f8', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background .12s, border-color .12s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = `${color}33`; e.currentTarget.style.borderColor = color; }}
                 onMouseLeave={e => { e.currentTarget.style.background = `${color}1a`; e.currentTarget.style.borderColor = `${color}55`; }}>
@@ -1901,7 +1931,14 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
         dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
         arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
       }));
-      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '' })); // addedAt: linkte aya göre gruplama
+      // until: belgenin seyahat tarihi (biletteki son uçuş / otel çıkışı) — linkte tarihi geçenler "Geçmişim"e iner
+      const untilOf = (d) => {
+        const fy = (trip.flights || []).filter(f => d.id && f.docId === d.id && /^\d{4}-\d{2}-\d{2}$/.test(String(f.ymd || ''))).map(f => f.ymd).sort().pop();
+        if (fy) return fy;
+        if (d.id && trip.hotelDocId === d.id && /^\d{4}-\d{2}-\d{2}$/.test(String(trip.hotelCheckOut || ''))) return trip.hotelCheckOut;
+        return '';
+      };
+      const docs = (trip.docs || []).map(d => ({ icon: d.icon, label: d.label, url: d.url, addedAt: d.addedAt || '', until: untilOf(d) })); // addedAt: linkte aya göre gruplama
       await setDoc(doc(db, 'paylasimlar', token), {
         kind: 'customer', customerName: name, tourName: trip.title || '', country: trip.country || '', city: trip.city || '',
         startDate: trip.startDate || '', endDate: trip.endDate || '', docs, flights,
@@ -2015,13 +2052,29 @@ const BILDIRIM_HEDEF = [
   ['usa90', 'ABD vizesi 90 gün içinde bitenler'],
   ['passport6', 'Pasaportu 6 ay içinde bitenler'],
   ['pick', 'Seçtiğim müşteriler'],
+  ['tour', 'Bir turun yolcuları'],
 ];
-function BildirimlerModule({ customers, showToast, isMobile }) {
+function BildirimlerModule({ customers, tours = [], showToast, isMobile, fixedTour }) {
   const [stats, setStats] = useState(null);
   const [log, setLog] = useState([]);
   const [err, setErr] = useState('');
   const [type, setType] = useState('bilgi');
-  const [hedef, setHedef] = useState('all');
+  const [hedef, setHedef] = useState(fixedTour ? 'tour' : 'all');
+  const [tourSel, setTourSel] = useState(fixedTour ? String(fixedTour.id) : '');
+  const selTour = fixedTour || tours.find(t => String(t.id) === tourSel) || null;
+  // Turun yolcuları: rezervasyondaki müşteri → bildirim anahtarı (müşteri linki abonelikleri için)
+  const tourKeys = useMemo(() => {
+    const set = new Set();
+    (selTour?.reservations || []).filter(r => !r.cancelled).forEach(r => {
+      const c = customers.find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
+      if (c) set.add(custKey(c));
+    });
+    return set;
+  }, [selTour, customers]);
+  const tourOpts = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return tours.filter(t => !t.endDate || t.endDate >= today).sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  }, [tours]);
   const [picked, setPicked] = useState([]);
   const [q, setQ] = useState('');
   const [title, setTitle] = useState('');
@@ -2045,6 +2098,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const matchHedef = (c) => {
     if (hedef === 'all') return true;
     if (hedef === 'pick') return picked.includes(custKey(c));
+    if (hedef === 'tour') return tourKeys.has(custKey(c));
     if (hedef === 'schengen60') return safeParseJSON(c.schengenVisas).some(v => { const n = daysUntil(v.endDate); return n !== null && n >= 0 && n <= 60; });
     if (hedef === 'usa90') { const n = daysUntil(safeParseObj(c.usaVisa).endDate); return n !== null && n >= 0 && n <= 90; }
     if (hedef === 'passport6') return safeParseJSON(c.passports).some(p => { const n = daysUntil(p.expiryDate); return n !== null && n >= 0 && n <= 183; });
@@ -2053,14 +2107,19 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const targets = subCustomers.filter(matchHedef);
   const devices = hedef === 'all'
     ? (type === 'kampanya' ? stats?.marketing || 0 : stats?.total || 0)
-    : targets.reduce((n, c) => n + (type === 'kampanya' ? by[custKey(c)].m : by[custKey(c)].n), 0);
+    : hedef === 'tour'
+      // tur linkinden abone olanlar + bu yolcuların müşteri linki abonelikleri (tur aboneliği iki kez sayılmaz)
+      ? (type === 'kampanya' ? targets.reduce((n, c) => n + by[custKey(c)].m, 0) : (stats?.byTour?.[String(selTour?.id)] || 0) + targets.reduce((n, c) => n + by[custKey(c)].n - (by[custKey(c)].t || 0), 0))
+      : targets.reduce((n, c) => n + (type === 'kampanya' ? by[custKey(c)].m : by[custKey(c)].n), 0);
   const send = async () => {
     if (!title.trim() || !body.trim()) { showToast?.('Başlık ve mesaj yazın', 'warning'); return; }
     if (!devices) { showToast?.('Bu hedefte bildirim alacak cihaz yok', 'warning'); return; }
     if (!window.confirm(`${type === 'kampanya' ? '🎁 KAMPANYA' : 'ℹ️ Bilgilendirme'} bildirimi ${devices} cihaza gönderilsin mi?\n\n${title}\n${body}`)) return;
     setBusy(true);
     try {
-      const r = await bildirimCall({ a: 'send', type, title, body, url: url.trim(), customerIds: hedef === 'all' ? null : targets.map(custKey) });
+      if (hedef === 'tour' && !selTour) { showToast?.('Tur seçin', 'warning'); setBusy(false); return; }
+      const r = await bildirimCall({ a: 'send', type, title, body, url: url.trim(), customerIds: hedef === 'all' ? null : targets.map(custKey),
+        ...(hedef === 'tour' ? { tourId: String(selTour.id), tourName: selTour.name || '' } : {}) });
       showToast?.(`📣 ${r.sent} cihaza gönderildi${r.failed ? ` · ${r.failed} ulaşmadı` : ''}`, r.sent ? 'success' : 'warning');
       setTitle(''); setBody(''); setUrl(''); load();
     } catch (e) { showToast?.('❌ Gönderilemedi: ' + e.message, 'error'); }
@@ -2071,10 +2130,11 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
   const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: isMobile ? '16px' : '20px' };
   const pickList = subCustomers.filter(c => !q || trHas(`${c.firstName} ${c.lastName}`, q)).slice(0, 30);
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
-      <h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
-      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Müşteri linkinden bildirime izin veren telefonlara mesaj gönderin. iPhone'da bildirim için linkin ana ekrana eklenmiş olması gerekir.</p>
+    <div style={{ padding: fixedTour ? 0 : isMobile ? '16px' : '24px', maxWidth: '1100px' }}>
+      {!fixedTour && <><h2 style={{ fontSize: '20px', margin: '0 0 6px' }}>📣 Bildirimler</h2>
+      <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#64748b' }}>Müşteri linkinden veya tur linkinden bildirime izin veren telefonlara mesaj gönderin. iPhone'da bildirim için linkin ana ekrana eklenmiş olması gerekir.</p></>}
       {err && <div style={{ ...card, borderColor: 'rgba(239,68,68,0.4)', color: '#fca5a5', marginBottom: '16px', fontSize: '13px' }}>Bildirim servisine ulaşılamadı: {err}. (Firebase fonksiyonu "bildirim" yüklü mü?)</div>}
+      {!fixedTour && <>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '18px' }}>
         {[['🔔', 'Bildirim açık cihaz', stats?.total, '#3b82f6'], ['🎁', 'Kampanya onaylı', stats?.marketing, '#f59e0b'], ['👥', 'Müşteri', subCustomers.length, '#10b981']].map(([i, l, v, c]) => (
           <div key={l} style={{ ...card, padding: '14px 16px' }}><div style={{ fontSize: '24px', fontWeight: 700, color: c }}>{stats ? v : '…'}</div><div style={{ fontSize: '12px', color: '#94a3b8' }}>{i} {l}</div></div>
@@ -2089,6 +2149,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
         </div>
         <button onClick={toggleAuto} disabled={!stats} style={{ flex: 'none', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700, fontSize: '13px', border: 'none', color: '#fff', background: stats?.auto ? '#10b981' : '#475569', opacity: stats ? 1 : 0.5 }}>{stats ? (stats.auto ? '✓ Açık' : 'Kapalı') : '…'}</button>
       </div>
+      </>}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', alignItems: 'start' }}>
         <div style={card}>
           <label style={{ ...lbl, marginTop: 0 }}>Tür</label>
@@ -2101,9 +2162,17 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
           </div>
           {type === 'kampanya' && <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#fbbf24' }}>Reklam/kampanya içeriğini "Bilgilendirme" olarak göndermeyin — onay vermeyen müşteriye ticari ileti yasal risktir.</div>}
           <label style={lbl}>Kime</label>
+          {fixedTour ? <div style={{ ...inp, background: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.35)' }}>🎫 {fixedTour.name} yolcuları</div> : (
           <select value={hedef} onChange={e => setHedef(e.target.value)} style={inp}>
             {BILDIRIM_HEDEF.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-          </select>
+          </select>)}
+          {hedef === 'tour' && !fixedTour && (
+            <select value={tourSel} onChange={e => setTourSel(e.target.value)} style={{ ...inp, marginTop: '8px' }}>
+              <option value="">— Tur seçin —</option>
+              {tourOpts.map(t => <option key={t.id} value={String(t.id)}>{t.name} · {formatDate(t.startDate)}</option>)}
+            </select>
+          )}
+          {hedef === 'tour' && selTour && <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#94a3b8' }}>Tur linkinden bildirimi açan yolcular + bu turdaki müşterilerin müşteri linki bildirimleri.</div>}
           {hedef === 'pick' && (
             <div style={{ marginTop: '8px' }}>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Müşteri ara (sadece bildirimi açık olanlar)" style={inp} />
@@ -2124,7 +2193,7 @@ function BildirimlerModule({ customers, showToast, isMobile }) {
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://paydostur.com/..." style={inp} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '18px', flexWrap: 'wrap' }}>
             <button onClick={send} disabled={busy || !stats} style={{ padding: '11px 22px', borderRadius: '10px', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 700, fontSize: '14px', color: '#fff', background: type === 'kampanya' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#2563eb)', opacity: busy || !stats ? 0.6 : 1 }}>{busy ? 'Gönderiliyor…' : '📣 Gönder'}</button>
-            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{stats ? <><b style={{ color: '#e8f1f8' }}>{devices}</b> cihaz{hedef !== 'all' ? ` · ${targets.length} müşteri` : ''}</> : 'yükleniyor…'}</span>
+            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{stats ? <><b style={{ color: '#e8f1f8' }}>{devices}</b> cihaz{hedef !== 'all' && hedef !== 'tour' ? ` · ${targets.length} müşteri` : ''}</> : 'yükleniyor…'}</span>
           </div>
         </div>
         <div style={card}>
@@ -2583,13 +2652,14 @@ function MusteriLinkiModule({ customers, tours, showToast, isMobile, currentUser
       </div>
       {tab === 'duyuru'
         ? <div style={{ padding: isMobile ? '16px' : '20px 24px' }}><DuyurularModule scope="customer" embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} /></div>
-        : <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />}
+        : <BildirimlerModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} />}
     </div>
   );
 }
 
 // ===== 🎫 Tur Linki (sol menü): tur seçilir → o turun duyuruları, yarışma, tavsiyeler, link durumu =====
-function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) {
+function TurLinkiModule({ tours = [], customers = [], showToast, isMobile, currentUser, bare }) {
+  const [bildirimAc, setBildirimAc] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [sel, setSel] = useState('');
   const [q, setQ] = useState('');
@@ -2643,6 +2713,7 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button onClick={() => setYarisma(true)} style={btn('rgba(245,158,11,0.15)', 'rgba(245,158,11,0.45)', '#fbbf24')}>🏆 Canlı yarışma</button>
                   <button onClick={() => setTavsiye(true)} style={btn('rgba(249,115,22,0.12)', 'rgba(249,115,22,0.4)', '#fb923c')}>⭐ {tour.city || 'Şehir'} tavsiyeleri</button>
+                  <button onClick={() => setBildirimAc(o => !o)} style={btn('rgba(59,130,246,0.15)', 'rgba(59,130,246,0.45)', '#93c5fd')}>📣 Yolculara bildirim {bildirimAc ? '▲' : '▼'}</button>
                 </div>
                 {appStats && appStats.tourId === tour.id && shared > 0 && (
                   <div style={{ marginTop: '10px', fontSize: '12.5px' }}>
@@ -2660,6 +2731,7 @@ function TurLinkiModule({ tours = [], showToast, isMobile, currentUser, bare }) 
                 )}
                 {shared < res.length && <div style={{ fontSize: '12px', color: '#fbbf24', marginTop: '10px' }}>{res.length - shared} yolcuya henüz tur linki gönderilmedi (Turlar → bu tur → yolcunun 🔗 butonu).</div>}
               </div>
+              {bildirimAc && <div style={{ marginBottom: '16px' }}><BildirimlerModule key={'b' + tour.id} fixedTour={tour} customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} /></div>}
               <DuyurularModule key={tour.id} scope="onetour" fixedTour={tour} embedded tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
               {yarisma && <YarismaModal tour={tour} onClose={() => setYarisma(false)} showToast={showToast} isMobile={isMobile} />}
               {tavsiye && <TavsiyelerModal focusCity={tour.city || ''} onClose={() => setTavsiye(false)} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
@@ -2684,7 +2756,7 @@ function LinkDuyuruModule({ customers, tours, showToast, isMobile, currentUser }
       </div>
       {tab === 'musteri'
         ? <MusteriLinkiModule bare customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />
-        : <TurLinkiModule bare tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
+        : <TurLinkiModule bare tours={tours} customers={customers} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />}
     </div>
   );
 }
@@ -2939,7 +3011,7 @@ function CustomerShareModal({ customer, onClose, onSaved, appSettings, showToast
   const setFlight = (i, patch) => up({ flights: trip.flights.map((f, k) => k === i ? { ...f, ...patch } : f) });
 
   const save = async () => {
-    if (!(trip.docs || []).length && !(trip.flights || []).length) { showToast?.('Önce en az bir belge ekleyin', 'warning'); return; }
+    // Belgesiz de verilebilir: müşteri profilini, pasaport/vize sürelerini ve duyuruları görür; belgeler sonra eklenir
     setBusy('Kaydediliyor…');
     try {
       const { link, text } = await publishCustomerLink(c, trip, token.current, appSettings);
@@ -3567,6 +3639,18 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
   const [ctxMenu, setCtxMenu] = useState(null);
   const [tourPickFor, setTourPickFor] = useState(null); // tek müşteri ya da { many: [müşteriler] }
   const [selIds, setSelIds] = useState([]); // arama sonuçlarında çoklu seçim (ör. aynı firmadan 5 kişi)
+  // 📣 Ticari ileti (kampanya bildirimi) yazılı onayı: işaretliyse müşteri linkinde kampanya kutusu işaretli gelir, müşteri kaldırabilir
+  const setKampanyaOnay = async (list, on) => {
+    const val = on ? { at: new Date().toISOString(), by: currentUser?.name || currentUser?.email || '' } : null;
+    const ids = new Set(list.map(c => c.id));
+    setCustomers(prev => prev.map(c => ids.has(c.id) ? { ...c, kampanyaOnay: val } : c));
+    try {
+      let b = writeBatch(db), n = 0;
+      for (const c of list) { b.set(doc(db, 'customers', c._docId || String(c.id)), { kampanyaOnay: on ? val : deleteField() }, { merge: true }); if (++n >= 400) { await b.commit(); b = writeBatch(db); n = 0; } }
+      if (n) await b.commit();
+      showToast?.(on ? `📣 ${list.length} müşteriye yazılı kampanya onayı işlendi` : `Kampanya onayı kaldırıldı (${list.length})`, 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+  };
   const toggleSel = (id) => setSelIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const [tourPickQ, setTourPickQ] = useState('');
   const longPressRef = useRef(null);
@@ -4637,15 +4721,15 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, #0a1628 0%, #132742 50%, #0a1628 100%)', zIndex: 300, overflow: 'auto' }}>
         {/* Header */}
-        <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#ffffff', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone}</p>
+        <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '16px', flex: 1, minWidth: 0 }}>
+            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: isMobile ? '16px' : '18px', color: '#ffffff', fontWeight: '600', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>{showPhone(c.phone)}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: isMobile ? '6px' : '8px', flex: 'none' }}>
             <button onClick={async () => {
               const newVerified = c.verified !== true;
               const updated = customers.map(x => x.id === c.id ? {...x, verified: newVerified} : x);
@@ -4656,10 +4740,10 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 await setDoc(doc(db, 'customers', docId), { verified: newVerified }, { merge: true });
               } catch(e) { console.warn('verified kayıt hatası', e); }
             }} style={{ background: c.verified === true ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)', border: `1px solid ${c.verified === true ? 'rgba(16,185,129,0.4)' : 'rgba(234,179,8,0.4)'}`, borderRadius: '10px', padding: '10px 16px', color: c.verified === true ? '#10b981' : '#eab308', fontWeight: '600', cursor: 'pointer', fontSize: '12px' }}>
-              {c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
+              {isMobile ? (c.verified === true ? '✓' : '⚠️ Kontrol') : c.verified === true ? '✓ Kontrol Edildi' : '⚠️ Kontrol Et'}
             </button>
             <button onClick={() => setShareCust(c)} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '10px', padding: '10px 14px', color: '#22c55e', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }} title="Bilet, otel belgesi, vize… tek linkte gönder">🔗 {isMobile ? 'Link' : 'Müşteri Linki'}</button>
-            <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>
+            {!isMobile && <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>✏️ Düzenle</button>}
           </div>
         </div>
 
@@ -4702,7 +4786,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
 
         {/* Content */}
-        <div style={{ padding: '20px', paddingBottom: '100px' }}>
+        <div style={{ padding: isMobile ? '14px' : '20px', paddingBottom: '130px' }}>
           {/* KİŞİSEL BİLGİLER */}
           {detailTab === 'info' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -4745,7 +4829,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                 // Müşteri linkinden (Profil) kendi düzelttiği bilgiler — son 30 gün
                 const SELF_TR = { phone: 'Telefon', email: 'E-posta', city: 'İkamet ili', tkMemberNo: 'Miles&Smiles no' };
                 const selfEdits = (Array.isArray(c.selfEdits) ? c.selfEdits : []).filter(e => e && String(e.at || '') >= new Date(Date.now() - 30 * 86400000).toISOString()).slice(-5).reverse();
+                const ko = c.kampanyaOnay && typeof c.kampanyaOnay === 'object' ? c.kampanyaOnay : null;
                 return (<>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 12px', background: ko ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${ko ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '10px', fontSize: '12.5px' }}>
+                    <span>📣 Kampanya bildirimi onayı (yazılı): <b style={{ color: ko ? '#c084fc' : '#94a3b8' }}>{ko ? `Var · ${formatDate(ko.at)}${ko.by ? ` · ${ko.by}` : ''}` : 'Yok'}</b></span>
+                    <button onClick={() => { if (ko ? window.confirm('Kampanya onayı kaldırılsın mı?') : window.confirm('Bu müşteriden yazılı ticari ileti (kampanya) onayı alındı mı?')) setKampanyaOnay([c], !ko); }} style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>{ko ? 'Kaldır' : 'Onay alındı'}</button>
+                  </div>
                   {selfEdits.length > 0 && (
                     <div style={{ padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '12px', fontSize: '12px', color: '#bfdbfe' }}>
                       <div style={{ fontWeight: '700', marginBottom: '4px' }}>📝 Müşteri bilgilerini linkten kendisi güncelledi</div>
@@ -4771,7 +4860,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   )}
                   {/* Hızlı işlemler */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {c.phone}</a>}
+                    {c.phone && <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noopener noreferrer" style={{ ...chip, background: 'rgba(37,211,102,0.15)', borderColor: 'rgba(37,211,102,0.35)', color: '#25d366' }}>💬 {showPhone(c.phone)}</a>}
                     {c.phone && <a href={`tel:${String(c.phone).replace(/[^\d+]/g, '')}`} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8' }}>📞 Ara</a>}
                     {c.email && <a href={`mailto:${c.email}`} style={{ ...chip, background: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.3)', color: '#60a5fa' }}>✉️ E-posta</a>}
                     {c.tcKimlik && <button type="button" onClick={() => { try { navigator.clipboard.writeText(String(c.tcKimlik)); showToast('TC kopyalandı', 'success'); } catch { /* izin yok */ } }} style={{ ...chip, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.12)', color: '#e8f1f8', fontFamily: 'inherit' }}>📋 TC kopyala</button>}
@@ -4804,7 +4893,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                       <div style={cardHead}><span>✈️ TUR</span>{myTours.length > 0 && <span>{myTours.length} tur</span>}</div>
                       {nextTour || lastTour ? (<>
                         <div style={big}>{(nextTour || lastTour).name || 'Tur'}</div>
-                        <div style={{ ...small, color: nextTour ? '#10b981' : '#94a3b8', fontWeight: nextTour ? '600' : '400' }}>{nextTour ? 'Yaklaşan · ' : 'Son tur · '}{formatDate((nextTour || lastTour).startDate)}{(nextTour || lastTour).country ? ` · ${(nextTour || lastTour).country}` : ''}</div>
+                        <div style={{ ...small, color: nextTour ? '#10b981' : '#94a3b8', fontWeight: nextTour ? '600' : '400' }}>{nextTour ? ((nextTour.startDate || '') <= today ? 'Devam ediyor · ' : 'Yaklaşan · ') : 'Son tur · '}{formatDate((nextTour || lastTour).startDate)}{(nextTour || lastTour).country ? ` · ${(nextTour || lastTour).country}` : ''}</div>
                       </>) : (<>
                         <div style={big}>—</div>
                         <div style={small}>Tur kaydı yok</div>
@@ -5133,12 +5222,12 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
         </div>
 
         {/* Bottom Action Buttons */}
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0) 0%, rgba(10,22,40,0.95) 20%, rgba(10,22,40,1) 100%)', padding: '20px', paddingTop: '40px' }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#0a1628', borderTop: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '10px 14px calc(10px + env(safe-area-inset-bottom))' : '14px 20px', zIndex: 5 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <button onClick={() => { setSelectedCustomer(null); openEditForm(c); }} style={{ padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>✏️</span> Düzenle
             </button>
-            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => deleteCustomer(c)} style={{ padding: '14px', background: '#2a1520', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '600', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <span>🗑️</span> Sil
             </button>
           </div>
@@ -5202,6 +5291,7 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
             <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
             <button onClick={() => { setSelIds([]); onGo?.('visa', { type: 'visaForMany', customers: selCusts }); }} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📑 Vize başvurusu</button>
+            <button onClick={() => { if (window.confirm(`Seçilen ${selCusts.length} müşteriden yazılı ticari ileti (kampanya) onayı alındı mı?\n\nOnaylarsanız müşteri linkinde kampanya bildirimi varsayılan açık gelir; müşteri istediğinde kapatır.`)) setKampanyaOnay(selCusts, true); }} title="Yazılı kampanya onayı işle" style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(168,85,247,0.45)', background: 'none', color: '#c084fc', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📣 Kampanya onayı</button>
             <button onClick={() => exportToExcel(selCusts, `Secili_Musteriler_${new Date().toLocaleDateString('tr')}`)} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(16,185,129,0.4)', background: 'none', color: '#10b981', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
             <button onClick={() => setSelIds([])} aria-label="Seçimi temizle" style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>✕</button>
           </div>
@@ -9123,7 +9213,7 @@ const RES_LINK_DOCS = [
   ['flightTicketUrl', '✈️', 'Uçak Bileti'], ['boardingOutUrl', '🛫', 'Gidiş Biniş Kartı'],
   ['boardingRetUrl', '🛬', 'Dönüş Biniş Kartı'], ['fuarTicketUrl', '🎫', 'Fuar Giriş Bileti'],
 ];
-const syncResLinkDocs = async (res) => {
+const syncResLinkDocs = async (res, getNext) => {
   if (!res?.shareToken) return false;
   const snap = await getDoc(doc(db, 'paylasimlar', res.shareToken));
   if (!snap.exists()) return false;
@@ -9131,9 +9221,42 @@ const syncResLinkDocs = async (res) => {
   const keep = (Array.isArray(snap.data()?.docs) ? snap.data().docs : []).filter(x => !labels.has(x.label));
   const add = RES_LINK_DOCS.filter(([f]) => res[f]).map(([f, icon, label]) => ({ icon, label, url: res[f] }));
   const cur = (snap.data()?.docs || []).filter(x => labels.has(x.label));
-  if (JSON.stringify(cur.map(x => [x.label, x.url])) === JSON.stringify(add.map(x => [x.label, x.url]))) return false; // zaten güncel
-  await setDoc(doc(db, 'paylasimlar', res.shareToken), { docs: [...keep, ...add], updatedAt: new Date().toISOString() }, { merge: true });
-  return true;
+  const patch = {};
+  const docsChanged = JSON.stringify(cur.map(x => [x.label, x.url])) !== JSON.stringify(add.map(x => [x.label, x.url]));
+  if (docsChanged) patch.docs = [...keep, ...add];
+  // Tur bitince ana ekrandaki tur simgesi yolcunun müşteri linkine (/m/) geçsin
+  if (!snap.data()?.nextLink && getNext) { const n = await getNext(); if (n) patch.nextLink = n; }
+  if (!Object.keys(patch).length) return false;
+  await setDoc(doc(db, 'paylasimlar', res.shareToken), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+  return docsChanged;
+};
+
+// Yolcunun müşteri linki (/m/) kodu: varsa onu, yoksa boş bir müşteri linki açar (PIN'i müşteri ilk girişte belirler).
+// Tur linki (/b/) tur bittikten sonra buna yönlenir — ana ekrana eklenen simge Paydos hesabı olarak yaşamaya devam eder.
+const ensureCustomerLink = async (cust, appSettings) => {
+  if (!cust) return '';
+  if (cust.shareToken) return cust.shareToken;
+  // Doğum tarihi yoksa otomatik açma: PIN'i ilk belirleyen kimliğini doğum tarihiyle kanıtlar (belge.js) —
+  // doğum tarihi olmayan linkte tur linkini bilen herkes PIN koyabilirdi
+  if (!cust.birthDate) return '';
+  const token = customerLinkSlug(cust);
+  await publishCustomerLink(cust, { title: '', city: '', country: '', startDate: '', endDate: '', hotelName: '', hotelAddress: '', flights: [], docs: [] }, token, appSettings);
+  cust.shareToken = token; // aynı oturumda ikinci kez açılmasın (state ayrıca güncellenir)
+  return token;
+};
+
+// Müşteri linkine (/m/) turun linkini ekle: müşteri sonra tekrar tura katılırsa eski simgeden açınca yeni turunu görür
+const addTourToCustomerLink = async (mToken, tour, bToken) => {
+  if (!mToken || !bToken || !tour) return;
+  const ref0 = doc(db, 'paylasimlar', mToken);
+  const snap = await getDoc(ref0);
+  if (!snap.exists()) return;
+  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '' };
+  const list = (Array.isArray(snap.data()?.tours) ? snap.data().tours : []).filter(t => t && t.token !== bToken);
+  const old = (snap.data()?.tours || []).find(t => t && t.token === bToken);
+  if (old && JSON.stringify(old) === JSON.stringify(entry)) return;
+  const tours = [...list, entry].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate))).slice(0, 12);
+  await setDoc(ref0, { tours }, { merge: true });
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
@@ -9598,7 +9721,15 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
       RES_LINK_DOCS.forEach(([f, icon, label]) => { if (res[f]) docs.push({ icon, label, url: res[f] }); });
       const flights = offerFlightList(tour.offerData);
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
+      const custForLink = (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId)));
+      let nextLink = '';
+      try {
+        nextLink = await ensureCustomerLink(custForLink, appSettings);
+        if (nextLink && custForLink) setCustomers?.(prev => prev.map(c => c.id === custForLink.id ? { ...c, shareToken: nextLink } : c));
+        if (nextLink) await addTourToCustomerLink(nextLink, tour, token);
+      } catch (e) { console.warn('[müşteri linki]', e.message); }
       await setDoc(doc(db, 'paylasimlar', token), {
+        ...(nextLink ? { nextLink } : {}),
         customerName: res.customerName || '', tourName: tour.name || '', tourId: String(tour.id),
         country: tour.country || '', city: tour.city || '', startDate: tour.startDate || '', endDate: tour.endDate || '',
         docs, flights, updatedAt: new Date().toISOString(), createdBy: currentUser?.name || '',
@@ -10302,7 +10433,14 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     if (!todo.length) return;
     (async () => {
       let n = 0;
-      for (const r of todo) { try { if (await syncResLinkDocs(r)) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
+      const getNext = (r) => async () => {
+        const c = (customers || []).find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
+        const tok = await ensureCustomerLink(c, appSettings);
+        if (tok && c) setCustomers?.(prev => prev.map(x => x.id === c.id ? { ...x, shareToken: tok } : x));
+        if (tok) await addTourToCustomerLink(tok, t, r.shareToken).catch(() => {});
+        return tok;
+      };
+      for (const r of todo) { try { if (await syncResLinkDocs(r, getNext(r))) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
       if (n) showToast?.(`🔗 ${n} müşteri linkine bilet/biniş kartı işlendi`, 'success');
     })();
   }, [selectedTour?.id]);
@@ -14166,6 +14304,23 @@ function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, show
 }
 
 // OTEL MODÜLÜ
+// ✍️ Otel rezervasyonuna elle eklenen kalemler: münferit uçuş ve transfer (gidiş / dönüş ayrı).
+// Her biri: metin + alış (opsiyonel) + satış. Otel fiyatına (price) eklenmez; proformaya ayrı satır olarak girer.
+const RES_EXTRA_DEFS = [
+  { key: 'flightOut', kind: 'flight', dir: 'Gidiş', icon: '✈️', name: 'Gidiş uçuşu' },
+  { key: 'flightRet', kind: 'flight', dir: 'Dönüş', icon: '✈️', name: 'Dönüş uçuşu' },
+  { key: 'transferOut', kind: 'transfer', dir: 'Gidiş', icon: '🚐', name: 'Gidiş transferi', def: 'Havalimanı → Otel' },
+  { key: 'transferRet', kind: 'transfer', dir: 'Dönüş', icon: '🚐', name: 'Dönüş transferi', def: 'Otel → Havalimanı' },
+];
+const resExtras = (r) => RES_EXTRA_DEFS
+  .filter(d => d.kind === 'flight' ? String(r?.[d.key] || '').trim() : r?.[d.key + 'On'])
+  .map(d => ({ ...d, text: String(r?.[d.key] || '').trim() || d.def || '', buy: parseFloat(r?.[d.key + 'Buy']) || 0, price: parseFloat(r?.[d.key + 'Price']) || 0 }));
+const resExtraSum = (r) => resExtras(r).reduce((t, x) => t + x.price, 0);
+// Müşteriden alınacak toplam: otel + elle eklenen kalemler (ödendi/kalan bununla hesaplanır)
+const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
+// Kâr: otel + alışı girilmiş kalemler (alışı boş kalemin kârı bilinmiyor → katılmaz)
+const resProfit = (r) => (parseFloat(r?.price) || 0) - (parseFloat(r?.buyPrice) || 0) + resExtras(r).filter(x => x.buy > 0).reduce((t, x) => t + x.price - x.buy, 0);
+
 function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, setCustomers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
   const [view, setView] = useState('list'); // list, detail, form
   // ===== GRUP UÇUŞ =====
@@ -14715,19 +14870,31 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   };
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
-  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setResFlights({ out: '', ret: '', pkg: true }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
+  const [resTrf, setResTrf] = useState({ out: '', ret: '' }); // Transferler bölümünden seçilen transfer (id)
+  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  const openEditRes = (r) => { setResFlights({ out: r.flightOut ? 'M' : '', ret: r.flightRet ? 'M' : '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
     if (!resData.checkIn || !resData.checkOut) { showToast?.('Giriş/çıkış tarihleri zorunlu', 'error'); return; }
     if (!isSaneDate(resData.checkIn) || !isSaneDate(resData.checkOut)) { showToast?.('Tarih hatalı görünüyor (yıl kutusuna tıklayıp tekrar yazın)', 'error'); return; }
     let updatedHotel, savedRes;
+    // ✍️ Münferit uçuş: grup uçuşu yerine elle yazılan uçuş bilgisi rezervasyonda saklanır
+    // Seçilmeyen kalemin bilgileri temizlenir (eski fiyat proformaya sızmasın)
+    const on = { flightOut: resFlights.out === 'M', flightRet: resFlights.ret === 'M', transferOut: !!resData.transferOutOn, transferRet: !!resData.transferRetOn };
+    const resBase = { ...resData };
+    RES_EXTRA_DEFS.forEach(d => {
+      const k = d.key, use = on[k];
+      resBase[k] = use ? String(resData[k] || '').trim() : '';
+      resBase[k + 'Buy'] = use ? (parseFloat(resData[k + 'Buy']) || 0) : 0;
+      resBase[k + 'Price'] = use ? (parseFloat(resData[k + 'Price']) || 0) : 0;
+      if (d.kind === 'transfer') resBase[k + 'On'] = use;
+    });
     if (editingRes) {
-      savedRes = { ...resData, id: editingRes.id };
+      savedRes = { ...resBase, id: editingRes.id };
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
     } else {
-      savedRes = { ...resData, id: generateUniqueId(), createdAt: new Date().toISOString() };
+      savedRes = { ...resBase, id: generateUniqueId(), createdAt: new Date().toISOString() };
       updatedHotel = { ...selectedHotel, reservations: [...(selectedHotel.reservations || []), savedRes] };
     }
     const list = hotels.map(h => h.id === selectedHotel.id ? updatedHotel : h);
@@ -14743,9 +14910,24 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
     const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
     let pk;
-    [resFlights.out, resFlights.ret].filter(Boolean).forEach(fid => {
+    [resFlights.out, resFlights.ret].filter(x => x && x !== 'M').forEach(fid => {
       const fl = groupFlights.find(f => String(f.id) === String(fid));
       if (fl) { const r = addPeopleToFlight(fl, fp, pk); if (r) pk = r.next; }
+    });
+    // 🚐 Transferler bölümünden seçilen transfer: oda tek rezervasyon olarak (kişi sayısı = odadakiler) eklenir
+    [resTrf.out, resTrf.ret].filter(Boolean).forEach(tid => {
+      const t = transfers.find(x => String(x.id) === String(tid));
+      if (!t) return;
+      const act = (t.reservations || []).filter(x => !x.cancelled);
+      if (act.some(x => String(x.packageResId) === String(savedRes.id) || normalizeTr(x.customerName) === normalizeTr(savedRes.customerName))) { showToast?.(`🚐 ${savedRes.customerName} bu transferde zaten var`, 'info'); return; }
+      const pax = 1 + (savedRes.guestNames || []).filter(x => x && String(x).trim()).length;
+      const used = act.reduce((n, x) => n + (parseInt(x.pax) || 1), 0), cap = parseInt(t.capacity) || 0;
+      if (cap > 0 && used + pax > cap) { showToast?.(`🚐 Transfer kapasitesi yetersiz: ${cap - used} yer kaldı, ${pax} kişi`, 'error'); return; }
+      const tr = { ...emptyTRes, id: Date.now() + Math.random(), createdAt: new Date().toISOString(), customerId: savedRes.customerId, customerName: savedRes.customerName,
+        phone: savedRes.customerPhone || '', pax, sellPrice: t.sellPrice || '', buyPrice: t.buyPrice || '', currency: t.currency || '€',
+        packageHotelId: updatedHotel.id, packageHotelName: updatedHotel.name || '', packageResId: savedRes.id };
+      setTransfers(prev => prev.map(x => x.id === t.id ? { ...x, reservations: [...(x.reservations || []), tr] } : x));
+      showToast?.(`🚐 ${pax} kişi ${t.fromLoc} → ${t.toLoc} transferine eklendi`, 'success');
     });
     setShowResForm(false); setEditingRes(null);
   };
@@ -14943,11 +15125,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
   // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
   const hotelProformaWithFlights = (hotel, resList) => {
-    const conceptTxt = (c) => MEAL_TR[c] || String(c || '').toUpperCase();
+    const conceptTxt = (c) => MEAL_TR[c] || trUpper(c);
     let anyFlight = false;
     const pkgs = resList.map(r => {
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
       const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
+      // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
+      resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}`, amount: x.price, currency: r.currency || '€' }); });
       (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
         if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
         if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
@@ -14957,6 +15141,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         items.push({ kind: 'flight', refId: `${fl.id}-${fr.id}`,
           label: `✈️ ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from} → ${fl.to} · ${formatDate(fl.date)} · ${titleCaseTr(fr.customerName)}`.replace(/\s+/g, ' '),
           amount: (parseFloat(fr.sellPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.sell) || 0), 0), currency: fl.currency || '€' });
+      }));
+      // 🚐 Transferler bölümünden bu otel rezervasyonuna bağlanmış transferler
+      (transfers || []).forEach(t => (t.reservations || []).forEach(tr => {
+        if (tr.cancelled || String(tr.packageHotelId) !== String(hotel.id)) return;
+        if (!(tr.packageResId ? String(tr.packageResId) === String(r.id) : names.has(normalizeTr(tr.customerName)))) return;
+        anyFlight = true;
+        items.push({ kind: 'transfer', refId: `${t.id}-${tr.id}`,
+          label: `🚐 ${t.fromLoc} → ${t.toLoc}${t.date ? ` · ${formatDate(t.date)}` : ''}${t.time ? ` ${t.time}` : ''} · ${t.vehicleType || ''}${(parseInt(tr.pax) || 1) > 1 ? ` · ${tr.pax} kişi` : ''}`.replace(/\s+/g, ' '),
+          amount: tResTotal(tr), currency: t.currency || '€' });
       }));
       return { customerName: titleCaseTr(r.customerName || ''), customerId: r.customerId || '', tag: r.tag || '', title: `${hotel.name} paketi`, items };
     });
@@ -15080,7 +15273,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
       let yPos = 149;
       let subtotal = 0;
-      const conceptLabel = (c) => MEAL_TR[c] || (c || '').toUpperCase();
+      const conceptLabel = (c) => MEAL_TR[c] || trUpper(c);
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
@@ -16949,10 +17142,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
             {reservations.length > 0 && (
               <button onClick={() => {
                 const rows = [];
-                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar']);
+                rows.push(['Müşteri', 'Telefon', 'Giriş', 'Çıkış', 'Gece', 'Oda Tipi', 'Konsept', 'Alış', 'Satış', 'Kâr', 'Para', 'Ödenen', 'Kalan', 'Etiket', 'Notlar', 'Uçuş / transfer (ek)', 'Ek satış (Satış\'a dahil)']);
                 reservations.forEach(r => {
                   const nights = calcNights(r.checkIn, r.checkOut);
-                  const total = parseFloat(r.price) || 0;
                   const buy = parseFloat(r.buyPrice) || 0;
                   const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                   rows.push([
@@ -16962,15 +17154,17 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     r.checkOut || '',
                     nights,
                     r.roomType || '',
-                    r.concept ? r.concept.toUpperCase() : '',
-                    buy,
-                    total,
-                    total - buy,
+                    r.concept ? trUpper(r.concept) : '',
+                    buy + resExtras(r).reduce((t, x) => t + x.buy, 0),
+                    resGrand(r),
+                    resProfit(r),
                     r.currency || '€',
                     paid,
-                    total - paid,
+                    resGrand(r) - paid,
                     r.tag || '',
-                    r.notes || ''
+                    r.notes || '',
+                    resExtras(r).map(x => `${x.name}: ${x.text}${x.price ? ` (${x.price})` : ''}`).join(' · '),
+                    resExtraSum(r) || ''
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -17295,7 +17489,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         {reservations.length > 0 && (() => {
           const words = resWords, shown = shownRes;
           const sum = (f) => shown.reduce((t, r) => t + f(r), 0);
-          const sell = sum(r => parseFloat(r.price) || 0), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
+          const sell = sum(r => resGrand(r)), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
           const cur = reservations[0]?.currency || '€';
           return (
             <div style={{ marginBottom: '10px' }}>
@@ -17338,9 +17532,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
-                    const total = parseFloat(r.price) || 0;
+                    const total = resGrand(r); // otel + münferit uçuş + transfer
                     const buy = parseFloat(r.buyPrice) || 0;
-                    const profit = total - buy;
+                    const profit = resProfit(r); // alışı girilmiş ek kalemler kâra katılır
                     const fullyPaid = paid >= total && total > 0;
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: selectedResIds.includes(r.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
@@ -17356,12 +17550,13 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             {r.customerName}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
+                          {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>
                           {r.roomType}
-                          {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{r.concept.toUpperCase()}</span>}
+                          {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{trUpper(r.concept)}</span>}
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>{total} {r.currency || '€'}</td>
                         <td style={{ padding: '10px 12px' }}>
@@ -17641,19 +17836,50 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const near = (d) => (a, b) => Math.abs(new Date(a.date) - new Date(d || today)) - Math.abs(new Date(b.date) - new Date(d || today));
                   const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
                   const lab = (f) => { const a = (f.reservations || []).filter(x => !x.cancelled).length; return `${formatDate(f.date)} · ${f.airline || ''} ${f.flightNo || ''} · ${f.from}→${f.to} · ${a}/${f.capacity || '∞'}${f.date === resData.checkIn || f.date === resData.checkOut ? ' ⭐' : ''}`; };
+                  // Alış (opsiyonel) + satış kutuları — rezervasyon para biriminde
+                  const money = (k) => [['Buy', 'Alış', 'Bizim maliyetimiz (opsiyonel — girilirse kâra katılır)', 'rgba(239,68,68,0.35)'], ['Price', 'Satış', 'Müşteriye satış — proformaya ayrı satır olarak girer', 'rgba(16,185,129,0.35)']].map(([sf, lb, tt, bc]) => (
+                    <div key={sf} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                      <input type="number" inputMode="decimal" min="0" value={resData[k + sf] || ''} onChange={e => setResData({ ...resData, [k + sf]: e.target.value })}
+                        placeholder={lb} title={tt} style={{ ...inputStyle, paddingRight: '24px', borderColor: bc }} />
+                      <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
+                    </div>));
+                  const row = (k, ph) => (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <input autoFocus={!resData[k]} value={resData[k] || ''} onChange={e => setResData({ ...resData, [k]: e.target.value })} placeholder={ph}
+                        style={{ ...inputStyle, flex: '1 1 100%', minWidth: 0 }} />
+                      {money(k)}
+                    </div>);
                   const sel = (key, dir, d) => (
-                    <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
-                      <option value="">{dir} uçuşu — ekleme</option>
-                      {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
-                    </select>);
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <select value={resFlights[key]} onChange={e => setResFlights(x => ({ ...x, [key]: e.target.value }))} style={inputStyle}>
+                        <option value="">{dir}: Uçuş yok</option>
+                        <option value="M">{dir}: ✍️ Münferit (elle yaz)</option>
+                        {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
+                      </select>
+                      {resFlights[key] === 'M' && row(key === 'out' ? 'flightOut' : 'flightRet', dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15')}
+                    </div>);
+                  // Transfer: yok / elle yaz / Transferler bölümündeki kayıtlı transfer (tarihi geçmemiş, giriş-çıkış tarihine yakın olan üstte)
+                  const tOpts = (d) => (transfers || []).filter(t => !t.date || t.date >= today).sort((a, b) => (a.date ? Math.abs(new Date(a.date) - new Date(d || today)) : 9e15) - (b.date ? Math.abs(new Date(b.date) - new Date(d || today)) : 9e15));
+                  const tLab = (t) => { const u = (t.reservations || []).filter(x => !x.cancelled).reduce((n, x) => n + (parseInt(x.pax) || 1), 0); return `${t.date ? formatDate(t.date) + ' · ' : ''}${t.time ? t.time + ' · ' : ''}${t.fromLoc}→${t.toLoc} · ${t.vehicleType || ''} · ${u}/${t.capacity || '∞'}${t.sellPrice ? ` · ${t.sellPrice}${t.currency || '€'}/kişi` : ''}${t.date && (t.date === resData.checkIn || t.date === resData.checkOut) ? ' ⭐' : ''}`; };
+                  const trf = (k, sk, dir, ph, d) => (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <select value={resData[k + 'On'] ? 'M' : (resTrf[sk] || '')} onChange={e => { const v = e.target.value; setResData({ ...resData, [k + 'On']: v === 'M' }); setResTrf(x => ({ ...x, [sk]: v && v !== 'M' ? v : '' })); }} style={inputStyle}>
+                        <option value="">{dir}: Transfer yok</option>
+                        <option value="M">{dir}: ✍️ Elle yaz</option>
+                        {tOpts(d).map(t => <option key={t.id} value={String(t.id)}>🚐 {tLab(t)}</option>)}
+                      </select>
+                      {resData[k + 'On'] && row(k, ph)}
+                      {resTrf[sk] && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kaydedince odadaki {1 + (resData.guestNames || []).filter(x => x && x.trim()).length} kişi bu transfere eklenir; fiyat transferin kişi başı fiyatından, proformaya girer.</div>}
+                    </div>);
                   const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
                   return (
                     <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                      <label style={labelStyle}>✈️ Grup uçuşuna da ekle <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan)</span></label>
-                      {!opts('Gidiş').length && !opts('Dönüş').length
-                        ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>İleri tarihli grup uçuşu yok — önce <b>Grup Uçuşları</b> sekmesinden uçuşu ekleyin, sonra burada seçin.</div>
-                        : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>}
-                      {(resFlights.out || resFlights.ret) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
+                      <label style={labelStyle}>✈️ Uçuş <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — grup uçuşu seçilirse odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan · münferit ise elle yazın)</span></label>
+                      {!opts('Gidiş').length && !opts('Dönüş').length && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri tarihli grup uçuşu yok — <b>Grup Uçuşları</b> sekmesinden ekleyebilir ya da münferit uçuşu elle yazabilirsiniz.</div>}
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      <label style={{ ...labelStyle, marginTop: '12px' }}>🚐 Transfer <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — gidiş ve dönüş ayrı · Transferler bölümünden seçin ya da elle yazın)</span></label>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{trf('transferOut', 'out', 'Gidiş', 'Havalimanı → Otel (araç, saat…)', resData.checkIn)}{trf('transferRet', 'ret', 'Dönüş', 'Otel → Havalimanı (araç, saat…)', resData.checkOut)}</div>
+                      {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
 
@@ -18620,6 +18846,69 @@ function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }) {
   );
 }
 
+// Ayarlar → ⚡ Kısayollarım: her kullanıcı Dashboard'daki hızlı düğmeleri kendisi seçer ve sıralar
+function ShortcutSettings({ currentUser, setCurrentUser, setUsers, showToast, isMobile }) {
+  const [ids, setIds] = useState(() => userShortcuts(currentUser).map(x => x.id));
+  const [busy, setBusy] = useState(false);
+  const dirty = JSON.stringify(ids) !== JSON.stringify(userShortcuts(currentUser).map(x => x.id));
+  const move = (i, d) => setIds(a => { const b = [...a]; const j = i + d; if (j < 0 || j >= b.length) return a; [b[i], b[j]] = [b[j], b[i]]; return b; });
+  const save = async (list) => {
+    if (!currentUser) return;
+    setBusy(true);
+    try {
+      await setDoc(doc(db, 'users', currentUser._docId || String(currentUser.id)), { shortcuts: list, updatedAt: new Date().toISOString() }, { merge: true });
+      const u = { ...currentUser, shortcuts: list };
+      setCurrentUser(u);
+      try { localStorage.setItem('paydos_current_user', JSON.stringify(u)); } catch (e) { /* yok */ }
+      setUsers?.(prev => (prev || []).map(x => x.id === currentUser.id ? { ...x, shortcuts: list } : x));
+      setIds(list);
+      showToast?.('⚡ Kısayollar kaydedildi', 'success');
+    } catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  const chip = (x) => ({ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderRadius: '10px', background: `${x.color}14`, border: `1px solid ${x.color}44`, fontSize: '13px', color: '#e8f1f8' });
+  const sm = { padding: '4px 9px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' };
+  const selected = ids.map(id => SHORTCUTS.find(x => x.id === id)).filter(Boolean);
+  const rest = SHORTCUTS.filter(x => !ids.includes(x.id));
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: isMobile ? '16px' : '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <h3 style={{ margin: '0 0 4px', fontSize: '15px' }}>⚡ Dashboard kısayollarım</h3>
+      <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>Bu liste yalnız sizin hesabınız için geçerlidir ({currentUser?.name || currentUser?.username || ''}). Diğer kullanıcılar kendi kısayollarını seçer.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px' }}>
+        <div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, marginBottom: '8px' }}>Dashboard'da görünenler ({selected.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {selected.map((x, i) => (
+              <div key={x.id} style={chip(x)}>
+                <span style={{ fontSize: '15px' }}>{x.icon}</span><span style={{ flex: 1 }}>{x.label}</span>
+                <button onClick={() => move(i, -1)} disabled={i === 0} style={{ ...sm, opacity: i === 0 ? 0.35 : 1 }} title="Yukarı">↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === selected.length - 1} style={{ ...sm, opacity: i === selected.length - 1 ? 0.35 : 1 }} title="Aşağı">↓</button>
+                <button onClick={() => setIds(a => a.filter(y => y !== x.id))} style={{ ...sm, color: '#f87171' }} title="Kaldır">✕</button>
+              </div>
+            ))}
+            {!selected.length && <div style={{ fontSize: '12px', color: '#64748b', padding: '10px', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '10px' }}>Kısayol yok — Dashboard'da düğme görünmez. Sağdan ekleyin.</div>}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, marginBottom: '8px' }}>Eklenebilecekler</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {rest.map(x => (
+              <button key={x.id} onClick={() => setIds(a => [...a, x.id])} style={{ ...chip(x), cursor: 'pointer', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ fontSize: '15px' }}>{x.icon}</span><span style={{ flex: 1 }}>{x.label}</span><span style={{ color: '#10b981', fontWeight: 700 }}>＋</span>
+              </button>
+            ))}
+            {!rest.length && <div style={{ fontSize: '12px', color: '#64748b' }}>Hepsi eklendi.</div>}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '18px', flexWrap: 'wrap' }}>
+        <button onClick={() => save(ids)} disabled={busy || !dirty} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: dirty ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'rgba(255,255,255,0.08)', color: dirty ? '#1a1a1a' : '#64748b', fontWeight: 700, cursor: dirty && !busy ? 'pointer' : 'default' }}>{busy ? 'Kaydediliyor…' : '💾 Kaydet'}</button>
+        <button onClick={() => setIds(DEFAULT_SHORTCUTS)} style={{ padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>↺ Varsayılan</button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
@@ -18773,6 +19062,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={() => setActiveTab('users')} style={{ padding: '12px 16px', background: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '#10b981' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'users' || activeTab === 'profile' || activeTab === 'password' ? '600' : '400' }}>
           👥 Kullanıcılar
+        </button>
+        <button onClick={() => setActiveTab('shortcuts')} style={{ padding: '12px 16px', background: activeTab === 'shortcuts' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)', border: activeTab === 'shortcuts' ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: activeTab === 'shortcuts' ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === 'shortcuts' ? '600' : '400' }}>
+          ⚡ Kısayollarım
         </button>
         {isAdmin && (
           <>
@@ -19406,6 +19698,9 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
         </div>
       )}
 
+      {/* ⚡ KISAYOLLARIM — kullanıcıya özel Dashboard kısayolları */}
+      {activeTab === 'shortcuts' && <ShortcutSettings currentUser={currentUser} setCurrentUser={setCurrentUser} setUsers={setUsers} showToast={showToast} isMobile={isMobile} />}
+
       {/* MÜŞTERİ — Telegram Bot + AI API Key */}
       {activeTab === 'musteri' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -19965,6 +20260,17 @@ function AppInner() {
     }
   }, []);
 
+  // Kısayollar başka cihazda değiştirilmiş olabilir: oturum açıkken profilden bir kez tazele
+  useEffect(() => {
+    const u = currentUser; if (!isLoggedIn || !u?.id) return;
+    getDoc(doc(db, 'users', u._docId || String(u.id))).then(snap => {
+      const sc = snap.exists() ? snap.data()?.shortcuts : undefined;
+      if (Array.isArray(sc) && JSON.stringify(sc) !== JSON.stringify(u.shortcuts)) {
+        setCurrentUser(prev => { const nu = { ...prev, shortcuts: sc }; try { localStorage.setItem('paydos_current_user', JSON.stringify(nu)); } catch (e) { /* yok */ } return nu; });
+      }
+    }).catch(() => {});
+  }, [isLoggedIn, currentUser?.id]);
+
   // localStorage'dan yükle - EN ÖNCE (hızlı cache)
   useEffect(() => { const saved = localStorage.getItem('paydos_customers'); if (saved) { try { setCustomers(JSON.parse(saved)); } catch(e) {} } }, []);
   useEffect(() => { const saved = localStorage.getItem('paydos_visa_applications'); if (saved) { try { setVisaApplications(JSON.parse(saved)); } catch(e) {} } }, []);
@@ -20412,7 +20718,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 
   const renderModule = () => {
     switch (activeModule) {
-      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
@@ -20423,14 +20729,14 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'cards': return <CreditCardsModule creditCards={creditCards} setCreditCards={setCreditCards} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;
       case 'linkduyuru': return <LinkDuyuruModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'musterilinki': return <MusteriLinkiModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
-      case 'turlinki': return <TurLinkiModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
+      case 'turlinki': return <TurLinkiModule tours={tours} customers={customers} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'duyurular': return <DuyurularModule tours={tours} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
-      case 'bildirimler': return <BildirimlerModule customers={customers} showToast={showToast} isMobile={isMobile} />;
+      case 'bildirimler': return <BildirimlerModule customers={customers} tours={tours} showToast={showToast} isMobile={isMobile} />;
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
       case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
-      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
+      default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
 

@@ -235,6 +235,106 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     parent.appendChild(instCard);
   };
 
+  // ===== 🔔 Bildirimler: toplanma saati, uçuş, tur duyuruları CRM'den telefona gelir =====
+  var PUSH_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
+  var pushCall = function (body) {
+    return fetch(PUSH_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }); });
+  };
+  var b64ToU8 = function (s) { var p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')), o = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
+  var swReg = function () {
+    return navigator.serviceWorker.getRegistration('/b/').then(function (r) { return r || navigator.serviceWorker.register('/belge-sw.js', { scope: '/b/' }); })
+      .then(function (r) { if (r.active) return r; return new Promise(function (ok) { var w = r.installing || r.waiting; if (!w) return ok(r); w.addEventListener('statechange', function () { if (w.state === 'activated') ok(r); }); }); });
+  };
+  var pushOk = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  var renderPush = function (parent) {
+    var card = el('div', 'inst');
+    card.appendChild(el('div', 'ic', '🔔'));
+    var tx = el('div', 'tx'); card.appendChild(tx);
+    var act = el('div'); act.style.display = 'contents'; card.appendChild(act);
+    var setText = function (t, s) { tx.innerHTML = ''; tx.appendChild(el('b', '', t)); if (s) tx.appendChild(document.createTextNode(s)); };
+    if (!pushOk) {
+      // iPhone: bildirim yalnız ana ekrana eklenmiş sayfada çalışır
+      if (isIOS && !isStandalone) { setText('Bildirim almak ister misiniz?', 'Önce bu sayfayı ana ekrana ekleyin (Paylaş ⬆️ → "Ana Ekrana Ekle"), sonra ana ekrandaki simgeden açıp bildirimleri açın.'); parent.appendChild(card); }
+      return;
+    }
+    parent.appendChild(card);
+    card.style.display = 'none'; // servis yanıt verirse görünür — bozuk düğme göstermeyelim
+    pushCall({ a: 'key' }).then(function (j) { if (j && j.key) card.style.display = ''; }).catch(function () {});
+    var goBtn = null;
+    // btn null → sessiz abonelik (izin zaten verilmiş): uyarı gösterilmez
+    var subscribe = function (btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      var fail = function (m) { if (btn) { btn.disabled = false; btn.textContent = 'Aç'; if (m) alert(m); } };
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') return fail(perm === 'denied' ? 'Bildirim izni verilmedi. Telefon ayarlarından bu site için bildirimlere izin verebilirsiniz.' : '');
+        return Promise.all([swReg(), pushCall({ a: 'key' })]).then(function (r) {
+          if (!r[1].key) throw new Error('key');
+          return r[0].pushManager.getSubscription().then(function (x) { return x || r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(r[1].key) }); });
+        }).then(function (sub) {
+          return pushCall({ a: 'subtour', k: code, sub: sub.toJSON() }).then(function (j) { if (!j.ok) throw new Error('sub'); showOn(); });
+        });
+      }).catch(function () { fail('Bildirimler açılamadı. Lütfen tekrar deneyin.'); });
+    };
+    var showOff = function () {
+      setText('Bildirimleri açın', 'Toplanma saati, uçuş ve tur duyuruları telefonunuza bildirim olarak gelsin.');
+      act.innerHTML = '';
+      var go = el('button', 'go', 'Aç'); go.type = 'button';
+      go.addEventListener('click', function () { subscribe(go); });
+      goBtn = go;
+      act.appendChild(go);
+    };
+    var showOn = function () {
+      setText('Bildirimler açık ✅', 'Tur duyuruları bu telefona gelir.');
+      act.innerHTML = '';
+      var off = el('button', 'x', '✕'); off.type = 'button'; off.title = 'Bildirimleri kapat'; off.setAttribute('aria-label', 'Bildirimleri kapat');
+      off.addEventListener('click', function () {
+        if (!confirm('Tur bildirimleri kapatılsın mı?')) return;
+        swReg().then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (x) {
+          if (!x) return showOff();
+          return pushCall({ a: 'unsub', endpoint: x.endpoint }).then(function () { return x.unsubscribe(); }).then(showOff);
+        }).catch(showOff);
+      });
+      act.appendChild(off);
+    };
+    if (Notification.permission === 'denied') { setText('Bildirimler kapalı', 'Açmak için telefon ayarlarından bu siteye bildirim izni verin.'); return; }
+    showOff();
+    // Otomatik: izin zaten verildiyse sessizce abone ol; hiç sorulmadıysa izin penceresini kendiliğinden aç ("Şimdi değil" → 3 gün sorma)
+    var ASK_KEY = 'paydos_push_ask_' + code;
+    var autoAsk = function () {
+      var last = 0; try { last = +(localStorage.getItem(ASK_KEY) || 0); } catch (e) {}
+      if (!navigator.onLine || Date.now() - last < 3 * 864e5) return;
+      setTimeout(function () {
+        if (Notification.permission !== 'default') return;
+        askSheet('Bildirimlere izin verin', 'Toplanma saati, uçuş ve tur duyuruları telefonunuza bildirim olarak gelsin. İstediğiniz zaman kapatabilirsiniz.', 'İzin ver',
+          function () { subscribe(goBtn); }, function () { try { localStorage.setItem(ASK_KEY, String(Date.now())); } catch (e) {} });
+      }, 1200);
+    };
+    pushCall({ a: 'key' }).then(function (j) {
+      if (!j || !j.key) return; // servis yoksa hiçbir şey sorma
+      return navigator.serviceWorker.getRegistration('/b/').then(function (reg) { return reg && reg.pushManager.getSubscription(); }).then(function (x) {
+        if (Notification.permission === 'granted') {
+          if (!x) return subscribe(null);
+          return pushCall({ a: 'status', endpoint: x.endpoint }).then(function (k) { if (k.subscribed) showOn(); else subscribe(null); });
+        }
+        if (Notification.permission === 'default') autoAsk();
+      });
+    }).catch(function () {});
+  };
+  // Alttan açılan tek dokunuşluk izin penceresi (telefon izni kullanıcı dokunuşu olmadan istenemez)
+  var askSheet = function (title, text, okLabel, onOk, onLater) {
+    var ov = el('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(5,8,25,.6);display:flex;align-items:flex-end;justify-content:center';
+    var sh = el('div'); sh.style.cssText = 'width:100%;max-width:520px;background:#1b1f3b;color:#fff;border-radius:20px 20px 0 0;padding:22px 20px 26px;box-shadow:0 -10px 30px rgba(0,0,0,.4);border-top:1px solid rgba(245,185,66,.35)';
+    var ic = el('div', '', '🔔'); ic.style.cssText = 'font-size:34px;text-align:center'; sh.appendChild(ic);
+    var h = el('div', '', title); h.style.cssText = 'font-weight:800;font-size:18px;text-align:center;margin:6px 0'; sh.appendChild(h);
+    var t = el('div', '', text); t.style.cssText = 'font-size:14px;line-height:1.5;opacity:.8;text-align:center;margin-bottom:16px'; sh.appendChild(t);
+    var ok = el('button', '', okLabel); ok.type = 'button'; ok.style.cssText = 'display:block;width:100%;height:50px;border:none;border-radius:14px;background:#f5b942;color:#1b1f3b;font-weight:800;font-size:16px;cursor:pointer';
+    var later = el('button', '', 'Şimdi değil'); later.type = 'button'; later.style.cssText = 'display:block;width:100%;margin-top:8px;height:42px;border:none;background:none;color:rgba(255,255,255,.6);font-size:14px;cursor:pointer';
+    ok.addEventListener('click', function () { document.body.removeChild(ov); onOk(); });
+    later.addEventListener('click', function () { document.body.removeChild(ov); if (onLater) onLater(); });
+    sh.appendChild(ok); sh.appendChild(later); ov.appendChild(sh); document.body.appendChild(ov);
+  };
+
   // Firestore REST değer biçimini düz JS'e çevir
   var val = function (v) {
     if (!v) return null;
@@ -641,8 +741,15 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
           var box1 = el('div', 'ib'); box1.appendChild(el('div', 'h', '🕐 Saat farkı'));
           var h = Math.abs(off) / 60, hs = (h % 1 ? h.toFixed(1).replace('.', ',') : String(h));
           box1.appendChild(el('div', 'v', off === 0 ? 'Aynı saat' : (off > 0 ? '+' : '−') + hs + ' saat'));
-          var nowStr = new Intl.DateTimeFormat('tr-TR', { timeZone: loc.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date());
-          box1.appendChild(el('div', 's', (off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')) + ' · Şu an orada ' + nowStr));
+          box1.appendChild(el('div', 's', off === 0 ? 'Türkiye ile aynı' : 'Türkiye\'den ' + hs + ' saat ' + (off > 0 ? 'ileride' : 'geride')));
+          // İki saat yan yana: orası + Türkiye (dakikada bir güncellenir)
+          var clk = el('div', 's'); clk.style.cssText = 'margin-top:6px;font-weight:700;opacity:1';
+          var tick = function () {
+            var fmt = function (z) { return new Intl.DateTimeFormat('tr-TR', { timeZone: z, hour: '2-digit', minute: '2-digit' }).format(new Date()); };
+            clk.textContent = '📍 Orada ' + fmt(loc.timezone) + '   ·   🇹🇷 Türkiye ' + fmt('Europe/Istanbul');
+          };
+          tick(); setInterval(tick, 30000);
+          box1.appendChild(clk);
           grid.appendChild(box1); reveal();
         } catch (x) {}
       }
@@ -668,6 +775,25 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
                             : '100 ₺ = ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' ' + cur;
           box3.appendChild(el('div', 'v', big));
           box3.appendChild(el('div', 's', src + (tr >= 1 ? ' · 100 ₺ ≈ ' + (100 / tr).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' ' + cur : '')));
+          // 🧮 Çevirici: iki kutu, hangisine yazılırsa diğeri hesaplanır ("1.250,50" Türkçe yazımı da olur)
+          var num = function (v) { var t = String(v || '').replace(/\s/g, ''); if (/,/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); var n = parseFloat(t); return isFinite(n) ? n : NaN; };
+          var out = function (n) { return isFinite(n) ? n.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : ''; };
+          var conv = el('div'); conv.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:12px';
+          var field = function (label) {
+            var w = el('label'); w.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 12px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(127,127,127,.08)';
+            var i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal'; i.autocomplete = 'off';
+            i.style.cssText = 'flex:1;min-width:0;width:100%;border:none;outline:none;background:transparent;color:inherit;font-family:inherit;font-size:18px;font-weight:700';
+            var u = el('span', '', label); u.style.cssText = 'font-size:13px;font-weight:700;opacity:.7;white-space:nowrap';
+            w.appendChild(i); w.appendChild(u); return { w: w, i: i };
+          };
+          var fa = field(cur === 'CNY' ? 'RMB' : cur), fb = field('₺'); // Çin yuanı piyasada RMB diye bilinir
+          var eq = el('span', '', '⇄'); eq.style.cssText = 'font-size:18px;opacity:.6;flex:none';
+          fa.i.value = '100'; fb.i.value = out(100 * tr);
+          fa.i.addEventListener('input', function () { var n = num(fa.i.value); fb.i.value = fa.i.value ? out(n * tr) : ''; });
+          fb.i.addEventListener('input', function () { var n = num(fb.i.value); fa.i.value = fb.i.value ? out(n / tr) : ''; });
+          [fa.i, fb.i].forEach(function (i) { i.addEventListener('focus', function () { i.select(); }); });
+          conv.appendChild(fa.w); conv.appendChild(eq); conv.appendChild(fb.w);
+          box3.appendChild(conv);
           grid.appendChild(box3); reveal(); showDisc();
         }).catch(function () {});
       }
@@ -887,6 +1013,19 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
     .then(function (r) { if (r.status === 404) throw new Error('404'); if (!r.ok) throw new Error('http'); return r.json(); })
     .then(function (j) {
       var f = {}; for (var k in (j.fields || {})) f[k] = val(j.fields[k]);
+      // Tur bitti (+3 gün): ana ekrandaki simge yolcunun Paydos müşteri sayfasına (/m/) geçer. ?kal=1 → tur sayfasında kal
+      var bitis = parseD(f.endDate) || parseD(f.startDate);
+      if (f.nextLink && /^[A-Za-z0-9-]{8,60}$/.test(f.nextLink) && bitis && !/[?&]kal=1/.test(location.search)) {
+        var sinir = new Date(bitis); sinir.setDate(sinir.getDate() + 4); // bitiş + 3 gün dolunca
+        if (new Date() >= sinir) {
+          box.innerHTML = '';
+          var gm = add(box, el('div', 'msg', '💛 Turunuz tamamlandı. Paydos sayfanıza yönlendiriliyorsunuz…'));
+          var kal = el('a', '', 'Tur belgelerini görmek için dokunun'); kal.href = location.pathname + '?kal=1';
+          kal.style.cssText = 'display:block;margin-top:12px;color:#93c5fd;font-size:14px'; gm.appendChild(kal);
+          setTimeout(function () { location.replace('/m/' + f.nextLink); }, 1500);
+          return;
+        }
+      }
       meta.prefix = f.city || f.tourName || 'Paydos';
       box.innerHTML = '';
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
@@ -916,6 +1055,7 @@ body{min-height:100vh;background:radial-gradient(1200px 600px at 50% -200px,#1a2
       }
 
       renderInstall(box);
+      try { renderPush(box); } catch (x) {}
       // Canlı yarışma kartı (rehber yarışma açınca belirir)
       var quizSlot = el('div'); box.appendChild(quizSlot);
       try { renderQuiz(f, quizSlot); } catch (x) {}
