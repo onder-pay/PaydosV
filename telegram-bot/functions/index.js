@@ -481,6 +481,13 @@ Schengen vize:
 ABD vize:
 {"type":"usa","firstName":"","lastName":"","passportNo":"","issueDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}
 
+T.C. Kimlik Karti (ustte "TÜRKİYE CUMHURİYETİ KİMLİK KARTI / REPUBLIC OF TURKEY IDENTITY CARD" yazar, pasaport DEGILDIR):
+{"type":"idcard","firstName":"","lastName":"","tcKimlik":"","birthDate":"YYYY-MM-DD"}
+- tcKimlik: sol ustte "T.C. Kimlik No / TR Identity No" altindaki 11 hane
+- lastName: "Soyadı / Surname" altindan, firstName: "Adı / Given Name(s)" altindan (birden fazla kelimeyse hepsi firstName). Turkce harfleri aynen yaz (ÖZGÜR, DURANLIOĞLU)
+- birthDate: "Doğum Tarihi / Date of Birth" (GG.AA.YYYY -> YYYY-MM-DD)
+- Kartin arka yuzu (MRZ'li, "IDTUR" ile baslar) gelirse isim/no icin yine MRZ KULLANMA; on yuzde gorunmeyen alani bos birak
+
 ==================== SCHENGEN VIZE ALANLARI ====================
 - VIZE NUMARASI (visaNumber): Sag ust kosede VEYA dikey olarak solda kirmizi, 9 hane, "0" ile baslar (orn: 073232513).
   !!! DOGRULAMA: MRZ alt satirinin BASINDAKI ilk 9 rakam = vize numarasidir (orn MRZ "0732325130TUR..." -> vize no "073232513"). Gorselden okudugun numarayi bu 9 rakamla KARSILASTIR; farkliysa MRZ'deki 9 rakami kullan. (SADECE vize NUMARASI icin MRZ rakamlarina bakabilirsin; ISIM/SOYAD icin MRZ'ye ASLA bakma.)
@@ -519,7 +526,7 @@ GG-AA-YYYY -> direkt kullan
   if (!m) return { dtype: null, json: null };
   try {
     const json = JSON.parse(m[0]);
-    const dtype = json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
+    const dtype = json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
     console.log('Detected:', dtype, 'Name:', json.firstName, json.lastName);
     return { dtype, json };
   } catch(e) { console.error('JSON parse error:', e.message); return { dtype: null, json: null }; }
@@ -607,6 +614,58 @@ const isValidTc = (tc) => {
   const d = t.split('').map(Number);
   const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
+};
+
+// 🪪 T.C. kimlik kartı: GÖRSEL SAKLANMAZ — yalnız ad-soyad, doğum tarihi ve TC kimlik no alınır.
+// Müşteri TC ile, yoksa ad-soyad + doğum tarihiyle bulunur; dolu alanların üzerine yazılmaz (TC farklıysa durur).
+const saveIdCard = async (db, custs, json) => {
+  const ref = db.collection('customers');
+  const fn = nameForSave(cleanInvalidName(json.firstName || '')), ln = nameForSave(cleanInvalidName(json.lastName || ''));
+  const tc = String(json.tcKimlik || '').replace(/\D/g, '');
+  const tcOk = isValidTc(tc);
+  const isYmd = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
+  const birth = isYmd(json.birthDate) ? json.birthDate : '';
+  if (!fn || !ln) return { text: '⚠️ Ad / soyad okunamadı — kayıt yapılmadı. Kartın ön yüzünü net çekip tekrar gönderin.', custId: null };
+  const tcWarn = tc && !tcOk ? `\n⚠️ TC geçersiz okundu (${tc}) — kaydedilmedi, net fotoğrafla tekrar gönderin` : '';
+
+  let cust = tcOk ? custs.find(c => String(c.tcKimlik || '').trim() === tc) : null;
+  if (cust && !namesMatch(`${fn} ${ln}`, `${cust.firstName || ''} ${cust.lastName || ''}`)) {
+    return { text: `⛔ TC ${tc} zaten "${cust.firstName} ${cust.lastName}" adına kayıtlı, okunan isim "${fn} ${ln}".\nTC veya isim yanlış okunmuş olabilir. Kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
+  }
+  if (!cust && birth) {
+    const same = custs.filter(c => c.birthDate === birth && namesMatch(`${fn} ${ln}`, `${c.firstName || ''} ${c.lastName || ''}`));
+    if (same.length > 1) return { text: `⚠️ Aynı ad-soyad ve doğum tarihiyle ${same.length} kayıt var — hangisi olduğu belli değil, kayıt yapılmadı. CRM'den kontrol edin.`, custId: null };
+    if (same.length === 1) {
+      const ex = String(same[0].tcKimlik || '').trim();
+      if (tcOk && isValidTc(ex) && ex !== tc) return { text: `⛔ "${same[0].firstName} ${same[0].lastName}" kaydındaki TC (${ex}) okunan TC'den (${tc}) farklı — kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
+      cust = same[0];
+    }
+  }
+
+  if (cust) {
+    const id = cust.id || cust._docId;
+    const oldName = `${cust.firstName || ''} ${cust.lastName || ''}`.trim(), readName = `${fn} ${ln}`;
+    const healName = TR_DOTTED.test(`${json.firstName || ''}${json.lastName || ''}`) && oldName !== readName && normTr(oldName) === normTr(readName);
+    const patch = {}, changed = [];
+    if (healName) { patch.firstName = fn; patch.lastName = ln; changed.push(`isim düzeltildi (eski: ${oldName})`); }
+    if (tcOk && !isValidTc(cust.tcKimlik)) { patch.tcKimlik = tc; changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${tc}` : 'TC eklendi'); }
+    if (birth && !cust.birthDate) { patch.birthDate = birth; changed.push('doğum tarihi eklendi'); }
+    const diffBirth = birth && cust.birthDate && cust.birthDate !== birth ? `\n⚠️ Kayıttaki doğum tarihi (${cust.birthDate}) kimlikten farklı (${birth}) — değiştirilmedi, kontrol edin` : '';
+    const name = `${healName ? fn : cust.firstName} ${healName ? ln : cust.lastName}`;
+    const out = { custId: id, custName: name, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    if (!Object.keys(patch).length) return { text: `✅ *Zaten güncel*\n👤 ${name}\n🪪 Kimlik bilgileri kayıttakiyle aynı.${diffBirth}${tcWarn}`, ...out };
+    await ref.doc(String(id)).set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true });
+    return { text: `✅ *Güncellendi*\n👤 ${name}\n🔄 ${changed.join(' · ')}${diffBirth}${tcWarn}\n🔒 Kimlik görseli kaydedilmedi`, ...out };
+  }
+
+  const id = genId();
+  await ref.doc(String(id)).set({
+    id, firstName: fn, lastName: ln, birthDate: birth, birthPlace: '', tcKimlik: tcOk ? tc : '', gender: '',
+    phone: '', email: '', city: '', sector: '', companyName: '', notes: '', tkMemberNo: '', tags: '[]', activities: '[]',
+    passports: '[]', schengenVisas: '[]', usaVisa: '{}', verified: false, createdBy: 'Telegram Bot (kimlik)',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  });
+  return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}${tcOk ? `\n🆔 ${tc}` : ''}${tcWarn}\n🔒 Kimlik görseli kaydedilmedi`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
 };
 
 const savePassport = async (db, custs, json, img) => {
@@ -903,6 +962,7 @@ const saveUsa = async (db, custs, json, img) => {
 };
 
 // ========== FORMAT ==========
+const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${j.birthDate}` : ''}`;
 const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${j.expiryDate||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
 const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${j.startDate||'-'} → ${j.endDate||'-'}`;
 const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${j.issueDate||'-'} → ${j.endDate||'-'}`;
@@ -1373,12 +1433,13 @@ exports.telegramBot = functions
     // Tanı + Oku (tek adımda)
     const { dtype, json } = await detectType(K, b64);
     if (!dtype || !json) {
-      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport veya vize yükleyin.' });
+      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı veya vize yükleyin.' });
       return res.status(200).send('OK');
     }
 
     // Pasaport görseli — Firestore'a yazmadan önce küçültülür (büyük base64 OOM'a yol açıyordu)
-    let finalImg = await shrinkImg(b64);
+    // Kimlik kartı görseli HİÇ saklanmaz (sadece okunur) — küçültme/yükleme yapılmaz
+    let finalImg = dtype === 'idcard' ? null : await shrinkImg(b64);
 
     // ⛔ Tarih kontrolü — hatalı veya süresi dolmuş belge reddet
     const dateErrors = validateDates(json, dtype);
@@ -1429,7 +1490,12 @@ exports.telegramBot = functions
     let info = '';
     let passportCust = null; // pasaport kaydından dönen müşteri (buton için)
 
-    if (dtype === 'passport') {
+    if (dtype === 'idcard') {
+      info = fmtID(json);
+      const r = await saveIdCard(cfg.db, custs, json);
+      result = r.text;
+      if (r.custId) passportCust = { id: r.custId, name: r.custName, phone: r.custPhone, email: r.custEmail };
+    } else if (dtype === 'passport') {
       info = fmtPP(json);
       const r = await savePassport(cfg.db, custs, json, finalImg);
       result = r.text;
