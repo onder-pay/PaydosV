@@ -668,11 +668,11 @@ const savePassport = async (db, custs, json, img) => {
   }
   const tcWarn = json.tcKimlik && !isValidTc(json.tcKimlik) ? `\n⚠️ TC geçersiz görünüyor (${json.tcKimlik}) — CRM'den kontrol edin` : '';
 
+  // Görsel ancak kayıt gerçekten değişecekse yüklenir (aynı pasaport tekrar gelince Storage'a kopya birikmesin)
   const pp = {
     id: genId(), nationality: !json.nationality || trHas(json.nationality, 'turk', 'tur') ? 'Türkiye' : json.nationality,
     passportType: detectPT(json.passportNo), passportNo: json.passportNo || '',
     issueDate: json.issueDate || '', expiryDate: json.expiryDate || '',
-    image: await toStorage(img, 'pasaport'),
     createdAt: new Date().toISOString()
   };
 
@@ -680,13 +680,41 @@ const savePassport = async (db, custs, json, img) => {
   if (cust) {
     let ps = []; try { ps = JSON.parse(cust.passports || '[]'); } catch {}
     const i = ps.findIndex(p => p.passportNo && p.passportNo === json.passportNo);
-    if (i >= 0) ps[i] = { ...ps[i], ...pp, id: ps[i].id }; else ps.unshift(pp);
     const custDocId2 = cust.id || cust._docId;
     if (!custDocId2) return { text: `⚠️ Müşteri ID bulunamadı`, custId: null };
     // Kayıttaki isim eski kodla bozulmuşsa ("Merıç Emıroglu") pasaporttan okunan doğru Türkçe yazımla düzelt.
     // Sadece okunan isim İ/ı ayrımı yapıyorsa ve iki isim harf farkı dışında birebir aynıysa (başka kişiyle karışmaz).
     const oldName = `${cust.firstName || ''} ${cust.lastName || ''}`.trim(), readName = `${fn} ${ln}`.trim();
     const healName = fn && ln && TR_DOTTED.test(`${json.firstName || ''}${json.lastName || ''}`) && oldName !== readName && normTr(oldName) === normTr(readName);
+    const custOut = { custId: custDocId2, custName: `${healName ? fn : cust.firstName} ${healName ? ln : cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+
+    // ✅ Zaten güncel: aynı pasaport no, okunan tarihler ve kişi bilgileri kayıttakiyle aynı, görsel de var →
+    // hiçbir şey yazılmaz, görsel yüklenmez. Okunamayan (boş) alan "fark" sayılmaz.
+    const same = (read, stored, norm = (x) => String(x || '').trim()) => !read || norm(read) === norm(stored);
+    const ex = i >= 0 ? ps[i] : null;
+    const readTcOk = isValidTc(json.tcKimlik) ? json.tcKimlik : '';
+    if (ex && ex.image && !healName
+      && same(json.expiryDate, ex.expiryDate) && same(json.issueDate, ex.issueDate)
+      && same(json.birthDate, cust.birthDate) && same(readTcOk, cust.tcKimlik)
+      && same(json.birthPlace, cust.birthPlace, normTr) && same(json.gender, cust.gender)) {
+      return { text: `✅ *Zaten güncel*\n👤 ${cust.firstName} ${cust.lastName}\n📘 ${json.passportNo} — bilgiler kayıttakiyle aynı, tekrar yüklenmedi.${passportExpiryWarn(json.expiryDate || ex.expiryDate)}`, ...custOut };
+    }
+
+    pp.image = await toStorage(img, 'pasaport');
+    // Okunamayan (boş) alanlar kayıttaki değeri silmesin
+    const ppSet = Object.fromEntries(Object.entries(pp).filter(([, v]) => v));
+    if (i >= 0) ps[i] = { ...ps[i], ...ppSet, id: ps[i].id, createdAt: ps[i].createdAt || pp.createdAt, updatedAt: pp.createdAt }; else ps.unshift(pp);
+    // Neyin değiştiğini söyle (yeni pasaport mu, tarih mi düzeldi)
+    const changed = [];
+    if (!ex) changed.push('yeni pasaport eklendi');
+    else {
+      if (json.expiryDate && json.expiryDate !== ex.expiryDate) changed.push(`bitiş ${ex.expiryDate || '-'} → ${json.expiryDate}`);
+      if (json.issueDate && json.issueDate !== ex.issueDate) changed.push(`veriliş ${ex.issueDate || '-'} → ${json.issueDate}`);
+      if (!ex.image) changed.push('pasaport görseli eklendi');
+    }
+    if (json.birthDate && json.birthDate !== cust.birthDate) changed.push(`doğum tarihi ${cust.birthDate || '-'} → ${json.birthDate}`);
+    if (readTcOk && readTcOk !== String(cust.tcKimlik || '')) changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${readTcOk}` : 'TC eklendi');
+    if (json.birthPlace && !cust.birthPlace) changed.push('doğum yeri eklendi');
     if (healName) { cust = { ...cust, firstName: fn, lastName: ln }; }
     await ref.doc(custDocId2).set({
       ...(healName ? { firstName: fn, lastName: ln } : {}),
@@ -697,8 +725,9 @@ const savePassport = async (db, custs, json, img) => {
       passports: JSON.stringify(ps),
       verified: false
     }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}${healName ? `\n✏️ İsim düzeltildi (eski: ${oldName})` : ''}\n📘 ${json.passportNo}${bpLine}${tcWarn}${renewNote}${passportExpiryWarn(json.expiryDate)}`, custId: custDocId2, custName: `${cust.firstName} ${cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    return { text: `✅ *Güncellendi*\n👤 ${cust.firstName} ${cust.lastName}${healName ? `\n✏️ İsim düzeltildi (eski: ${oldName})` : ''}\n📘 ${json.passportNo}${changed.length ? `\n🔄 ${changed.join(' · ')}` : ''}${bpLine}${tcWarn}${renewNote}${passportExpiryWarn(json.expiryDate)}`, ...custOut };
   } else {
+    pp.image = await toStorage(img, 'pasaport');
     const id = genId();
     await ref.doc(String(id)).set({
       id, firstName: fn, lastName: ln,
