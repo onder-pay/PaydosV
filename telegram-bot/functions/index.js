@@ -482,13 +482,10 @@ ABD vize:
 {"type":"usa","firstName":"","lastName":"","passportNo":"","issueDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}
 
 T.C. Kimlik Karti (ustte "TÜRKİYE CUMHURİYETİ KİMLİK KARTI / REPUBLIC OF TURKEY IDENTITY CARD" yazar, pasaport DEGILDIR):
-{"type":"idcard","firstName":"","lastName":"","tcKimlik":"","birthDate":"YYYY-MM-DD","gender":"","documentNo":"","validUntil":"YYYY-MM-DD","nationality":""}
+{"type":"idcard","firstName":"","lastName":"","tcKimlik":"","birthDate":"YYYY-MM-DD"}
 - tcKimlik: sol ustte "T.C. Kimlik No / TR Identity No" altindaki 11 hane
 - lastName: "Soyadı / Surname" altindan, firstName: "Adı / Given Name(s)" altindan (birden fazla kelimeyse hepsi firstName). Turkce harfleri aynen yaz (ÖZGÜR, DURANLIOĞLU)
 - birthDate: "Doğum Tarihi / Date of Birth" (GG.AA.YYYY -> YYYY-MM-DD)
-- gender: "Cinsiyeti / Gender" -> "E / M" ise "M", "K / F" ise "F"
-- documentNo: "Seri No / Document No" (orn A18Y14621)
-- validUntil: "Son Geçerlilik / Valid Until"
 - Kartin arka yuzu (MRZ'li, "IDTUR" ile baslar) gelirse isim/no icin yine MRZ KULLANMA; on yuzde gorunmeyen alani bos birak
 
 ==================== SCHENGEN VIZE ALANLARI ====================
@@ -619,20 +616,17 @@ const isValidTc = (tc) => {
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
 };
 
-// 🪪 T.C. kimlik kartı: GÖRSEL SAKLANMAZ — sadece TC, ad-soyad, doğum tarihi, cinsiyet, seri no ve son geçerlilik alınır.
+// 🪪 T.C. kimlik kartı: GÖRSEL SAKLANMAZ — yalnız ad-soyad, doğum tarihi ve TC kimlik no alınır.
 // Müşteri TC ile, yoksa ad-soyad + doğum tarihiyle bulunur; dolu alanların üzerine yazılmaz (TC farklıysa durur).
-const genderOf = (g) => { const t = normTr(g); return /(^|[^a-z])f([^a-z]|$)|kadin|^k\b/.test(t) ? 'F' : /(^|[^a-z])m([^a-z]|$)|erkek|^e\b/.test(t) ? 'M' : ''; };
 const saveIdCard = async (db, custs, json) => {
   const ref = db.collection('customers');
   const fn = nameForSave(cleanInvalidName(json.firstName || '')), ln = nameForSave(cleanInvalidName(json.lastName || ''));
   const tc = String(json.tcKimlik || '').replace(/\D/g, '');
   const tcOk = isValidTc(tc);
   const isYmd = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
-  const birth = isYmd(json.birthDate) ? json.birthDate : '', valid = isYmd(json.validUntil) ? json.validUntil : '';
-  const gender = genderOf(json.gender), docNo = String(json.documentNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const birth = isYmd(json.birthDate) ? json.birthDate : '';
   if (!fn || !ln) return { text: '⚠️ Ad / soyad okunamadı — kayıt yapılmadı. Kartın ön yüzünü net çekip tekrar gönderin.', custId: null };
   const tcWarn = tc && !tcOk ? `\n⚠️ TC geçersiz okundu (${tc}) — kaydedilmedi, net fotoğrafla tekrar gönderin` : '';
-  const expWarn = valid && valid < new Date().toISOString().slice(0, 10) ? `\n⚠️ Kimlik kartının süresi dolmuş (${valid})` : '';
 
   let cust = tcOk ? custs.find(c => String(c.tcKimlik || '').trim() === tc) : null;
   if (cust && !namesMatch(`${fn} ${ln}`, `${cust.firstName || ''} ${cust.lastName || ''}`)) {
@@ -656,26 +650,22 @@ const saveIdCard = async (db, custs, json) => {
     if (healName) { patch.firstName = fn; patch.lastName = ln; changed.push(`isim düzeltildi (eski: ${oldName})`); }
     if (tcOk && !isValidTc(cust.tcKimlik)) { patch.tcKimlik = tc; changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${tc}` : 'TC eklendi'); }
     if (birth && !cust.birthDate) { patch.birthDate = birth; changed.push('doğum tarihi eklendi'); }
-    if (gender && !cust.gender) { patch.gender = gender; changed.push('cinsiyet eklendi'); }
-    if (docNo && cust.kimlikSeriNo !== docNo) { patch.kimlikSeriNo = docNo; changed.push(cust.kimlikSeriNo ? 'kimlik seri no güncellendi' : 'kimlik seri no eklendi'); }
-    if (valid && cust.kimlikGecerlilik !== valid) { patch.kimlikGecerlilik = valid; if (!changed.includes('kimlik seri no güncellendi')) changed.push('kimlik geçerlilik tarihi'); }
     const diffBirth = birth && cust.birthDate && cust.birthDate !== birth ? `\n⚠️ Kayıttaki doğum tarihi (${cust.birthDate}) kimlikten farklı (${birth}) — değiştirilmedi, kontrol edin` : '';
     const name = `${healName ? fn : cust.firstName} ${healName ? ln : cust.lastName}`;
     const out = { custId: id, custName: name, custPhone: cust.phone || '', custEmail: cust.email || '' };
-    if (!Object.keys(patch).length) return { text: `✅ *Zaten güncel*\n👤 ${name}\n🪪 Kimlik bilgileri kayıttakiyle aynı.${diffBirth}${tcWarn}${expWarn}`, ...out };
+    if (!Object.keys(patch).length) return { text: `✅ *Zaten güncel*\n👤 ${name}\n🪪 Kimlik bilgileri kayıttakiyle aynı.${diffBirth}${tcWarn}`, ...out };
     await ref.doc(String(id)).set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true });
-    return { text: `✅ *Güncellendi*\n👤 ${name}\n🔄 ${changed.join(' · ')}${diffBirth}${tcWarn}${expWarn}\n🔒 Kimlik görseli kaydedilmedi`, ...out };
+    return { text: `✅ *Güncellendi*\n👤 ${name}\n🔄 ${changed.join(' · ')}${diffBirth}${tcWarn}\n🔒 Kimlik görseli kaydedilmedi`, ...out };
   }
 
   const id = genId();
   await ref.doc(String(id)).set({
-    id, firstName: fn, lastName: ln, birthDate: birth, birthPlace: '', tcKimlik: tcOk ? tc : '', gender,
-    kimlikSeriNo: docNo, kimlikGecerlilik: valid,
+    id, firstName: fn, lastName: ln, birthDate: birth, birthPlace: '', tcKimlik: tcOk ? tc : '', gender: '',
     phone: '', email: '', city: '', sector: '', companyName: '', notes: '', tkMemberNo: '', tags: '[]', activities: '[]',
     passports: '[]', schengenVisas: '[]', usaVisa: '{}', verified: false, createdBy: 'Telegram Bot (kimlik)',
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   });
-  return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}${tcOk ? `\n🆔 ${tc}` : ''}${tcWarn}${expWarn}\n🔒 Kimlik görseli kaydedilmedi`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
+  return { text: `✅ *Yeni müşteri*\n👤 ${fn} ${ln}${tcOk ? `\n🆔 ${tc}` : ''}${tcWarn}\n🔒 Kimlik görseli kaydedilmedi`, custId: String(id), custName: `${fn} ${ln}`, custPhone: '', custEmail: '' };
 };
 
 const savePassport = async (db, custs, json, img) => {
@@ -972,7 +962,7 @@ const saveUsa = async (db, custs, json, img) => {
 };
 
 // ========== FORMAT ==========
-const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${j.birthDate}` : ''}${j.validUntil ? ` | Son geçerlilik ${j.validUntil}` : ''}`;
+const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${j.birthDate}` : ''}`;
 const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${j.expiryDate||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
 const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${j.startDate||'-'} → ${j.endDate||'-'}`;
 const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${j.issueDate||'-'} → ${j.endDate||'-'}`;

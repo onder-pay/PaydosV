@@ -4815,7 +4815,6 @@ function CustomerModule({ customers, setCustomers, tours = [], visaApplications 
                   ['Firma', titleCaseTr(c.companyName)],
                   ['Sektör', c.sector],
                   ['TK Üyelik', c.tkMemberNo || c.tk_uyelik_no],
-                  ['Kimlik Kartı', c.kimlikSeriNo ? `${c.kimlikSeriNo}${c.kimlikGecerlilik ? ` · son geçerlilik ${formatDate(c.kimlikGecerlilik)}` : ''}` : ''],
                   ['E-posta', normEmail(c.email)],
                 ].filter(([, v]) => v && v !== '-');
                 const missing = [!c.tcKimlik && 'TC', !c.birthDate && 'doğum tarihi', !c.email && 'e-posta', !cPassports.length && 'pasaport'].filter(Boolean);
