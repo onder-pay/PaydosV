@@ -19737,16 +19737,8 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
                 />
                 <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>Bildirimlerin gönderileceği grup veya kanal ID'si.</p>
               </div>
-              <div>
-                <label style={labelStyle}>Bot izinli kişiler (Telegram ID)</label>
-                <textarea
-                  value={appSettings?.telegramIzinliIdler || ''}
-                  onChange={e => setAppSettings({ ...appSettings, telegramIzinliIdler: e.target.value })}
-                  placeholder={'123456789 Önder\n987654321 Ayşe'}
-                  rows={3}
-                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '13px', resize: 'vertical' }}
-                />
-                <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#475569' }}>Bot yalnızca vize grubunda{appSettings?.telegramVizeGrupId ? ` (${appSettings.telegramVizeGrupAdi || appSettings.telegramVizeGrupId})` : ' (henüz kayıtlı değil — grupta /grup yazın)'} ve buradaki kişilere çalışır. Her satıra bir ID, yanına isim yazabilirsiniz. ID'yi öğrenmek için kişi bota <b>/id</b> yazsın.</p>
+              <div style={{ padding: '12px', background: 'rgba(0,136,204,0.1)', borderRadius: '10px', border: '1px solid rgba(0,136,204,0.25)', fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                🔒 Bot yalnız kayıtlı Telegram grubunda çalışır{appSettings?.telegramVizeGrupId ? <>: <b style={{ color: '#e8f1f8' }}>{appSettings.telegramVizeGrupAdi || appSettings.telegramVizeGrupId}</b></> : ' — henüz kayıtlı grup yok, vize grubunda /grup yazın'}. Özelden yazanlara ve başka gruplara cevap vermez.
               </div>
               <div style={{ padding: '12px', background: 'rgba(0,136,204,0.1)', borderRadius: '10px', border: '1px solid rgba(0,136,204,0.2)' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
