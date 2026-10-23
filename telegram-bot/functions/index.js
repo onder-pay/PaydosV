@@ -1028,17 +1028,14 @@ const getCustomerById = async (db, custId) => {
 };
 
 // ========== YETKİ ==========
-// Bot yalnızca: kayıtlı vize grubu (+ bildirim grubu) ve CRM → Ayarlar → Müşteri → "Bot izinli kişiler"e
-// yazılan Telegram kullanıcı ID'leri. Diğer herkese "yetkiniz yok + ID'niz" cevabı verilir.
-const idList = (x) => (Array.isArray(x) ? x.join(',') : String(x || '')).match(/-?\d{5,}/g) || [];
-const botAccess = (settings, chatId, userId) => {
+// Bot YALNIZ kayıtlı Telegram grubunda çalışır (vize grubu; varsa bildirim grubu). Özelden yazan kişiye,
+// başka gruba ve buton tıklamalarına cevap verilmez. Grup henüz kayıtlı değilse ilk /grup yazılan grup kaydedilir.
+const botAccess = (settings, chatId) => {
   const s = settings || {};
   const groups = [s.telegramVizeGrupId, s.telegramChatId].map(x => String(x || '').trim()).filter(Boolean);
-  const users = idList(s.telegramIzinliIdler);
-  const chat = String(chatId || ''), user = String(userId || '');
-  return { ok: (chat && groups.includes(chat)) || (user && users.includes(user)), users, groups };
+  return { ok: !!chatId && groups.includes(String(chatId)), groups };
 };
-const denyText = (chatId, userId) => `⛔ Bu botu kullanma yetkiniz yok.\nTelegram ID'niz: ${userId || '-'}${String(chatId) !== String(userId) ? `\nSohbet ID: ${chatId}` : ''}\nYetki için bu numarayı Paydos'a iletin.`;
+const denyText = () => 'ℹ️ Bu bot yalnız Paydos vize grubunda çalışır. Pasaport ve vizeleri gruba gönderin.';
 
 // ========== WEBHOOK ==========
 exports.telegramBot = functions
@@ -1061,7 +1058,7 @@ exports.telegramBot = functions
         const cbMsgId = cq.message?.message_id;
         const parts = data.split('|'); // format: va|<step>|<...>
         const settingsCb = (await cfg.db.collection('app_settings').doc('main').get()).data() || {};
-        if (!botAccess(settingsCb, cbChatId, cq.from?.id).ok) {
+        if (!botAccess(settingsCb, cbChatId).ok) {
           await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id, text: '⛔ Yetkiniz yok', show_alert: true });
           return res.status(200).send('OK');
         }
@@ -1278,21 +1275,15 @@ exports.telegramBot = functions
     console.log('Webhook received:', msg ? ('chat:' + msg.chat?.id + ' photo:' + (msg.photo ? 'YES' : 'NO') + ' text:' + (msg.text || '-')) : 'NO MESSAGE');
     if (msg && msg.chat) {
       const settingsMsg = (await cfg.db.collection('app_settings').doc('main').get()).data() || {};
-      const acc = botAccess(settingsMsg, msg.chat.id, msg.from?.id);
-      const isPrivate = msg.chat.type === 'private';
+      const acc = botAccess(settingsMsg, msg.chat.id);
+      const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
       const txt = typeof msg.text === 'string' ? msg.text.trim() : '';
-      // /id herkese açık: yetki için ID öğrenmenin yolu
-      if (/^\/(id|start)(?:@\w+)?(?=\s|$)/i.test(txt)) {
-        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: acc.ok ? `✅ Yetkilisiniz.\nTelegram ID'niz: ${msg.from?.id}\nSohbet ID: ${msg.chat.id}` : denyText(msg.chat.id, msg.from?.id) });
-        return res.status(200).send('OK');
-      }
-      // /grup: grup henüz kayıtlı değilse yalnız izinli kişi kaydedebilir (yabancı grubun kendini kaydetmesi engellenir)
-      const isGrupCmd = /^\/grup(?:@\w+)?(?=\s|$)/i.test(txt);
-      const grupBootstrap = isGrupCmd && !String(settingsMsg.telegramVizeGrupId || '') && (!acc.users.length || acc.users.includes(String(msg.from?.id || '')));
+      // Grup henüz kayıtlı değilse yalnız /grup çalışır (vize grubunu kaydetmek için)
+      const grupBootstrap = isGroup && /^\/grup(?:@\w+)?(?=\s|$)/i.test(txt) && !String(settingsMsg.telegramVizeGrupId || '');
       if (!acc.ok && !grupBootstrap) {
-        console.log('[BOT] yetkisiz:', 'chat:' + msg.chat.id, 'user:' + (msg.from?.id || '-'));
-        // Grupta her mesaja cevap verip spam yapma: yalnız özelde ya da fotoğraf/komut gelince
-        if (isPrivate || msg.photo || txt.startsWith('/')) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText(msg.chat.id, msg.from?.id) });
+        console.log('[BOT] grup dışı mesaj yok sayıldı:', 'chat:' + msg.chat.id, 'type:' + msg.chat.type, 'user:' + (msg.from?.id || '-'));
+        // Özelden yazana bir kez yol göster; yabancı gruplarda sessiz kal
+        if (!isGroup && (msg.photo || txt)) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText() });
         return res.status(200).send('OK');
       }
     }
