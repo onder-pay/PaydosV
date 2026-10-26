@@ -29,7 +29,8 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
 - Kullanıcının yazdığı Türkçe harfler değiştirilmeden saklanır.
 - İsim kaydı her zaman `nameForSave(x)`: İ/ı ayrımı olmayan, BÜYÜK harfli ve `I` içeren isim (`"ISMAIL"`, `"MERIÇ"`) **olduğu gibi** kalır
   (I'nın i mi ı mı olduğu bilinemez — tahmin edip kaydı bozmayın). Diğerleri `titleCaseTr` ile kaydedilir.
-- Bot, kayıttaki bozuk ismi pasaporttan okunan İ/ı'lı doğru yazımla düzeltir — yalnız `normTr` ile iki isim birebir aynıysa.
+- Bot, kayıttaki bozuk ismi pasaporttan/kimlikten okunan doğru yazımla düzeltir — yalnız `normTr` ile iki isim birebir aynıysa
+  ve okunan yazım İ/ı ayrımı yapıyorsa ya da kayıt hiç Türkçe harf içermiyorken okunan içeriyorsa (`"Osman Gulgel"` → `"Osman Gülgel"`).
 - Sabit değerler CRM'deki listeyle birebir yazılır (`'Yeşil Pasaport (Hususi)'`, `'Türkiye'`); okurken yine `trHas(x, 'yesil')`.
 - ASCII'ye çevirme (`asciiTr`) yalnızca dış sistem gerektirdiğinde: MRZ/pasaport okuma, dosya adı, Türkçe fontu olmayan PDF yedeği.
 - E-posta her zaman `normEmail(x)`: Türkçe klavyede yazılan `"İnfo@…"` → `"info@…"`.
