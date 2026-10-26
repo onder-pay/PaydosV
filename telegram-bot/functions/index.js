@@ -621,6 +621,16 @@ const isValidTc = (tc) => {
 // okunan içeriyor (Excel'den "Osman Gulgel" → "Osman Gülgel").
 const canHealName = (oldName, readName, rawRead) => !!readName && oldName !== readName && normTr(oldName) === normTr(readName)
   && (TR_DOTTED.test(rawRead) || (!TR_LETTERS.test(oldName) && TR_LETTERS.test(readName)));
+// İsim düzeltilirken kayıtta İ/ı ile doğru yazılmış kelime korunur: okunan "ERYILMAZ" (I belirsiz) yerine kayıttaki "Eryılmaz"
+const keepDotted = (readPart, storedFull) => {
+  const byKey = {}; String(storedFull || '').split(/\s+/).filter(Boolean).forEach(w => { byKey[normTr(w)] = w; });
+  return String(readPart || '').split(/\s+/).filter(Boolean).map(w => {
+    const st = byKey[normTr(w)];
+    if (st && TR_DOTTED.test(st) && !TR_DOTTED.test(w)) return titleCaseTr(st);
+    // Tamamı büyük harf ama I içermeyen kelimede belirsizlik yok ("AĞAOĞLU" → "Ağaoğlu"); I'lı kelime olduğu gibi kalır
+    return w === w.toLocaleUpperCase('tr-TR') && !/I/.test(w) ? titleCaseTr(w) : w;
+  }).join(' ');
+};
 // TC / pasaport / doğum tarihi olmayan "ince" kayıt (Excel'den ya da elle sadece isimle açılmış): aynı isimde TEK ise
 // belge o kayda işlenir — yoksa tura bağlı kayıt boş kalıp belge ayrı bir mükerrer müşteriye gidiyordu.
 const thinMatch = (custs, fn, ln) => {
@@ -706,11 +716,25 @@ const savePassport = async (db, custs, json, img) => {
   if (cust && !namesMatch(`${fn} ${ln}`, `${cust.firstName || ''} ${cust.lastName || ''}`)) {
     return { text: `⛔ TC ${json.tcKimlik} zaten "${cust.firstName} ${cust.lastName}" adına kayıtlı, okunan isim "${fn} ${ln}".\nTC eşsizdir — TC veya isim yanlış okunmuş olabilir. Kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
   }
+  let byPassport = false;
   if (!cust && json.passportNo) {
     cust = custs.find(c => {
       let p = []; try { p = JSON.parse(c.passports || '[]'); } catch {}
       return p.some(x => x.passportNo === json.passportNo);
     });
+    byPassport = !!cust;
+  }
+  // Pasaport no ile bulunan kayıt: isim de tutmalı. Kayıttaki isim okunanın EKSİK hali ise ("Eryılmaz Agaoglu" ⊂
+  // "Özcan Ağaoğlu Eryılmaz") aynı kişidir, isim pasaporttaki gibi düzeltilir. Hiç örtüşmüyorsa başkasının kaydına yazılmaz.
+  let fullHeal = false;
+  if (byPassport && !namesMatch(`${fn} ${ln}`, `${cust.firstName || ''} ${cust.lastName || ''}`)) {
+    const rw = normTr(`${fn} ${ln}`).split(/\s+/).filter(Boolean), cw = normTr(`${cust.firstName || ''} ${cust.lastName || ''}`).split(/\s+/).filter(Boolean);
+    if (cw.length >= 2 && cw.every(w => rw.includes(w))) fullHeal = true;
+    else return { text: `⛔ Pasaport No "${json.passportNo}" CRM'de "${cust.firstName} ${cust.lastName}" adına kayıtlı, okunan isim "${fn} ${ln}".\nİsimler tutmuyor — pasaport no ya da isim yanlış okunmuş olabilir. Kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
+  }
+  // Kayıttaki geçerli TC, okunan geçerli TC'den farklıysa (pasaport no ile bulunduysa olabilir) üzerine yazma
+  if (cust && isValidTc(json.tcKimlik) && isValidTc(cust.tcKimlik) && String(cust.tcKimlik).trim() !== String(json.tcKimlik).trim()) {
+    return { text: `⛔ "${cust.firstName} ${cust.lastName}" kaydındaki TC (${cust.tcKimlik}) pasaporttan okunan TC'den (${json.tcKimlik}) farklı. Kayıt yapılmadı, CRM'den kontrol edin.`, custId: null };
   }
 
   // Pasaport No tekrar kontrol
@@ -762,8 +786,8 @@ const savePassport = async (db, custs, json, img) => {
     // Kayıttaki isim eski kodla bozulmuşsa ("Merıç Emıroglu") pasaporttan okunan doğru Türkçe yazımla düzelt.
     // Sadece okunan isim İ/ı ayrımı yapıyorsa ve iki isim harf farkı dışında birebir aynıysa (başka kişiyle karışmaz).
     const oldName = `${cust.firstName || ''} ${cust.lastName || ''}`.trim(), readName = `${fn} ${ln}`.trim();
-    const healName = fn && ln && canHealName(oldName, readName, `${json.firstName || ''}${json.lastName || ''}`);
-    const custOut = { custId: custDocId2, custName: `${healName ? fn : cust.firstName} ${healName ? ln : cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
+    const healName = fn && ln && (fullHeal || canHealName(oldName, readName, `${json.firstName || ''}${json.lastName || ''}`));
+    const custOut = { custId: custDocId2, custName: `${healName ? keepDotted(fn, oldName) : cust.firstName} ${healName ? keepDotted(ln, oldName) : cust.lastName}`, custPhone: cust.phone || '', custEmail: cust.email || '' };
 
     // ✅ Zaten güncel: aynı pasaport no, okunan tarihler ve kişi bilgileri kayıttakiyle aynı, görsel de var →
     // hiçbir şey yazılmaz, görsel yüklenmez. Okunamayan (boş) alan "fark" sayılmaz.
@@ -789,12 +813,13 @@ const savePassport = async (db, custs, json, img) => {
       if (json.issueDate && json.issueDate !== ex.issueDate) changed.push(`veriliş ${ex.issueDate || '-'} → ${json.issueDate}`);
       if (!ex.image) changed.push('pasaport görseli eklendi');
     }
-    if (json.birthDate && json.birthDate !== cust.birthDate) changed.push(`doğum tarihi ${cust.birthDate || '-'} → ${json.birthDate}`);
+    if (json.birthDate && json.birthDate !== cust.birthDate) changed.push(cust.birthDate ? `⚠️ doğum tarihi ${cust.birthDate} → ${json.birthDate}` : 'doğum tarihi eklendi');
     if (readTcOk && readTcOk !== String(cust.tcKimlik || '')) changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${readTcOk}` : 'TC eklendi');
     if (json.birthPlace && !cust.birthPlace) changed.push('doğum yeri eklendi');
-    if (healName) { cust = { ...cust, firstName: fn, lastName: ln }; }
+    const hFn = keepDotted(fn, oldName), hLn = keepDotted(ln, oldName);
+    if (healName) { cust = { ...cust, firstName: hFn, lastName: hLn }; }
     await ref.doc(custDocId2).set({
-      ...(healName ? { firstName: fn, lastName: ln } : {}),
+      ...(healName ? { firstName: hFn, lastName: hLn } : {}),
       birthDate: json.birthDate || cust.birthDate || '',
       birthPlace: json.birthPlace || cust.birthPlace || '',
       tcKimlik: (isValidTc(json.tcKimlik) ? json.tcKimlik : '') || cust.tcKimlik || json.tcKimlik || '',
