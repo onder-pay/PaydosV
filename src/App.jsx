@@ -20696,6 +20696,41 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     })();
   }, [users, dataReady]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
+  // 👤 İsim eşitleme: vize başvurusu ve tur/otel/uçuş/transfer rezervasyonları müşteri adının kopyasını tutar.
+  // Müşteri kartındaki isim düzeltilince (ör. "Ismaıl" → "İsmail", "Eryılmaz Agaoglu" → "Özcan Ağaoğlu Eryılmaz")
+  // bu kopyalar da güncellenir. Eşleşme müşteri kimliğiyle; güvenlik için eski ve yeni isim en az bir kelimede
+  // (Türkçe harf farkı yok sayılarak) ortak olmalı — bambaşka bir isme çevrilmez.
+  useEffect(() => {
+    if (!dataReady) return;
+    const t = setTimeout(() => {
+      const byId = new Map();
+      customers.forEach(c => {
+        const n = `${c.firstName || ''} ${c.lastName || ''}`.replace(/\s+/g, ' ').trim();
+        if (!n) return;
+        [c.id, c._docId].filter(x => x !== undefined && x !== null && x !== '').forEach(k => byId.set(String(k), n));
+      });
+      const words = (x) => new Set(normalizeTr(x).split(/\s+/).filter(w => w.length > 1));
+      const fix = (rec) => {
+        if (!rec || rec.customerId === undefined || rec.customerId === null || rec.customerId === '') return null;
+        const n = byId.get(String(rec.customerId));
+        if (!n || n === rec.customerName) return null;
+        const a = words(rec.customerName || ''), b = words(n);
+        if (rec.customerName && ![...a].some(w => b.has(w))) return null;
+        // Kart "ISMAIL KAYGUN" (I belirsiz, büyük harf saklanmış), kopya düzgün "Ismail Kaygun" ise dokunma — sadece bozuk (ı'lı) kopya düzelir
+        const old = String(rec.customerName || '');
+        if (normalizeTr(old) === normalizeTr(n) && n === trUpper(n) && old !== trUpper(old) && !/ı/.test(old)) return null;
+        return n;
+      };
+      const fixList = (list) => { let ch = false; const out = (list || []).map(r => { const n = fix(r); if (!n) return r; ch = true; return { ...r, customerName: n }; }); return ch ? out : null; };
+      const fixNested = (arr) => { let ch = false; const out = (arr || []).map(x => { const rs = fixList(x.reservations); if (!rs) return x; ch = true; return { ...x, reservations: rs }; }); return ch ? out : null; };
+      setVisaApplications(prev => fixList(prev) || prev);
+      setTours(prev => fixNested(prev) || prev);
+      setHotels(prev => fixNested(prev) || prev);
+      setGroupFlights(prev => fixNested(prev) || prev);
+      setTransfers(prev => fixNested(prev) || prev);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [dataReady, customers]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('group_flights', 'group_flights', groupFlights); }, [groupFlights]);
   useEffect(() => { debouncedSave('transfers', 'transfers', transfers); }, [transfers]);
