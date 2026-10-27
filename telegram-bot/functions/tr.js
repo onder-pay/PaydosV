@@ -34,4 +34,14 @@ const statusLabels = (settings, label) => {
   return [...new Set([label, ...list.filter(x => normTr(x) === normTr(label))])].slice(0, 10);
 };
 
-module.exports = { normTr, trHas, titleCaseTr, nameForSave, normEmail, statusLabels, TR_LETTERS, TR_DOTTED };
+// Ad + soyad BİRLİKTE: belgede bir yerde İ/ı varsa (ör. "MELİH KANSIZ") o belge İ/ı ayrımı yapıyordur → soyaddaki I da ı'dır
+// ("Melih Kansız"). Ayrı ayrı nameForSave soyadı "KANSIZ" diye bırakıyordu.
+const namePairForSave = (first, last) => {
+  const f = String(first || '').trim().replace(/\s+/g, ' '), l = String(last || '').trim().replace(/\s+/g, ' ');
+  if (f && l && TR_DOTTED.test(`${f} ${l}`)) {
+    const w = titleCaseTr(`${f} ${l}`).split(' '), n = f.split(' ').length;
+    return [w.slice(0, n).join(' '), w.slice(n).join(' ')];
+  }
+  return [nameForSave(f), nameForSave(l)];
+};
+module.exports = { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, statusLabels, TR_LETTERS, TR_DOTTED };
