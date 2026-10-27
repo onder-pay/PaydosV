@@ -15124,6 +15124,40 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
   // hotel: otel objesi, reservations: array (tek rezervasyon için 1 elemanlı array)
   // 📄 Otel proforması + odadakilerin grup uçuşu biletleri. Uçuş bulunamazsa klasik otel proforması.
   // Biletler, uçuş rezervasyonundaki "hangi otelden geldi" bilgisi (packageHotelId) ve isimle eşleştirilir.
+  // Otel rezervasyonuna bağlı grup uçuşu biletleri (Grup Uçuşları) ve transferler (Transferler bölümü):
+  // proformaya satır olarak, listedeki Tutar'a da eklenir. Eşleşme: paket oteli + odadaki isimler
+  // (otel bilgisi olmayan eski uçuş kayıtlarında giriş/çıkış ±2 gün).
+  const linkedResItems = (hotel, r) => {
+    const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    const out = [];
+    (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
+      if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
+      if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
+      if (!fr.packageHotelId) { const d = (a, b) => Math.abs(new Date(a) - new Date(b)) / 86400000; if (!(d(fl.date, r.checkIn) <= 2 || d(fl.date, r.checkOut) <= 2)) return; }
+      out.push({ kind: 'flight', refId: `${fl.id}-${fr.id}`,
+        label: `✈️ ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from} → ${fl.to} · ${formatDate(fl.date)} · ${titleCaseTr(fr.customerName)}`.replace(/\s+/g, ' '),
+        amount: (parseFloat(fr.sellPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.sell) || 0), 0),
+        buy: (parseFloat(fr.buyPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.buy) || 0), 0),
+        currency: fl.currency || '€' });
+    }));
+    (transfers || []).forEach(t => (t.reservations || []).forEach(tr => {
+      if (tr.cancelled || String(tr.packageHotelId) !== String(hotel.id)) return;
+      if (!(tr.packageResId ? String(tr.packageResId) === String(r.id) : names.has(normalizeTr(tr.customerName)))) return;
+      out.push({ kind: 'transfer', refId: `${t.id}-${tr.id}`,
+        label: `🚐 ${t.fromLoc} → ${t.toLoc}${t.date ? ` · ${formatDate(t.date)}` : ''}${t.time ? ` ${t.time}` : ''} · ${t.vehicleType || ''}${(parseInt(tr.pax) || 1) > 1 ? ` · ${tr.pax} kişi` : ''}`.replace(/\s+/g, ' '),
+        amount: tResTotal(tr), buy: tResCost(tr), currency: t.currency || '€' });
+    }));
+    return out;
+  };
+  // Listede/Excel'de müşteriden alınacak: otel + elle eklenen kalemler + bağlı bilet/transfer (aynı para birimindekiler toplanır)
+  const resTotals = (hotel, r) => {
+    const cur = r.currency || '€';
+    const linked = linkedResItems(hotel, r);
+    const same = linked.filter(x => x.currency === cur), other = linked.filter(x => x.currency !== cur);
+    const linkedSell = same.reduce((t, x) => t + x.amount, 0);
+    const linkedProfit = same.filter(x => x.buy > 0).reduce((t, x) => t + x.amount - x.buy, 0);
+    return { total: resGrand(r) + linkedSell, linkedSell, profit: resProfit(r) + linkedProfit, linked: same, other };
+  };
   const hotelProformaWithFlights = (hotel, resList) => {
     const conceptTxt = (c) => MEAL_TR[c] || trUpper(c);
     let anyFlight = false;
@@ -15132,25 +15166,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
       // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
       resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}`, amount: x.price, currency: r.currency || '€' }); });
-      (groupFlights || []).forEach(fl => (fl.reservations || []).forEach(fr => {
-        if (fr.cancelled || !names.has(normalizeTr(fr.customerName))) return;
-        if (fr.packageHotelId && String(fr.packageHotelId) !== String(hotel.id)) return; // başka otelin paketi
-        // Otel bilgisi olmayan eski kayıtlarda tarih uyumu aranır (giriş/çıkış ±2 gün)
-        if (!fr.packageHotelId) { const d = (a, b) => Math.abs(new Date(a) - new Date(b)) / 86400000; if (!(d(fl.date, r.checkIn) <= 2 || d(fl.date, r.checkOut) <= 2)) return; }
-        anyFlight = true;
-        items.push({ kind: 'flight', refId: `${fl.id}-${fr.id}`,
-          label: `✈️ ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from} → ${fl.to} · ${formatDate(fl.date)} · ${titleCaseTr(fr.customerName)}`.replace(/\s+/g, ' '),
-          amount: (parseFloat(fr.sellPrice) || 0) + (fr.extras || []).reduce((t, e) => t + (parseFloat(e.sell) || 0), 0), currency: fl.currency || '€' });
-      }));
-      // 🚐 Transferler bölümünden bu otel rezervasyonuna bağlanmış transferler
-      (transfers || []).forEach(t => (t.reservations || []).forEach(tr => {
-        if (tr.cancelled || String(tr.packageHotelId) !== String(hotel.id)) return;
-        if (!(tr.packageResId ? String(tr.packageResId) === String(r.id) : names.has(normalizeTr(tr.customerName)))) return;
-        anyFlight = true;
-        items.push({ kind: 'transfer', refId: `${t.id}-${tr.id}`,
-          label: `🚐 ${t.fromLoc} → ${t.toLoc}${t.date ? ` · ${formatDate(t.date)}` : ''}${t.time ? ` ${t.time}` : ''} · ${t.vehicleType || ''}${(parseInt(tr.pax) || 1) > 1 ? ` · ${tr.pax} kişi` : ''}`.replace(/\s+/g, ' '),
-          amount: tResTotal(tr), currency: t.currency || '€' });
-      }));
+      linkedResItems(hotel, r).forEach(x => { anyFlight = true; items.push(x); });
       return { customerName: titleCaseTr(r.customerName || ''), customerId: r.customerId || '', tag: r.tag || '', title: `${hotel.name} paketi`, items };
     });
     if (!anyFlight) return generateHotelProforma(hotel, resList);
@@ -17155,16 +17171,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     nights,
                     r.roomType || '',
                     r.concept ? trUpper(r.concept) : '',
-                    buy + resExtras(r).reduce((t, x) => t + x.buy, 0),
-                    resGrand(r),
-                    resProfit(r),
+                    buy + resExtras(r).reduce((t, x) => t + x.buy, 0) + resTotals(h, r).linked.reduce((t, x) => t + x.buy, 0),
+                    resTotals(h, r).total,
+                    resTotals(h, r).profit,
                     r.currency || '€',
                     paid,
-                    resGrand(r) - paid,
+                    resTotals(h, r).total - paid,
                     r.tag || '',
                     r.notes || '',
-                    resExtras(r).map(x => `${x.name}: ${x.text}${x.price ? ` (${x.price})` : ''}`).join(' · '),
-                    resExtraSum(r) || ''
+                    [...resExtras(r).map(x => `${x.name}: ${x.text}${x.price ? ` (${x.price})` : ''}`), ...resTotals(h, r).linked.map(x => `${x.label} (${x.amount})`)].join(' · '),
+                    (resExtraSum(r) + resTotals(h, r).linkedSell) || ''
                   ]);
                 });
                 const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -17489,7 +17505,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
         {reservations.length > 0 && (() => {
           const words = resWords, shown = shownRes;
           const sum = (f) => shown.reduce((t, r) => t + f(r), 0);
-          const sell = sum(r => resGrand(r)), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
+          const sell = sum(r => resTotals(h, r).total), got = sum(r => (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0));
           const cur = reservations[0]?.currency || '€';
           return (
             <div style={{ marginBottom: '10px' }}>
@@ -17532,9 +17548,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   {shownRes.map(r => {
                     const nights = calcNights(r.checkIn, r.checkOut);
                     const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
-                    const total = resGrand(r); // otel + münferit uçuş + transfer
+                    const rt = resTotals(h, r); // otel + münferit uçuş/transfer + bağlı grup uçuşu bileti ve transfer
+                    const total = rt.total;
                     const buy = parseFloat(r.buyPrice) || 0;
-                    const profit = resProfit(r); // alışı girilmiş ek kalemler kâra katılır
+                    const profit = rt.profit; // alışı girilmiş ek kalemler kâra katılır
                     const fullyPaid = paid >= total && total > 0;
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: selectedResIds.includes(r.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
@@ -17558,7 +17575,15 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                           {r.roomType}
                           {r.concept && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>{trUpper(r.concept)}</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>{total} {r.currency || '€'}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '600', color: '#10b981' }}>
+                          {total.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} {r.currency || '€'}
+                          {(rt.linkedSell > 0 || resExtraSum(r) > 0 || rt.other.length > 0) && (
+                            <div style={{ fontSize: '10px', fontWeight: 400, color: '#94a3b8', whiteSpace: 'nowrap' }} title={[...rt.linked, ...rt.other].map(x => `${x.label}: ${x.amount} ${x.currency}`).join('\n')}>
+                              🏨 {(parseFloat(r.price) || 0).toLocaleString('tr-TR')}{rt.linked.filter(x => x.kind === 'flight').length + resExtras(r).filter(x => x.kind === 'flight').length ? ` · ✈️ ${(rt.linked.filter(x => x.kind === 'flight').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'flight').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}{rt.linked.filter(x => x.kind === 'transfer').length + resExtras(r).filter(x => x.kind === 'transfer').length ? ` · 🚐 ${(rt.linked.filter(x => x.kind === 'transfer').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'transfer').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}
+                              {rt.other.map((x, i) => <span key={i}> · +{x.amount} {x.currency}</span>)}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
                             background: fullyPaid ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)',
