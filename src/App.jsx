@@ -14988,8 +14988,29 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
   const [resTrf, setResTrf] = useState({ out: '', ret: '' }); // Transferler bölümünden seçilen transfer (id)
-  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setResFlights({ out: r.flightOut ? 'M' : '', ret: r.flightRet ? 'M' : '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
+  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResFlightsOrig({ out: '', ret: '' }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  // Bu otel rezervasyonundaki kişilerin bulunduğu grup uçuşları — yön: uçuşun kendi yönü, yoksa giriş/çıkış tarihine yakınlık
+  const resGroupFlights = (hotel, r) => {
+    const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    const out = { out: null, ret: null };
+    (groupFlights || []).forEach(fl => {
+      const hit = (fl.reservations || []).some(fr => !fr.cancelled && names.has(normalizeTr(fr.customerName))
+        && (fr.packageHotelId ? String(fr.packageHotelId) === String(hotel.id) : (() => { const d = (a, b) => Math.abs(new Date(a) - new Date(b)) / 86400000; return d(fl.date, r.checkIn) <= 2 || d(fl.date, r.checkOut) <= 2; })()));
+      if (!hit) return;
+      const dir = fl.direction === 'Gidiş' ? 'out' : fl.direction === 'Dönüş' ? 'ret'
+        : Math.abs(new Date(fl.date) - new Date(r.checkIn)) <= Math.abs(new Date(fl.date) - new Date(r.checkOut)) ? 'out' : 'ret';
+      if (!out[dir]) out[dir] = String(fl.id);
+    });
+    return out;
+  };
+  const [resFlightsOrig, setResFlightsOrig] = useState({ out: '', ret: '' }); // düzenleme açılırken bağlı olduğu grup uçuşları
+  const openEditRes = (r) => {
+    const g = selectedHotel ? resGroupFlights(selectedHotel, r) : { out: null, ret: null };
+    setResFlightsOrig({ out: g.out || '', ret: g.ret || '' });
+    // Elle yazılmış uçuş varsa münferit; yoksa bağlı grup uçuşu seçili gelir
+    setResFlights({ out: r.flightOut ? 'M' : (g.out || ''), ret: r.flightRet ? 'M' : (g.ret || ''), pkg: true });
+    setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true);
+  };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
@@ -15027,9 +15048,34 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
     const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
     let pk;
-    [resFlights.out, resFlights.ret].filter(x => x && x !== 'M').forEach(fid => {
+    // Önceden bağlı olduğu grup uçuşu değiştiyse (münferite / uçuş yok'a / başka uçuşa) eski uçuştaki biletleri iptal et —
+    // yoksa hem münferit hem grup bileti sayılır
+    const oldNames = new Set([editingRes?.customerName, ...(editingRes?.guestNames || []), savedRes.customerName, ...(savedRes.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    ['out', 'ret'].forEach(k => {
+      const oldId = resFlightsOrig[k], nowId = resFlights[k];
+      if (!editingRes || !oldId || String(oldId) === String(nowId)) return;
+      const fl = groupFlights.find(f => String(f.id) === String(oldId));
+      if (!fl) return;
+      let n = 0;
+      const rs = (fl.reservations || []).map(fr => {
+        if (fr.cancelled || !oldNames.has(normalizeTr(fr.customerName))) return fr;
+        if (fr.packageHotelId && String(fr.packageHotelId) !== String(updatedHotel.id)) return fr;
+        n++; return { ...fr, cancelled: true, cancelledAt: new Date().toISOString(), cancelNote: nowId === 'M' ? 'Otel rezervasyonunda münferit uçuşa çevrildi' : nowId ? 'Otel rezervasyonunda başka uçuşa taşındı' : 'Otel rezervasyonundan uçuş kaldırıldı' };
+      });
+      if (n) { setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: rs } : x)); showToast?.(`✈️ ${n} bilet ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from}→${fl.to} grup uçuşundan çıkarıldı`, 'info'); }
+    });
+    // Aynı grup uçuşu seçili kaldıysa sadece yeni eklenen oda arkadaşları eklenir (mevcutlar tekrar eklenmez, uyarı çıkmaz)
+    [['out', resFlights.out], ['ret', resFlights.ret]].filter(([, x]) => x && x !== 'M').forEach(([k, fid]) => {
       const fl = groupFlights.find(f => String(f.id) === String(fid));
-      if (fl) { const r = addPeopleToFlight(fl, fp, pk); if (r) pk = r.next; }
+      if (!fl) return;
+      let fpx = fp;
+      if (editingRes && String(resFlightsOrig[k]) === String(fid)) {
+        const on = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
+        const fresh = fp.people.filter(pp => !on.has(pp.key));
+        if (!fresh.length) return;
+        fpx = { ...fp, people: fresh };
+      }
+      const r = addPeopleToFlight(fl, fpx, pk); if (r) pk = r.next;
     });
     // 🚐 Transferler bölümünden seçilen transfer: oda tek rezervasyon olarak (kişi sayısı = odadakiler) eklenir
     [resTrf.out, resTrf.ret].filter(Boolean).forEach(tid => {
