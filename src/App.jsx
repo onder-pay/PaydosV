@@ -935,6 +935,17 @@ const nameForSave = (s) => {
   return titleCaseTr(t);
 };
 
+// Ad + soyad BİRLİKTE: belgede bir yerde İ/ı varsa (ör. "MELİH KANSIZ") o belge İ/ı ayrımı yapıyordur → soyaddaki I da ı'dır
+// ("Melih Kansız"). Ayrı ayrı nameForSave soyadı "KANSIZ" diye bırakıyordu.
+const namePairForSave = (first, last) => {
+  const f = String(first || '').trim().replace(/\s+/g, ' '), l = String(last || '').trim().replace(/\s+/g, ' ');
+  if (f && l && TR_DOTTED.test(`${f} ${l}`)) {
+    const w = titleCaseTr(`${f} ${l}`).split(' '), n = f.split(' ').length;
+    return [w.slice(0, n).join(' '), w.slice(n).join(' ')];
+  }
+  return [nameForSave(f), nameForSave(l)];
+};
+
 // Yer adı (doğum yeri / il): pasaporttaki büyük harfli ASCII yazımı ("DENIZLI", "Denızli") il listesiyle eşleştirip doğru yazar.
 const PLACE_ALIAS = { afyon: 'Afyonkarahisar', maras: 'Kahramanmaraş', 'k.maras': 'Kahramanmaraş', urfa: 'Şanlıurfa', antep: 'Gaziantep', icel: 'Mersin', izmit: 'Kocaeli', adapazari: 'Sakarya', antakya: 'Hatay' };
 // OCR bazen doğum yerinin önüne 2-3 harflik artık ekler ("DEN NAZILLI") — çok kelimeli yerde baştaki kısa parça atılır
@@ -3152,6 +3163,13 @@ const matchCustomers = (index, words) => {
   return hits.filter(h => score(h) === max).map(h => h.c);
 };
 
+// Müşterinin en son pasaport görseli (Storage adresi ya da eski base64) — yoksa ''
+const passportImageOf = (c) => {
+  const pp = safeParseJSON(c?.passports).filter(p => p && p.image && (/^https:\/\//.test(p.image) || /^data:image\//.test(p.image)));
+  if (!pp.length) return '';
+  pp.sort((a, b) => String(b.expiryDate || '').localeCompare(String(a.expiryDate || '')));
+  return pp[0].image;
+};
 // 🔍 Mükerrer / TC kontrolü — tüm müşterileri tarar
 function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
   const [tab, setTab] = useState('tcName');
@@ -3177,7 +3195,13 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
       const full = `${c.firstName || ''} ${c.lastName || ''}`;
       return /ı/.test(full) && !/[iİ]/.test(full); // eski kod her I'yı ı yaptı: hiç i/İ kalmayan ı'lı isim ("Merıç Emıroglu")
     });
-    return { tcName, tcSame, passport, nameBirth, badTc, oddName };
+    // 🔤 Türkçe harfsiz isim (Excel/MRZ'den gelmiş olabilir: "Ferhat Akbiyik") ama pasaport görseli var → pasaporttan doğru yazım okunabilir
+    const asciiName = (customers || []).filter(c => {
+      if (c.nameOk || c.nameReadAt) return false;
+      const full = `${c.firstName || ''} ${c.lastName || ''}`;
+      return full.trim() && !/[çğıöşüÇĞİÖŞÜ]/.test(full) && passportImageOf(c);
+    });
+    return { tcName, tcSame, passport, nameBirth, badTc, oddName, asciiName };
   }, [customers]);
   const tabs = [
     ['tcName', '🚨 Aynı TC, farklı isim', data.tcName.length],
@@ -3186,7 +3210,74 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
     ['nameBirth', 'Aynı ad + doğum', data.nameBirth.length],
     ['badTc', 'Geçersiz TC', data.badTc.length],
     ['oddName', '🔤 Şüpheli isim (ı)', data.oddName.length],
+    ['asciiName', '🔡 Türkçe harfsiz isim', data.asciiName.length],
   ];
+  // 📷 Pasaporttan isim okuma: kayıtlı pasaport görselindeki SOYADI/ADI Türkçe harfleriyle okunur. Okunan isim kayıttakiyle
+  // harf farkı dışında aynıysa (normalizeTr) düzeltilir; farklıysa dokunulmaz, elle kontrol için gösterilir.
+  const [readState, setReadState] = useState({}); // id → { busy, msg, ok }
+  const [bulk, setBulk] = useState(null); // { done, total, fixed, stop }
+  const bulkStop = useRef(false);
+  const keyOf = (c) => c._docId || String(c.id);
+  const readFromPassport = async (c, silent) => {
+    const img = passportImageOf(c);
+    if (!img) { setReadState(st => ({ ...st, [keyOf(c)]: { msg: 'Pasaport görseli yok', ok: false } })); return 'nopp'; }
+    setReadState(st => ({ ...st, [keyOf(c)]: { busy: true } }));
+    try {
+      const m = String(img).match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+      const source = m ? { type: 'base64', media_type: m[1], data: m[2] } : { type: 'url', url: img };
+      const resp = await claudeRequest({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 200, messages: [{ role: 'user', content: [
+        { type: 'image', source },
+        { type: 'text', text: 'Bu bir pasaport (veya kimlik kartı) görseli. "SOYADI / SURNAME" ve "ADI / NAME" (kimlikte "Soyadı / Surname", "Adı / Given Name(s)") alanlarını göründüğü gibi, Türkçe harfleriyle (İ, ı, Ş, Ğ, Ü, Ö, Ç) BÜYÜK harfle oku. MRZ satırını (< işaretli alt satırlar) KULLANMA. Birden fazla ad varsa hepsi firstName. SADECE JSON: {"firstName":"","lastName":""}' }] }] }) });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j?.error || ('HTTP ' + resp.status));
+      const txt = (j.content || []).map(x => x.text || '').join('');
+      const o = JSON.parse((txt.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+      const [fn, ln] = namePairForSave(o.firstName || '', o.lastName || '');
+      if (!fn || !ln) throw new Error('İsim okunamadı');
+      const same = normalizeTr(`${fn} ${ln}`) === normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`);
+      if (!same) { setReadState(st => ({ ...st, [keyOf(c)]: { msg: `Pasaportta "${fn} ${ln}" yazıyor — kayıttan farklı, elle kontrol edin`, ok: false } })); return 'diff'; }
+      const changed = fn !== c.firstName || ln !== c.lastName;
+      await onPatch?.(c, { ...(changed ? { firstName: fn, lastName: ln } : {}), nameOk: true, nameReadAt: new Date().toISOString() }, { silent });
+      setReadState(st => ({ ...st, [keyOf(c)]: { msg: changed ? `✓ ${fn} ${ln}` : '✓ Pasaportla aynı', ok: true } }));
+      return changed ? 'fixed' : 'same';
+    } catch (e) {
+      setReadState(st => ({ ...st, [keyOf(c)]: { msg: '❌ ' + (e.message || 'okunamadı').slice(0, 80), ok: false } }));
+      return 'err';
+    }
+  };
+  // Toplu: sırayla, 2,2 sn arayla (Claude vekil sunucusu dakikada 30 istek kabul eder); en fazla 50 kişi / tıklama
+  const readAll = async (list) => {
+    const todo = list.filter(c => passportImageOf(c) && !readState[keyOf(c)]?.ok).slice(0, 50);
+    if (!todo.length) return;
+    bulkStop.current = false;
+    let fixed = 0;
+    setBulk({ done: 0, total: todo.length, fixed: 0 });
+    for (let i = 0; i < todo.length; i++) {
+      if (bulkStop.current) break;
+      const r = await readFromPassport(todo[i], true);
+      if (r === 'fixed') fixed++;
+      setBulk({ done: i + 1, total: todo.length, fixed });
+      if (i < todo.length - 1) await new Promise(res => setTimeout(res, 2200));
+    }
+    setBulk(b => b && { ...b, finished: true });
+  };
+  const readBtn = (c) => {
+    const st = readState[keyOf(c)];
+    if (!passportImageOf(c)) return <span style={{ fontSize: '11px', color: '#64748b' }}>pasaport görseli yok</span>;
+    return <>
+      <button type="button" disabled={st?.busy || bulk && !bulk.finished} onClick={() => readFromPassport(c, false)} title="Kayıtlı pasaport görselinden isim Türkçe harfleriyle okunur" style={{ padding: '5px 10px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.4)', borderRadius: '8px', color: '#c084fc', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>{st?.busy ? '⏳ Okunuyor…' : '📷 Pasaporttan oku'}</button>
+      {st?.msg && <span style={{ fontSize: '11.5px', color: st.ok ? '#34d399' : '#fbbf24', flexBasis: '100%' }}>{st.msg}</span>}
+    </>;
+  };
+  const bulkBar = (list, label) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '8px 0 12px', padding: '10px 12px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '10px', fontSize: '12.5px' }}>
+      {!bulk || bulk.finished
+        ? <button type="button" onClick={() => readAll(list)} disabled={!list.some(c => passportImageOf(c))} style={{ padding: '7px 14px', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '12.5px' }}>📷 {label} ({Math.min(50, list.filter(c => passportImageOf(c) && !readState[keyOf(c)]?.ok).length)})</button>
+        : <button type="button" onClick={() => { bulkStop.current = true; }} style={{ padding: '7px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: '12.5px' }}>⏹ Durdur</button>}
+      {bulk && <span style={{ color: '#e8f1f8' }}>{bulk.done}/{bulk.total} okundu · <b style={{ color: '#34d399' }}>{bulk.fixed} düzeltildi</b>{bulk.finished ? ' · bitti' : ''}</span>}
+      <span style={{ color: '#94a3b8' }}>Kayıtlı pasaport görselinden okunur; isim harf farkı dışında aynıysa düzeltilir, farklıysa dokunulmaz. Tıklama başına en fazla 50 kişi (~2 dk).</span>
+    </div>
+  );
   // Önerilen düzeltme: ı → i, Türkçe harfsiz isim kuralıyla yeniden yaz ("Ismaıl Gedıkoglu" → "İsmail Gedikoglu")
   const fixName = (x) => titleCaseTr(String(x || '').replace(/ı/g, 'i'));
   const ppList = (c) => safeParseJSON(c.passports).map(p => p.passportNo).filter(Boolean).join(', ');
@@ -3196,7 +3287,7 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
       <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontWeight: '600', fontSize: '12px', fontFamily: 'inherit' }}>Aç</button>
     </div>
   );
-  const groups = (tab === 'badTc' || tab === 'oddName') ? null : data[tab];
+  const groups = (tab === 'badTc' || tab === 'oddName' || tab === 'asciiName') ? null : data[tab];
   const oddRow = (c) => {
     const fn = fixName(c.firstName), ln = fixName(c.lastName);
     return (
@@ -3205,6 +3296,7 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
           <span style={{ color: '#fca5a5' }}>{c.firstName} {c.lastName}</span> <span style={{ color: '#64748b' }}>→</span> <b style={{ color: '#86efac' }}>{fn} {ln}</b>
           {c.tcKimlik ? <span style={{ color: '#64748b' }}> · TC {c.tcKimlik}</span> : null}
         </span>
+        {readBtn(c)}
         <button type="button" onClick={() => onPatch?.(c, { firstName: fn, lastName: ln, nameOk: true })} style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontSize: '12px' }}>✓ Düzelt</button>
         <button type="button" onClick={() => onPatch?.(c, { nameOk: true })} title="İsim zaten doğru (ör. Yılmaz) — listeden çıkar" style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>Doğru, dokunma</button>
         <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px' }}>Aç</button>
@@ -3230,8 +3322,21 @@ function DuplicateScanModal({ customers, onOpen, onClose, onPatch }) {
           {tab === 'oddName'
             ? (data.oddName.length ? <>
                 <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>Eski isim düzeltmesi Türkçe harfsiz BÜYÜK yazılmış isimlerde (pasaport MRZ, Excel) her I'yı ı yaptı: "ISMAIL" → "Ismaıl". Bu listede ı geçen ama hiç i/İ geçmeyen isimler var — <b>Yılmaz, Kılıç</b> gibi gerçekten ı'lı isimler de çıkar. Önerilen yazım doğruysa <b>Düzelt</b>, isim zaten doğruysa <b>Doğru, dokunma</b>. İkisi de kaydı listeden çıkarır.</div>
+                {bulkBar(data.oddName, 'Pasaportu olanların hepsini oku')}
                 {data.oddName.map(oddRow)}
               </> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Şüpheli isim yok</div>)
+            : tab === 'asciiName'
+            ? (data.asciiName.length ? <>
+                <div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0', lineHeight: 1.5 }}>İsmi hiç Türkçe harf içermeyen ama pasaport görseli kayıtlı müşteriler (Excel/MRZ'den gelmiş olabilir: "Ferhat Akbiyik"). Pasaporttan okununca doğru yazım ("Akbıyık") kaydedilir; zaten doğruysa listeden çıkar.</div>
+                {bulkBar(data.asciiName, 'Hepsini pasaporttan oku')}
+                {data.asciiName.map(c => (
+                  <div key={keyOf(c)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', fontSize: '12.5px', color: '#e8f1f8', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ flex: 1, minWidth: '220px' }}><b>{c.firstName} {c.lastName}</b>{c.tcKimlik ? <span style={{ color: '#64748b' }}> · TC {c.tcKimlik}</span> : null}</span>
+                    {readBtn(c)}
+                    <button type="button" onClick={() => onOpen(c)} style={{ padding: '5px 10px', background: 'none', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px' }}>Aç</button>
+                  </div>
+                ))}
+              </> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Kontrol edilecek isim yok</div>)
             : tab === 'badTc'
             ? (data.badTc.length ? <><div style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0' }}>11 hane değil ya da TC doğrulama basamakları tutmuyor — yanlış girilmiş/okunmuş olabilir.</div>{data.badTc.map(row)}</> : <div style={{ padding: '30px', textAlign: 'center', color: '#10b981' }}>✅ Sorun yok</div>)
             : (groups.length ? groups.map(([k, arr]) => (
@@ -6261,10 +6366,10 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
       {showForm && renderFullPageForm()}
       {selectedCustomer && renderFullPageDetail()}
       {showDupScan && <DuplicateScanModal customers={customers} onOpen={(c) => { setDetailTab('info'); setSelectedCustomer(c); }} onClose={() => setShowDupScan(false)}
-        onPatch={async (c, patch) => {
+        onPatch={async (c, patch, opt = {}) => {
           const id = c._docId || String(c.id);
           setCustomers(prev => prev.map(x => (x._docId || String(x.id)) === id ? { ...x, ...patch } : x));
-          try { await setDoc(doc(db, 'customers', id), { ...patch, updatedAt: new Date().toISOString() }, { merge: true }); showToast?.(patch.firstName ? `✓ ${patch.firstName} ${patch.lastName} olarak düzeltildi` : 'Listeden çıkarıldı', 'success'); }
+          try { await setDoc(doc(db, 'customers', id), { ...patch, updatedAt: new Date().toISOString() }, { merge: true }); if (!opt.silent) showToast?.(patch.firstName ? `✓ ${patch.firstName} ${patch.lastName} olarak düzeltildi` : 'Listeden çıkarıldı', 'success'); }
           catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
         }} />}
       {showDocInbox && <BulkDocInbox customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} onClose={() => setShowDocInbox(false)} />}
@@ -14312,9 +14417,21 @@ const RES_EXTRA_DEFS = [
   { key: 'transferOut', kind: 'transfer', dir: 'Gidiş', icon: '🚐', name: 'Gidiş transferi', def: 'Havalimanı → Otel' },
   { key: 'transferRet', kind: 'transfer', dir: 'Dönüş', icon: '🚐', name: 'Dönüş transferi', def: 'Otel → Havalimanı' },
 ];
+// Uçak bileti fiyatı KİŞİ BAŞI girilir → odadaki kişi sayısıyla çarpılır (Twin 2 kişi: 400 € × 2). Transfer araç başı (toplam).
+// Kişi sayısı: yazılan oda arkadaşları → "Kişi Sayısı" alanı → oda tipi (Twin/Double 2, Triple 3); eski kayıtlarda alan 1 kalmış olabilir
+const roomTypePax = (rt) => { const t = normalizeTr(rt); return /single|tek ki/.test(t) ? 1 : /triple|uclu|3 ki/.test(t) ? 3 : /quad|dortlu|4 ki/.test(t) ? 4 : 2; };
+const resPax = (r) => {
+  const named = 1 + (r?.guestNames || []).filter(x => x && String(x).trim()).length;
+  const g = parseInt(r?.guests) || 0;
+  return Math.max(named, g > 1 ? g : roomTypePax(r?.roomType));
+};
 const resExtras = (r) => RES_EXTRA_DEFS
   .filter(d => d.kind === 'flight' ? String(r?.[d.key] || '').trim() : r?.[d.key + 'On'])
-  .map(d => ({ ...d, text: String(r?.[d.key] || '').trim() || d.def || '', buy: parseFloat(r?.[d.key + 'Buy']) || 0, price: parseFloat(r?.[d.key + 'Price']) || 0 }));
+  .map(d => {
+    const qty = d.kind === 'flight' ? resPax(r) : 1;
+    const unitBuy = parseFloat(r?.[d.key + 'Buy']) || 0, unitPrice = parseFloat(r?.[d.key + 'Price']) || 0;
+    return { ...d, text: String(r?.[d.key] || '').trim() || d.def || '', qty, unitBuy, unitPrice, buy: unitBuy * qty, price: unitPrice * qty };
+  });
 const resExtraSum = (r) => resExtras(r).reduce((t, x) => t + x.price, 0);
 // Müşteriden alınacak toplam: otel + elle eklenen kalemler (ödendi/kalan bununla hesaplanır)
 const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
@@ -14871,8 +14988,29 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
   const [resTrf, setResTrf] = useState({ out: '', ret: '' }); // Transferler bölümünden seçilen transfer (id)
-  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
-  const openEditRes = (r) => { setResFlights({ out: r.flightOut ? 'M' : '', ret: r.flightRet ? 'M' : '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true); };
+  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResFlightsOrig({ out: '', ret: '' }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  // Bu otel rezervasyonundaki kişilerin bulunduğu grup uçuşları — yön: uçuşun kendi yönü, yoksa giriş/çıkış tarihine yakınlık
+  const resGroupFlights = (hotel, r) => {
+    const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    const out = { out: null, ret: null };
+    (groupFlights || []).forEach(fl => {
+      const hit = (fl.reservations || []).some(fr => !fr.cancelled && names.has(normalizeTr(fr.customerName))
+        && (fr.packageHotelId ? String(fr.packageHotelId) === String(hotel.id) : (() => { const d = (a, b) => Math.abs(new Date(a) - new Date(b)) / 86400000; return d(fl.date, r.checkIn) <= 2 || d(fl.date, r.checkOut) <= 2; })()));
+      if (!hit) return;
+      const dir = fl.direction === 'Gidiş' ? 'out' : fl.direction === 'Dönüş' ? 'ret'
+        : Math.abs(new Date(fl.date) - new Date(r.checkIn)) <= Math.abs(new Date(fl.date) - new Date(r.checkOut)) ? 'out' : 'ret';
+      if (!out[dir]) out[dir] = String(fl.id);
+    });
+    return out;
+  };
+  const [resFlightsOrig, setResFlightsOrig] = useState({ out: '', ret: '' }); // düzenleme açılırken bağlı olduğu grup uçuşları
+  const openEditRes = (r) => {
+    const g = selectedHotel ? resGroupFlights(selectedHotel, r) : { out: null, ret: null };
+    setResFlightsOrig({ out: g.out || '', ret: g.ret || '' });
+    // Elle yazılmış uçuş varsa münferit; yoksa bağlı grup uçuşu seçili gelir
+    setResFlights({ out: r.flightOut ? 'M' : (g.out || ''), ret: r.flightRet ? 'M' : (g.ret || ''), pkg: true });
+    setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true);
+  };
 
   const saveReservation = async () => {
     if (!resData.customerId || !resData.customerName) { showToast?.('Müşteri seçin', 'error'); return; }
@@ -14910,9 +15048,34 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
     // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
     const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
     let pk;
-    [resFlights.out, resFlights.ret].filter(x => x && x !== 'M').forEach(fid => {
+    // Önceden bağlı olduğu grup uçuşu değiştiyse (münferite / uçuş yok'a / başka uçuşa) eski uçuştaki biletleri iptal et —
+    // yoksa hem münferit hem grup bileti sayılır
+    const oldNames = new Set([editingRes?.customerName, ...(editingRes?.guestNames || []), savedRes.customerName, ...(savedRes.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    ['out', 'ret'].forEach(k => {
+      const oldId = resFlightsOrig[k], nowId = resFlights[k];
+      if (!editingRes || !oldId || String(oldId) === String(nowId)) return;
+      const fl = groupFlights.find(f => String(f.id) === String(oldId));
+      if (!fl) return;
+      let n = 0;
+      const rs = (fl.reservations || []).map(fr => {
+        if (fr.cancelled || !oldNames.has(normalizeTr(fr.customerName))) return fr;
+        if (fr.packageHotelId && String(fr.packageHotelId) !== String(updatedHotel.id)) return fr;
+        n++; return { ...fr, cancelled: true, cancelledAt: new Date().toISOString(), cancelNote: nowId === 'M' ? 'Otel rezervasyonunda münferit uçuşa çevrildi' : nowId ? 'Otel rezervasyonunda başka uçuşa taşındı' : 'Otel rezervasyonundan uçuş kaldırıldı' };
+      });
+      if (n) { setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: rs } : x)); showToast?.(`✈️ ${n} bilet ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from}→${fl.to} grup uçuşundan çıkarıldı`, 'info'); }
+    });
+    // Aynı grup uçuşu seçili kaldıysa sadece yeni eklenen oda arkadaşları eklenir (mevcutlar tekrar eklenmez, uyarı çıkmaz)
+    [['out', resFlights.out], ['ret', resFlights.ret]].filter(([, x]) => x && x !== 'M').forEach(([k, fid]) => {
       const fl = groupFlights.find(f => String(f.id) === String(fid));
-      if (fl) { const r = addPeopleToFlight(fl, fp, pk); if (r) pk = r.next; }
+      if (!fl) return;
+      let fpx = fp;
+      if (editingRes && String(resFlightsOrig[k]) === String(fid)) {
+        const on = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
+        const fresh = fp.people.filter(pp => !on.has(pp.key));
+        if (!fresh.length) return;
+        fpx = { ...fp, people: fresh };
+      }
+      const r = addPeopleToFlight(fl, fpx, pk); if (r) pk = r.next;
     });
     // 🚐 Transferler bölümünden seçilen transfer: oda tek rezervasyon olarak (kişi sayısı = odadakiler) eklenir
     [resTrf.out, resTrf.ret].filter(Boolean).forEach(tid => {
@@ -15165,7 +15328,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
       const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
       // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
-      resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}`, amount: x.price, currency: r.currency || '€' }); });
+      resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}${x.qty > 1 ? ` · ${x.qty} kişi × ${x.unitPrice.toLocaleString('tr-TR')}` : ''}`, amount: x.price, currency: r.currency || '€' }); });
       linkedResItems(hotel, r).forEach(x => { anyFlight = true; items.push(x); });
       return { customerName: titleCaseTr(r.customerName || ''), customerId: r.customerId || '', tag: r.tag || '', title: `${hotel.name} paketi`, items };
     });
@@ -17567,7 +17730,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                             {r.customerName}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
-                          {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
+                          {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.qty > 1 ? `${x.unitPrice.toLocaleString('tr-TR')} × ${x.qty} = ` : ''}${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{nights}</td>
@@ -17862,7 +18025,8 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const opts = (dir, d) => (groupFlights || []).filter(f => f.date >= today && (!f.direction || f.direction === dir)).sort(near(d));
                   const lab = (f) => { const a = (f.reservations || []).filter(x => !x.cancelled).length; return `${formatDate(f.date)} · ${f.airline || ''} ${f.flightNo || ''} · ${f.from}→${f.to} · ${a}/${f.capacity || '∞'}${f.date === resData.checkIn || f.date === resData.checkOut ? ' ⭐' : ''}`; };
                   // Alış (opsiyonel) + satış kutuları — rezervasyon para biriminde
-                  const money = (k) => [['Buy', 'Alış', 'Bizim maliyetimiz (opsiyonel — girilirse kâra katılır)', 'rgba(239,68,68,0.35)'], ['Price', 'Satış', 'Müşteriye satış — proformaya ayrı satır olarak girer', 'rgba(16,185,129,0.35)']].map(([sf, lb, tt, bc]) => (
+                  const perPax = (k) => /^flight/.test(k); // uçak bileti kişi başı
+                  const money = (k) => [['Buy', perPax(k) ? 'Alış/kişi' : 'Alış', 'Bizim maliyetimiz (opsiyonel — girilirse kâra katılır)', 'rgba(239,68,68,0.35)'], ['Price', perPax(k) ? 'Satış/kişi' : 'Satış', perPax(k) ? 'Kişi başı bilet fiyatı — odadaki kişi sayısıyla çarpılır, proformaya ayrı satır girer' : 'Müşteriye satış — proformaya ayrı satır olarak girer', 'rgba(16,185,129,0.35)']].map(([sf, lb, tt, bc]) => (
                     <div key={sf} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
                       <input type="number" inputMode="decimal" min="0" value={resData[k + sf] || ''} onChange={e => setResData({ ...resData, [k + sf]: e.target.value })}
                         placeholder={lb} title={tt} style={{ ...inputStyle, paddingRight: '24px', borderColor: bc }} />
@@ -17873,6 +18037,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <input autoFocus={!resData[k]} value={resData[k] || ''} onChange={e => setResData({ ...resData, [k]: e.target.value })} placeholder={ph}
                         style={{ ...inputStyle, flex: '1 1 100%', minWidth: 0 }} />
                       {money(k)}
+                      {perPax(k) && (parseFloat(resData[k + 'Price']) || 0) > 0 && <div style={{ flexBasis: '100%', fontSize: '11px', color: '#94a3b8' }}>{resPax(resData)} kişi × {parseFloat(resData[k + 'Price']).toLocaleString('tr-TR')} = <b style={{ color: '#34d399' }}>{(resPax(resData) * parseFloat(resData[k + 'Price'])).toLocaleString('tr-TR')} {resData.currency || '€'}</b></div>}
                     </div>);
                   const sel = (key, dir, d) => (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
@@ -17904,6 +18069,12 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
                       <label style={{ ...labelStyle, marginTop: '12px' }}>🚐 Transfer <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — gidiş ve dönüş ayrı · Transferler bölümünden seçin ya da elle yazın)</span></label>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{trf('transferOut', 'out', 'Gidiş', 'Havalimanı → Otel (araç, saat…)', resData.checkIn)}{trf('transferRet', 'ret', 'Dönüş', 'Otel → Havalimanı (araç, saat…)', resData.checkOut)}</div>
+                      {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && resPax(resData) > n && (
+                        <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontSize: '12px', lineHeight: 1.5 }}>
+                          ⚠️ {resData.roomType || 'Oda'} odada {resPax(resData)} kişi var ama {n} isim yazılı — grup uçuşuna yalnız <b>{n} bilet</b> eklenir (biletler isimle tutulur).
+                          Yukarıdaki oda arkadaşı kutusuna {resPax(resData) - n === 1 ? 'diğer kişinin' : 'diğer kişilerin'} adını yazın.
+                        </div>
+                      )}
                       {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
@@ -20696,6 +20867,41 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     })();
   }, [users, dataReady]);
   useEffect(() => { debouncedSave('tours', 'tours', tours); }, [tours]);
+  // 👤 İsim eşitleme: vize başvurusu ve tur/otel/uçuş/transfer rezervasyonları müşteri adının kopyasını tutar.
+  // Müşteri kartındaki isim düzeltilince (ör. "Ismaıl" → "İsmail", "Eryılmaz Agaoglu" → "Özcan Ağaoğlu Eryılmaz")
+  // bu kopyalar da güncellenir. Eşleşme müşteri kimliğiyle; güvenlik için eski ve yeni isim en az bir kelimede
+  // (Türkçe harf farkı yok sayılarak) ortak olmalı — bambaşka bir isme çevrilmez.
+  useEffect(() => {
+    if (!dataReady) return;
+    const t = setTimeout(() => {
+      const byId = new Map();
+      customers.forEach(c => {
+        const n = `${c.firstName || ''} ${c.lastName || ''}`.replace(/\s+/g, ' ').trim();
+        if (!n) return;
+        [c.id, c._docId].filter(x => x !== undefined && x !== null && x !== '').forEach(k => byId.set(String(k), n));
+      });
+      const words = (x) => new Set(normalizeTr(x).split(/\s+/).filter(w => w.length > 1));
+      const fix = (rec) => {
+        if (!rec || rec.customerId === undefined || rec.customerId === null || rec.customerId === '') return null;
+        const n = byId.get(String(rec.customerId));
+        if (!n || n === rec.customerName) return null;
+        const a = words(rec.customerName || ''), b = words(n);
+        if (rec.customerName && ![...a].some(w => b.has(w))) return null;
+        // Kart "ISMAIL KAYGUN" (I belirsiz, büyük harf saklanmış), kopya düzgün "Ismail Kaygun" ise dokunma — sadece bozuk (ı'lı) kopya düzelir
+        const old = String(rec.customerName || '');
+        if (normalizeTr(old) === normalizeTr(n) && n === trUpper(n) && old !== trUpper(old) && !/ı/.test(old)) return null;
+        return n;
+      };
+      const fixList = (list) => { let ch = false; const out = (list || []).map(r => { const n = fix(r); if (!n) return r; ch = true; return { ...r, customerName: n }; }); return ch ? out : null; };
+      const fixNested = (arr) => { let ch = false; const out = (arr || []).map(x => { const rs = fixList(x.reservations); if (!rs) return x; ch = true; return { ...x, reservations: rs }; }); return ch ? out : null; };
+      setVisaApplications(prev => fixList(prev) || prev);
+      setTours(prev => fixNested(prev) || prev);
+      setHotels(prev => fixNested(prev) || prev);
+      setGroupFlights(prev => fixNested(prev) || prev);
+      setTransfers(prev => fixNested(prev) || prev);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [dataReady, customers]);
   useEffect(() => { debouncedSave('hotels', 'hotels', hotels); }, [hotels]);
   useEffect(() => { debouncedSave('group_flights', 'group_flights', groupFlights); }, [groupFlights]);
   useEffect(() => { debouncedSave('transfers', 'transfers', transfers); }, [transfers]);

@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { normTr, trHas, titleCaseTr, nameForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
+const { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -645,7 +645,7 @@ const thinMatch = (custs, fn, ln) => {
 // Müşteri TC ile, yoksa ad-soyad + doğum tarihiyle bulunur; dolu alanların üzerine yazılmaz (TC farklıysa durur).
 const saveIdCard = async (db, custs, json) => {
   const ref = db.collection('customers');
-  const fn = nameForSave(cleanInvalidName(json.firstName || '')), ln = nameForSave(cleanInvalidName(json.lastName || ''));
+  const [fn, ln] = namePairForSave(cleanInvalidName(json.firstName || ''), cleanInvalidName(json.lastName || ''));
   const tc = String(json.tcKimlik || '').replace(/\D/g, '');
   const tcOk = isValidTc(tc);
   const isYmd = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
@@ -707,7 +707,7 @@ const savePassport = async (db, custs, json, img) => {
     json.lastName = stripCountryCode(json.lastName, json.nationality);
   }
 
-  const fn = nameForSave(json.firstName), ln = nameForSave(json.lastName); // MRZ "ISMAIL" olduğu gibi kalır (bkz. tr.js)
+  const [fn, ln] = namePairForSave(json.firstName, json.lastName); // MRZ "ISMAIL" olduğu gibi kalır; belgede İ/ı varsa ad+soyad birlikte (bkz. tr.js)
 
   // Müşteri bul: TC → pasaport no (isimle eşleştirme YOK — TC farklıysa farklı kişi)
   let cust = null;
