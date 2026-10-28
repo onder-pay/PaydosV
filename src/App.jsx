@@ -1902,7 +1902,8 @@ const detectFlightsGDS = (text) => {
     if (seen.has(code + ymd)) continue; seen.add(code + ymd);
     // Biletteki şehirler ASCII büyük harf: Türkçe küçültme "SOFIA"yı "Sofıa" yapmasın
     const tc = (x) => titleCaseTr(x.trim());
-    out.push({ code, ymd, fromCity: tc(m[1]), from: m[2], toCity: tc(m[3]), to: m[4], dep: tm(m[9]), arr: tm(m[12]) });
+    const arrNext = !!(m[10] && (+m[10] !== d || m[11] !== m[8])); // varış tarihi kalkıştan farklı → (+1)
+    out.push({ code, ymd, fromCity: tc(m[1]), from: m[2], toCity: tc(m[3]), to: m[4], dep: tm(m[9]), arr: tm(m[12]), ...(arrNext ? { arrNext } : {}) });
   }
   return out;
 };
@@ -1940,7 +1941,7 @@ const publishCustomerLink = async (c, trip, token, appSettings) => {
         code: String(f.code || '').toUpperCase().replace(/[\s-]/g, ''), airline: f.airline || '',
         date: f.ymd ? formatDate(f.ymd) : '', ymd: f.ymd || '', // ymd: linkte sıradaki uçuşu bulmak için
         dep: [f.fromCity, f.from].filter(Boolean).join(' ') + (f.dep ? ` · ${f.dep}` : ''),
-        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}` : ''),
+        arr: [f.toCity, f.to].filter(Boolean).join(' ') + (f.arr ? ` · ${f.arr}${f.arrNext ? '(+1)' : ''}` : ''),
       }));
       // until: belgenin seyahat tarihi (biletteki son uçuş / otel çıkışı) — linkte tarihi geçenler "Geçmişim"e iner
       const untilOf = (d) => {
@@ -9282,12 +9283,32 @@ const offerFlightList = (o) => {
   });
   return flights;
 };
+// Yolcunun kendi uçak biletinden okunan uçuşlar (res.ticketFlights). Tur linkinde turun teklifindeki uçuşlar yerine
+// bunlar gösterilir: İstanbul'dan katılan yolcuya turun İzmir/Denizli bağlantıları çıkmasın.
+const ticketFlightsOf = async (url) => {
+  try {
+    return detectFlights(await pdfUrlText(url)).filter(f => f.code && f.ymd).map(f => ({ code: f.code, ymd: f.ymd, fromCity: f.fromCity || '', from: f.from || '', toCity: f.toCity || '', to: f.to || '', dep: f.dep || '', arr: f.arr || '', arrNext: !!f.arrNext }));
+  } catch (e) { return []; } // görsel/okunamayan bilet: turun uçuşları gösterilir
+};
+const resFlightList = (tour, res) => {
+  const tf = [...(res?.ticketFlights || [])].sort((a, b) => `${a.ymd} ${a.dep}`.localeCompare(`${b.ymd} ${b.dep}`));
+  if (!tf.length) return offerFlightList(tour?.offerData);
+  const ms = (ymd) => new Date(ymd + 'T00:00:00').getTime();
+  return tf.map((f, i) => {
+    // Yön: turun başlangıcına mı bitişine mi yakın (tarih yoksa sıranın ilk yarısı gidiş)
+    const dir = tour?.startDate && tour?.endDate
+      ? (Math.abs(ms(f.ymd) - ms(tour.startDate)) <= Math.abs(ms(f.ymd) - ms(tour.endDate)) ? 'Gidiş' : 'Dönüş')
+      : (i < tf.length / 2 ? 'Gidiş' : 'Dönüş');
+    const [y, mo, d] = f.ymd.split('-').map(Number), dt = new Date(y, mo - 1, d);
+    const pt = (city, iata, t) => [city, iata].filter(Boolean).join(' ') + (t ? ` · ${t}` : '');
+    return { dir, code: f.code.replace(/^([A-Z0-9]{2})0+(?=\d)/, '$1'), ymd: f.ymd, date: `${d} ${TR_AYLAR[mo - 1]} ${y} ${TR_GUNLER[dt.getDay()]}`, dep: pt(f.fromCity, f.from, f.dep), arr: pt(f.toCity, f.to, f.arr) + (f.arr && f.arrNext ? '(+1)' : '') };
+  });
+};
 // Teklif güncellenince: daha önce paylaşılmış rezervasyon linklerindeki (/b/) Tur Programı PDF'i, uçuşlar ve tarihler yenilenir
 const refreshTourShareLinks = async (tour) => {
   const tokens = [...new Set((tour.reservations || []).filter(r => !r.cancelled && r.shareToken).map(r => r.shareToken))];
   if (!tokens.length) return 0;
   const p = tour.offerData ? await makeTourProgramPdf(tour, true) : null;
-  const flights = offerFlightList(tour.offerData);
   const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
   let n = 0;
   for (const token of tokens) {
@@ -9299,6 +9320,7 @@ const refreshTourShareLinks = async (tour) => {
       let docs = Array.isArray(d.docs) ? d.docs.filter(x => x.label !== 'Tur Programı') : [];
       // Bilet/biniş kartları rezervasyondaki güncel hâliyle
       const res = (tour.reservations || []).find(r => !r.cancelled && r.shareToken === token);
+      const flights = resFlightList(tour, res);
       if (res) { const L = new Set(RES_LINK_DOCS.map(x => x[2])); docs = [...docs.filter(x => !L.has(x.label)), ...RES_LINK_DOCS.filter(([f]) => res[f]).map(([f, icon, label]) => ({ icon, label, url: res[f] }))]; }
       if (p) {
         const r = ref(getStorage(), `paylasim/${token}/tur-programi.pdf`);
@@ -9318,7 +9340,7 @@ const RES_LINK_DOCS = [
   ['flightTicketUrl', '✈️', 'Uçak Bileti'], ['boardingOutUrl', '🛫', 'Gidiş Biniş Kartı'],
   ['boardingRetUrl', '🛬', 'Dönüş Biniş Kartı'], ['fuarTicketUrl', '🎫', 'Fuar Giriş Bileti'],
 ];
-const syncResLinkDocs = async (res, getNext) => {
+const syncResLinkDocs = async (res, getNext, tour) => {
   if (!res?.shareToken) return false;
   const snap = await getDoc(doc(db, 'paylasimlar', res.shareToken));
   if (!snap.exists()) return false;
@@ -9329,6 +9351,8 @@ const syncResLinkDocs = async (res, getNext) => {
   const patch = {};
   const docsChanged = JSON.stringify(cur.map(x => [x.label, x.url])) !== JSON.stringify(add.map(x => [x.label, x.url]));
   if (docsChanged) patch.docs = [...keep, ...add];
+  // Kişinin biletinden okunan uçuşlar (ya da bilet silindiyse turun uçuşları)
+  if (tour) { const fl = resFlightList(tour, res); if (JSON.stringify(fl) !== JSON.stringify(snap.data()?.flights || [])) patch.flights = fl; }
   // Tur bitince ana ekrandaki tur simgesi yolcunun müşteri linkine (/m/) geçsin
   if (!snap.data()?.nextLink && getNext) { const n = await getNext(); if (n) patch.nextLink = n; }
   if (!Object.keys(patch).length) return false;
@@ -9824,7 +9848,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         docs.push({ icon: '🏨', label: `Otel Giriş Belgesi — ${hi.name}`, url: await up('otel-giris-belgesi.pdf', vdoc.output('blob')) });
       }
       RES_LINK_DOCS.forEach(([f, icon, label]) => { if (res[f]) docs.push({ icon, label, url: res[f] }); });
-      const flights = offerFlightList(tour.offerData);
+      const flights = resFlightList(tour, res);
       if (!docs.length && !flights.length) { showToast?.('Paylaşılacak belge yok (program, odalama oteli veya bilet ekleyin)', 'warning'); return; }
       const custForLink = (customers || []).find(c => String(c.id) === String(res.customerId) || (c._docId && c._docId === String(res.customerId)));
       let nextLink = '';
@@ -10514,9 +10538,19 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     return { url: await getDownloadURL(sRef), path };
   };
   // patches: { [resId]: { alan: değer } } — tek yazımla turdaki rezervasyonlara uygular
-  const patchTourReservations = async (tourId, patches) => {
+  const patchTourReservations = async (tourId, patches0) => {
     const targetTour = toursRef.current.find(t => t.id === tourId);
     if (!targetTour) throw new Error('Tur bulunamadı');
+    // Uçak bileti değiştiyse yolcunun uçuşlarını biletten oku (grup biletinde aynı dosya bir kez okunur)
+    const patches = {}, read = new Map();
+    for (const [rid, p] of Object.entries(patches0)) {
+      patches[rid] = p;
+      if (!('flightTicketUrl' in p) || 'ticketFlights' in p) continue;
+      if (!p.flightTicketUrl) { patches[rid] = { ...p, ticketFlights: [] }; continue; }
+      if (!read.has(p.flightTicketUrl)) read.set(p.flightTicketUrl, await ticketFlightsOf(p.flightTicketUrl));
+      const tf = read.get(p.flightTicketUrl);
+      if (tf) patches[rid] = { ...p, ticketFlights: tf };
+    }
     const updatedTour = { ...targetTour, reservations: (targetTour.reservations || []).map(r => patches[r.id] ? { ...r, ...patches[r.id] } : r) };
     setTours(prev => prev.map(t => t.id === tourId ? updatedTour : t));
     setSelectedTour(prev => (prev && prev.id === tourId ? updatedTour : prev));
@@ -10526,7 +10560,8 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     // Bilet/biniş kartı değiştiyse paylaşılmış linkleri de güncelle
     const docFields = RES_LINK_DOCS.map(x => x[0]);
     const touched = updatedTour.reservations.filter(r => r.shareToken && patches[r.id] && Object.keys(patches[r.id]).some(k => docFields.includes(k)));
-    if (touched.length) await Promise.all(touched.map(r => syncResLinkDocs(r).catch(e => console.warn('[link belge]', r.shareToken, e.message))));
+    if (touched.length) await Promise.all(touched.map(r => syncResLinkDocs(r, null, updatedTour).catch(e => console.warn('[link belge]', r.shareToken, e.message))));
+    return updatedTour;
   };
   // Tur açılınca: bu düzeltmeden önce yüklenen bilet/biniş kartları da paylaşılmış linklere işlensin (oturumda tur başına bir kez)
   const linkSyncedRef = useRef(new Set());
@@ -10534,10 +10569,18 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
     const t = selectedTour;
     if (!t || linkSyncedRef.current.has(t.id)) return;
     linkSyncedRef.current.add(t.id);
-    const todo = (t.reservations || []).filter(r => !r.cancelled && r.shareToken);
+    let todo = (t.reservations || []).filter(r => !r.cancelled && r.shareToken);
     if (!todo.length) return;
     (async () => {
-      let n = 0;
+      let n = 0, tt = t;
+      // Bu özellikten önce yüklenen biletler: uçuşları bir kez okunup rezervasyona yazılır
+      const unread = todo.filter(r => r.flightTicketUrl && !Array.isArray(r.ticketFlights));
+      if (unread.length) {
+        const patches = {};
+        unread.forEach(r => { patches[r.id] = { flightTicketUrl: r.flightTicketUrl }; });
+        try { tt = await patchTourReservations(t.id, patches); } catch (e) { console.warn('[bilet uçuşları]', e.message); }
+        todo = (tt.reservations || []).filter(r => !r.cancelled && r.shareToken);
+      }
       const getNext = (r) => async () => {
         const c = (customers || []).find(x => String(x.id) === String(r.customerId) || (x._docId && x._docId === String(r.customerId)));
         const tok = await ensureCustomerLink(c, appSettings);
@@ -10545,7 +10588,7 @@ function ToursModule({ tours, setTours, customers, setCustomers, visaApplication
         if (tok) await addTourToCustomerLink(tok, t, r.shareToken).catch(() => {});
         return tok;
       };
-      for (const r of todo) { try { if (await syncResLinkDocs(r, getNext(r))) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
+      for (const r of todo) { try { if (await syncResLinkDocs(r, getNext(r), tt)) n++; } catch (e) { console.warn('[link belge]', r.shareToken, e.message); } }
       if (n) showToast?.(`🔗 ${n} müşteri linkine bilet/biniş kartı işlendi`, 'success');
     })();
   }, [selectedTour?.id]);
@@ -13202,7 +13245,7 @@ Kurallar:
 - legs: aktarmasız uçuşta 1 eleman, aktarmalıda her bacak için bir eleman (örn. Madrid→İstanbul, İstanbul→İzmir = 2 eleman)
 - airline: "Turkish Airlines (TK 1856)" gibi havayolu + uçuş no
 - dep: "Madrid MAD · 14:30" (şehir + havalimanı kodu · saat)
-- arr: "İstanbul SAW · 19:40" — ertesi güne sarkıyorsa "(+1)" ekle
+- arr: "İstanbul SAW · 19:40" — "(+1)" YALNIZ metindeki varış tarihi kalkış tarihinden sonraki günse ekle; saat farkından ya da uçuş süresinden tahmin ETME (IST 01:35 → CAN 16:35 aynı gün varıştır)
 - plane: "Airbus A321 · 4s 10dk" — bilinmiyorsa boş bırak
 - Bilinmeyen alanı boş string bırak. UYDURMA.
 METİN:
@@ -14724,9 +14767,22 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const tags = [...new Set(list.map(p => String(p.tag || '').trim()).filter(Boolean).map(t => t.toLocaleUpperCase('tr-TR')))];
       const customerLine = opts.customer || (multi ? (tags.length === 1 ? `${tags[0]} — ${list.length} kişi/oda` : list.map(p => titleCaseTr(p.customerName)).join(', ')) : list[0].customerName);
       const title = opts.title || (multi ? (tags.length === 1 ? `${tags[0]} Grup Paketi` : 'Grup Paketi') : (list[0].title || 'Seyahat Paketi'));
-      const items = list.flatMap(p => (p.items || []).map(it => ({ ...it, label: multi ? `${titleCaseTr(p.customerName)} — ${it.label}` : it.label })));
+      // Aynı uçuşun odadaki biletleri tek satır: "XQ970 İzmir → Frankfurt · 10.01.2027 · Semanur Dodurga, Aylın Karaca · 2 × 400"
+      const mergeFlights = (its) => {
+        const out = [];
+        its.forEach(it => {
+          const k = it.kind === 'flight' ? String(it.label || '').lastIndexOf(' · ') : -1;
+          if (k < 0) { out.push(it); return; }
+          const base = it.label.slice(0, k), who = it.label.slice(k + 3), amt = parseFloat(it.amount) || 0;
+          const g = out.find(x => x._base === base && x._unit === amt && (x.currency || '€') === (it.currency || '€'));
+          if (g) { g._who.push(who); g.amount = (parseFloat(g.amount) || 0) + amt; } else out.push({ ...it, _base: base, _unit: amt, _who: [who] });
+        });
+        return out.map(x => x._base ? { ...x, label: `${x._base} · ${x._who.join(', ')}${x._who.length > 1 ? ` · ${x._who.length} × ${x._unit.toLocaleString('tr-TR')}` : ''}` } : x);
+      };
+      // Çoklu pakette kişi adı her satırda tekrar etmez: oda/paket başına bir başlık satırı
+      const items = list.flatMap(p => [...(multi ? [{ header: true, label: titleCaseTr(p.customerName) }] : []), ...mergeFlights(p.items || [])]);
       const code = (c) => c === '€' ? 'EUR' : c === '$' ? 'USD' : c === '£' ? 'GBP' : c === '₺' ? 'TRY' : (c || 'EUR');
-      const totals = {}; items.forEach(it => { const k = code(it.currency || '€'); totals[k] = (totals[k] || 0) + (parseFloat(it.amount) || 0); });
+      const totals = {}; items.filter(it => !it.header).forEach(it => { const k = code(it.currency || '€'); totals[k] = (totals[k] || 0) + (parseFloat(it.amount) || 0); });
       const curCodes = Object.keys(totals); const curCode = curCodes[0] || 'EUR';
       const doc = new jsPDF();
       const tr = pdfText(doc);
@@ -14754,7 +14810,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8); doc.setTextColor(80);
       doc.text(tr('HİZMET'), 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
       let y = 130;
-      items.forEach((it, i) => {
+      let zebra = 0;
+      items.forEach((it) => {
+        if (it.header) {
+          if (y + 16 > 270) { doc.addPage(); y = 30; }
+          y += 2; doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(220, 53, 69);
+          doc.text(tr(it.label || ''), 22, y); doc.setFont(undefined, 'normal');
+          doc.setDrawColor(230); doc.line(20, y + 2, 195, y + 2); y += 8; zebra = 0;
+          return;
+        }
+        const i = zebra++;
         const amt = parseFloat(it.amount) || 0;
         doc.setFontSize(9); doc.setTextColor(40);
         const lbl = doc.splitTextToSize(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}☀-➿️]/gu, '').replace(/[→⇒➔]/g, '-')).trim() || tr('Hizmet'), 135);
