@@ -14767,9 +14767,22 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       const tags = [...new Set(list.map(p => String(p.tag || '').trim()).filter(Boolean).map(t => t.toLocaleUpperCase('tr-TR')))];
       const customerLine = opts.customer || (multi ? (tags.length === 1 ? `${tags[0]} — ${list.length} kişi/oda` : list.map(p => titleCaseTr(p.customerName)).join(', ')) : list[0].customerName);
       const title = opts.title || (multi ? (tags.length === 1 ? `${tags[0]} Grup Paketi` : 'Grup Paketi') : (list[0].title || 'Seyahat Paketi'));
-      const items = list.flatMap(p => (p.items || []).map(it => ({ ...it, label: multi ? `${titleCaseTr(p.customerName)} — ${it.label}` : it.label })));
+      // Aynı uçuşun odadaki biletleri tek satır: "XQ970 İzmir → Frankfurt · 10.01.2027 · Semanur Dodurga, Aylın Karaca · 2 × 400"
+      const mergeFlights = (its) => {
+        const out = [];
+        its.forEach(it => {
+          const k = it.kind === 'flight' ? String(it.label || '').lastIndexOf(' · ') : -1;
+          if (k < 0) { out.push(it); return; }
+          const base = it.label.slice(0, k), who = it.label.slice(k + 3), amt = parseFloat(it.amount) || 0;
+          const g = out.find(x => x._base === base && x._unit === amt && (x.currency || '€') === (it.currency || '€'));
+          if (g) { g._who.push(who); g.amount = (parseFloat(g.amount) || 0) + amt; } else out.push({ ...it, _base: base, _unit: amt, _who: [who] });
+        });
+        return out.map(x => x._base ? { ...x, label: `${x._base} · ${x._who.join(', ')}${x._who.length > 1 ? ` · ${x._who.length} × ${x._unit.toLocaleString('tr-TR')}` : ''}` } : x);
+      };
+      // Çoklu pakette kişi adı her satırda tekrar etmez: oda/paket başına bir başlık satırı
+      const items = list.flatMap(p => [...(multi ? [{ header: true, label: titleCaseTr(p.customerName) }] : []), ...mergeFlights(p.items || [])]);
       const code = (c) => c === '€' ? 'EUR' : c === '$' ? 'USD' : c === '£' ? 'GBP' : c === '₺' ? 'TRY' : (c || 'EUR');
-      const totals = {}; items.forEach(it => { const k = code(it.currency || '€'); totals[k] = (totals[k] || 0) + (parseFloat(it.amount) || 0); });
+      const totals = {}; items.filter(it => !it.header).forEach(it => { const k = code(it.currency || '€'); totals[k] = (totals[k] || 0) + (parseFloat(it.amount) || 0); });
       const curCodes = Object.keys(totals); const curCode = curCodes[0] || 'EUR';
       const doc = new jsPDF();
       const tr = pdfText(doc);
@@ -14797,7 +14810,16 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
       doc.setFontSize(8); doc.setTextColor(80);
       doc.text(tr('HİZMET'), 22, 122); doc.text('TUTAR', 193, 122, { align: 'right' });
       let y = 130;
-      items.forEach((it, i) => {
+      let zebra = 0;
+      items.forEach((it) => {
+        if (it.header) {
+          if (y + 16 > 270) { doc.addPage(); y = 30; }
+          y += 2; doc.setFont(undefined, 'bold'); doc.setFontSize(9.5); doc.setTextColor(220, 53, 69);
+          doc.text(tr(it.label || ''), 22, y); doc.setFont(undefined, 'normal');
+          doc.setDrawColor(230); doc.line(20, y + 2, 195, y + 2); y += 8; zebra = 0;
+          return;
+        }
+        const i = zebra++;
         const amt = parseFloat(it.amount) || 0;
         doc.setFontSize(9); doc.setTextColor(40);
         const lbl = doc.splitTextToSize(tr(String(it.label || '').replace(/[\u{1F000}-\u{1FAFF}☀-➿️]/gu, '').replace(/[→⇒➔]/g, '-')).trim() || tr('Hizmet'), 135);
