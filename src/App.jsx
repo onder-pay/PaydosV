@@ -17392,7 +17392,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const buy = parseFloat(r.buyPrice) || 0;
                   const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                   rows.push([
-                    titleCaseTr(r.customerName || ''),
+                    [r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => titleCaseTr(String(n).trim())).join(' / '),
                     r.customerPhone || '',
                     r.checkIn ? formatDate(r.checkIn) : '',
                     r.checkOut ? formatDate(r.checkOut) : '',
@@ -17419,6 +17419,24 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 showToast?.('✅ Excel indirildi', 'success');
               }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                 📊 Excel
+              </button>
+            )}
+            {/* Otele gönderilecek liste: oda başına bir satır, odadaki herkes yazılır (fiyat yok) */}
+            {reservations.length > 0 && (
+              <button onClick={() => {
+                const rows = [['Guest Name(s)', 'Check in', 'Check out', 'Nights', 'Room Type', 'Meal Type', 'Pax']];
+                [...reservations].filter(r => !r.cancelled).sort((a, b) => String(a.checkIn || '').localeCompare(String(b.checkIn || '')) || String(a.customerName || '').localeCompare(String(b.customerName || ''), 'tr')).forEach(r => {
+                  const names = [r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => titleCaseTr(String(n).trim()));
+                  rows.push([names.join(' / '), r.checkIn ? formatDate(r.checkIn) : '', r.checkOut ? formatDate(r.checkOut) : '', calcNights(r.checkIn, r.checkOut), r.roomType || '', trUpper(r.concept || ''), Math.max(names.length, resPax(r))]);
+                });
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!cols'] = [{wch:44},{wch:12},{wch:12},{wch:7},{wch:12},{wch:10},{wch:5}];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Rooming List');
+                XLSX.writeFile(wb, `${h.name.replace(/\s/g,'_')}_Rooming_List.xlsx`);
+                showToast?.('✅ Otel listesi indirildi', 'success');
+              }} title="Otele gönderilecek liste: odadaki herkes, tarihler, oda ve pansiyon (fiyatsız)" style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                🏨 Otel listesi
               </button>
             )}
 
