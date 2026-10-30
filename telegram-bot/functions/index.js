@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
 const { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
+// Kullanıcıya gösterilen tarih her yerde GG.AA.YYYY (kayıt YYYY-AA-GG kalır)
+const dmy = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : (d || ''); };
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -588,9 +590,9 @@ const passportExpiryWarn = (expiryDate) => {
   const sixMonths = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
   const oneYear = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
   const days = Math.ceil((exp - now) / 86400000);
-  if (exp < now) return `\n\n🔴 *DİKKAT: PASAPORT SÜRESİ DOLMUŞ!*\n📅 ${expiryDate}`;
-  if (exp <= sixMonths) return `\n\n🔴 *UYARI: Pasaport bitişine 6 aydan az kaldı!*\n📅 ${expiryDate} (${days} gün) — Schengen için yetersiz, yenilenmeli.`;
-  if (exp <= oneYear) return `\n\n⚠️ *UYARI: Pasaport bitişine 1 yıldan az kaldı!*\n📅 ${expiryDate} (${days} gün) — Vize başvurusu öncesi yenilenmesi önerilir.`;
+  if (exp < now) return `\n\n🔴 *DİKKAT: PASAPORT SÜRESİ DOLMUŞ!*\n📅 ${dmy(expiryDate)}`;
+  if (exp <= sixMonths) return `\n\n🔴 *UYARI: Pasaport bitişine 6 aydan az kaldı!*\n📅 ${dmy(expiryDate)} (${days} gün) — Schengen için yetersiz, yenilenmeli.`;
+  if (exp <= oneYear) return `\n\n⚠️ *UYARI: Pasaport bitişine 1 yıldan az kaldı!*\n📅 ${dmy(expiryDate)} (${days} gün) — Vize başvurusu öncesi yenilenmesi önerilir.`;
   return '';
 };
 
@@ -677,7 +679,7 @@ const saveIdCard = async (db, custs, json) => {
     if (healName) { patch.firstName = fn; patch.lastName = ln; changed.push(`isim düzeltildi (eski: ${oldName})`); }
     if (tcOk && !isValidTc(cust.tcKimlik)) { patch.tcKimlik = tc; changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${tc}` : 'TC eklendi'); }
     if (birth && !cust.birthDate) { patch.birthDate = birth; changed.push('doğum tarihi eklendi'); }
-    const diffBirth = birth && cust.birthDate && cust.birthDate !== birth ? `\n⚠️ Kayıttaki doğum tarihi (${cust.birthDate}) kimlikten farklı (${birth}) — değiştirilmedi, kontrol edin` : '';
+    const diffBirth = birth && cust.birthDate && cust.birthDate !== birth ? `\n⚠️ Kayıttaki doğum tarihi (${dmy(cust.birthDate)}) kimlikten farklı (${dmy(birth)}) — değiştirilmedi, kontrol edin` : '';
     const name = `${healName ? fn : cust.firstName} ${healName ? ln : cust.lastName}`;
     const out = { custId: id, custName: name, custPhone: cust.phone || '', custEmail: cust.email || '' };
     if (!Object.keys(patch).length) return { text: `✅ *Zaten güncel*\n👤 ${name}\n🪪 Kimlik bilgileri kayıttakiyle aynı.${diffBirth}${tcWarn}`, ...out };
@@ -809,11 +811,11 @@ const savePassport = async (db, custs, json, img) => {
     const changed = [];
     if (!ex) changed.push('yeni pasaport eklendi');
     else {
-      if (json.expiryDate && json.expiryDate !== ex.expiryDate) changed.push(`bitiş ${ex.expiryDate || '-'} → ${json.expiryDate}`);
-      if (json.issueDate && json.issueDate !== ex.issueDate) changed.push(`veriliş ${ex.issueDate || '-'} → ${json.issueDate}`);
+      if (json.expiryDate && json.expiryDate !== ex.expiryDate) changed.push(`bitiş ${dmy(ex.expiryDate) || '-'} → ${dmy(json.expiryDate)}`);
+      if (json.issueDate && json.issueDate !== ex.issueDate) changed.push(`veriliş ${dmy(ex.issueDate) || '-'} → ${dmy(json.issueDate)}`);
       if (!ex.image) changed.push('pasaport görseli eklendi');
     }
-    if (json.birthDate && json.birthDate !== cust.birthDate) changed.push(cust.birthDate ? `⚠️ doğum tarihi ${cust.birthDate} → ${json.birthDate}` : 'doğum tarihi eklendi');
+    if (json.birthDate && json.birthDate !== cust.birthDate) changed.push(cust.birthDate ? `⚠️ doğum tarihi ${dmy(cust.birthDate)} → ${dmy(json.birthDate)}` : 'doğum tarihi eklendi');
     if (readTcOk && readTcOk !== String(cust.tcKimlik || '')) changed.push(cust.tcKimlik ? `TC ${cust.tcKimlik} → ${readTcOk}` : 'TC eklendi');
     if (json.birthPlace && !cust.birthPlace) changed.push('doğum yeri eklendi');
     const hFn = keepDotted(fn, oldName), hLn = keepDotted(ln, oldName);
@@ -908,7 +910,7 @@ const saveSchengen = async (db, custs, json, img) => {
     warnings.push('⚠️ Vize No ve Pasaport No aynı okundu (AI karıştırmış olabilir)');
   }
   if (json.startDate && json.endDate && json.startDate === json.endDate) {
-    warnings.push(`⚠️ Giriş ve çıkış tarihi aynı: ${json.startDate}`);
+    warnings.push(`⚠️ Giriş ve çıkış tarihi aynı: ${dmy(json.startDate)}`);
   }
   const checkYear = (d, label) => {
     if (!d) return;
@@ -918,7 +920,7 @@ const saveSchengen = async (db, custs, json, img) => {
   checkYear(json.startDate, 'Giriş');
   checkYear(json.endDate, 'Çıkış');
   if (json.startDate && json.endDate && new Date(json.endDate) < new Date(json.startDate)) {
-    warnings.push(`⚠️ Çıkış tarihi girişten önce: ${json.startDate} → ${json.endDate}`);
+    warnings.push(`⚠️ Çıkış tarihi girişten önce: ${dmy(json.startDate)} → ${dmy(json.endDate)}`);
   }
 
   // Önce pasaport no ile bul, sonra isim
@@ -964,7 +966,7 @@ const saveSchengen = async (db, custs, json, img) => {
   const custDocId = cust.id || cust._docId;
   if (!custDocId) { console.error('Müşteri ID boş:', cust.firstName, cust.lastName); return `⚠️ Müşteri ID bulunamadı: ${cust.firstName} ${cust.lastName}`; }
   await ref.doc(custDocId).set({ schengenVisas: JSON.stringify(vs), verified: false }, { merge: true });
-  let response = `✅ *Schengen vizesi eklendi*\n👤 ${cust.firstName} ${cust.lastName}\n🌍 ${json.country || '-'} | 🔢 ${json.visaNumber || '-'}\n📅 ${json.startDate || '?'} → ${json.endDate || '?'}`;
+  let response = `✅ *Schengen vizesi eklendi*\n👤 ${cust.firstName} ${cust.lastName}\n🌍 ${json.country || '-'} | 🔢 ${json.visaNumber || '-'}\n📅 ${dmy(json.startDate) || '?'} → ${dmy(json.endDate) || '?'}`;
   if (json.entryType) response += `\n🚪 ${json.entryType} ${json.stayDuration ? `(${json.stayDuration} gün)` : ''}`;
   response += await approveVisaApp(db, custDocId, 'schengen', json.country);
   if (warnings.length > 0) response += `\n\n${warnings.join('\n')}\n\n👉 Vize bilgilerini CRM'den kontrol edin.`;
@@ -1001,14 +1003,14 @@ const saveUsa = async (db, custs, json, img) => {
     verified: false
   }, { merge: true });
   const approved = await approveVisaApp(db, custDocId3, 'usa', ''); // ABD kategorisi zaten tek ülke
-  return `✅ *ABD vizesi eklendi*\n👤 ${cust.firstName} ${cust.lastName}\n📅 Bitiş: ${json.endDate || '-'}${approved}`;
+  return `✅ *ABD vizesi eklendi*\n👤 ${cust.firstName} ${cust.lastName}\n📅 Bitiş: ${dmy(json.endDate) || '-'}${approved}`;
 };
 
 // ========== FORMAT ==========
-const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${j.birthDate}` : ''}`;
-const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${j.expiryDate||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
-const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${j.startDate||'-'} → ${j.endDate||'-'}`;
-const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${j.issueDate||'-'} → ${j.endDate||'-'}`;
+const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${dmy(j.birthDate)}` : ''}`;
+const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${dmy(j.expiryDate)||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
+const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${dmy(j.startDate)||'-'} → ${dmy(j.endDate)||'-'}`;
+const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${dmy(j.issueDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 
 // ========== VİZE BAŞVURUSU (Telegram butonlu akış) ==========
 // Kategori tanımları — CRM'deki visaCategories ile birebir aynı id/label

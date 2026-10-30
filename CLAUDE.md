@@ -43,3 +43,8 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
 ### Kontrol
 Yeni kodda Türkçe metinle karşılaştırma yapan her satır için: "Bu `İ`/`ı`/`I` ile ve BÜYÜK HARFLE yazılmış haliyle de çalışır mı?"
 Örnek test girdileri: `İptal`, `IPTAL`, `ÇİFT`, `ALMANYA TİCARİ`, `TÜRKİYE`, `İstanbul`, `ISTANBUL`.
+
+## Tarih kuralı (zorunlu)
+- Kullanıcıya görünen her tarih **GG.AA.YYYY**: ekran, Excel, PDF, WhatsApp/e-posta metni, bot mesajı.
+  CRM'de `formatDate(x)`, botta `dmy(x)`. Ham `2027-01-10` (YYYY-AA-GG) yalnız kayıtta, anahtarda ve dosya adında kalır.
+- İngilizce otel belgelerinde (voucher) "Sun, 10 Jan 2027" gün-ay-yıl sırasıyla kalabilir.

@@ -16439,9 +16439,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     return {
                       'S.No': i + 1,
                       'Ad Soyad': r.customerName,
-                      'Doğum Tarihi': cust.birthDate || '',
+                      'Doğum Tarihi': cust.birthDate ? formatDate(cust.birthDate) : '',
                       'Pasaport No': pp.passportNo || '',
-                      'Pasaport Bitiş': pp.expiryDate || '',
+                      'Pasaport Bitiş': pp.expiryDate ? formatDate(pp.expiryDate) : '',
                       'TC Kimlik': cust.tcKimlik || '',
                       'Telefon': r.phone || cust.phone || '',
                       'Satış': flightResTotal(r),
@@ -16897,7 +16897,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         {priceExcelPreview.items.map((it, i) => (
                           <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ padding: '5px 6px', color: '#fff', fontWeight: '600' }}>{it.hotelName}</td>
-                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{it.startDate} → {it.endDate}</td>
+                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{formatDate(it.startDate)} → {formatDate(it.endDate)}</td>
                             <td style={{ padding: '5px 6px', color: '#f59e0b' }}>{it.roomType}</td>
                             <td style={{ padding: '5px 6px', color: '#ef4444' }}>{it.bb_buy || '—'}</td>
                             <td style={{ padding: '5px 6px', color: '#10b981' }}>{it.bb_sell || '—'}</td>
@@ -17392,10 +17392,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const buy = parseFloat(r.buyPrice) || 0;
                   const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                   rows.push([
-                    r.customerName || '',
+                    titleCaseTr(r.customerName || ''),
                     r.customerPhone || '',
-                    r.checkIn || '',
-                    r.checkOut || '',
+                    r.checkIn ? formatDate(r.checkIn) : '',
+                    r.checkOut ? formatDate(r.checkOut) : '',
                     nights,
                     r.roomType || '',
                     r.concept ? trUpper(r.concept) : '',
