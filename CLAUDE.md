@@ -12,7 +12,7 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
 - Kısayol: `trHas(metin, 'kelime1', 'kelime2')` — metin kelimelerden birini içeriyor mu.
 - **Yasak:** Türkçe olabilecek metinde `.toLowerCase()` / `.toUpperCase()` ile karşılaştırma, `/…/i` düzenli ifade.
   Düzenli ifade gerekiyorsa: `/ascii desen/.test(normalizeTr(metin))` (desen ASCII ve küçük harf: `cift`, `uclu`, `ertesi`).
-- Bot (telegram-bot/functions) aynı yardımcıları **`tr.js`**'den alır (`normTr`, `trHas`, `titleCaseTr`, `nameForSave`, `normEmail`, `statusLabels`)
+- CRM'de bu yardımcılar **`src/lib/turkish.js`**'te. Bot (telegram-bot/functions) aynı yardımcıları **`tr.js`**'den alır (`normTr`, `trHas`, `titleCaseTr`, `nameForSave`, `normEmail`, `statusLabels`)
   — dosyada yeniden tanımlamayın. Link sayfaları (public/*.html) `nk()` ile aynı ASCII katlamayı yapar.
 - Durum etiketiyle sorgu/eşitlik: ayarlardaki yazım farklı olabilir ("ATAMA BEKLİYOR") → `statusLabels(settings, 'Atama Bekliyor')` ile `where('status','in', …)`.
 
@@ -48,3 +48,9 @@ Yeni kodda Türkçe metinle karşılaştırma yapan her satır için: "Bu `İ`/`
 - Kullanıcıya görünen her tarih **GG.AA.YYYY**: ekran, Excel, PDF, WhatsApp/e-posta metni, bot mesajı.
   CRM'de `formatDate(x)`, botta `dmy(x)`. Ham `2027-01-10` (YYYY-AA-GG) yalnız kayıtta, anahtarda ve dosya adında kalır.
 - İngilizce otel belgelerinde (voucher) "Sun, 10 Jan 2027" gün-ay-yıl sırasıyla kalabilir.
+
+## Kod düzeni
+- `src/App.jsx`: ekranlar/modüller. React'tan bağımsız yardımcılar `src/lib/` altında:
+  `turkish.js` (Türkçe harf), `format.js` (tarih, telefon, TC, JSON), `pdf.js` (PDF okuma/yazma), `docparse.js` (bilet/otel belgesi okuma),
+  `data.js` (sabit listeler), `heavy.js` (Excel/PDF kütüphaneleri — açılıştan sonra arka planda yüklenir).
+- Yeni yardımcı fonksiyonu App.jsx'e değil uygun `src/lib/` dosyasına yazın. lib dosyaları kendi aralarında `./x.js` uzantılı import eder.
