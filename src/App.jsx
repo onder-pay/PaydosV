@@ -1,18 +1,18 @@
 import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component } from 'react';
-import * as XLSX from 'xlsx';
 // Firebase + localStorage CRM
-import jsPDF from 'jspdf';
+import { XLSX, jsPDF, dejavuFont, preloadHeavy } from './lib/heavy';
 import { db, auth } from './lib/firebase';
 import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import 'jspdf-autotable';
-import { DEJAVU_TR_B64, DEJAVU_TR_BOLD_B64 } from './dejavuFont';
 
 // jsPDF'e Türkçe destekli font (DejaVu Sans alt kümesi, normal + kalın) ekler ve aktif eder.
 // Başarılıysa true döner; o durumda metinler Türkçe karakterleriyle olduğu gibi yazılabilir.
 const enableTurkishFont = (doc) => {
   try {
+    const f = dejavuFont();
+    if (!f) return false;
+    const { DEJAVU_TR_B64, DEJAVU_TR_BOLD_B64 } = f;
     doc.addFileToVFS('DejaVuSans-TR.ttf', DEJAVU_TR_B64);
     doc.addFont('DejaVuSans-TR.ttf', 'DejaVuTR', 'normal');
     doc.addFileToVFS('DejaVuSans-TR-Bold.ttf', DEJAVU_TR_BOLD_B64);
@@ -21182,6 +21182,8 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
 }
 
 export default function App() {
+  // Excel/PDF kütüphaneleri ilk ekran çizildikten sonra arka planda iner
+  useEffect(() => { const t = setTimeout(() => preloadHeavy().catch(() => {}), 800); return () => clearTimeout(t); }, []);
   return (
     <ErrorBoundary>
       <AppInner />
