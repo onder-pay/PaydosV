@@ -437,7 +437,7 @@ const genContractHTML = (c, bankInfo) => {
   const secTitle = (t) => `<h2>${e(t)}</h2>`;
   const body = (arr) => P(arr.slice(1));
   const progHTML = (c.programDays || []).filter(d => (d.items||[]).some(i => (i.time||'').trim() || (i.text||'').trim()))
-    .map(d => `<div class="pd"><b>${e(d.title)}</b> ${e(d.date)}<br>${(d.items||[]).filter(i => (i.time||'').trim() || (i.text||'').trim()).map(i => `${i.time ? `<b>${e(i.time)}</b> — ` : ''}${e(i.text)}`).join('<br>')}</div>`).join('');
+    .map(d => `<div class="pd"><b>${e(d.title)}</b> ${e(d.date)}${(d.place||'').trim() ? ` — <b>${e(d.place)}</b>` : ''}<br>${(d.items||[]).filter(i => (i.time||'').trim() || (i.text||'').trim()).map(i => `${i.time ? `<b>${e(i.time)}</b> — ` : ''}${e(i.text)}`).join('<br>')}</div>`).join('');
   const ppRows = (c.passports || []).filter(p => p.name || p.no).map(p =>
     `<tr><td>${e(p.name)}</td><td>${e(p.no)}</td><td>${e(trTarih(p.issueDate) || p.issueDate)}</td><td>${e(trTarih(p.expiryDate) || p.expiryDate)}</td><td>${e(p.birthPlace)}</td></tr>`).join('');
   const katRows = (c.katilimcilar || []).filter(k => k.name).map((k, i) =>
@@ -9129,7 +9129,7 @@ const genOfferHTML = (o) => {
   const daysHTML = o.days.map((d,i) => `
     <div class="drow">
       <div class="dleft"><div class="dtitle">${esc(d.title)}</div><div class="ddate">${esc(d.date)}</div></div>
-      <div class="dright ${i%2?'alt':''}">${d.items.filter(x=>(x.time||'').trim()||(x.text||'').trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${x.time?`<b class="tm">${esc(x.time)}</b> — `:''}${esc(x.text)}</div>`).join('')}</div>
+      <div class="dright ${i%2?'alt':''}">${(d.place||'').trim()?`<div class="dplace">${esc(d.place)}</div>`:''}${d.items.filter(x=>(x.time||'').trim()||(x.text||'').trim()).map(x=>`<div class="ditem"><span class="dot">●</span> ${x.time?`<b class="tm">${esc(x.time)}</b> — `:''}${esc(x.text)}</div>`).join('')}</div>
     </div>`).join('');
   const priceCell = (v, cur) => v ? `<b>${esc(v)}</b> <s>${esc(cur)}</s>` : '<span class="dash">—</span>';
   const hotelsHTML = o.hotels.map(h => `
@@ -9179,7 +9179,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2b3a;font-size:12px;paddin
 .flegno{background:#dce7f2;color:#14508c;font-size:9px;font-weight:700;padding:2px 10px}
 .drow{display:flex;border:1px solid #d5e0ec;border-bottom:none}
 .drow:last-child{border-bottom:1px solid #d5e0ec}
-.dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
+.dplace{font-weight:700;color:#0c2340;margin-bottom:3px}.dleft{background:#0c2340;color:#fff;width:90px;padding:8px 10px;flex-shrink:0}.dtitle{font-weight:700}.ddate{color:#f0d9b8;font-size:10px}
 .dright{padding:8px 12px;flex:1;background:#fff}.dright.alt{background:#eef3f8}
 .ditem{padding:2px 0}.dot{color:#e8912a}.tm{color:#0c2340}
 .hcard{background:#eef3f8;border-radius:5px;overflow:hidden;border:1px solid #d5e0ec}
@@ -9282,6 +9282,32 @@ const offerFlightList = (o) => {
     });
   });
   return flights;
+};
+// ✈️ Teklifte uçuş girilince gidiş/dönüş gününe otomatik maddeler: 3 saat önce havalimanında toplanma, uçuş, varış.
+// Maddeler auto:true işaretli; elle düzeltilen madde işareti kaybeder. Gün boşsa ya da sadece otomatik maddeler varsa yazılır.
+const trDative = (w) => { // "Stuttgart" → "Stuttgart'a", "İzmir" → "İzmir'e", "Roma" → "Roma'ya"
+  const t = String(w || '').trim(); if (!t) return '';
+  const v = (trLower(t).match(/[aeıioöuü]/g) || []).pop() || 'a';
+  const e = 'aıou'.includes(v) ? 'a' : 'e';
+  return `${t}'${/[aeıioöuü]$/.test(trLower(t)) ? 'y' : ''}${e}`;
+};
+const flightAutoItems = (f, ret) => {
+  const legs = (f?.legs || []).filter(l => hhmm(l.dep) != null);
+  if (!legs.length) return [];
+  const pt = (s) => { const x = String(s || '').split('·')[0].trim().split(/\s+/); const iata = /^[A-Z]{3}$/.test(x[x.length - 1] || '') ? x.pop() : ''; return { city: x.join(' '), iata }; };
+  const hm = (m) => { m = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+  const timeOf = (s) => { const m = hhmm(s); return m == null ? '' : hm(m); };
+  const first = pt(legs[0].dep);
+  const out = [];
+  if (ret) out.push({ time: '', text: 'Otelden çıkış ve havalimanına transfer.', auto: true });
+  out.push({ time: hm(hhmm(legs[0].dep) - 180), text: `${first.city || 'Havalimanı'}${first.iata ? ` (${first.iata})` : ''} havalimanında toplanma ve check-in işlemleri (uçuştan 3 saat önce).`, auto: true });
+  legs.forEach((l, i) => {
+    const to = pt(l.arr), last = i === legs.length - 1;
+    out.push({ time: timeOf(l.dep), text: `${String(l.airline || '').trim() ? `${String(l.airline).trim()} ile ` : ''}${trDative(to.city) || 'varış noktasına'} uçuş.`, auto: true });
+    if (hhmm(l.arr) != null) out.push({ time: timeOf(l.arr), text: last ? `${trDative(to.city) || 'Varış noktasına'} varış.${ret ? ' Turumuzun sonu.' : ''}` : `${trDative(to.city)} varış, aktarma.`, auto: true });
+  });
+  if (!ret) out.push({ time: '', text: 'Pasaport ve bagaj işlemlerinin ardından otele transfer.', auto: true });
+  return out;
 };
 // Yolcunun kendi uçak biletinden okunan uçuşlar (res.ticketFlights). Tur linkinde turun teklifindeki uçuşlar yerine
 // bunlar gösterilir: İstanbul'dan katılan yolcuya turun İzmir/Denizli bağlantıları çıkmasın.
@@ -12507,6 +12533,27 @@ function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSe
   const [showTourOffer, setShowTourOffer] = useState(false);
   const [offer, setOffer] = useState(emptyOffer);
   const [flightRaw, setFlightRaw] = useState('');
+  const [dayAiBusy, setDayAiBusy] = useState(null); // AI ile doldurulan gün: sıra no ya da 'all'
+  // Uçuş girilince/değişince gidiş ve dönüş gününe toplanma–uçuş–varış maddeleri (elle yazılmış güne dokunulmaz)
+  useEffect(() => {
+    setOffer(p => {
+      const days = p.days || [];
+      if (!days.length) return p;
+      const dayFor = (f, fallback) => { const fd = parseTrDate(f?.date); if (fd) { const k = days.findIndex(d => { const x = parseTrDate(d.date); return x && x.d.getMonth() === fd.d.getMonth() && x.d.getDate() === fd.d.getDate(); }); if (k >= 0) return k; } return fallback; };
+      const free = (d) => !(d.items || []).some(it => String(it.text || '').trim() && !it.auto);
+      let changed = false;
+      const next = days.map(d => ({ ...d }));
+      [[p.flightOut, false, 0], [p.flightRet, true, days.length - 1]].forEach(([f, ret, fb]) => {
+        const k = dayFor(f, fb), items = flightAutoItems(f, ret);
+        if (k < 0 || !free(next[k]) || (ret && days.length < 2 && k === 0)) return;
+        const cur = (next[k].items || []).filter(it => String(it.text || '').trim());
+        if (!items.length && !cur.length) return;
+        if (JSON.stringify(cur) === JSON.stringify(items)) return;
+        next[k].items = items.length ? items : [{ time: '', text: '' }]; changed = true;
+      });
+      return changed ? { ...p, days: next } : p;
+    });
+  }, [JSON.stringify([offer.flightOut, offer.flightRet]), offer.days?.length]);
   const [flightBusy, setFlightBusy] = useState(false);
   const [flightWarn, setFlightWarn] = useState([]);
   const [offerId, setOfferId] = useState(null); // düzenlenen tur teklifi (null = yeni)
@@ -13274,6 +13321,56 @@ ${flightRaw}`;
       showToast?.('Uçuş okunamadı: ' + e.message, 'error');
     } finally { setFlightBusy(false); }
   };
+  // ===== ✨ Günlük programı AI ile doldur =====
+  // Gün notu ("Metzingen outlet alışverişi") + turun uçuş/otel/şehir bilgisi → saatli maddeler. which: gün sırası ya da 'all'
+  // 'all': notu olan ya da hiç maddesi olmayan günler doldurulur; elle yazılmış (notsuz) günlere dokunulmaz.
+  const dayFilled = (d) => (d.items || []).some(it => String(it.text || '').trim());
+  const aiFillDays = async (which) => {
+    const days = offer.days || [];
+    const idx = which === 'all' ? days.map((d, i) => i).filter(i => String(days[i].note || '').trim() || !dayFilled(days[i])) : [which];
+    if (!idx.length) { showToast?.('Doldurulacak gün yok — günlere kısa not yazın', 'warning'); return; }
+    if (which !== 'all' && dayFilled(days[which]) && !window.confirm(`${days[which].title || 'Bu gün'}: mevcut maddeler AI'ın yazdıklarıyla değiştirilsin mi?`)) return;
+    setDayAiBusy(which);
+    try {
+      const legs = (f) => (f?.legs || []).filter(l => l.airline || l.dep || l.arr).map(l => `${l.airline || ''} ${l.dep || ''} → ${l.arr || ''}`.trim()).join(' | ');
+      const ctx = [
+        `Tur: ${offer.title || ''}${offer.subtitle ? ' — ' + offer.subtitle : ''}`,
+        `Yerler: ${(offer.destinations || []).map(x => [x.city, x.country].filter(Boolean).join(', ')).filter(Boolean).join(' · ') || '-'}`,
+        `Tarih: ${offer.startDate ? formatDate(offer.startDate) : '?'} – ${offer.endDate ? formatDate(offer.endDate) : '?'}`,
+        `Gidiş uçuşu (${offer.flightOut?.date || '?'}): ${legs(offer.flightOut) || '-'}`,
+        `Dönüş uçuşu (${offer.flightRet?.date || '?'}): ${legs(offer.flightRet) || '-'}`,
+        `Otel: ${(offer.hotels || []).map(h => h.name).filter(Boolean).join(' / ') || '-'}`,
+      ].join('\n');
+      const list = days.map((d, i) => `${i}. ${d.title || ''} · ${d.date || ''}${d.place ? ` · ${d.place}` : ''}${d.note ? ` · NOT: ${d.note}` : ''}${idx.includes(i) ? ' [DOLDUR]' : ` [mevcut: ${(d.items || []).filter(it => it.text).map(it => `${it.time || ''} ${it.text}`.trim()).join('; ')}]`}`).join('\n');
+      const prompt = `Bir Türk seyahat acentesinin grup turu teklifi için günlük program yazıyorsun. Sadece [DOLDUR] işaretli günleri yaz.
+SADECE şu JSON'u döndür: {"days":[{"index":0,"items":[{"time":"09:00","text":"..."}]}]}
+Kurallar:
+- Türkçe, kısa ve resmi cümleler ("Otelden hareket.", "Serbest zaman ve alışveriş."). Her gün 4-8 madde, saat sırasıyla.
+- time: "HH:MM" ya da saat belli değilse "" (ör. "Akşam: serbest zaman" yerine time "" text "Akşam serbest zaman."). 
+- Uçuş günlerinde verilen uçuş saatlerine uy: dış hat uçuşunda havalimanında buluşma kalkıştan 3 saat önce; varıştan sonra bagaj, transfer, otele yerleşme.
+- Dönüş gününde otelden çıkış ve havalimanı transferi uçuştan en az 3 saat önce olsun.
+- Gün notundaki yerleri ve etkinlikleri programa koy; not yoksa bölgeye uygun, gerçekçi bir gün yaz (şehir turu, serbest zaman).
+- Mağaza/müze açılış-kapanış saatini emin değilsen yazma. Fiyat, bilet ücreti, uydurma yer adı YAZMA.
+- Konaklama: son gün hariç her günün sonu "Otelde konaklama."
+${ctx}
+GÜNLER:
+${list}`;
+      const resp = await claudeRequest({
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (!resp.ok) { const t = await resp.text(); throw new Error(`API ${resp.status}: ${t.slice(0, 120)}`); }
+      const data = await resp.json();
+      const m = (data.content?.[0]?.text || '').replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('AI yanıtı okunamadı');
+      const out = (JSON.parse(m[0]).days || []).filter(x => idx.includes(+x.index) && Array.isArray(x.items) && x.items.length);
+      if (!out.length) throw new Error('AI gün yazmadı');
+      const clean = (items) => items.map(it => ({ time: /^\d{1,2}[:.]\d{2}$/.test(String(it.time || '').trim()) ? String(it.time).trim().replace('.', ':').padStart(5, '0') : '', text: String(it.text || '').trim() })).filter(it => it.text);
+      setOffer(p => ({ ...p, days: p.days.map((d, i) => { const hit = out.find(x => +x.index === i); return hit ? { ...d, items: clean(hit.items) } : d; }) }));
+      showToast?.(`✨ ${out.length} gün AI ile dolduruldu — okuyup düzeltin`, 'success');
+    } catch (e) { showToast?.('AI programı yazamadı: ' + e.message, 'error'); }
+    finally { setDayAiBusy(null); }
+  };
   // ===== Tarihlere göre günleri otomatik oluştur =====
   const buildDaysFromDates = () => {
     if (!offer.startDate || !offer.endDate) { showToast?.('Önce başlangıç ve bitiş tarihi seçin', 'warning'); return; }
@@ -13289,6 +13386,7 @@ ${flightRaw}`;
       days.push({
         title: `${i + 1}. GÜN`,
         date: `${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${gunler[d.getDay()]}`,
+        place: eski?.place || '', note: eski?.note || '',
         items: (eski && eski.items.some(x => (x.time||'').trim() || (x.text||'').trim())) ? eski.items : [{ time: '', text: '' }]
       });
     }
@@ -13765,6 +13863,7 @@ KURALLAR:
             <div style={secTitle}>◆ Günlük Program</div>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button style={{...addBtn, background: 'rgba(6,182,212,0.15)', borderColor: 'rgba(6,182,212,0.3)', color: '#06b6d4'}} onClick={buildDaysFromDates}>📅 Tarihlerden Oluştur</button>
+              <button disabled={dayAiBusy !== null} title="Notu olan ya da boş günleri uçuş/otel bilgisine göre AI yazar; elle yazdığınız günlere dokunmaz" style={{...addBtn, background: 'rgba(168,85,247,0.15)', borderColor: 'rgba(168,85,247,0.35)', color: '#c084fc', cursor: dayAiBusy !== null ? 'wait' : 'pointer'}} onClick={() => aiFillDays('all')}>{dayAiBusy === 'all' ? '⏳ Yazılıyor…' : '✨ Boş günleri AI yazsın'}</button>
               <button style={addBtn} onClick={() => setOffer(p => ({...p, days: [...p.days, { title: `${p.days.length+1}. GÜN`, date: '', items: [{ time: '', text: '' }] }]}))}>+ Gün Ekle</button>
             </div>
           </div>
@@ -13772,14 +13871,18 @@ KURALLAR:
             <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px', marginBottom: '8px' }}>
               <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
                 <input style={{...inS, flex: '0 0 90px'}} value={d.title} onChange={e => setDay(i, {title: e.target.value})} placeholder="1. GÜN" />
-                <input style={{...inS, flex: '0 0 90px'}} value={d.date} onChange={e => setDay(i, {date: e.target.value})} placeholder="15 Ekim" />
-                <div style={{ flex: 1 }} />
+                <input style={{...inS, flex: '0 0 150px'}} value={d.date} onChange={e => setDay(i, {date: e.target.value})} placeholder="15 Ekim" />
+                <input style={{...inS, flex: 1, fontWeight: 600}} value={d.place || ''} onChange={e => setDay(i, {place: e.target.value})} placeholder="Gün başlığı (örn. İzmir – Stuttgart)" />
                 {offer.days.length > 1 && <button style={delBtn} onClick={() => setOffer(p => ({...p, days: p.days.filter((_,j)=>j!==i)}))}>🗑️ Gün</button>}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <input style={{...inS, borderStyle: 'dashed', fontSize: '12px'}} value={d.note || ''} onChange={e => setDay(i, { note: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && dayAiBusy === null) aiFillDays(i); }} placeholder="✨ Kısa not yaz, AI doldursun (örn. Metzingen outlet alışverişi, akşam Stuttgart)" />
+                <button disabled={dayAiBusy !== null} onClick={() => aiFillDays(i)} style={{ flex: '0 0 auto', padding: '6px 12px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: '6px', color: '#c084fc', cursor: dayAiBusy !== null ? 'wait' : 'pointer', fontSize: '11px', fontWeight: 600 }}>{dayAiBusy === i ? '⏳' : '✨ AI'}</button>
               </div>
               {d.items.map((it, k) => (
                 <div key={k} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
-                  <input list="offerTimes" style={{...inS, flex: '0 0 88px', textAlign: 'center'}} value={it.time || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, time: e.target.value}:x) })} placeholder="12:00" />
-                  <input style={inS} value={it.text || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, text: e.target.value}:x) })} placeholder="Açıklama (örn. Havalimanına hareket)" />
+                  <input list="offerTimes" style={{...inS, flex: '0 0 88px', textAlign: 'center'}} value={it.time || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, time: e.target.value, auto: false}:x) })} placeholder="12:00" />
+                  <input style={inS} value={it.text || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, text: e.target.value, auto: false}:x) })} placeholder="Açıklama (örn. Havalimanına hareket)" />
                   {d.items.length > 1 && <button style={delBtn} onClick={() => setDay(i, { items: d.items.filter((_,m)=>m!==k) })}>×</button>}
                 </div>
               ))}
@@ -16439,9 +16542,9 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                     return {
                       'S.No': i + 1,
                       'Ad Soyad': r.customerName,
-                      'Doğum Tarihi': cust.birthDate || '',
+                      'Doğum Tarihi': cust.birthDate ? formatDate(cust.birthDate) : '',
                       'Pasaport No': pp.passportNo || '',
-                      'Pasaport Bitiş': pp.expiryDate || '',
+                      'Pasaport Bitiş': pp.expiryDate ? formatDate(pp.expiryDate) : '',
                       'TC Kimlik': cust.tcKimlik || '',
                       'Telefon': r.phone || cust.phone || '',
                       'Satış': flightResTotal(r),
@@ -16897,7 +17000,7 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                         {priceExcelPreview.items.map((it, i) => (
                           <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ padding: '5px 6px', color: '#fff', fontWeight: '600' }}>{it.hotelName}</td>
-                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{it.startDate} → {it.endDate}</td>
+                            <td style={{ padding: '5px 6px', color: '#94a3b8' }}>{formatDate(it.startDate)} → {formatDate(it.endDate)}</td>
                             <td style={{ padding: '5px 6px', color: '#f59e0b' }}>{it.roomType}</td>
                             <td style={{ padding: '5px 6px', color: '#ef4444' }}>{it.bb_buy || '—'}</td>
                             <td style={{ padding: '5px 6px', color: '#10b981' }}>{it.bb_sell || '—'}</td>
@@ -17392,10 +17495,10 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                   const buy = parseFloat(r.buyPrice) || 0;
                   const paid = (parseFloat(r.payment1) || 0) + (parseFloat(r.payment2) || 0) + (parseFloat(r.payment3) || 0);
                   rows.push([
-                    r.customerName || '',
+                    [r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => titleCaseTr(String(n).trim())).join(' / '),
                     r.customerPhone || '',
-                    r.checkIn || '',
-                    r.checkOut || '',
+                    r.checkIn ? formatDate(r.checkIn) : '',
+                    r.checkOut ? formatDate(r.checkOut) : '',
                     nights,
                     r.roomType || '',
                     r.concept ? trUpper(r.concept) : '',
@@ -17419,6 +17522,24 @@ function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transf
                 showToast?.('✅ Excel indirildi', 'success');
               }} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                 📊 Excel
+              </button>
+            )}
+            {/* Otele gönderilecek liste: oda başına bir satır, odadaki herkes yazılır (fiyat yok) */}
+            {reservations.length > 0 && (
+              <button onClick={() => {
+                const rows = [['Guest Name(s)', 'Check in', 'Check out', 'Nights', 'Room Type', 'Meal Type', 'Pax']];
+                [...reservations].filter(r => !r.cancelled).sort((a, b) => String(a.checkIn || '').localeCompare(String(b.checkIn || '')) || String(a.customerName || '').localeCompare(String(b.customerName || ''), 'tr')).forEach(r => {
+                  const names = [r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => titleCaseTr(String(n).trim()));
+                  rows.push([names.join(' / '), r.checkIn ? formatDate(r.checkIn) : '', r.checkOut ? formatDate(r.checkOut) : '', calcNights(r.checkIn, r.checkOut), r.roomType || '', trUpper(r.concept || ''), Math.max(names.length, resPax(r))]);
+                });
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!cols'] = [{wch:44},{wch:12},{wch:12},{wch:7},{wch:12},{wch:10},{wch:5}];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Rooming List');
+                XLSX.writeFile(wb, `${h.name.replace(/\s/g,'_')}_Rooming_List.xlsx`);
+                showToast?.('✅ Otel listesi indirildi', 'success');
+              }} title="Otele gönderilecek liste: odadaki herkes, tarihler, oda ve pansiyon (fiyatsız)" style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                🏨 Otel listesi
               </button>
             )}
 
