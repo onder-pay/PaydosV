@@ -7463,6 +7463,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     </button>
                   ))}
                 </div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '-4px' }}>Aşağıda "Müşteri Ödemeleri"ne tutar girince kendiliğinden değişir (tahsilat vize bedelini karşılayınca Ödendi).</div>
               </div>
 
               {/* MALİ BİLGİLER */}
@@ -7507,9 +7508,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '12px' }}>
                       {costFields.map(f => (
-                        <div key={f.key}>
+                        <div key={f.key} style={{ minWidth: 0 }}>
                           <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{f.label}</label>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <input type="number" step="0.01" min="0" value={costs[f.key] || ''}
@@ -7559,7 +7560,13 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {/* MÜŞTERİ ÖDEMELERİ — manuel giriş, para birimi + tarih */}
               {(() => {
                 const odemeler = safeParseJSON(formData.payments);
-                const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list) });
+                // Tahsilat satışı (indirim düşülmüş, aynı para birimi) karşılayınca "Ödendi", altında kalınca "Ödenmedi"
+                const setOdemeler = (list) => {
+                  const net = (parseFloat(formData.visaPrice) || 0) - (parseFloat(formData.visaDiscount) || 0);
+                  const cur = formData.visaCurrency || '€';
+                  const paid = list.filter(o => (o.currency || cur) === cur).reduce((t, o) => t + (parseFloat(o.amount) || 0), 0);
+                  setFormData({ ...formData, payments: JSON.stringify(list), paymentStatus: net > 0 && paid >= net - 0.01 ? 'Ödendi' : 'Ödenmedi' });
+                };
                 const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
                 const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
                 const delOdeme = (i) => setOdemeler(odemeler.filter((_, x) => x !== i));
@@ -20272,6 +20279,17 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       }
     })();
   }, [visaApplications, dataReady]);
+  // 📋 Bir kerelik düzenleme: "iDATA/VFS Başvuru Yapılacak" durumu doğru yazımla listenin başına alınır
+  // (eski yazım "İ Data\Vfs Başvuru Yapılacak" olan başvurular da yeni ada geçer). Sonra Ayarlar'dan serbestçe sıralanabilir.
+  useEffect(() => {
+    if (!dataReady || !settingsLoaded.current || appSettings?.visaStatusIdataFirst) return;
+    const list = appSettings?.visaStatuses || [];
+    if (!list.length) return;
+    const TARGET = 'iDATA/VFS Başvuru Yapılacak';
+    const isIdata = (st) => { const n = normalizeTr(st).replace(/[^a-z]/g, ''); return /data/.test(n) && /vfs/.test(n) && /yapilacak/.test(n); };
+    setAppSettings(prev => ({ ...prev, visaStatuses: [TARGET, ...(prev.visaStatuses || []).filter(st => !isIdata(st))], visaStatusIdataFirst: true }));
+    setVisaApplications(prev => prev.some(v => v.status && v.status !== TARGET && isIdata(v.status)) ? prev.map(v => v.status && v.status !== TARGET && isIdata(v.status) ? { ...v, status: TARGET } : v) : prev);
+  }, [dataReady, appSettings?.visaStatuses, appSettings?.visaStatusIdataFirst]);
   // 🏛️ Randevu günü gelen başvurular otomatik "Konsoloslukta" olur.
   // Sadece randevu öncesi durumlardan (onay/red/iptal/konsolosluk hariç), son 30 günün randevuları,
   // her başvuruda bir kez (autoKonsolosluk işareti) — elle geri alınan durum tekrar ezilmez.
