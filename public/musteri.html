@@ -734,6 +734,17 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   // Tur sayfasından farkı: başlık seyahat değil kişi; uçuşlardan sadece yaklaşanlar; belgeler aya göre (en yeni üstte);
   // seyahat bilgileri sıradaki uçuşun gidilen şehri için ve sadece yurt dışıysa; geri sayım ve Tetris yok.
   var TR_AIRPORTS = /^(IST|SAW|ESB|ADB|AYT|DLM|BJV|GZP|TZX|GZT|ADA|COV|ASR|VAN|ERZ|ERC|DIY|SZF|KYA|MLX|EZS|NAV|HTY|KCM|KSY|MQM|BAL|BGG|GNY|NKT|IGD|AJI|KFS|ONQ|SFQ|USQ|YEI|EDO|CKZ|TEQ|DNZ|ISE|MSR|OGU|NOP|VAS|TJK|KCO|AOE|AFY|BZI|YKO|RZV|GKD|KZR|CII|BDM|BXN|SXZ|DNZ)$/;
+  // Pasaport türü: eski kayıtlarda ASCII ("Yesil Pasaport") — doğru Türkçe yazımla gösterilir
+  var ppTypeTr = function (s) {
+    var n = nk(s);
+    if (!n) return '';
+    if (n.indexOf('yesil') >= 0) return 'Yeşil Pasaport';
+    if (n.indexOf('gri') >= 0) return 'Gri Pasaport';
+    if (n.indexOf('siyah') >= 0 || n.indexOf('diplomat') >= 0) return 'Siyah Pasaport';
+    if (n.indexOf('bordo') >= 0 || n.indexOf('umuma') >= 0) return 'Bordo Pasaport';
+    if (n.indexOf('gecici') >= 0) return 'Geçici Pasaport';
+    return s;
+  };
   var flightDay = function (x) {
     if (x.ymd) return parseD(x.ymd);
     var m = String(x.date || '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
@@ -765,7 +776,11 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       box.innerHTML = ''; delay = 0;
       var docs = (f.docs || []).filter(function (d) { return d && safeUrl(d.url); });
       // Uçuş numarası olmayan belgelerden (ör. THY koltuk onayı) okunan uçuşlar da gösterilir
-      var flights = upcomingFlights((f.flights || []).filter(function (x) { return x && (/^[A-Z0-9]{2}\d{1,4}$/.test(x.code || '') || (!x.code && (x.dep || x.arr))); }));
+      // Kendi uçuşları + turlarındaki uçuşlar (aynı uçuş iki kez yazılmaz)
+      var allF = (f.flights || []).slice(), seenF = {};
+      (Array.isArray(f.tours) ? f.tours : []).forEach(function (t) { (t && Array.isArray(t.flights) ? t.flights : []).forEach(function (x) { allF.push(x); }); });
+      allF = allF.filter(function (x) { if (!x) return false; var k = (x.code || '') + '|' + (x.ymd || x.date || ''); if (x.code && seenF[k]) return false; seenF[k] = 1; return true; });
+      var flights = upcomingFlights(allF.filter(function (x) { return x && (/^[A-Z0-9]{2}\d{1,4}$/.test(x.code || '') || (!x.code && (x.dep || x.arr))); }));
       var fLabel = function (x) { return x.code ? x.code.replace(/^(..)/, '$1 ') : (x.airline || 'Uçuş'); };
       var dest = nextDestination(flights);
       var fullName = String(f.customerName || '').trim();
@@ -936,7 +951,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
           }
           var row = el('div', 'row' + (lvl ? ' ' + lvl : ''));
           var di = el('div', 'dic'); di.appendChild(ico(v.kind === 'passport' ? 'visa' : 'pass')); row.appendChild(di);
-          var tx = el('div', 'tx'); tx.appendChild(el('div', 't', v.label)); tx.appendChild(el('div', 's', [v.sub, u.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' bitiş'].filter(Boolean).join(' · '))); row.appendChild(tx);
+          var tx = el('div', 'tx'); tx.appendChild(el('div', 't', v.label)); tx.appendChild(el('div', 's', [v.kind === 'passport' ? ppTypeTr(v.sub) : v.sub, u.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' bitiş'].filter(Boolean).join(' · '))); row.appendChild(tx);
           var dd = el('div', 'dd'); dd.appendChild(el('b', '', days < 0 ? 'Doldu' : days.toLocaleString('tr-TR'))); dd.appendChild(el('span', '', days < 0 ? Math.abs(days) + ' gün önce' : days === 0 ? 'bugün bitiyor' : 'gün kaldı')); row.appendChild(dd);
           vl.appendChild(row);
           if (warn) vl.appendChild(el('div', 'w ' + lvl, warn));
@@ -1078,7 +1093,7 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
         var l2 = el('div', 'list'), t0 = todayD();
         vals.forEach(function (v) {
           var u = parseD(v.until), days = Math.round((u - t0) / 86400000);
-          var kv = el('div', 'kv'); kv.appendChild(el('span', '', v.label + (v.sub ? ' · ' + v.sub : '')));
+          var kv = el('div', 'kv'); kv.appendChild(el('span', '', v.label + (v.sub ? ' · ' + (v.kind === 'passport' ? ppTypeTr(v.sub) : v.sub) : '')));
           var b = el('b', '', full(u) + (days < 0 ? ' (doldu)' : '')); if (days < 0) b.style.color = 'var(--accent)'; kv.appendChild(b); l2.appendChild(kv);
         });
         sh.appendChild(l2);

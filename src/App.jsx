@@ -8632,6 +8632,7 @@ const syncResLinkDocs = async (res, getNext, tour) => {
   if (tour) { const fl = resFlightList(tour, res); if (JSON.stringify(fl) !== JSON.stringify(snap.data()?.flights || [])) patch.flights = fl; }
   // Tur bitince ana ekrandaki tur simgesi yolcunun müşteri linkine (/m/) geçsin
   if (!snap.data()?.nextLink && getNext) { const n = await getNext(); if (n) patch.nextLink = n; }
+  else if (snap.data()?.nextLink && tour) await addTourToCustomerLink(snap.data().nextLink, tour, res.shareToken).catch(() => {});
   if (!Object.keys(patch).length) return false;
   await setDoc(doc(db, 'paylasimlar', res.shareToken), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
   return docsChanged;
@@ -8657,7 +8658,15 @@ const addTourToCustomerLink = async (mToken, tour, bToken) => {
   const ref0 = doc(db, 'paylasimlar', mToken);
   const snap = await getDoc(ref0);
   if (!snap.exists()) return;
-  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '' };
+  // Turun (ya da yolcunun kendi biletindeki) uçuşlar müşteri linkinde "Sıradaki uçuş"ta da görünsün
+  const res = (tour.reservations || []).find(r => !r.cancelled && r.shareToken === bToken);
+  const y0 = +String(tour.startDate || '').slice(0, 4) || new Date().getFullYear();
+  const flights = resFlightList(tour, res).map(f => {
+    let ymd = f.ymd || '';
+    if (!ymd) { const p = parseTrDate(f.date); if (p) { const d = p.year ? p.d : new Date(y0, p.d.getMonth(), p.d.getDate()); ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; } }
+    return { dir: f.dir || '', code: f.code, ymd, date: f.date || '', dep: f.dep || '', arr: f.arr || '' };
+  });
+  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '', flights };
   const list = (Array.isArray(snap.data()?.tours) ? snap.data().tours : []).filter(t => t && t.token !== bToken);
   const old = (snap.data()?.tours || []).find(t => t && t.token === bToken);
   if (old && JSON.stringify(old) === JSON.stringify(entry)) return;
