@@ -6763,7 +6763,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       label: '',
       processor: appSettings?.processors?.[0] || 'Paydos',
       paymentStatus: 'Ödenmedi',
-      status: 'Evrak Topluyor',
+      status: visaStatuses[0] || 'Evrak Topluyor', // Ayarlar'daki ilk durum = yeni başvuru varsayılanı
       notes: '',
       price: '',
       cost: '',
@@ -18535,7 +18535,7 @@ function ShortcutSettings({ currentUser, setCurrentUser, setUsers, showToast, is
   );
 }
 
-function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
+function SettingsModule({ visaApplications, setVisaApplications, users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -18857,14 +18857,34 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
           {/* Vize Başvuru Durumları */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>📋 Vize Başvuru Durumları</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Vize başvuru sürecinde kullanılan durum etiketleri</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-              {(appSettings?.visaStatuses || []).map((status, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.15)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>
-                  <span style={{ fontSize: '12px', color: '#10b981' }}>{status}</span>
-                  <button onClick={() => setAppSettings({ ...appSettings, visaStatuses: appSettings.visaStatuses.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
-                </div>
-              ))}
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Vize başvuru sürecinde kullanılan durum etiketleri. Sıra formda ve botta da aynıdır; <b style={{ color: '#10b981' }}>ilk durum yeni başvurunun varsayılanıdır</b>.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+              {(appSettings?.visaStatuses || []).map((status, idx, arr) => {
+                const move = (d) => { const a = [...arr]; [a[idx], a[idx + d]] = [a[idx + d], a[idx]]; setAppSettings({ ...appSettings, visaStatuses: a }); };
+                const rename = () => {
+                  const nv = (window.prompt('Durumun yeni adı:', status) || '').trim();
+                  if (!nv || nv === status) return;
+                  // Bot/otomasyon bu adlara göre çalışır: "Atama Bekliyor" (atama + evrak maili), "Konsoloslukta" (süre takibi)
+                  if (trHas(status, 'atama bekliyor', 'konsolos') && normalizeTr(nv) !== normalizeTr(status) && !window.confirm(`"${status}" adını bot ve otomatik mailler kullanıyor. Değiştirirseniz bu otomasyonlar çalışmaz. Yine de değiştirilsin mi?`)) return;
+                  if (arr.some((x, i) => i !== idx && normalizeTr(x) === normalizeTr(nv))) { showToast?.('Bu adla bir durum zaten var', 'warning'); return; }
+                  const n = (visaApplications || []).filter(v => v.status === status).length;
+                  setAppSettings({ ...appSettings, visaStatuses: arr.map((x, i) => i === idx ? nv : x) });
+                  // Bu durumdaki başvurular da yeni ada geçer (yoksa listede "bilinmeyen durum" kalırlar)
+                  if (n) setVisaApplications?.(prev => prev.map(v => v.status === status ? { ...v, status: nv } : v));
+                  showToast?.(`"${status}" → "${nv}"${n ? ` · ${n} başvuru güncellendi` : ''}`, 'success');
+                };
+                const btn = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '5px', color: '#cbd5e1', cursor: 'pointer', fontSize: '11px', padding: '2px 7px', lineHeight: 1.4 };
+                return (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: idx === 0 ? 'rgba(16,185,129,0.22)' : 'rgba(16,185,129,0.1)', padding: '6px 10px', borderRadius: '6px', border: `1px solid rgba(16,185,129,${idx === 0 ? 0.55 : 0.25})` }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', width: '16px' }}>{idx + 1}.</span>
+                    <span style={{ flex: 1, fontSize: '12px', color: '#10b981', fontWeight: idx === 0 ? 700 : 400 }}>{status}{idx === 0 && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 400 }}>yeni başvuru varsayılanı</span>}</span>
+                    <button type="button" title="Yukarı" disabled={idx === 0} onClick={() => move(-1)} style={{ ...btn, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                    <button type="button" title="Aşağı" disabled={idx === arr.length - 1} onClick={() => move(1)} style={{ ...btn, opacity: idx === arr.length - 1 ? 0.3 : 1 }}>▼</button>
+                    <button type="button" title="Adını değiştir (bu durumdaki başvurular da güncellenir)" onClick={rename} style={btn}>✏️</button>
+                    <button type="button" title="Sil" onClick={() => setAppSettings({ ...appSettings, visaStatuses: arr.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+                  </div>
+                );
+              })}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input type="text" value={newVisaStatus} onChange={e => setNewVisaStatus(e.target.value)}
@@ -20388,7 +20408,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
-      case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
+      case 'settings': return <SettingsModule visaApplications={visaApplications} setVisaApplications={setVisaApplications} users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
       default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };
