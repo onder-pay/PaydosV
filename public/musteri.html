@@ -859,10 +859,18 @@ body.hasbar .c{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
       // until = biletteki son uçuş / otel çıkış tarihi (CRM yazar). Tarih yoksa 45 günden eski eklenenler geçmiş sayılır.
       // Vize, sigorta, diğer belgeler tarihten bağımsız "Belgeler"de kalır.
       var TRAVEL = ['✈️', '🛫', '🛬', '🏨', '🎫'];
+      // Devam eden / yaklaşan tur (bitişinden 3 gün sonrasına kadar): o turun biletleri tur sayfasında.
+      // Tur başlamadan önce eklenmiş, tarihi okunamamış bilet/otel belgesi önceki seyahatindir → Geçmişim.
+      var activeTourStart = (Array.isArray(f.tours) ? f.tours : []).reduce(function (acc, t) {
+        var st = t && parseD(t.startDate), e = t && (parseD(t.endDate) || st); if (!st || !e) return acc;
+        var lim = new Date(e); lim.setDate(lim.getDate() + 3);
+        return lim >= todayD() && (!acc || st < acc) ? st : acc;
+      }, null);
       var isPast = function (dc) {
         if (TRAVEL.indexOf(dc.icon) < 0) return false;
         var u = parseD(dc.until); if (u) return u < todayD();
         var a = dc.addedAt ? new Date(dc.addedAt) : null;
+        if (a && !isNaN(a) && activeTourStart && a < activeTourStart) return true;
         return !!(a && !isNaN(a) && (todayD() - a) > 45 * 86400000);
       };
       var past = sorted.filter(isPast);

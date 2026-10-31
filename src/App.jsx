@@ -8669,9 +8669,20 @@ const addTourToCustomerLink = async (mToken, tour, bToken) => {
   const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '', flights };
   const list = (Array.isArray(snap.data()?.tours) ? snap.data().tours : []).filter(t => t && t.token !== bToken);
   const old = (snap.data()?.tours || []).find(t => t && t.token === bToken);
-  if (old && JSON.stringify(old) === JSON.stringify(entry)) return;
+  const unread = (snap.data()?.docs || []).some(d => d && !d.until && !d.untilChecked && ['✈️', '🛫', '🛬'].includes(d.icon));
+  if (old && JSON.stringify(old) === JSON.stringify(entry) && !unread) return;
   const tours = [...list, entry].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate))).slice(0, 12);
-  await setDoc(ref0, { tours }, { merge: true });
+  // Tarihi bilinmeyen bilet/biniş kartı: PDF'teki uçuşlardan seyahat tarihi (until) okunur → bitmişse linkte "Geçmişim"e iner
+  const docs = Array.isArray(snap.data()?.docs) ? snap.data().docs : [];
+  let docsChanged = false;
+  const docs2 = [];
+  for (const d of docs) {
+    if (d && !d.until && !d.untilChecked && ['✈️', '🛫', '🛬'].includes(d.icon) && /^https:\/\//.test(d.url || '')) {
+      const ymd = (await ticketFlightsOf(d.url)).map(x => x.ymd).filter(Boolean).sort().pop();
+      docs2.push(ymd ? { ...d, until: ymd } : { ...d, untilChecked: true }); docsChanged = true;
+    } else docs2.push(d);
+  }
+  await setDoc(ref0, docsChanged ? { tours, docs: docs2 } : { tours }, { merge: true });
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
