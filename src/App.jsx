@@ -7551,17 +7551,21 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Vize Bedeli (satış)</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
-                          {/* Müşterinin TL olarak ödeyeceği tutar — elle girilir (kur hesabı yapılmaz) */}
-                          {saleCurrency !== '₺' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ fontSize: '13px', color: '#94a3b8' }}>=</span>
-                              <input type="text" inputMode="decimal" value={formData.visaPriceTL || ''} placeholder="TL tutarı"
-                                onChange={e => { const fd = { ...formData, visaPriceTL: e.target.value.replace(/[^0-9.,]/g, '') }; setFormData({ ...fd, paymentStatus: visaPaidStatus(fd) }); }}
-                                style={{ width: '110px', padding: '6px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '6px', color: '#fff', fontSize: '14px', fontWeight: 700, minWidth: 0 }} />
-                              <span style={{ fontSize: '14px', color: '#10b981', fontWeight: 700 }}>₺</span>
-                            </div>
-                          )}
                         </div>
+                        {/* Kur: vizeci/muhasebeci elle yazar (otomatik kur alınmaz); TL karşılığı = bedel × kur */}
+                        {saleCurrency !== '₺' && (() => {
+                          const kur = parseFloat(String(formData.visaKur || '').replace(',', '.')) || 0;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
+                              <span>Kur: 1 {saleCurrency} =</span>
+                              <input type="text" inputMode="decimal" value={formData.visaKur || ''} placeholder="kur"
+                                onChange={e => { const fd = { ...formData, visaKur: e.target.value.replace(/[^0-9.,]/g, '') }; setFormData({ ...fd, paymentStatus: visaPaidStatus(fd) }); }}
+                                style={{ width: '80px', padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '6px', color: '#fff', fontSize: '13px', fontWeight: 700, minWidth: 0 }} />
+                              <span>₺</span>
+                              {kur > 0 && <b style={{ fontSize: '14px', color: '#10b981' }}>→ {(netSale * kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</b>}
+                            </div>
+                          );
+                        })()}
                         {discount > 0 && <div style={{ fontSize: '9px', color: '#f59e0b' }}>(-{discount} indirim)</div>}
                       </div>
                     </div>
@@ -7573,7 +7577,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {(() => {
                 const odemeler = safeParseJSON(formData.payments);
                 // Tahsilat vize bedelini karşılayınca "Ödendi", altında kalınca "Ödenmedi".
-                // Vize bedeliyle aynı para birimindeki ödemeler vize bedeline, ₺ ödemeler elle girilen TL karşılığına (visaPriceTL) göre sayılır.
+                // Vize bedeliyle aynı para birimindeki ödemeler vize bedeline, ₺ ödemeler bedel × elle yazılan kur (visaKur) tutarına göre sayılır.
                 const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list), paymentStatus: visaPaidStatus({ ...formData, payments: JSON.stringify(list) }) });
                 const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
                 const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
