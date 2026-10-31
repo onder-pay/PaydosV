@@ -6,10 +6,10 @@ import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnap
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { asciiTr, normalizeTr, trUpper, trLower, trHas, normEmail, fieldKeyTr, fieldKeyLegacy, extraFieldVal, titleCaseTr, nameForSave, namePairForSave } from './lib/turkish';
-import { formatDate, safeParseTags, safeParseActivities, safeParseJSON, safeParseObj, safeParseDate, getDaysLeft, formatWhatsAppPhone, waUrl, generateUniqueId, formatPhoneNumber, showPhone, formatPassportNo, isSaneDate, isValidTc } from './lib/format';
+import { formatDate, safeParseTags, safeParseActivities, safeParseJSON, safeParseObj, safeParseDate, getDaysLeft, formatWhatsAppPhone, waUrl, generateUniqueId, formatPhoneNumber, showPhone, formatPassportNo, isSaneDate, isValidTc, visaPaidStatus } from './lib/format';
 import { pdfText, loadHtml2Canvas, pdfPagesText, pdfExtractPages, pdfMergeParts, pdfFileText, pdfFit, addCanvasPaged, htmlToPdfDownload } from './lib/pdf';
 import { flightSortKey, nameWords, detectHotel, nameCheck, NAMECHK_COLOR, detectFlights, sameFlight } from './lib/docparse';
-import { MEAL_CONCEPTS, MEAL_CODE, MEAL_TR, MEAL_EN, turkishProvinces, passportTypes, canonPassportType, schengenCountries, SOZLESME_SABIT, VIZE_DURUM, tourCountries, IATA_COUNTRY, PLACE_COUNTRY, placeTr, isoToCountry } from './lib/data';
+import { PAYMENT_METHODS, MEAL_CONCEPTS, MEAL_CODE, MEAL_TR, MEAL_EN, turkishProvinces, passportTypes, canonPassportType, schengenCountries, SOZLESME_SABIT, VIZE_DURUM, tourCountries, IATA_COUNTRY, PLACE_COUNTRY, placeTr, isoToCountry } from './lib/data';
 
 // Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
 // (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
@@ -6603,7 +6603,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             return `${d >= 0 ? '+' : ''}${d.toFixed(2)} ${c}`;
           }).join(' · ');
         })(),
-        'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.note ? ' ' + o.note : ''})`).join(' | '),
+        'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.method ? ' ' + o.method : ''}${o.note ? ' ' + o.note : ''})`).join(' | '),
         'Notlar': v.notes || ''
       };
     });
@@ -6701,7 +6701,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
       processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
       price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
-      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '€',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺',
       id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
     }));
     let fail = 0;
@@ -6763,14 +6763,14 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       label: '',
       processor: appSettings?.processors?.[0] || 'Paydos',
       paymentStatus: 'Ödenmedi',
-      status: 'Evrak Topluyor',
+      status: visaStatuses[0] || 'Evrak Topluyor', // Ayarlar'daki ilk durum = yeni başvuru varsayılanı
       notes: '',
       price: '',
       cost: '',
       currency: '€',
       // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
       costs: getVisaCostDefaults(appSettings, cat.id),
-      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '€'
+      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺'
     });
   };
 
@@ -7463,6 +7463,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     </button>
                   ))}
                 </div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '-4px' }}>Aşağıda "Müşteri Ödemeleri"ne tutar girince kendiliğinden değişir (tahsilat vize bedelini karşılayınca Ödendi).</div>
               </div>
 
               {/* MALİ BİLGİLER */}
@@ -7507,9 +7508,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '12px' }}>
                       {costFields.map(f => (
-                        <div key={f.key}>
+                        <div key={f.key} style={{ minWidth: 0 }}>
                           <label style={{ display: 'block', fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{f.label}</label>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <input type="number" step="0.01" min="0" value={costs[f.key] || ''}
@@ -7542,13 +7543,29 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet (para birimine göre)</div>
                         <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
                           {Object.keys(totalsByCurrency).length === 0
-                            ? `0 ${saleCurrency}`
+                            ? `0 ${costCur}`
                             : Object.entries(totalsByCurrency).map(([cur, val]) => `${val.toFixed(2)} ${cur}`).join('  ·  ')}
                         </div>
                       </div>
                       <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Vize Bedeli (satış)</div>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
+                        </div>
+                        {/* Kur: vizeci/muhasebeci elle yazar (otomatik kur alınmaz); TL karşılığı = bedel × kur */}
+                        {saleCurrency !== '₺' && (() => {
+                          const kur = parseFloat(String(formData.visaKur || '').replace(',', '.')) || 0;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
+                              <span>Kur: 1 {saleCurrency} =</span>
+                              <input type="text" inputMode="decimal" value={formData.visaKur || ''} placeholder="kur"
+                                onChange={e => { const fd = { ...formData, visaKur: e.target.value.replace(/[^0-9.,]/g, '') }; setFormData({ ...fd, paymentStatus: visaPaidStatus(fd) }); }}
+                                style={{ width: '80px', padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '6px', color: '#fff', fontSize: '13px', fontWeight: 700, minWidth: 0 }} />
+                              <span>₺</span>
+                              {kur > 0 && <b style={{ fontSize: '14px', color: '#10b981' }}>→ {(netSale * kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</b>}
+                            </div>
+                          );
+                        })()}
                         {discount > 0 && <div style={{ fontSize: '9px', color: '#f59e0b' }}>(-{discount} indirim)</div>}
                       </div>
                     </div>
@@ -7559,7 +7576,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {/* MÜŞTERİ ÖDEMELERİ — manuel giriş, para birimi + tarih */}
               {(() => {
                 const odemeler = safeParseJSON(formData.payments);
-                const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list) });
+                // Tahsilat vize bedelini karşılayınca "Ödendi", altında kalınca "Ödenmedi".
+                // Vize bedeliyle aynı para birimindeki ödemeler vize bedeline, ₺ ödemeler bedel × elle yazılan kur (visaKur) tutarına göre sayılır.
+                const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list), paymentStatus: visaPaidStatus({ ...formData, payments: JSON.stringify(list) }) });
                 const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
                 const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
                 const delOdeme = (i) => setOdemeler(odemeler.filter((_, x) => x !== i));
@@ -7575,10 +7594,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const maliyetPB = {};
                 _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
 
-                // Kâr/Zarar: her para birimi için tahsilat − maliyet
-                const tumPB = [...new Set([...Object.keys(toplam), ...Object.keys(maliyetPB)])];
-                const karZarar = tumPB.map(c => ({ pb: c, deger: (toplam[c] || 0) - (maliyetPB[c] || 0) }));
-                const farkliPB = tumPB.length > 1;
 
                 return (
                   <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
@@ -7592,22 +7607,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {odemeler.map((o, i) => (
-                          <div key={o.id || i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 90px 1.2fr 1.5fr 36px', gap: '8px', alignItems: 'center' }}>
+                          <div key={o.id || i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.1fr 80px 1.2fr 1.1fr 1.4fr 36px', gap: '8px', alignItems: 'center' }}>
                             <input type="number" step="0.01" value={o.amount || ''} onChange={e => updateOdeme(i, { amount: e.target.value })} placeholder="Tutar" style={inputStyle} />
                             <select value={o.currency || '€'} onChange={e => updateOdeme(i, { currency: e.target.value })} style={inputStyle}>
                               <option value="₺">₺</option><option value="€">€</option><option value="$">$</option><option value="£">£</option>
                             </select>
                             <input type="date" value={o.date || ''} onChange={e => updateOdeme(i, { date: e.target.value })} style={inputStyle} />
-                            <input type="text" value={o.note || ''} onChange={e => updateOdeme(i, { note: e.target.value })} placeholder="Açıklama (nakit, havale...)" style={inputStyle} />
+                            <select value={o.method || ''} onChange={e => updateOdeme(i, { method: e.target.value })} style={{ ...inputStyle, color: o.method ? '#fff' : '#94a3b8' }} title="Ödeme tipi">
+                              <option value="">Ödeme tipi…</option>{PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <input type="text" value={o.note || ''} onChange={e => updateOdeme(i, { note: e.target.value })} placeholder="Açıklama" style={inputStyle} />
                             <button type="button" onClick={() => delOdeme(i)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', padding: '8px' }} title="Sil">🗑️</button>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {/* Tahsilat + Kâr/Zarar özeti */}
+                    {/* Tahsilat + gider özeti (kâr/zarar hesaplanmaz) */}
                     {(Object.keys(toplam).length > 0 || Object.keys(maliyetPB).length > 0) && (
-                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
                         <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
                           <div style={{ fontSize: '10px', color: '#94a3b8' }}>Tahsil Edilen</div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>
@@ -7615,22 +7633,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                           </div>
                         </div>
                         <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Gider</div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
                             {Object.keys(maliyetPB).length === 0 ? '0' : Object.entries(maliyetPB).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
                           </div>
-                        </div>
-                        <div style={{ background: 'rgba(34,197,94,0.12)', padding: '10px 12px', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar</div>
-                          <div style={{ fontSize: '15px', fontWeight: '700' }}>
-                            {karZarar.map(({ pb, deger }, i) => (
-                              <span key={pb} style={{ color: deger >= 0 ? '#22c55e' : '#ef4444' }}>
-                                {i > 0 && <span style={{ color: '#64748b' }}>{'  ·  '}</span>}
-                                {deger >= 0 ? '+' : ''}{deger.toFixed(2)} {pb}
-                              </span>
-                            ))}
-                          </div>
-                          {farkliPB && <div style={{ fontSize: '9px', color: '#fbbf24', marginTop: '2px' }}>⚠️ Farklı para birimleri ayrı hesaplanır</div>}
                         </div>
                       </div>
                     )}
@@ -8625,6 +8631,7 @@ const syncResLinkDocs = async (res, getNext, tour) => {
   if (tour) { const fl = resFlightList(tour, res); if (JSON.stringify(fl) !== JSON.stringify(snap.data()?.flights || [])) patch.flights = fl; }
   // Tur bitince ana ekrandaki tur simgesi yolcunun müşteri linkine (/m/) geçsin
   if (!snap.data()?.nextLink && getNext) { const n = await getNext(); if (n) patch.nextLink = n; }
+  else if (snap.data()?.nextLink && tour) await addTourToCustomerLink(snap.data().nextLink, tour, res.shareToken).catch(() => {});
   if (!Object.keys(patch).length) return false;
   await setDoc(doc(db, 'paylasimlar', res.shareToken), { ...patch, updatedAt: new Date().toISOString() }, { merge: true });
   return docsChanged;
@@ -8650,12 +8657,31 @@ const addTourToCustomerLink = async (mToken, tour, bToken) => {
   const ref0 = doc(db, 'paylasimlar', mToken);
   const snap = await getDoc(ref0);
   if (!snap.exists()) return;
-  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '' };
+  // Turun (ya da yolcunun kendi biletindeki) uçuşlar müşteri linkinde "Sıradaki uçuş"ta da görünsün
+  const res = (tour.reservations || []).find(r => !r.cancelled && r.shareToken === bToken);
+  const y0 = +String(tour.startDate || '').slice(0, 4) || new Date().getFullYear();
+  const flights = resFlightList(tour, res).map(f => {
+    let ymd = f.ymd || '';
+    if (!ymd) { const p = parseTrDate(f.date); if (p) { const d = p.year ? p.d : new Date(y0, p.d.getMonth(), p.d.getDate()); ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; } }
+    return { dir: f.dir || '', code: f.code, ymd, date: f.date || '', dep: f.dep || '', arr: f.arr || '' };
+  });
+  const entry = { token: bToken, tourId: String(tour.id), name: tour.name || '', city: tour.city || '', country: tour.country || '', startDate: tour.startDate || '', endDate: tour.endDate || '', flights };
   const list = (Array.isArray(snap.data()?.tours) ? snap.data().tours : []).filter(t => t && t.token !== bToken);
   const old = (snap.data()?.tours || []).find(t => t && t.token === bToken);
-  if (old && JSON.stringify(old) === JSON.stringify(entry)) return;
+  const unread = (snap.data()?.docs || []).some(d => d && !d.until && !d.untilChecked && ['✈️', '🛫', '🛬'].includes(d.icon));
+  if (old && JSON.stringify(old) === JSON.stringify(entry) && !unread) return;
   const tours = [...list, entry].sort((a, b) => String(b.startDate).localeCompare(String(a.startDate))).slice(0, 12);
-  await setDoc(ref0, { tours }, { merge: true });
+  // Tarihi bilinmeyen bilet/biniş kartı: PDF'teki uçuşlardan seyahat tarihi (until) okunur → bitmişse linkte "Geçmişim"e iner
+  const docs = Array.isArray(snap.data()?.docs) ? snap.data().docs : [];
+  let docsChanged = false;
+  const docs2 = [];
+  for (const d of docs) {
+    if (d && !d.until && !d.untilChecked && ['✈️', '🛫', '🛬'].includes(d.icon) && /^https:\/\//.test(d.url || '')) {
+      const ymd = (await ticketFlightsOf(d.url)).map(x => x.ymd).filter(Boolean).sort().pop();
+      docs2.push(ymd ? { ...d, until: ymd } : { ...d, untilChecked: true }); docsChanged = true;
+    } else docs2.push(d);
+  }
+  await setDoc(ref0, docsChanged ? { tours, docs: docs2 } : { tours }, { merge: true });
 };
 
 // TUR MODÜLÜ - TAM VERSİYON
@@ -18535,7 +18561,7 @@ function ShortcutSettings({ currentUser, setCurrentUser, setUsers, showToast, is
   );
 }
 
-function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
+function SettingsModule({ visaApplications, setVisaApplications, users, setUsers, currentUser, setCurrentUser, isMobile, appSettings, setAppSettings, showToast }) {
   const [activeTab, setActiveTab] = useState('users');
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -18857,14 +18883,34 @@ function SettingsModule({ users, setUsers, currentUser, setCurrentUser, isMobile
           {/* Vize Başvuru Durumları */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#10b981' }}>📋 Vize Başvuru Durumları</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Vize başvuru sürecinde kullanılan durum etiketleri</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
-              {(appSettings?.visaStatuses || []).map((status, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.15)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>
-                  <span style={{ fontSize: '12px', color: '#10b981' }}>{status}</span>
-                  <button onClick={() => setAppSettings({ ...appSettings, visaStatuses: appSettings.visaStatuses.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0', lineHeight: 1 }}>×</button>
-                </div>
-              ))}
+            <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#64748b' }}>Vize başvuru sürecinde kullanılan durum etiketleri. Sıra formda ve botta da aynıdır; <b style={{ color: '#10b981' }}>ilk durum yeni başvurunun varsayılanıdır</b>.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+              {(appSettings?.visaStatuses || []).map((status, idx, arr) => {
+                const move = (d) => { const a = [...arr]; [a[idx], a[idx + d]] = [a[idx + d], a[idx]]; setAppSettings({ ...appSettings, visaStatuses: a }); };
+                const rename = () => {
+                  const nv = (window.prompt('Durumun yeni adı:', status) || '').trim();
+                  if (!nv || nv === status) return;
+                  // Bot/otomasyon bu adlara göre çalışır: "Atama Bekliyor" (atama + evrak maili), "Konsoloslukta" (süre takibi)
+                  if (trHas(status, 'atama bekliyor', 'konsolos') && normalizeTr(nv) !== normalizeTr(status) && !window.confirm(`"${status}" adını bot ve otomatik mailler kullanıyor. Değiştirirseniz bu otomasyonlar çalışmaz. Yine de değiştirilsin mi?`)) return;
+                  if (arr.some((x, i) => i !== idx && normalizeTr(x) === normalizeTr(nv))) { showToast?.('Bu adla bir durum zaten var', 'warning'); return; }
+                  const n = (visaApplications || []).filter(v => v.status === status).length;
+                  setAppSettings({ ...appSettings, visaStatuses: arr.map((x, i) => i === idx ? nv : x) });
+                  // Bu durumdaki başvurular da yeni ada geçer (yoksa listede "bilinmeyen durum" kalırlar)
+                  if (n) setVisaApplications?.(prev => prev.map(v => v.status === status ? { ...v, status: nv } : v));
+                  showToast?.(`"${status}" → "${nv}"${n ? ` · ${n} başvuru güncellendi` : ''}`, 'success');
+                };
+                const btn = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '5px', color: '#cbd5e1', cursor: 'pointer', fontSize: '11px', padding: '2px 7px', lineHeight: 1.4 };
+                return (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: idx === 0 ? 'rgba(16,185,129,0.22)' : 'rgba(16,185,129,0.1)', padding: '6px 10px', borderRadius: '6px', border: `1px solid rgba(16,185,129,${idx === 0 ? 0.55 : 0.25})` }}>
+                    <span style={{ fontSize: '11px', color: '#64748b', width: '16px' }}>{idx + 1}.</span>
+                    <span style={{ flex: 1, fontSize: '12px', color: '#10b981', fontWeight: idx === 0 ? 700 : 400 }}>{status}{idx === 0 && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 400 }}>yeni başvuru varsayılanı</span>}</span>
+                    <button type="button" title="Yukarı" disabled={idx === 0} onClick={() => move(-1)} style={{ ...btn, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                    <button type="button" title="Aşağı" disabled={idx === arr.length - 1} onClick={() => move(1)} style={{ ...btn, opacity: idx === arr.length - 1 ? 0.3 : 1 }}>▼</button>
+                    <button type="button" title="Adını değiştir (bu durumdaki başvurular da güncellenir)" onClick={rename} style={btn}>✏️</button>
+                    <button type="button" title="Sil" onClick={() => setAppSettings({ ...appSettings, visaStatuses: arr.filter((_, i) => i !== idx) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+                  </div>
+                );
+              })}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input type="text" value={newVisaStatus} onChange={e => setNewVisaStatus(e.target.value)}
@@ -20252,6 +20298,17 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       }
     })();
   }, [visaApplications, dataReady]);
+  // 📋 Bir kerelik düzenleme: "iDATA/VFS Başvuru Yapılacak" durumu doğru yazımla listenin başına alınır
+  // (eski yazım "İ Data\Vfs Başvuru Yapılacak" olan başvurular da yeni ada geçer). Sonra Ayarlar'dan serbestçe sıralanabilir.
+  useEffect(() => {
+    if (!dataReady || !settingsLoaded.current || appSettings?.visaStatusIdataFirst) return;
+    const list = appSettings?.visaStatuses || [];
+    if (!list.length) return;
+    const TARGET = 'iDATA/VFS Başvuru Yapılacak';
+    const isIdata = (st) => { const n = normalizeTr(st).replace(/[^a-z]/g, ''); return /data/.test(n) && /vfs/.test(n) && /yapilacak/.test(n); };
+    setAppSettings(prev => ({ ...prev, visaStatuses: [TARGET, ...(prev.visaStatuses || []).filter(st => !isIdata(st))], visaStatusIdataFirst: true }));
+    setVisaApplications(prev => prev.some(v => v.status && v.status !== TARGET && isIdata(v.status)) ? prev.map(v => v.status && v.status !== TARGET && isIdata(v.status) ? { ...v, status: TARGET } : v) : prev);
+  }, [dataReady, appSettings?.visaStatuses, appSettings?.visaStatusIdataFirst]);
   // 🏛️ Randevu günü gelen başvurular otomatik "Konsoloslukta" olur.
   // Sadece randevu öncesi durumlardan (onay/red/iptal/konsolosluk hariç), son 30 günün randevuları,
   // her başvuruda bir kez (autoKonsolosluk işareti) — elle geri alınan durum tekrar ezilmez.
@@ -20388,7 +20445,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'tavsiyeler': return <TavsiyelerModal asPage onClose={() => {}} showToast={showToast} isMobile={isMobile} currentUser={currentUser} />;
       case 'bankinfo': return <BankInfoModule appSettings={appSettings} showToast={showToast} isMobile={isMobile} />;
       case 'activitylog': return <ActivityLogModule isMobile={isMobile} showToast={showToast} currentUser={currentUser} />;
-      case 'settings': return <SettingsModule users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
+      case 'settings': return <SettingsModule visaApplications={visaApplications} setVisaApplications={setVisaApplications} users={users} setUsers={setUsers} currentUser={currentUser} setCurrentUser={setCurrentUser} isMobile={isMobile} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} />;
       default: return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
     }
   };

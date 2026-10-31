@@ -88,3 +88,21 @@ export const isValidTc = (tc) => {
   const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
 };
+
+
+// Vize ödeme durumu: müşteri ödemeleri vize bedelini karşılıyor mu?
+// Vize bedeliyle aynı para birimindeki ödemeler bedele (indirim düşülmüş), ₺ ödemeler bedelin TL karşılığına oranlanır.
+// TL karşılığı = bedel × vizeci/muhasebecinin elle yazdığı kur (visaKur). Otomatik kur alınmaz. Ödeme yoksa mevcut durum korunur.
+export const visaPaidStatus = (v) => {
+  const list = (() => { try { return typeof v.payments === 'string' ? JSON.parse(v.payments || '[]') : (v.payments || []); } catch { return []; } })();
+  const cur = v.visaCurrency || '€';
+  const net = (parseFloat(v.visaPrice) || 0) - (parseFloat(v.visaDiscount) || 0);
+  const tl = net * (parseFloat(String(v.visaKur || '').replace(',', '.')) || 0);
+  const sum = (c) => list.filter(o => (o.currency || cur) === c).reduce((t, o) => t + (parseFloat(o.amount) || 0), 0);
+  if (!list.some(o => parseFloat(o.amount))) return v.paymentStatus || 'Ödenmedi';
+  let ratio = 0, known = false;
+  if (net > 0) { ratio += sum(cur) / net; known = true; }
+  if (cur !== '₺' && tl > 0) { ratio += sum('₺') / tl; known = true; }
+  if (!known) return v.paymentStatus || 'Ödenmedi';
+  return ratio >= 0.9999 ? 'Ödendi' : 'Ödenmedi';
+};
