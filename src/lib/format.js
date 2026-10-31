@@ -89,21 +89,20 @@ export const isValidTc = (tc) => {
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
 };
 
-// Kur çevirisi (TCMB TL kurlarıyla çapraz): 1 birim `sale` para birimi kaç birim `pay` eder. Bilinmiyorsa 0.
-// rates: { EUR: 50.1, USD: 43.2, ... } (1 birim yabancı para = ? TL — /.netlify/functions/kur)
-const CUR_CODE = { '€': 'EUR', '$': 'USD', '£': 'GBP', '₺': 'TRY' };
-export const crossRate = (pay, sale, rates) => {
-  if (pay === sale) return 1;
-  const tl = (c) => (c === '₺' ? 1 : (rates?.[CUR_CODE[c]] || 0));
-  const a = tl(sale), b = tl(pay);
-  return a && b ? a / b : 0;
+
+// Vize ödeme durumu: müşteri ödemeleri vize bedelini karşılıyor mu?
+// Vize bedeliyle aynı para birimindeki ödemeler bedele (indirim düşülmüş), ₺ ödemeler elle girilen TL karşılığına (visaPriceTL) oranlanır.
+// Kur hesabı yapılmaz. Ödeme yoksa ya da bedel bilinmiyorsa mevcut durum korunur.
+export const visaPaidStatus = (v) => {
+  const list = (() => { try { return typeof v.payments === 'string' ? JSON.parse(v.payments || '[]') : (v.payments || []); } catch { return []; } })();
+  const cur = v.visaCurrency || '€';
+  const net = (parseFloat(v.visaPrice) || 0) - (parseFloat(v.visaDiscount) || 0);
+  const tl = parseFloat(String(v.visaPriceTL || '').replace(',', '.')) || 0;
+  const sum = (c) => list.filter(o => (o.currency || cur) === c).reduce((t, o) => t + (parseFloat(o.amount) || 0), 0);
+  if (!list.some(o => parseFloat(o.amount))) return v.paymentStatus || 'Ödenmedi';
+  let ratio = 0, known = false;
+  if (net > 0) { ratio += sum(cur) / net; known = true; }
+  if (cur !== '₺' && tl > 0) { ratio += sum('₺') / tl; known = true; }
+  if (!known) return v.paymentStatus || 'Ödenmedi';
+  return ratio >= 0.9999 ? 'Ödendi' : 'Ödenmedi';
 };
-// Ödemelerin satış para birimindeki toplamı: ödemede elle girilen kur (o.rate) önce, yoksa günün kuru.
-// unknown: kuru bulunamayan ödeme var mı (o zaman toplam eksik olabilir)
-export const paidInSale = (list, saleCur, rates) => (list || []).reduce((acc, o) => {
-  const a = parseFloat(o.amount) || 0;
-  if (!a) return acc;
-  const r = parseFloat(String(o.rate || '').replace(',', '.')) || crossRate(o.currency || saleCur, saleCur, rates);
-  if (!r) return { ...acc, unknown: true };
-  return { ...acc, total: acc.total + a / r };
-}, { total: 0, unknown: false });

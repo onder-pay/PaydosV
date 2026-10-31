@@ -6,7 +6,7 @@ import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnap
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { asciiTr, normalizeTr, trUpper, trLower, trHas, normEmail, fieldKeyTr, fieldKeyLegacy, extraFieldVal, titleCaseTr, nameForSave, namePairForSave } from './lib/turkish';
-import { formatDate, safeParseTags, safeParseActivities, safeParseJSON, safeParseObj, safeParseDate, getDaysLeft, formatWhatsAppPhone, waUrl, generateUniqueId, formatPhoneNumber, showPhone, formatPassportNo, isSaneDate, isValidTc, crossRate, paidInSale } from './lib/format';
+import { formatDate, safeParseTags, safeParseActivities, safeParseJSON, safeParseObj, safeParseDate, getDaysLeft, formatWhatsAppPhone, waUrl, generateUniqueId, formatPhoneNumber, showPhone, formatPassportNo, isSaneDate, isValidTc, visaPaidStatus } from './lib/format';
 import { pdfText, loadHtml2Canvas, pdfPagesText, pdfExtractPages, pdfMergeParts, pdfFileText, pdfFit, addCanvasPaged, htmlToPdfDownload } from './lib/pdf';
 import { flightSortKey, nameWords, detectHotel, nameCheck, NAMECHK_COLOR, detectFlights, sameFlight } from './lib/docparse';
 import { MEAL_CONCEPTS, MEAL_CODE, MEAL_TR, MEAL_EN, turkishProvinces, passportTypes, canonPassportType, schengenCountries, SOZLESME_SABIT, VIZE_DURUM, tourCountries, IATA_COUNTRY, PLACE_COUNTRY, placeTr, isoToCountry } from './lib/data';
@@ -6259,12 +6259,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
-  // TCMB günlük kurları (farklı para birimindeki ödemeyi vize bedeline çevirmek için) — form açılınca bir kez
-  const [kurRates, setKurRates] = useState(null);
-  useEffect(() => {
-    if (!showForm || kurRates) return;
-    fetch('/.netlify/functions/kur').then(r => r.ok ? r.json() : null).then(k => { if (k?.rates) setKurRates(k.rates); }).catch(() => {});
-  }, [showForm]);
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
@@ -6341,17 +6335,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
   const [dayDetailModal, setDayDetailModal] = useState(null);
   const [editingVisa, setEditingVisa] = useState(null);
   const [formData, setFormData] = useState({});
-  // Düzenlemeye açılan başvuruda ödeme varsa durum ödemelerden (kurla) yeniden hesaplanır — eski kayıtlarda TL ödeme € vizeyi karşılıyorsa "Ödendi"
-  useEffect(() => {
-    if (!showForm || !kurRates) return;
-    setFormData(fd => {
-      const list = safeParseJSON(fd?.payments);
-      const net = (parseFloat(fd?.visaPrice) || 0) - (parseFloat(fd?.visaDiscount) || 0);
-      if (!list.some(o => parseFloat(o.amount)) || !(net > 0)) return fd;
-      const st = paidInSale(list, fd.visaCurrency || '€', kurRates).total >= net - 0.01 ? 'Ödendi' : 'Ödenmedi';
-      return st === fd.paymentStatus ? fd : { ...fd, paymentStatus: st };
-    });
-  }, [showForm, kurRates, formData?.id]);
   const [checklist, setChecklist] = useState({ passportValid: null, passportCondition: null, addressChecked: null });
   const [selectedVisa, setSelectedVisa] = useState(null);
 
@@ -6718,7 +6701,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
       processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
       price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
-      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '€',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺',
       id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
     }));
     let fail = 0;
@@ -6787,7 +6770,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
       currency: '€',
       // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
       costs: getVisaCostDefaults(appSettings, cat.id),
-      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '€'
+      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺'
     });
   };
 
@@ -7560,13 +7543,25 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet (para birimine göre)</div>
                         <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
                           {Object.keys(totalsByCurrency).length === 0
-                            ? `0 ${saleCurrency}`
+                            ? `0 ${costCur}`
                             : Object.entries(totalsByCurrency).map(([cur, val]) => `${val.toFixed(2)} ${cur}`).join('  ·  ')}
                         </div>
                       </div>
                       <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
                         <div style={{ fontSize: '10px', color: '#94a3b8' }}>Vize Bedeli (satış)</div>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>{netSale.toFixed(2)} {saleCurrency}</div>
+                          {/* Müşterinin TL olarak ödeyeceği tutar — elle girilir (kur hesabı yapılmaz) */}
+                          {saleCurrency !== '₺' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontSize: '13px', color: '#94a3b8' }}>=</span>
+                              <input type="text" inputMode="decimal" value={formData.visaPriceTL || ''} placeholder="TL tutarı"
+                                onChange={e => { const fd = { ...formData, visaPriceTL: e.target.value.replace(/[^0-9.,]/g, '') }; setFormData({ ...fd, paymentStatus: visaPaidStatus(fd) }); }}
+                                style={{ width: '110px', padding: '6px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '6px', color: '#fff', fontSize: '14px', fontWeight: 700, minWidth: 0 }} />
+                              <span style={{ fontSize: '14px', color: '#10b981', fontWeight: 700 }}>₺</span>
+                            </div>
+                          )}
+                        </div>
                         {discount > 0 && <div style={{ fontSize: '9px', color: '#f59e0b' }}>(-{discount} indirim)</div>}
                       </div>
                     </div>
@@ -7577,13 +7572,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
               {/* MÜŞTERİ ÖDEMELERİ — manuel giriş, para birimi + tarih */}
               {(() => {
                 const odemeler = safeParseJSON(formData.payments);
-                // Tahsilat satışı (indirim düşülmüş, aynı para birimi) karşılayınca "Ödendi", altında kalınca "Ödenmedi"
-                // Farklı para birimindeki ödeme (€ vizeye ₺) kurla çevrilir: ödemedeki kur, yoksa TCMB günlük kuru
-                const setOdemeler = (list) => {
-                  const net = (parseFloat(formData.visaPrice) || 0) - (parseFloat(formData.visaDiscount) || 0);
-                  const paid = paidInSale(list, formData.visaCurrency || '€', kurRates).total;
-                  setFormData({ ...formData, payments: JSON.stringify(list), paymentStatus: net > 0 && paid >= net - 0.01 ? 'Ödendi' : 'Ödenmedi' });
-                };
+                // Tahsilat vize bedelini karşılayınca "Ödendi", altında kalınca "Ödenmedi".
+                // Vize bedeliyle aynı para birimindeki ödemeler vize bedeline, ₺ ödemeler elle girilen TL karşılığına (visaPriceTL) göre sayılır.
+                const setOdemeler = (list) => setFormData({ ...formData, payments: JSON.stringify(list), paymentStatus: visaPaidStatus({ ...formData, payments: JSON.stringify(list) }) });
                 const updateOdeme = (i, patch) => { const l = [...odemeler]; l[i] = { ...l[i], ...patch }; setOdemeler(l); };
                 const addOdeme = () => setOdemeler([...odemeler, { id: generateUniqueId(), amount: '', currency: formData.visaCurrency || '€', date: new Date().toISOString().split('T')[0], note: '' }]);
                 const delOdeme = (i) => setOdemeler(odemeler.filter((_, x) => x !== i));
@@ -7599,10 +7590,6 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                 const maliyetPB = {};
                 _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
 
-                // Kâr/Zarar: her para birimi için tahsilat − maliyet
-                const tumPB = [...new Set([...Object.keys(toplam), ...Object.keys(maliyetPB)])];
-                const karZarar = tumPB.map(c => ({ pb: c, deger: (toplam[c] || 0) - (maliyetPB[c] || 0) }));
-                const farkliPB = tumPB.length > 1;
 
                 return (
                   <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
@@ -7629,30 +7616,9 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                       </div>
                     )}
 
-                    {/* Farklı para birimindeki ödemelerin vize bedeli karşılığı */}
-                    {(() => {
-                      const sc = formData.visaCurrency || '€';
-                      const foreign = odemeler.filter(o => (parseFloat(o.amount) || 0) && (o.currency || sc) !== sc);
-                      if (!foreign.length) return null;
-                      const net = (parseFloat(formData.visaPrice) || 0) - (parseFloat(formData.visaDiscount) || 0);
-                      const p = paidInSale(odemeler, sc, kurRates);
-                      return (
-                        <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px', fontSize: '12px', color: '#cbd5e1' }}>
-                          {foreign.map(o => { const i = odemeler.indexOf(o); const auto = crossRate(o.currency || sc, sc, kurRates); const r = parseFloat(String(o.rate || '').replace(',', '.')) || auto; return (
-                            <div key={o.id || i} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                              <span>{(parseFloat(o.amount) || 0).toLocaleString('tr-TR')} {o.currency} · kur 1 {sc} =</span>
-                              <input type="text" inputMode="decimal" value={o.rate ?? ''} onChange={e => updateOdeme(i, { rate: e.target.value })} placeholder={auto ? auto.toFixed(2) : 'kur'} style={{ width: '80px', padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} />
-                              <span>{o.currency}</span>
-                              <b style={{ color: '#60a5fa' }}>{r ? `≈ ${((parseFloat(o.amount) || 0) / r).toFixed(2)} ${sc}` : 'kur bulunamadı — elle girin'}</b>
-                            </div>); })}
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>Toplam tahsilat ≈ <b style={{ color: p.total >= net - 0.01 && net > 0 ? '#22c55e' : '#f59e0b' }}>{p.total.toFixed(2)} {sc}</b> / vize bedeli {net.toFixed(2)} {sc}{odemeler.some(o => !o.rate && (o.currency || sc) !== sc) ? ' · kur boşsa TCMB günlük kuru kullanılır' : ''}</div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Tahsilat + Kâr/Zarar özeti */}
+                    {/* Tahsilat + gider özeti (kâr/zarar hesaplanmaz) */}
                     {(Object.keys(toplam).length > 0 || Object.keys(maliyetPB).length > 0) && (
-                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: '10px' }}>
                         <div style={{ background: 'rgba(16,185,129,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
                           <div style={{ fontSize: '10px', color: '#94a3b8' }}>Tahsil Edilen</div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#10b981' }}>
@@ -7660,22 +7626,10 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                           </div>
                         </div>
                         <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Maliyet</div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Toplam Gider</div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
                             {Object.keys(maliyetPB).length === 0 ? '0' : Object.entries(maliyetPB).map(([c, v]) => `${v.toFixed(2)} ${c}`).join('  ·  ')}
                           </div>
-                        </div>
-                        <div style={{ background: 'rgba(34,197,94,0.12)', padding: '10px 12px', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Kâr / Zarar</div>
-                          <div style={{ fontSize: '15px', fontWeight: '700' }}>
-                            {karZarar.map(({ pb, deger }, i) => (
-                              <span key={pb} style={{ color: deger >= 0 ? '#22c55e' : '#ef4444' }}>
-                                {i > 0 && <span style={{ color: '#64748b' }}>{'  ·  '}</span>}
-                                {deger >= 0 ? '+' : ''}{deger.toFixed(2)} {pb}
-                              </span>
-                            ))}
-                          </div>
-                          {farkliPB && <div style={{ fontSize: '9px', color: '#fbbf24', marginTop: '2px' }}>⚠️ Farklı para birimleri ayrı hesaplanır</div>}
                         </div>
                       </div>
                     )}
