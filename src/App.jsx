@@ -9,7 +9,7 @@ import { asciiTr, normalizeTr, trUpper, trLower, trHas, normEmail, fieldKeyTr, f
 import { formatDate, safeParseTags, safeParseActivities, safeParseJSON, safeParseObj, safeParseDate, getDaysLeft, formatWhatsAppPhone, waUrl, generateUniqueId, formatPhoneNumber, showPhone, formatPassportNo, isSaneDate, isValidTc, visaPaidStatus } from './lib/format';
 import { pdfText, loadHtml2Canvas, pdfPagesText, pdfExtractPages, pdfMergeParts, pdfFileText, pdfFit, addCanvasPaged, htmlToPdfDownload } from './lib/pdf';
 import { flightSortKey, nameWords, detectHotel, nameCheck, NAMECHK_COLOR, detectFlights, sameFlight } from './lib/docparse';
-import { MEAL_CONCEPTS, MEAL_CODE, MEAL_TR, MEAL_EN, turkishProvinces, passportTypes, canonPassportType, schengenCountries, SOZLESME_SABIT, VIZE_DURUM, tourCountries, IATA_COUNTRY, PLACE_COUNTRY, placeTr, isoToCountry } from './lib/data';
+import { PAYMENT_METHODS, MEAL_CONCEPTS, MEAL_CODE, MEAL_TR, MEAL_EN, turkishProvinces, passportTypes, canonPassportType, schengenCountries, SOZLESME_SABIT, VIZE_DURUM, tourCountries, IATA_COUNTRY, PLACE_COUNTRY, placeTr, isoToCountry } from './lib/data';
 
 // Tur rezervasyonuna yüklenen belgeler — tablo ikonları, toplu yükleme butonları ve önizleme bu listeden üretilir.
 // (Otel giriş belgesi yüklenmez: turun odalamasından üretilir — bkz. openResHotelVoucher)
@@ -6603,7 +6603,7 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
             return `${d >= 0 ? '+' : ''}${d.toFixed(2)} ${c}`;
           }).join(' · ');
         })(),
-        'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.note ? ' ' + o.note : ''})`).join(' | '),
+        'Ödeme Detayı': odemeler.filter(o => parseFloat(o.amount)).map(o => `${o.amount} ${o.currency || '€'} (${o.date ? formatDate(o.date) : '-'}${o.method ? ' ' + o.method : ''}${o.note ? ' ' + o.note : ''})`).join(' | '),
         'Notlar': v.notes || ''
       };
     });
@@ -7607,13 +7607,16 @@ function VisaModule({ customers, visaApplications, setVisaApplications, isMobile
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {odemeler.map((o, i) => (
-                          <div key={o.id || i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 90px 1.2fr 1.5fr 36px', gap: '8px', alignItems: 'center' }}>
+                          <div key={o.id || i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.1fr 80px 1.2fr 1.1fr 1.4fr 36px', gap: '8px', alignItems: 'center' }}>
                             <input type="number" step="0.01" value={o.amount || ''} onChange={e => updateOdeme(i, { amount: e.target.value })} placeholder="Tutar" style={inputStyle} />
                             <select value={o.currency || '€'} onChange={e => updateOdeme(i, { currency: e.target.value })} style={inputStyle}>
                               <option value="₺">₺</option><option value="€">€</option><option value="$">$</option><option value="£">£</option>
                             </select>
                             <input type="date" value={o.date || ''} onChange={e => updateOdeme(i, { date: e.target.value })} style={inputStyle} />
-                            <input type="text" value={o.note || ''} onChange={e => updateOdeme(i, { note: e.target.value })} placeholder="Açıklama (nakit, havale...)" style={inputStyle} />
+                            <select value={o.method || ''} onChange={e => updateOdeme(i, { method: e.target.value })} style={{ ...inputStyle, color: o.method ? '#fff' : '#94a3b8' }} title="Ödeme tipi">
+                              <option value="">Ödeme tipi…</option>{PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <input type="text" value={o.note || ''} onChange={e => updateOdeme(i, { note: e.target.value })} placeholder="Açıklama" style={inputStyle} />
                             <button type="button" onClick={() => delOdeme(i)} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '13px', padding: '8px' }} title="Sil">🗑️</button>
                           </div>
                         ))}

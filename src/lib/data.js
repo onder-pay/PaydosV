@@ -257,3 +257,6 @@ export const placeTr = (s0) => {
 export const countryCodeMap = { TUR:'Türkiye',DEU:'Almanya',FRA:'Fransa',GBR:'İngiltere',USA:'Amerika Birleşik Devletleri',NLD:'Hollanda',BEL:'Belçika',AUT:'Avusturya',CHE:'İsviçre',ITA:'İtalya',ESP:'İspanya',PRT:'Portekiz',GRC:'Yunanistan',SWE:'İsveç',NOR:'Norveç',DNK:'Danimarka',FIN:'Finlandiya',POL:'Polonya',CZE:'Çekya',HUN:'Macaristan',ROU:'Romanya',BGR:'Bulgaristan',HRV:'Hırvatistan',RUS:'Rusya',UKR:'Ukrayna',AZE:'Azerbaycan',KAZ:'Kazakistan',SAU:'Suudi Arabistan',ARE:'Birleşik Arap Emirlikleri',IRN:'İran',IRQ:'Irak',SYR:'Suriye',JOR:'Ürdün',LBN:'Lübnan',EGY:'Mısır',MAR:'Fas',TUN:'Tunus',ALB:'Arnavutluk',MKD:'Kuzey Makedonya',SRB:'Sırbistan',BIH:'Bosna Hersek',MNE:'Karadağ',GEO:'Gürcistan',ARM:'Ermenistan',CHN:'Çin',JPN:'Japonya',KOR:'Güney Kore',IND:'Hindistan',PAK:'Pakistan',BGD:'Bangladeş',IDN:'Endonezya',MYS:'Malezya',THA:'Tayland',VNM:'Vietnam',PHL:'Filipinler',BRA:'Brezilya',ARG:'Arjantin',MEX:'Meksika',CAN:'Kanada',AUS:'Avustralya',NZL:'Yeni Zelanda',ZAF:'Güney Afrika',NGA:'Nijerya',ETH:'Etiyopya',KEN:'Kenya' };
 
 export const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || code) : '';
+
+// Müşteri ödemesi tipi (vize ödemeleri)
+export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];
