@@ -88,3 +88,22 @@ export const isValidTc = (tc) => {
   const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
 };
+
+// Kur çevirisi (TCMB TL kurlarıyla çapraz): 1 birim `sale` para birimi kaç birim `pay` eder. Bilinmiyorsa 0.
+// rates: { EUR: 50.1, USD: 43.2, ... } (1 birim yabancı para = ? TL — /.netlify/functions/kur)
+const CUR_CODE = { '€': 'EUR', '$': 'USD', '£': 'GBP', '₺': 'TRY' };
+export const crossRate = (pay, sale, rates) => {
+  if (pay === sale) return 1;
+  const tl = (c) => (c === '₺' ? 1 : (rates?.[CUR_CODE[c]] || 0));
+  const a = tl(sale), b = tl(pay);
+  return a && b ? a / b : 0;
+};
+// Ödemelerin satış para birimindeki toplamı: ödemede elle girilen kur (o.rate) önce, yoksa günün kuru.
+// unknown: kuru bulunamayan ödeme var mı (o zaman toplam eksik olabilir)
+export const paidInSale = (list, saleCur, rates) => (list || []).reduce((acc, o) => {
+  const a = parseFloat(o.amount) || 0;
+  if (!a) return acc;
+  const r = parseFloat(String(o.rate || '').replace(',', '.')) || crossRate(o.currency || saleCur, saleCur, rates);
+  if (!r) return { ...acc, unknown: true };
+  return { ...acc, total: acc.total + a / r };
+}, { total: 0, unknown: false });

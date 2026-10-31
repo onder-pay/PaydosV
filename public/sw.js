@@ -34,6 +34,8 @@ self.addEventListener('fetch', (e) => {
   // Firebase / Google / harici API çağrılarına dokunma — hep ağdan gitsin
   if (url.origin !== self.location.origin) return;
   if (/firestore|googleapis|firebaseio|identitytoolkit|gstatic/.test(url.hostname)) return;
+  // Sunucu fonksiyonları (kur, mail, AI…) önbelleğe alınmaz — her zaman güncel cevap
+  if (url.pathname.startsWith('/.netlify/')) return;
 
   // Sayfa gezinmesi: önce ağ, olmazsa önbellekten index.html (SPA)
   if (request.mode === 'navigate') {
