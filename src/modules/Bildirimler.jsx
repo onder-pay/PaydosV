@@ -1,8 +1,9 @@
+// 🔔 Bildirimler modülü (Web Push: tur/müşteri linkine abone olan telefonlara bildirim)
 import { auth } from '../lib/firebase.js';
 import { formatDate, safeParseDate, safeParseJSON, safeParseObj } from '../lib/format.js';
 import { trHas } from '../lib/turkish.js';
 import { useEffect, useMemo, useState } from 'react';
-// 🔔 Bildirimler modülü (Web Push: tur/müşteri linkine abone olan telefonlara bildirim)
+
 
 // ===== 📣 Bildirimler: müşteri linkinden bildirime izin verenlere mesaj =====
 // Sunucu: Firebase fonksiyonu "bildirim" (telegram-bot/functions/bildirim.js). Kampanya mesajı sadece kampanya

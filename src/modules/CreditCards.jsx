@@ -1,6 +1,7 @@
+// CreditCards modülü
 import { normalizeTr, trUpper } from '../lib/turkish.js';
 import { useState } from 'react';
-// CreditCards modülü
+
 
 // KREDİ KARTLARI MODÜLÜ
 export function CreditCardsModule({ creditCards, setCreditCards, isMobile, showToast, addToUndo }) {

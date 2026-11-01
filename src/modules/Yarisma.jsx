@@ -1,9 +1,10 @@
+// 🏆 Tur yarışması (canlı bilgi yarışması) penceresi
 import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { useEffect, useRef, useState } from 'react';
 import { cityKey, tourCities } from '../lib/tourcity.js';
 import { claudeRequest } from '../lib/api.js';
-// 🏆 Tur yarışması (canlı bilgi yarışması) penceresi
+
 
 // ===== 🏆 Tur bilgi yarışması (canlı) =====
 // Rehber CRM'den yönetir; yolcular tur linkinden (/b/<kod>) katılır ve cevaplar. Firestore:

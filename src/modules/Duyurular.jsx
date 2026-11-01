@@ -1,9 +1,10 @@
+// 📢 Duyurular modülü (tur/müşteri linklerinde görünen duyurular)
 import { collection, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, waUrl } from '../lib/format.js';
 import { titleCaseTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
-// 📢 Duyurular modülü (tur/müşteri linklerinde görünen duyurular)
+
 
 // ===== 📢 Duyurular: müşteri ve tur linklerinde görünen görselli pano =====
 // Firestore duyurular/<id> (herkes okur, CRM yazar) · görsel Storage duyurular/<id>.jpg (1600px'e küçültülür).

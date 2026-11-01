@@ -1,7 +1,8 @@
+// Sunucu çağrıları: Claude proxy, mail gönderimi (oturum jetonuyla), işlem logu
 import { auth, db } from './firebase.js';
 import { doc, setDoc } from 'firebase/firestore';
 import { generateUniqueId } from './format.js';
-// Sunucu çağrıları: Claude proxy, mail gönderimi (oturum jetonuyla), işlem logu
+
 
 // send-mail fonksiyonunu çağırır. Firebase oturum jetonu (ID token) gönderilir;
 // sunucu jetonu doğrulamadan mail atmaz (aksi halde fonksiyon herkese açık bir spam rölesi olur).

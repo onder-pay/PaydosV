@@ -1,7 +1,8 @@
+// ActivityLog modülü
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
 import { useEffect, useState } from 'react';
-// ActivityLog modülü
+
 
 export function ActivityLogModule({ isMobile, showToast, currentUser }) {
   const [logs, setLogs] = useState([]);
