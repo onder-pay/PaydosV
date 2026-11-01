@@ -13,7 +13,12 @@ import { labelStyle, inputStyle, Toast } from './components/ui';
 import { TavsiyelerModal } from './components/shared';
 
 // Ekran modülleri ayrı dosyalarda ve ancak açılınca yüklenir (ilk açılış hafif kalsın)
-const lazyModule = (load, name) => lazy(() => load().then(m => ({ default: m[name] })));
+// Yeni sürüm yayınlanınca eski parça dosyaları silinir: açık sekmede modül yüklenemezse sayfa bir kez yenilenir
+const lazyModule = (load, name) => lazy(() => load().then(m => { try { sessionStorage.removeItem('paydos_chunk_reload_' + name); } catch (e) { /* yok */ } return { default: m[name] }; }).catch(err => {
+  let done = false; try { done = sessionStorage.getItem('paydos_chunk_reload_' + name) === '1'; sessionStorage.setItem('paydos_chunk_reload_' + name, '1'); } catch (e) { /* yok */ }
+  if (!done) { window.location.reload(); return new Promise(() => {}); }
+  throw err;
+}));
 const BankInfoModule = lazyModule(() => import('./modules/BankInfo'), 'BankInfoModule');
 const HotelsModule = lazyModule(() => import('./modules/Hotels'), 'HotelsModule');
 const ToursModule = lazyModule(() => import('./modules/Tours'), 'ToursModule');
