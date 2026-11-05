@@ -14,6 +14,7 @@ import { greenExemptIn, greenPassportStatus, passportValidityFor } from '../lib/
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { logActivity, mailHtml, sendMailRequest } from '../lib/api.js';
 import { nameForSave, normEmail, normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
+import { fetchFile, loadJSZip, passportImageOf, safeFileName, saveBlob } from '../lib/files.js';
 
 
 export function ToursModule({ tours, setTours, customers, setCustomers, visaApplications = [], isMobile, showToast, addToUndo, appSettings, onNavigateToCustomer, currentUser, initialTourId, onTourOpened, quickAction, onQuickActionDone, onGo, quotes = [] }) {
@@ -624,14 +625,34 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
     finally { setSzBusy(''); }
   };
 
-  const loadJSZip = () => new Promise((resolve, reject) => {
-    if (window.JSZip) return resolve(window.JSZip);
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    s.onload = () => resolve(window.JSZip);
-    s.onerror = () => reject(new Error('JSZip yüklenemedi'));
-    document.head.appendChild(s);
-  });
+  // 🛂 Turdaki yolcuların pasaport görselleri tek ZIP: "01_Ad_Soyad.jpg" (rezervasyon sırasıyla)
+  const [ppBusy, setPpBusy] = useState(false);
+  const bulkPassports = async (tour) => {
+    const list = (tour.reservations || []).filter(r => !r.cancelled);
+    if (!list.length) { showToast('Katılımcı yok', 'warning'); return; }
+    const custOf = (r) => customers.find(c => String(c.id) === String(r.customerId) || (c._docId && c._docId === String(r.customerId)))
+      || customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(r.customerName || ''));
+    const rows = list.map(r => ({ r, img: passportImageOf(custOf(r)) }));
+    const missing = rows.filter(x => !x.img).map(x => titleCaseTr(x.r.customerName || '?'));
+    const todo = rows.filter(x => x.img);
+    if (!todo.length) { showToast('Bu turda pasaport görseli olan yolcu yok', 'warning'); return; }
+    setPpBusy(true);
+    try {
+      const JSZip = await loadJSZip();
+      const zip = new JSZip();
+      let fail = [];
+      for (let i = 0; i < todo.length; i++) {
+        const { r, img } = todo[i];
+        showToast(`Pasaport ${i + 1}/${todo.length} indiriliyor...`, 'info');
+        try { const { blob, ext } = await fetchFile(img); zip.file(`${String(i + 1).padStart(2, '0')}_${safeFileName(titleCaseTr(r.customerName || 'yolcu'))}.${ext}`, blob); }
+        catch (e) { fail.push(titleCaseTr(r.customerName || '?')); }
+      }
+      saveBlob(await zip.generateAsync({ type: 'blob' }), `${safeFileName(tour.name || 'Tur')}_Pasaportlar.zip`);
+      const notes = [missing.length ? `${missing.length} kişinin görseli yok: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}` : '', fail.length ? `${fail.length} görsel indirilemedi: ${fail.slice(0, 5).join(', ')}` : ''].filter(Boolean).join(' · ');
+      showToast(`🛂 ${todo.length - fail.length} pasaport ZIP olarak indirildi${notes ? ' · ' + notes : ''}`, notes ? 'warning' : 'success');
+    } catch (e) { showToast('Pasaportlar indirilemedi: ' + e.message, 'error'); }
+    finally { setPpBusy(false); }
+  };
 
   const saveTour = () => {
     if (!formData.name || !formData.country || !formData.startDate || !formData.endDate) {
@@ -1667,6 +1688,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                   setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: unique } : t));
                   showToast(`${dup} mükerrer rezervasyon silindi`, 'success');
                 }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
+                <button onClick={() => bulkPassports(tour)} disabled={ppBusy} title="Turdaki yolcuların pasaport görselleri tek ZIP dosyası" style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', color: '#60a5fa', cursor: ppBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{ppBusy ? '⏳ Pasaportlar…' : '🛂 Pasaportları indir'}</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
                 <button onClick={() => openBulkMail(tour)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Toplu Mail</button>

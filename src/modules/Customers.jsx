@@ -12,6 +12,7 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { detectFlights, detectHotel, nameCheck, sameFlight } from '../lib/docparse.js';
 import { pdfFileText } from '../lib/pdf.js';
+import { passportImageOf, downloadUrl } from '../lib/files.js';
 
 
 export function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
@@ -1357,10 +1358,14 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                           <InfoBox label="Geçerlilik Tarihi" value={formatDate(p.expiryDate)} highlight={p.expiryDate && getDaysLeft(p.expiryDate) <= 180} />
                         </div>
                         {p.image && (
-                          <img src={p.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
-                            onError={onDocImgError}
-                            onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}` })}
-                            style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                          <div>
+                            <img src={p.image} alt="Pasaport ⚠️ görsel açılamadı — tekrar yükleyin"
+                              onError={onDocImgError}
+                              onClick={() => setImagePreview({ show: true, src: p.image, title: `Pasaport - ${p.passportNo}`, file: `${c.firstName || ''} ${c.lastName || ''} Pasaport ${p.passportNo || ''}` })}
+                              style={{ width: '100%', aspectRatio: '125/90', objectFit: 'cover', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)', cursor: 'zoom-in', display: 'block' }} />
+                            <button type="button" onClick={() => downloadUrl(p.image, `${c.firstName || ''} ${c.lastName || ''} Pasaport ${p.passportNo || ''}`).catch(e => showToast('İndirilemedi: ' + e.message, 'error'))}
+                              style={{ marginTop: '6px', width: '100%', padding: '7px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>⬇️ Pasaportu indir</button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2649,6 +2654,10 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
           <div style={{ maxWidth: '90%', maxHeight: '90%' }}>
             <p style={{ color: 'white', textAlign: 'center', marginBottom: '10px', fontSize: '14px' }}>{imagePreview.title}</p>
             <img src={imagePreview.src} alt={imagePreview.title} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: '8px' }} />
+            <div style={{ textAlign: 'center', marginTop: '10px' }}>
+              <button type="button" onClick={e => { e.stopPropagation(); downloadUrl(imagePreview.src, imagePreview.file || imagePreview.title || 'gorsel').catch(err => showToast('İndirilemedi: ' + err.message, 'error')); }}
+                style={{ padding: '8px 18px', background: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>⬇️ İndir</button>
+            </div>
             <p style={{ color: '#64748b', textAlign: 'center', marginTop: '10px', fontSize: '12px' }}>Kapatmak için tıklayın</p>
           </div>
         </div>
@@ -3211,14 +3220,6 @@ export const loadCompanies = async () => {
   if (!r.ok) throw new Error('Firma listesi yüklenemedi');
   _companyCache = await r.json();
   return _companyCache;
-};
-
-// Müşterinin en son pasaport görseli (Storage adresi ya da eski base64) — yoksa ''
-export const passportImageOf = (c) => {
-  const pp = safeParseJSON(c?.passports).filter(p => p && p.image && (/^https:\/\//.test(p.image) || /^data:image\//.test(p.image)));
-  if (!pp.length) return '';
-  pp.sort((a, b) => String(b.expiryDate || '').localeCompare(String(a.expiryDate || '')));
-  return pp[0].image;
 };
 
 // Müşteri linki PIN'i: müşteri ilk açılışta kendisi belirler, sunucu (Firebase fonksiyonu "belge") kartımıza linkPin olarak yazar.
