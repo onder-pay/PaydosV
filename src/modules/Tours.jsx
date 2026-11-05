@@ -627,8 +627,10 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
 
   // 🛂 Turdaki yolcuların pasaport görselleri tek ZIP: "01_Ad_Soyad.jpg" (rezervasyon sırasıyla)
   const [ppBusy, setPpBusy] = useState(false);
+  // Satır seçiliyse (ör. bir firmanın grubu) yalnız seçilenler, değilse turdaki herkes
   const bulkPassports = async (tour) => {
-    const list = (tour.reservations || []).filter(r => !r.cancelled);
+    const all = (tour.reservations || []).filter(r => !r.cancelled);
+    const list = selectedRes.length ? all.filter(r => selectedRes.includes(r.id)) : all;
     if (!list.length) { showToast('Katılımcı yok', 'warning'); return; }
     const custOf = (r) => customers.find(c => String(c.id) === String(r.customerId) || (c._docId && c._docId === String(r.customerId)))
       || customers.find(c => normalizeTr(`${c.firstName} ${c.lastName}`) === normalizeTr(r.customerName || ''));
@@ -647,7 +649,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
         try { const { blob, ext } = await fetchFile(img); zip.file(`${String(i + 1).padStart(2, '0')}_${safeFileName(titleCaseTr(r.customerName || 'yolcu'))}.${ext}`, blob); }
         catch (e) { fail.push(titleCaseTr(r.customerName || '?')); }
       }
-      saveBlob(await zip.generateAsync({ type: 'blob' }), `${safeFileName(tour.name || 'Tur')}_Pasaportlar.zip`);
+      saveBlob(await zip.generateAsync({ type: 'blob' }), `${safeFileName(tour.name || 'Tur')}_Pasaportlar${selectedRes.length ? `_${list.length}_kisi` : ''}.zip`);
       const notes = [missing.length ? `${missing.length} kişinin görseli yok: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}` : '', fail.length ? `${fail.length} görsel indirilemedi: ${fail.slice(0, 5).join(', ')}` : ''].filter(Boolean).join(' · ');
       showToast(`🛂 ${todo.length - fail.length} pasaport ZIP olarak indirildi${notes ? ' · ' + notes : ''}`, notes ? 'warning' : 'success');
     } catch (e) { showToast('Pasaportlar indirilemedi: ' + e.message, 'error'); }
@@ -1688,7 +1690,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                   setTours(prev => prev.map(t => t.id === tour.id ? { ...t, reservations: unique } : t));
                   showToast(`${dup} mükerrer rezervasyon silindi`, 'success');
                 }} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🧹 Tekrarları Temizle</button>
-                <button onClick={() => bulkPassports(tour)} disabled={ppBusy} title="Turdaki yolcuların pasaport görselleri tek ZIP dosyası" style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', color: '#60a5fa', cursor: ppBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{ppBusy ? '⏳ Pasaportlar…' : '🛂 Pasaportları indir'}</button>
+                <button onClick={() => bulkPassports(tour)} disabled={ppBusy} title="Turdaki yolcuların pasaport görselleri tek ZIP dosyası" style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', color: '#60a5fa', cursor: ppBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{ppBusy ? '⏳ Pasaportlar…' : selectedRes.length ? `🛂 Pasaportları indir (${selectedRes.length} seçili)` : '🛂 Pasaportları indir'}</button>
                 <button onClick={() => bulkContracts(tour)} disabled={!!szBusy} style={{ padding: '8px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '8px', color: '#818cf8', cursor: szBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{szBusy === 'bulk' ? '⏳ Hazırlanıyor...' : '📜 Tüm Sözleşmeler (ZIP)'}</button>
                 <button onClick={() => setDetailedView(prev => ({...prev, [tour.id]: !prev[tour.id]}))} style={{ padding: '8px 14px', background: detailedView[tour.id] ? 'rgba(59,130,246,0.28)' : 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>{detailedView[tour.id] ? '📋 Genel Liste' : '📑 Detaylı Liste'}</button>
                 <button onClick={() => openBulkMail(tour)} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Toplu Mail</button>
@@ -2108,6 +2110,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                           <span style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: '600' }}>{selectedRes.length} rezervasyon seçili</span>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button onClick={() => setSelectedRes([])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>Seçimi Temizle</button>
+                            <button onClick={() => bulkPassports(tour)} disabled={ppBusy} title="Seçili yolcuların pasaport görselleri tek ZIP" style={{ padding: '6px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px', color: '#60a5fa', cursor: ppBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>{ppBusy ? '⏳' : '🛂'} Pasaportlar ({selectedRes.length})</button>
                             <button onClick={() => openBulkMail(tour)} style={{ padding: '6px 14px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📧 Seçilenlere Mail ({selectedRes.length})</button>
                             <button onClick={() => bulkDeleteReservations(tour)} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Seçilenleri Sil ({selectedRes.length})</button>
                           </div>
