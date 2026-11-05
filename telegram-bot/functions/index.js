@@ -4,9 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
-// Kullanıcıya gösterilen tarih her yerde GG.AA.YYYY (kayıt YYYY-AA-GG kalır)
-const dmy = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : (d || ''); };
+const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -1199,6 +1197,12 @@ exports.telegramBot = functions
         // Telegram'a "aldım" bildir (spinner kapansın)
         await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id });
 
+        if (parts[0] === 'pp') {
+          try { await require('./pasaport').handleCallback({ db: cfg.db, token: T, chatId: cbChatId, parts }); }
+          catch (e) { console.error('[BOT] pasaport düğmesi:', e); await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Pasaport gönderilemedi: ' + e.message }); }
+          return res.status(200).send('OK');
+        }
+
         if (parts[0] === 'va') {
           const step = parts[1];
 
@@ -1420,6 +1424,19 @@ exports.telegramBot = functions
         if (!isGroup && (msg.photo || txt)) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText() });
         return res.status(200).send('OK');
       }
+    }
+    // ===== 🛂 /pasaport Ad Soyad · /turpasaport Tur adı — pasaport görselleri gruba (bkz. pasaport.js) =====
+    const ppm = msg && typeof msg.text === 'string' ? msg.text.trim().match(/^\/(pasaport|turpasaport)(?:@\w+)?(?:\s+([\s\S]*))?$/i) : null;
+    if (ppm) {
+      try {
+        const P = require('./pasaport');
+        const args = { db: cfg.db, token: T, chatId: msg.chat.id, query: (ppm[2] || '').trim(), replyTo: msg.message_id };
+        if (ppm[1].toLowerCase() === 'pasaport') await P.handlePasaport(args); else await P.handleTurPasaport(args);
+      } catch (e) {
+        console.error('[BOT] /pasaport hatası:', e);
+        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: '❌ Pasaport gönderilemedi: ' + e.message });
+      }
+      return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
     const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
