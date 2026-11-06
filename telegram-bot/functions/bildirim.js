@@ -15,7 +15,7 @@
 //   status {endpoint}        → bu cihaz abone mi, kampanya onayı var mı
 //   unsub {endpoint}         → aboneliği sil
 //   subtour {k, sub}         → tur linkinden abone ol (PIN'siz; tourId ile, kampanya yok)
-//   stats / send {tourId?} / log / auto → sadece CRM (Authorization: Bearer <Firebase ID token>)
+//   stats / send {tourId?, customerIds?, only?} / log / auto → sadece CRM (Authorization: Bearer <Firebase ID token>)
 //
 // Otomatik hatırlatma (bildirimOtomatik, her gün 10:00): bildirimi açık müşterinin Schengen/ABD vizesi
 // 60·30·7 gün, pasaportu 6 ay·3 ay kala bilgilendirme bildirimi. Tarihler müşteri kartından (linkte görünen
@@ -205,9 +205,11 @@ exports.bildirim = functions.region('europe-west1').https.onRequest(async (req, 
       if (!title || !body) return res.status(400).json({ error: 'Başlık ve mesaj gerekli' });
       const ids = Array.isArray(p.customerIds) ? new Set(p.customerIds.map(String)) : null;
       const tourId = p.tourId ? String(p.tourId) : '';
+      // only: 'customer' = yalnız müşteri linki (/m/) abonelikleri, 'tour' = yalnız tur linki (/b/) abonelikleri (duyuru hedefi)
+      const only = p.only === 'customer' || p.only === 'tour' ? p.only : '';
       const all = await subs.get();
       // Tur hedefi: tur linkinden abone olanlar + o turdaki müşterilerin müşteri linki abonelikleri
-      const inTarget = (x) => tourId ? (x.tourId === tourId || (ids && x.customerId && ids.has(x.customerId))) : (!ids || ids.has(x.customerId));
+      const inTarget = (x) => (!only || x.kind === only) && (tourId ? (x.tourId === tourId || (ids && x.customerId && ids.has(x.customerId))) : (!ids || ids.has(x.customerId)));
       const targets = all.docs.filter(s => { const x = s.data(); return inTarget(x) && (type !== 'kampanya' || x.marketing); });
       const { sent, failed, removed } = await pushTo(db, targets, (x) => ({ title, body, url: safeUrl(p.url, linkOf(x)), tag: type }));
       await db.collection('bildirim_log').add({ at: new Date().toISOString(), by: who, type, title, body, url: p.url || '', target: tourId ? `tur:${String(p.tourName || tourId).slice(0, 80)}` : ids ? ids.size : 'all', matched: targets.length, sent, failed, removed });

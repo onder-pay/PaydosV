@@ -42,3 +42,13 @@ export const logActivity = async (action, modul, detay, user, extra = {}) => {
     });
   } catch (e) { /* log yazımı akışı bozmaz */ }
 };
+
+// Web Push bildirim sunucusu (Firebase fonksiyonu bildirim.js) — CRM işlemleri giriş jetonuyla
+export const BILDIRIM_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
+export const bildirimCall = async (body) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  const r = await fetch(BILDIRIM_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+};

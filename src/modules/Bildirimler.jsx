@@ -3,21 +3,12 @@ import { auth } from '../lib/firebase.js';
 import { formatDate, safeParseDate, safeParseJSON, safeParseObj } from '../lib/format.js';
 import { trHas } from '../lib/turkish.js';
 import { useEffect, useMemo, useState } from 'react';
+import { bildirimCall } from '../lib/api.js';
 
 
 // ===== 📣 Bildirimler: müşteri linkinden bildirime izin verenlere mesaj =====
 // Sunucu: Firebase fonksiyonu "bildirim" (telegram-bot/functions/bildirim.js). Kampanya mesajı sadece kampanya
 // onayı verenlere gider — bu kural sunucuda; buradaki sayılar sadece önizleme.
-export const BILDIRIM_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
-
-export const bildirimCall = async (body) => {
-  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
-  const r = await fetch(BILDIRIM_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-  return j;
-};
-
 export const custKey = (c) => c._docId || String(c.id);
 
 export const daysUntil = (ymd) => { const d = safeParseDate(ymd); return d ? Math.ceil((d - new Date()) / 86400000) : null; };

@@ -4,6 +4,7 @@ import { db } from '../lib/firebase.js';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, waUrl } from '../lib/format.js';
 import { titleCaseTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
+import { bildirimCall } from '../lib/api.js';
 
 
 // ===== 📢 Duyurular: müşteri ve tur linklerinde görünen görselli pano =====
@@ -26,7 +27,7 @@ export const shrinkImage = (file, max = 1600) => new Promise((ok, no) => {
 // scope: 'customer' (müşteri linkleri) · 'tours' (tüm tur linkleri) · 'onetour' (fixedTour) · yoksa hepsi
 export function DuyurularModule({ tours = [], showToast, isMobile, currentUser, scope, fixedTour, embedded }) {
   const defTarget = scope === 'customer' ? 'customer' : scope === 'tours' ? 'tour' : scope === 'onetour' ? 'onetour' : 'all';
-  const empty = { title: '', text: '', link: '', target: defTarget, tourId: fixedTour ? String(fixedTour.id) : '', start: '', end: '', active: true };
+  const empty = { title: '', text: '', link: '', target: defTarget, tourId: fixedTour ? String(fixedTour.id) : '', start: '', end: '', active: true, push: true };
   const inScope = (d) => !scope || (scope === 'customer' ? ['customer', 'all'].includes(d.target) : scope === 'tours' ? ['tour', 'all'].includes(d.target) : d.target === 'onetour' && String(d.tourId) === String(fixedTour?.id));
   const [list, setList] = useState(null);
   const [form, setForm] = useState(null); // düzenlenen duyuru
@@ -80,7 +81,19 @@ export function DuyurularModule({ tours = [], showToast, isMobile, currentUser, 
       // Görsel değiştiyse eskisini sil
       if (file && form.imagePath && form.imagePath !== imagePath) { try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), form.imagePath)); } catch (e) { /* yok */ } }
       const where = form.target === 'customer' ? 'müşteri linklerine' : form.target === 'all' ? 'müşteri ve tur linklerine' : tour ? `${tour.name} tur linklerine` : 'bütün tur linklerine';
-      showToast?.(`📢 Duyuru ${where} gönderildi`, 'success');
+      // 📲 Bildirim izni veren telefonlara "yeni duyuru" bildirimi (duyurunun hedefiyle aynı kişiler). Başlangıcı ileri tarihliyse gönderilmez.
+      let pushNote = '';
+      const today = new Date().toISOString().slice(0, 10);
+      if (form.push && form.active && (!form.start || form.start <= today) && (!form.end || form.end >= today)) {
+        try {
+          const tgt = form.target === 'onetour' && tour ? { tourId: String(tour.id), tourName: tour.name || '', customerIds: (tour.reservations || []).filter(r => !r.cancelled && r.customerId).map(r => String(r.customerId)) }
+            : form.target === 'customer' ? { only: 'customer' } : form.target === 'tour' ? { only: 'tour' } : {};
+          const r = await bildirimCall({ a: 'send', type: 'bilgi', title: (form.title.trim() || '📢 Yeni duyuru').slice(0, 80),
+            body: (form.text.trim() || "Paydos Turizm'den yeni bir duyurunuz var. Görmek için dokunun.").slice(0, 300), url: '', ...tgt });
+          pushNote = ` · 📲 ${r.sent || 0} telefona bildirim gitti`;
+        } catch (e) { pushNote = ` · ⚠️ bildirim gönderilemedi: ${e.message}`; }
+      } else if (form.push && form.active && form.start > today) pushNote = ' · 📲 bildirim gönderilmedi (başlangıç ileri tarihli)';
+      showToast?.(`📢 Duyuru ${where} gönderildi${pushNote}`, pushNote.includes('⚠️') ? 'warning' : 'success');
       setForm(null); setFile(null); setPreview(''); load();
     } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
     setBusy(false);
@@ -144,6 +157,7 @@ export function DuyurularModule({ tours = [], showToast, isMobile, currentUser, 
               <div><label style={lbl}>Bitiş</label><input type="date" value={form.end} onChange={e => upd({ end: e.target.value })} style={inp} /></div>
             </div>
             <label style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', fontSize: '13px' }}><input type="checkbox" checked={form.active} onChange={e => upd({ active: e.target.checked })} /> Yayında</label>
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', fontSize: '13px' }}><input type="checkbox" checked={!!form.push} onChange={e => upd({ push: e.target.checked })} /> 📲 Bildirim izni veren telefonlara da gönder</label>
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
               <button onClick={save} disabled={busy} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 700, color: '#fff', background: '#10b981', opacity: busy ? 0.6 : 1 }}>{busy ? 'Kaydediliyor…' : '💾 Kaydet'}</button>
               <button onClick={() => { setForm(null); setFile(null); setPreview(''); }} style={{ padding: '12px 18px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer' }}>Vazgeç</button>
@@ -204,7 +218,7 @@ export function DuyurularModule({ tours = [], showToast, isMobile, currentUser, 
                   );
                 })()}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                  <button onClick={() => { setForm({ ...empty, ...d }); setFile(null); setPreview(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
+                  <button onClick={() => { setForm({ ...empty, ...d, push: false }); setFile(null); setPreview(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>✏️ Düzenle</button>
                   <button onClick={() => toggle(d)} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'none', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>{d.active ? '⏸ Kapat' : '▶ Yayınla'}</button>
                   <button onClick={() => remove(d)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.35)', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑</button>
                 </div>
