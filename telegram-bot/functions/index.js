@@ -1169,6 +1169,26 @@ const botAccess = (settings, chatId) => {
 };
 const denyText = () => 'ℹ️ Bu bot yalnız Paydos vize grubunda çalışır. Pasaport ve vizeleri gruba gönderin.';
 
+// 📋 Telegram "Menü" düğmesindeki komut listesi (izinli sohbete, sürüm değişince bir kez kaydedilir)
+const BOT_COMMANDS_VER = 1;
+const BOT_COMMANDS = [
+  { command: 'pasaport', description: 'Müşterinin pasaport görseli — ör. /pasaport önder taşçı' },
+  { command: 'turpasaport', description: 'Turdaki herkesin pasaportu — ör. /turpasaport canton' },
+  { command: 'bugun', description: 'Bugün iDATA/VFS başvurusu yapılacaklar' },
+  { command: 'atama', description: 'Atama bekleyen başvurular' },
+  { command: 'yardim', description: 'Bot nasıl kullanılır' },
+];
+const HELP_TEXT = [
+  '🤖 Paydos vize botu',
+  '',
+  '📷 Pasaport, kimlik, Schengen/ABD vizesi fotoğrafını gruba atın → okunur, CRM\'de müşteriye kaydedilir.',
+  '',
+  '/pasaport Ad Soyad — pasaport görseli dosya olarak gelir (adın başı yeter: /pasaport ond taş)',
+  '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
+  '/bugun — bugün iDATA/VFS başvurusu yapılacaklar',
+  '/atama — atama bekleyen başvurular',
+].join('\n');
+
 // ========== WEBHOOK ==========
 exports.telegramBot = functions
   .region('europe-west1')
@@ -1422,6 +1442,20 @@ exports.telegramBot = functions
         console.log('[BOT] grup dışı mesaj yok sayıldı:', 'chat:' + msg.chat.id, 'type:' + msg.chat.type, 'user:' + (msg.from?.id || '-'));
         // Özelden yazana bir kez yol göster; yabancı gruplarda sessiz kal
         if (!isGroup && (msg.photo || txt)) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText() });
+        return res.status(200).send('OK');
+      }
+      // Menü komutlarını bu sohbete kaydet (sürüm başına bir kez; hata akışı bozmaz)
+      if (acc.ok) {
+        const done = (settingsMsg.botCommands || {})[String(msg.chat.id)];
+        if (done !== BOT_COMMANDS_VER) {
+          try {
+            const r = await tg(T, 'setMyCommands', { commands: BOT_COMMANDS, scope: { type: 'chat', chat_id: msg.chat.id } });
+            if (r.ok) await cfg.db.collection('app_settings').doc('main').set({ botCommands: { [String(msg.chat.id)]: BOT_COMMANDS_VER } }, { merge: true });
+          } catch (e) { console.warn('[BOT] setMyCommands:', e.message); }
+        }
+      }
+      if (acc.ok && /^\/(yardim|help|start)(@\w+)?$/.test(normTr(txt))) { // normTr: /YARDIM, /Yardım da olur
+        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: HELP_TEXT });
         return res.status(200).send('OK');
       }
     }
