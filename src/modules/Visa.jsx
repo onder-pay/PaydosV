@@ -13,7 +13,7 @@ import { normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
 
 
-export function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onNavigateHome, appSettings, setAppSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
+export function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onOpenCustomer, onNavigateHome, appSettings, setAppSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
@@ -987,7 +987,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
           <div>
             <div style={{ background: 'rgba(245,158,11,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid rgba(245,158,11,0.2)' }}>
               <p style={{ margin: 0, fontSize: '13px', color: '#f59e0b' }}>📋 Adım 2/4: Kontrol Listesi</p>
-              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{selectedCustomer.firstName} {selectedCustomer.lastName}</strong></p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <CustLink c={selectedCustomer} onOpen={onOpenCustomer}>{selectedCustomer.firstName} {selectedCustomer.lastName}</CustLink></p>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1033,7 +1033,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
           <div>
             <div style={{ background: 'rgba(139,92,246,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid rgba(139,92,246,0.2)' }}>
               <p style={{ margin: 0, fontSize: '13px', color: '#8b5cf6' }}>📋 Adım 3/4: Vize Türü Seçimi</p>
-              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{selectedCustomer?.firstName} {selectedCustomer?.lastName}</strong></p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <CustLink c={selectedCustomer} onOpen={onOpenCustomer}>{selectedCustomer?.firstName} {selectedCustomer?.lastName}</CustLink></p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
@@ -1074,7 +1074,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 return (<>
                   <div id="visa-relink" style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {linked
-                      ? <span>Müşteri: <strong style={{ color: '#fff' }}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</strong>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
+                      ? <span>Müşteri: <CustLink c={linked} onOpen={onOpenCustomer}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</CustLink>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
                   </div>
                   {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
@@ -2126,3 +2126,12 @@ export const visaFutureDate = (v) => {
 // ===== Vizeci iş listesi: başvuru girildiği günün ertesi iş günü (cumartesi/pazar atlanır) sabah 10:00'da işlenir.
 // İleri tarihte yapılması gereken başvurularda "İşlem tarihi" elle ileri alınır; o güne kadar listede görünmez.
 export const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Müşteri adı: dokununca müşteri kartı vize ekranının üstünde açılır (Geri → vize ekranına dönülür)
+function CustLink({ c, onOpen, children }) {
+  if (!c || !onOpen) return <strong style={{ color: '#fff' }}>{children}</strong>;
+  return (
+    <strong role="button" tabIndex={0} title="Müşteri kartını aç" onClick={() => onOpen(c.id)} onKeyDown={e => { if (e.key === 'Enter') onOpen(c.id); }}
+      style={{ color: '#fff', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(255,255,255,0.4)', textUnderlineOffset: '3px' }}>{children} ↗</strong>
+  );
+}

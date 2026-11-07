@@ -190,6 +190,7 @@ function AppInner() {
   };
   const navigateBack = () => { if (prevModule) { setActiveModule(prevModule); setPrevModule(null); } else setActiveModule('dashboard'); };
   const [openCustomerId, setOpenCustomerId] = useState(null); // dashboard'dan müşteriye git
+  const [custOverlay, setCustOverlay] = useState(null); // başka ekranın üstünde açılan müşteri kartı (Geri ile o ekrana dönülür)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Yeni sürüm kontrolü: CRM sekmesi gün boyu açık kalınca deploy sonrası eski kodla çalışmaya devam ediyordu
@@ -876,7 +877,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
     switch (activeModule) {
       case 'dashboard': return <DashboardModule customers={customers} setCustomers={setCustomers} appSettings={appSettings} showToast={showToast} isMobile={isMobile} currentUser={currentUser} onGo={goAction} onNavigate={(customer) => { setOpenCustomerId(customer.id); setActiveModule('customers'); }} />;
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
-      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
+      case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onOpenCustomer={setCustOverlay} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...qa('tours')} />;
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
@@ -923,6 +924,15 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       <main style={{ marginLeft: isMobile ? 0 : '260px', minHeight: '100vh' }}>
         {isMobile && <header style={{ position: 'sticky', top: 0, background: 'rgba(12,25,41,0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}><button onClick={() => setSidebarOpen(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px 12px', color: '#e8f1f8', cursor: 'pointer', fontSize: '18px' }}>☰</button><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>✈️</span><span style={{ fontWeight: '700' }}>Paydos</span></div><button onClick={refreshAllData} disabled={refreshing} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px', width: '40px' }}>{refreshing ? '⏳' : '🔄'}</button></header>}
         <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Yükleniyor…</div>}>{renderModule()}</Suspense>
+        {/* Müşteri kartı katmanı: alttaki ekran (ör. yarım kalmış vize formu) kapanmadan açılır */}
+        {custOverlay != null && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 900, overflowY: 'auto', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 100%)' }}>
+            <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Yükleniyor…</div>}>
+              <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings}
+                openCustomerId={custOverlay} onOpenCustomerHandled={() => {}} onBack={() => setCustOverlay(null)} currentUser={currentUser} onGo={(mod, act) => { setCustOverlay(null); goAction(mod, act); }} />
+            </Suspense>
+          </div>
+        )}
       </main>
     </div>
   );
