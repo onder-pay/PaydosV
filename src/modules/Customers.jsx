@@ -1,6 +1,6 @@
 // 👥 Müşteriler modülü
 import { BirthDateInput, DateInput, FormInput, InfoBox, Modal, inputStyle, labelStyle, onDocImgError, selectStyle, TravelCheckBox } from '../components/ui';
-import { BulkDocInbox, visaAppBelongsTo, CUST_DOC_TYPES, customerLinkSlug, docTypeOf, publishCustomerLink, pdfUrlText } from '../components/shared';
+import { BulkDocInbox, visaAppBelongsTo, CUST_DOC_TYPES, customerLinkSlug, docTypeOf, publishCustomerLink, pdfUrlText, FingerprintBox } from '../components/shared';
 import { XLSX } from '../lib/heavy.js';
 import { canonPassportType, isoToCountry, passportTypes, placeTr, schengenCountries, turkishProvinces, tourCountries } from '../lib/data.js';
 import { claudeRequest, logActivity } from '../lib/api.js';
@@ -1388,6 +1388,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
           {/* SCHENGEN */}
           {detailTab === 'schengen' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <FingerprintBox c={customers.find(x => x.id === c.id) || c} showToast={showToast} />
               {hasGreenPassport ? (
                 <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', margin: '0 auto 16px' }}>✓</div>

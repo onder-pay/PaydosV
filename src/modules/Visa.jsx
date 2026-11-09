@@ -1,7 +1,7 @@
 // 🌍 Vize modülü
 import { LoadingButton, inputStyle, selectStyle } from '../components/ui';
 import { PAYMENT_METHODS, VIZE_DURUM } from '../lib/data.js';
-import { VISA_COST_CATEGORIES, getVisaCostItems, sendVisaEmail, visaAppBelongsTo } from '../components/shared';
+import { VISA_COST_CATEGORIES, getVisaCostItems, sendVisaEmail, visaAppBelongsTo, FingerprintBox } from '../components/shared';
 import { XLSX } from '../lib/heavy.js';
 import { db } from '../lib/firebase.js';
 import { deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
@@ -11,6 +11,7 @@ import { htmlToPdfDownload } from '../lib/pdf.js';
 import { logActivity } from '../lib/api.js';
 import { normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
+import { fingerprintStatus } from '../lib/travel.js';
 
 
 export function VisaModule({ customers, visaApplications, setVisaApplications, isMobile, onNavigateToCustomers, onOpenCustomer, onNavigateHome, appSettings, setAppSettings, showToast, addToUndo, creditCards, currentUser, quickAction, onQuickActionDone }) {
@@ -1077,6 +1078,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       ? <span>Müşteri: <CustLink c={linked} onOpen={onOpenCustomer}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</CustLink>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
                   </div>
+                  {linked && selectedCategory?.id === 'schengen' && <FingerprintBox c={linked} showToast={showToast} compact />}
                   {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
                   {!linked && (
                     <div style={{ marginTop: '10px' }}>
@@ -1837,6 +1839,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       <span style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', background: `${getStatusColor(v.status)}20`, color: getStatusColor(v.status) }}>{v.status}</span>
                       {isCancelStatus(v.status) && v.cancelReason && <span title={v.cancelReason} style={{ fontSize: '10px', color: '#94a3b8', maxWidth: '150px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sebep: {v.cancelReason}</span>}
                       {v.paymentStatus && <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: v.paymentStatus === 'Ödendi' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: v.paymentStatus === 'Ödendi' ? '#10b981' : '#ef4444' }}>{v.paymentStatus}</span>}
+                      {(v.categoryId || v.category) === 'schengen' && (() => { const fp = fingerprintStatus(findVisaCust(v.customerId)); if (fp.state === 'unknown') return null;
+                        const [t, col] = fp.state === 'valid' ? [`🖐️ PI ✓ ${formatDate(fp.until).slice(3)}`, fp.daysLeft < 183 ? '#f59e0b' : '#10b981'] : fp.state === 'expired' ? ['🖐️ PI doldu', '#ef4444'] : fp.state === 'none' ? ['🖐️ PI yok', '#ef4444'] : ['🖐️ PI var', '#f59e0b'];
+                        return <span title={`Parmak izi${fp.date ? ` · verildi ${formatDate(fp.date)} · son geçerlilik ${formatDate(fp.until)}` : ''}`} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: `${col}22`, color: col }}>{t}</span>; })()}
                     </div>
                   </div>
                 </div>

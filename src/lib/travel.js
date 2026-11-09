@@ -121,3 +121,26 @@ export const travelCheck = (c, trip = {}) => {
 export const TC_ICON = { ok: '✅', warn: '⚠️', err: '❌', info: 'ℹ️' };
 
 export const TC_COLOR = { ok: '#10b981', warn: '#f59e0b', err: '#ef4444', info: '#94a3b8' };
+
+// 🖐️ Schengen parmak izi (biyometri): verildiği tarihten itibaren 59 ay geçerli; bu sürede yeni başvuruda tekrar alınmaz.
+// Müşteri kaydında: fingerprint 'var' | 'yok', fingerprintDate 'YYYY-AA-GG'.
+export const FINGERPRINT_MONTHS = 59;
+export const fingerprintStatus = (c) => {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(String(c?.fingerprintDate || '')) ? c.fingerprintDate : '';
+  if (!d) return { state: c?.fingerprint === 'yok' ? 'none' : c?.fingerprint === 'var' ? 'nodate' : 'unknown' };
+  const [y, m, dd] = d.split('-').map(Number);
+  const u = new Date(y, m - 1 + FINGERPRINT_MONTHS, dd);
+  const until = `${u.getFullYear()}-${String(u.getMonth() + 1).padStart(2, '0')}-${String(u.getDate()).padStart(2, '0')}`;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const daysLeft = Math.round((u - t) / 86400000);
+  return { state: daysLeft > 0 ? 'valid' : 'expired', date: d, until, daysLeft };
+};
+// Kısa yazı + renk (liste rozeti ve kutu başlığı)
+export const fingerprintLabel = (c) => {
+  const f = fingerprintStatus(c);
+  if (f.state === 'valid') return { f, color: f.daysLeft < 183 ? '#f59e0b' : '#10b981', text: `🖐️ Parmak izi var · son geçerlilik ${formatDate(f.until)}` };
+  if (f.state === 'expired') return { f, color: '#ef4444', text: `🖐️ Parmak izi süresi doldu (${formatDate(f.until)}) — randevuda yeniden alınır` };
+  if (f.state === 'nodate') return { f, color: '#f59e0b', text: '🖐️ Parmak izi var · verildiği tarih girilmemiş' };
+  if (f.state === 'none') return { f, color: '#ef4444', text: '🖐️ Parmak izi yok — randevuda alınacak' };
+  return { f, color: '#64748b', text: '🖐️ Parmak izi bilgisi girilmemiş' };
+};

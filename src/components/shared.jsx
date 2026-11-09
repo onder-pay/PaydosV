@@ -12,6 +12,7 @@ import { mailHtml, sendMailRequest } from '../lib/api.js';
 import { DEFAULT_BANK } from '../lib/banks.js';
 import { SOZLESME_SABIT, VIZE_DURUM } from '../lib/data.js';
 import { jsPDF } from '../lib/heavy.js';
+import { FINGERPRINT_MONTHS, fingerprintLabel } from '../lib/travel.js';
 
 
 export function TavsiyelerModal({ onClose, showToast, isMobile, currentUser, focusCity, asPage }) {
@@ -1001,3 +1002,35 @@ export const resPax = (r) => {
 // Uçak bileti fiyatı KİŞİ BAŞI girilir → odadaki kişi sayısıyla çarpılır (Twin 2 kişi: 400 € × 2). Transfer araç başı (toplam).
 // Kişi sayısı: yazılan oda arkadaşları → "Kişi Sayısı" alanı → oda tipi (Twin/Double 2, Triple 3); eski kayıtlarda alan 1 kalmış olabilir
 export const roomTypePax = (rt) => { const t = normalizeTr(rt); return /single|tek ki/.test(t) ? 1 : /triple|uclu|3 ki/.test(t) ? 3 : /quad|dortlu|4 ki/.test(t) ? 4 : 2; };
+
+// 🖐️ Parmak izi kutusu (müşteri kartı Schengen sekmesi + Schengen vize formu): Var/Yok + verildiği tarih, 59 ay geçerlilik.
+// Müşteri kaydına doğrudan yazar (customers/<doc>); liste dinleyicisi ekranı günceller.
+export function FingerprintBox({ c, showToast, compact }) {
+  const [busy, setBusy] = useState(false);
+  if (!c) return null;
+  const { f, color, text } = fingerprintLabel(c);
+  const save = async (patch) => {
+    setBusy(true);
+    try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { ...patch, updatedAt: new Date().toISOString() }, { merge: true }); showToast?.('🖐️ Parmak izi bilgisi kaydedildi', 'success'); }
+    catch (e) { showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    setBusy(false);
+  };
+  const on = c.fingerprint === 'var' || !!f.date;
+  const btn = (act, col) => ({ padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${act ? col : 'rgba(255,255,255,0.15)'}`, background: act ? `${col}22` : 'rgba(255,255,255,0.04)', color: act ? col : '#94a3b8' });
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${color}55`, borderRadius: compact ? '10px' : '14px', padding: compact ? '10px 12px' : '14px 16px', marginTop: compact ? '10px' : 0 }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, color }}>{text}</div>
+      {f.state === 'valid' && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Verildi {formatDate(f.date)} · {FINGERPRINT_MONTHS} ay geçerli · {f.daysLeft > 60 ? `${Math.floor(f.daysLeft / 30)} ay kaldı` : `${f.daysLeft} gün kaldı`}</div>}
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' }}>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>Parmak izi:</span>
+        <button type="button" disabled={busy} onClick={() => save({ fingerprint: 'var' })} style={btn(on, '#10b981')}>Var</button>
+        <button type="button" disabled={busy} onClick={() => save({ fingerprint: 'yok', fingerprintDate: '' })} style={btn(c.fingerprint === 'yok' && !f.date, '#ef4444')}>Yok</button>
+        {on && <>
+          <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '6px' }}>Verildiği tarih:</span>
+          <input type="date" defaultValue={f.date || ''} key={f.date || 'bos'} disabled={busy} onBlur={e => { const v = e.target.value; if (v !== (f.date || '') && /^(19|20)\d{2}-\d{2}-\d{2}$/.test(v) && v <= new Date().toISOString().slice(0, 10)) save({ fingerprint: 'var', fingerprintDate: v }); }}
+            style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
+        </>}
+      </div>
+    </div>
+  );
+}
