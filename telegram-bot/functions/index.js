@@ -900,7 +900,21 @@ const saveResidence = async (db, custs, json, img) => {
   if (json.lastName) json.lastName = cleanInvalidName(json.lastName);
   let matches = custs.filter(c => namesMatch(`${json.firstName} ${json.lastName}`, `${c.firstName || ''} ${c.lastName || ''}`));
   if (matches.length > 1 && json.birthDate) { const b = matches.filter(c => c.birthDate === json.birthDate); if (b.length) matches = b; }
-  if (!matches.length) return `⚠️ "${json.firstName} ${json.lastName}" bulunamadı!\nÖnce pasaportu yükleyin ya da müşteriyi CRM'de açın.`;
+  const newRp = async () => ({ id: genId(), country: json.country || '', permitNo: json.permitNo || '', category: json.category || '',
+    issueDate: json.issueDate || '', expiryDate: json.expiryDate || '', image: await toStorage(img, 'oturma'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  if (!matches.length) {
+    // Kayıtlı değil: müşteri oturma izninden açılır (pasaport şart değil)
+    const [fn, ln] = namePairForSave(json.firstName || '', json.lastName || '');
+    if (!fn || !ln) return '⚠️ Kartta ad/soyad okunamadı — müşteri açılmadı. Fotoğrafı daha net çekip tekrar gönderin.';
+    const id = genId();
+    await db.collection('customers').doc(String(id)).set({
+      id, firstName: fn, lastName: ln, birthDate: json.birthDate || '', birthPlace: '', tcKimlik: '', gender: '',
+      phone: '', email: '', city: '', sector: '', companyName: '', notes: '', tkMemberNo: '', tags: '[]', activities: '[]',
+      passports: '[]', schengenVisas: '[]', usaVisa: '{}', residencePermits: JSON.stringify([await newRp()]), verified: false, createdBy: 'Telegram Bot (oturma izni)',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
+    return `✅ *Yeni müşteri* + oturma izni\n👤 ${fn} ${ln}${json.birthDate ? `\n🎂 ${dmy(json.birthDate)}` : ''}`;
+  }
   if (matches.length > 1) return `⚠️ "${json.firstName} ${json.lastName}" adında ${matches.length} müşteri var:\n${matches.map(m => `• ${m.firstName} ${m.lastName}${m.birthDate ? ` (${dmy(m.birthDate)})` : ''}`).join('\n')}\n\nAyırt edilemiyor — CRM'den elle ekleyin.`;
   const cust = matches[0];
   let list = []; try { list = JSON.parse(cust.residencePermits || '[]'); } catch {}

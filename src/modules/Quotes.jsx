@@ -9,7 +9,7 @@ import { jsPDF } from '../lib/heavy.js';
 import { normEmail, normalizeTr, titleCaseTr, trHas, trLower } from '../lib/turkish.js';
 import { placeTr, tourCountries } from '../lib/data.js';
 import { useEffect, useState } from 'react';
-import { TR_AYLAR, contractSure, genContractHTML, genOfferHTML, parseTrDate, refreshTourShareLinks, vizeSartiBul, hhmm, offerDateRange, offerDuration, offerLocation, trTarih } from '../components/shared';
+import { TR_AYLAR, contractSure, genContractHTML, genOfferHTML, parseTrDate, refreshTourShareLinks, vizeSartiBul, hhmm, offerDateRange, offerDuration, offerLocation, trTarih, TR_GUNLER } from '../components/shared';
 
 
 export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours, quickAction, onQuickActionDone }) {
@@ -100,13 +100,28 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
       const free = (d) => !(d.items || []).some(it => String(it.text || '').trim() && !it.auto);
       let changed = false;
       const next = days.map(d => ({ ...d }));
+      const strip = (its) => its.map(({ shift, ...x }) => x);
       [[p.flightOut, false, 0], [p.flightRet, true, days.length - 1]].forEach(([f, ret, fb]) => {
-        const k = dayFor(f, fb), items = flightAutoItems(f, ret);
-        if (k < 0 || !free(next[k]) || (ret && days.length < 2 && k === 0)) return;
-        const cur = (next[k].items || []).filter(it => String(it.text || '').trim());
-        if (!items.length && !cur.length) return;
-        if (JSON.stringify(cur) === JSON.stringify(items)) return;
-        next[k].items = items.length ? items : [{ time: '', text: '' }]; changed = true;
+        const all = flightAutoItems(f, ret);
+        if (!all.length) { // uçuş silindi: yalnız otomatik maddeleri olan gün temizlenir
+          const k0 = dayFor(f, fb);
+          if (k0 >= 0 && free(next[k0]) && (next[k0].items || []).some(it => it.auto && String(it.text || '').trim())) { next[k0].items = [{ time: '', text: '' }]; changed = true; }
+          return;
+        }
+        const maxShift = all.reduce((m, x) => Math.max(m, x.shift || 0), 0);
+        // Dönüşte ertesi güne sarkan uçuş varsa ve gün eşleşmesi yoksa: son gün = varış günü
+        let k = dayFor(f, ret ? Math.max(0, days.length - 1 - maxShift) : fb);
+        if (k < 0 || (ret && days.length < 2 && k === 0)) return;
+        // Her madde uçuş gününden "shift" gün sonraki güne (gün yoksa son güne)
+        const groups = new Map();
+        all.forEach(x => { const kk = Math.min(k + (x.shift || 0), next.length - 1); groups.set(kk, [...(groups.get(kk) || []), x]); });
+        groups.forEach((its, kk) => {
+          if (!free(next[kk])) return;
+          const items = strip(its);
+          const cur = (next[kk].items || []).filter(it => String(it.text || '').trim());
+          if (JSON.stringify(cur) === JSON.stringify(items)) return;
+          next[kk].items = items; changed = true;
+        });
       });
       return changed ? { ...p, days: next } : p;
     });
@@ -824,6 +839,13 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
       return new Date(yil, idx, +m[1]);
     };
     const dOut = trDate(fo.date), dRet = trDate(fr.date);
+    // Yazılan gün adı tarihle uyuşuyor mu ("21 Mart 2027 Cumartesi" → aslında Pazar)
+    [[fo.date, dOut, 'Gidiş'], [fr.date, dRet, 'Dönüş']].forEach(([txt, d, lab]) => {
+      if (!d) return;
+      const yazilan = TR_GUNLER.find(g => trHas(txt, g) && !(g === 'Pazar' && trHas(txt, 'Pazartesi')));
+      const gercek = TR_GUNLER[d.getDay()];
+      if (yazilan && yazilan !== gercek) w.push(`${lab} tarihi: ${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${d.getFullYear()} ${gercek} günüdür ("${yazilan}" yazılmış).`);
+    });
     if (dOut && dRet && dOut > dRet) w.push('Gidiş tarihi dönüşten sonra görünüyor — kontrol edin.');
     // Uçuş tarihleri seçilen tur aralığında mı?
     if (o.startDate && o.endDate) {
@@ -931,7 +953,16 @@ ${list}`;
   // ===== Tarihlere göre günleri otomatik oluştur =====
   const buildDaysFromDates = () => {
     if (!offer.startDate || !offer.endDate) { showToast?.('Önce başlangıç ve bitiş tarihi seçin', 'warning'); return; }
-    const a = new Date(offer.startDate + 'T00:00:00'), b = new Date(offer.endDate + 'T00:00:00');
+    const a = new Date(offer.startDate + 'T00:00:00');
+    let b = new Date(offer.endDate + 'T00:00:00');
+    // Dönüş uçuşu (+1) ya da gece aktarmasıyla ertesi gün iniyorsa son gün varış günüdür
+    const rp = parseTrDate(offer.flightRet?.date);
+    let extended = false;
+    if (rp) {
+      const shift = flightAutoItems(offer.flightRet, true).reduce((m, x) => Math.max(m, x.shift || 0), 0);
+      const arrive = new Date(rp.year ? rp.d.getFullYear() : a.getFullYear(), rp.d.getMonth(), rp.d.getDate() + shift);
+      if (arrive > b) { b = arrive; extended = true; }
+    }
     const n = Math.round((b - a) / 86400000);
     if (isNaN(n) || n < 0) { showToast?.('Tarihler hatalı', 'error'); return; }
     if (n > 30) { showToast?.('30 günden uzun tur için elle ekleyin', 'warning'); return; }
@@ -948,7 +979,7 @@ ${list}`;
       });
     }
     setOffer(p => ({ ...p, days }));
-    showToast?.(`${days.length} gün oluşturuldu`, 'success');
+    showToast?.(`${days.length} gün oluşturuldu${extended ? ' (dönüş uçuşu ertesi gün indiği için son gün eklendi)' : ''}`, 'success');
   };
 
   // ===== Tur teklifini kaydet (quotes listesine 'tur-teklifi' türünde) =====
@@ -1890,14 +1921,19 @@ export const flightAutoItems = (f, ret) => {
   const timeOf = (s) => { const m = hhmm(s); return m == null ? '' : hm(m); };
   const first = pt(legs[0].dep);
   const out = [];
-  if (ret) out.push({ time: '', text: 'Otelden çıkış ve havalimanına transfer.', auto: true });
-  out.push({ time: hm(hhmm(legs[0].dep) - 180), text: `${first.city || 'Havalimanı'}${first.iata ? ` (${first.iata})` : ''} havalimanında toplanma ve check-in işlemleri (uçuştan 3 saat önce).`, auto: true });
+  // shift: uçuş tarihinden kaç gün sonra (aktarma gece yarısını geçerse ya da varış (+1) ise ertesi güne düşer)
+  let shift = 0, prevArr = null;
+  if (ret) out.push({ time: '', text: 'Otelden çıkış ve havalimanına transfer.', auto: true, shift: 0 });
+  out.push({ time: hm(hhmm(legs[0].dep) - 180), text: `${first.city || 'Havalimanı'}${first.iata ? ` (${first.iata})` : ''} havalimanında toplanma ve check-in işlemleri (uçuştan 3 saat önce).`, auto: true, shift: 0 });
   legs.forEach((l, i) => {
-    const to = pt(l.arr), last = i === legs.length - 1;
-    out.push({ time: timeOf(l.dep), text: `${String(l.airline || '').trim() ? `${String(l.airline).trim()} ile ` : ''}${trDative(to.city) || 'varış noktasına'} uçuş.`, auto: true });
-    if (hhmm(l.arr) != null) out.push({ time: timeOf(l.arr), text: last ? `${trDative(to.city) || 'Varış noktasına'} varış.${ret ? ' Turumuzun sonu.' : ''}` : `${trDative(to.city)} varış, aktarma.`, auto: true });
+    const to = pt(l.arr), last = i === legs.length - 1, dep = hhmm(l.dep), arr = hhmm(l.arr);
+    if (prevArr != null && dep != null && dep < prevArr) shift++;
+    out.push({ time: timeOf(l.dep), text: `${String(l.airline || '').trim() ? `${String(l.airline).trim()} ile ` : ''}${trDative(to.city) || 'varış noktasına'} uçuş.`, auto: true, shift });
+    if (arr != null && (/\+\s?1/.test(String(l.arr)) || arr < dep)) shift++;
+    if (arr != null) out.push({ time: timeOf(l.arr), text: last ? `${trDative(to.city) || 'Varış noktasına'} varış.${ret ? ' Turumuzun sonu.' : ''}` : `${trDative(to.city)} varış, aktarma.`, auto: true, shift });
+    prevArr = arr;
   });
-  if (!ret) out.push({ time: '', text: 'Pasaport ve bagaj işlemlerinin ardından otele transfer.', auto: true });
+  if (!ret) out.push({ time: '', text: 'Pasaport ve bagaj işlemlerinin ardından otele transfer.', auto: true, shift });
   return out;
 };
 

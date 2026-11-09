@@ -759,7 +759,7 @@ export const parseTrDate = (s) => {
   if (m) return { d: new Date(+m[1], +m[2] - 1, +m[3]), iso: true };
   m = t.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
   if (m) return { d: new Date(+m[3], +m[2] - 1, +m[1]), iso: false, dotted: true };
-  m = t.match(/(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*(\d{4})?/);
+  m = t.match(/(\d{1,2})\s*([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*(\d{4})?/); // "21 Mart" ve "21Mart"
   if (m) {
     const mi = TR_AYLAR.findIndex(a => normalizeTr(a) === normalizeTr(m[2]));
     if (mi >= 0) return { d: new Date(m[3] ? +m[3] : new Date().getFullYear(), mi, +m[1]), iso: false, year: !!m[3], weekday: TR_GUNLER.some(g => trHas(t, g)) };
