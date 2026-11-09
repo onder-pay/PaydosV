@@ -1904,9 +1904,11 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                           });
 
                           // Geçerli vize yoksa: bu müşterinin son 12 aydaki Schengen/tur ülkesi başvurusu var mı?
-                          const appBadge = () => {
+                          // after: yalnız bu tarihten sonra açılan başvurular (ör. tur bitmeden biten vizenin yenilemesi)
+                          const appBadge = (after = '') => {
                             const lc = normalizeTr; // Türkçe karakter kuralı ("ITALYA" = "İtalya")
                             const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+                            const since = after && after > yearAgo ? after : yearAgo;
                             const app = (visaApplications || [])
                               .filter(a => visaAppBelongsTo(a, customer, customers))
                               .filter(a => {
@@ -1914,7 +1916,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                                 const txt = lc(`${a.country || ''} ${a.visaDuration || ''}`);
                                 return cat === 'schengen' || txt.includes(lc(tour.country)) || schengenCountries.some(c => txt.includes(lc(c)));
                               })
-                              .filter(a => String(a.createdAt || a.applicationDate || '9999').slice(0, 10) >= yearAgo)
+                              .filter(a => String(a.createdAt || a.applicationDate || '9999').slice(0, 10) >= since)
                               .sort((a, b) => String(b.createdAt || b.applicationDate || '').localeCompare(String(a.createdAt || a.applicationDate || '')))[0];
                             if (!app) return null;
                             const st = lc(app.status);
@@ -1939,6 +1941,11 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                             const visaExpiry = getDaysLeft(validVisa.endDate);
                             const tourDays = getDaysLeft(tourEndDate);
                             if (visaExpiry !== null && tourDays !== null && visaExpiry < tourDays) {
+                              // Vize tur bitmeden bitiyor: bu vizeden sonra açılmış yeni başvuru varsa onun durumu gösterilir
+                              const vStart = String(validVisa.startDate || validVisa.issueDate || '').slice(0, 10);
+                              const ab = appBadge(vStart);
+                              // Vizenin başlangıcı bilinmiyorsa "onaylandı" eski vizenin kendi başvurusu olabilir → sayılmaz
+                              if (ab && !(!vStart && /Onaylandı/.test(ab.label))) return ab;
                               return { label: `Tur Tarihinde Bitiyor (${formatDate(validVisa.endDate)})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', apply: customer };
                             }
                           }
