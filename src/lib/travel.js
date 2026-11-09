@@ -1,5 +1,5 @@
 // Seyahat kontrolü: pasaport geçerliliği (6 ay kuralı), yeşil pasaport muafiyeti, gidilen ülkeye göre vize/pasaport uyarıları
-import { trHas } from './turkish.js';
+import { trHas, normalizeTr } from './turkish.js';
 import { formatDate, safeParseJSON, safeParseDate, safeParseObj } from './format.js';
 import { VIZE_DURUM, IATA_COUNTRY, PLACE_COUNTRY, schengenCountries } from './data.js';
 
@@ -144,3 +144,10 @@ export const fingerprintLabel = (c) => {
   if (f.state === 'none') return { f, color: '#ef4444', text: '🖐️ Parmak izi yok — randevuda alınacak' };
   return { f, color: '#64748b', text: '🖐️ Parmak izi bilgisi girilmemiş' };
 };
+
+// 🪪 Oturma izni (müşteri kaydında residencePermits): geçerli bir Schengen ülkesi oturma izni Schengen'e vizesiz giriş sağlar.
+export const residencePermitsOf = (c) => safeParseJSON(c?.residencePermits).filter(r => r && (r.country || r.permitNo));
+// untilYmd tarihine kadar geçerli Schengen ülkesi oturma izni (en geç biten) — yoksa null
+export const schengenResidence = (c, untilYmd) => residencePermitsOf(c)
+  .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.expiryDate || '') && r.expiryDate >= (untilYmd || new Date().toISOString().slice(0, 10)) && schengenCountries.some(k => normalizeTr(k) === normalizeTr(r.country)))
+  .sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0] || null;

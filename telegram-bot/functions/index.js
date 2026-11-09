@@ -481,6 +481,15 @@ Schengen vize:
 ABD vize:
 {"type":"usa","firstName":"","lastName":"","passportNo":"","issueDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}
 
+Oturma izni karti (Residence Permit / Aufenthaltstitel / Titre de sejour / Permesso di soggiorno / Άδεια Διαμονής / Verblijfsvergunning — bir ULKENIN verdigi oturma izni kartidir, pasaport ve vize DEGILDIR):
+{"type":"residence","firstName":"","lastName":"","birthDate":"YYYY-MM-DD","nationality":"","country":"","permitNo":"","category":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD"}
+- country: karti VEREN ulke (ust baslik / ulke kodu: GRC=Yunanistan, D=Almanya, F=Fransa, I=Italya, NL=Hollanda...). Uyruk (nationality, orn TUR) ile KARISTIRMA
+- permitNo: kartin numarasi (orn E15476634 — genelde sag ustte)
+- category: izin turu Turkce kisa (orn "FAMILY MEMBER" -> "Aile üyesi", "WORK" -> "Çalışma", "STUDENT" -> "Öğrenci", "LONG-TERM RESIDENT" -> "Uzun süreli ikamet")
+- expiryDate: "CARD EXPIRY" / "GÜLTIG BIS" / "VALID UNTIL" (GG MM YYYY -> YYYY-MM-DD). issueDate yoksa bos birak
+- ISIM: "SURNAME Name" / "EPONYMO Onoma" alaninda BUYUK HARFLE yazilan kisim SOYADIDIR, kucuk harfli (Ilk harfi buyuk) kisim ADDIR.
+  Ornek "NERIMAN Huseyin Olcay" -> lastName="NERIMAN", firstName="Huseyin Olcay". Ayri satirlarda "Surname / Given names" varsa ona gore al.
+
 T.C. Kimlik Karti (ustte "TÜRKİYE CUMHURİYETİ KİMLİK KARTI / REPUBLIC OF TURKEY IDENTITY CARD" yazar, pasaport DEGILDIR):
 {"type":"idcard","firstName":"","lastName":"","tcKimlik":"","birthDate":"YYYY-MM-DD"}
 - tcKimlik: sol ustte "T.C. Kimlik No / TR Identity No" altindaki 11 hane
@@ -526,7 +535,7 @@ GG-AA-YYYY -> direkt kullan
   if (!m) return { dtype: null, json: null };
   try {
     const json = JSON.parse(m[0]);
-    const dtype = json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
+    const dtype = json.type === 'residence' ? 'residence' : json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
     console.log('Detected:', dtype, 'Name:', json.firstName, json.lastName);
     return { dtype, json };
   } catch(e) { console.error('JSON parse error:', e.message); return { dtype: null, json: null }; }
@@ -883,6 +892,31 @@ const approveVisaApp = async (db, custDocId, categoryId, country) => {
   }
 };
 
+// 🪪 Oturma izni (AB/Schengen ülkesi): müşterinin residencePermits listesine; aynı kart no varsa güncellenir.
+// Geçerli bir Schengen ülkesi oturma izni, Schengen'e vizesiz giriş sağlar (CRM tur listesinde gösterilir).
+const saveResidence = async (db, custs, json, img) => {
+  json.country = normalizeCountry(json.country);
+  if (json.firstName) json.firstName = cleanInvalidName(json.firstName);
+  if (json.lastName) json.lastName = cleanInvalidName(json.lastName);
+  let matches = custs.filter(c => namesMatch(`${json.firstName} ${json.lastName}`, `${c.firstName || ''} ${c.lastName || ''}`));
+  if (matches.length > 1 && json.birthDate) { const b = matches.filter(c => c.birthDate === json.birthDate); if (b.length) matches = b; }
+  if (!matches.length) return `⚠️ "${json.firstName} ${json.lastName}" bulunamadı!\nÖnce pasaportu yükleyin ya da müşteriyi CRM'de açın.`;
+  if (matches.length > 1) return `⚠️ "${json.firstName} ${json.lastName}" adında ${matches.length} müşteri var:\n${matches.map(m => `• ${m.firstName} ${m.lastName}${m.birthDate ? ` (${dmy(m.birthDate)})` : ''}`).join('\n')}\n\nAyırt edilemiyor — CRM'den elle ekleyin.`;
+  const cust = matches[0];
+  let list = []; try { list = JSON.parse(cust.residencePermits || '[]'); } catch {}
+  if (!Array.isArray(list)) list = [];
+  const old = json.permitNo ? list.find(x => x.permitNo === json.permitNo) : null;
+  const rp = { id: old?.id || genId(), country: json.country || '', permitNo: json.permitNo || '', category: json.category || '',
+    issueDate: json.issueDate || '', expiryDate: json.expiryDate || '', image: await toStorage(img, 'oturma'), createdAt: old?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  list = old ? list.map(x => x.id === old.id ? rp : x) : [...list, rp];
+  const patch = { residencePermits: JSON.stringify(list), updatedAt: new Date().toISOString() };
+  if (!cust.birthDate && json.birthDate) patch.birthDate = json.birthDate;
+  await db.collection('customers').doc(String(cust._docId || cust.id)).set(patch, { merge: true });
+  const exp = json.expiryDate ? new Date(json.expiryDate + 'T00:00:00') : null;
+  const st = exp && exp < new Date() ? '\n🔴 Süresi dolmuş!' : '';
+  return `✅ Oturma izni ${old ? 'güncellendi' : 'eklendi'}\n👤 ${cust.firstName} ${cust.lastName}${st}`;
+};
+
 const saveSchengen = async (db, custs, json, img) => {
   const ref = db.collection('customers');
 
@@ -1007,6 +1041,7 @@ const saveUsa = async (db, custs, json, img) => {
 // ========== FORMAT ==========
 const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${dmy(j.birthDate)}` : ''}`;
 const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${dmy(j.expiryDate)||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
+const fmtRes = j => `🪪 Oturma izni · ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.permitNo||'-'}${j.category ? ` | ${j.category}` : ''}\n📅 Bitiş: ${dmy(j.expiryDate)||'-'}`;
 const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${dmy(j.startDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${dmy(j.issueDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 
@@ -1181,7 +1216,7 @@ const BOT_COMMANDS = [
 const HELP_TEXT = [
   '🤖 Paydos vize botu',
   '',
-  '📷 Pasaport, kimlik, Schengen/ABD vizesi fotoğrafını gruba atın → okunur, CRM\'de müşteriye kaydedilir.',
+  '📷 Pasaport, kimlik, oturma izni, Schengen/ABD vizesi fotoğrafını gruba atın → okunur, CRM\'de müşteriye kaydedilir.',
   '',
   '/pasaport Ad Soyad — pasaport görseli dosya olarak gelir (adın başı yeter: /pasaport ond taş)',
   '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
@@ -1529,7 +1564,7 @@ exports.telegramBot = functions
     // Tanı + Oku (tek adımda)
     const { dtype, json } = await detectType(K, b64);
     if (!dtype || !json) {
-      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı veya vize yükleyin.' });
+      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı, oturma izni veya vize yükleyin.' });
       return res.status(200).send('OK');
     }
 
@@ -1540,7 +1575,7 @@ exports.telegramBot = functions
     // ⛔ Tarih kontrolü — hatalı veya süresi dolmuş belge reddet
     const dateErrors = validateDates(json, dtype);
     if (dateErrors.length > 0) {
-      const typeLabel = dtype === 'passport' ? '🛂 Pasaport' : dtype === 'schengen' ? '🇪🇺 Schengen' : '🇺🇸 ABD Vize';
+      const typeLabel = dtype === 'residence' ? '🪪 Oturma izni' : dtype === 'passport' ? '🛂 Pasaport' : dtype === 'schengen' ? '🇪🇺 Schengen' : '🇺🇸 ABD Vize';
       await tg(T, 'editMessageText', {
         chat_id: chatId, message_id: lmid,
         text: `⛔ *TARİH HATASI — KAYDEDİLMEDİ*\n\n${typeLabel}\n👤 ${json.firstName || ''} ${json.lastName || ''}\n\n${dateErrors.map(e => `❌ ${e}`).join('\n')}\n\n💡 Lütfen CRM'den manuel kontrol edin.`,
@@ -1596,6 +1631,9 @@ exports.telegramBot = functions
       const r = await savePassport(cfg.db, custs, json, finalImg);
       result = r.text;
       if (r.custId) passportCust = { id: r.custId, name: r.custName, phone: r.custPhone, email: r.custEmail };
+    } else if (dtype === 'residence') {
+      info = fmtRes(json);
+      result = await saveResidence(cfg.db, custs, json, finalImg || b64);
     } else if (dtype === 'schengen') {
       info = fmtSch(json);
       result = await saveSchengen(cfg.db, custs, json, b64);

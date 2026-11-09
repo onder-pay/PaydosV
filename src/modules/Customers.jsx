@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { detectFlights, detectHotel, nameCheck, sameFlight } from '../lib/docparse.js';
 import { pdfFileText } from '../lib/pdf.js';
 import { passportImageOf, downloadUrl } from '../lib/files.js';
+import { residencePermitsOf } from '../lib/travel.js';
 
 
 export function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
@@ -1389,6 +1390,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
           {detailTab === 'schengen' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <FingerprintBox c={customers.find(x => x.id === c.id) || c} showToast={showToast} />
+              <ResidencePermits c={customers.find(x => x.id === c.id) || c} showToast={showToast} onImage={(src, title, file) => setImagePreview({ show: true, src, title, file })} />
               {hasGreenPassport ? (
                 <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', margin: '0 auto 16px' }}>✓</div>
@@ -3250,3 +3252,42 @@ export const tripWithoutDoc = (trip, d) => {
 
 // === Firma seçici: DTO üye listesinden arar, yoksa elle eklemeye izin verir ===
 export let _companyCache = null;
+
+// 🪪 Oturma izinleri (bot "oturma izni" kartını okuyup kaydeder): ülke, kart no, tür, bitiş; görsel ve indirme. Geçerli
+// Schengen ülkesi oturma izni olan müşteri Schengen turlarında "vize gerekmez" sayılır.
+function ResidencePermits({ c, showToast, onImage }) {
+  const list = residencePermitsOf(c);
+  if (!list.length) return null;
+  const remove = async (id) => {
+    if (!window.confirm('Bu oturma izni kaydı silinsin mi?')) return;
+    try { await setDoc(doc(db, 'customers', c._docId || String(c.id)), { residencePermits: JSON.stringify(list.filter(x => x.id !== id)), updatedAt: new Date().toISOString() }, { merge: true }); showToast?.('Oturma izni silindi', 'warning'); }
+    catch (e) { showToast?.('Silinemedi: ' + e.message, 'error'); }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {list.map(r => {
+        const left = r.expiryDate ? getDaysLeft(r.expiryDate) : null;
+        const schengen = schengenCountries.some(k => normalizeTr(k) === normalizeTr(r.country));
+        const col = left === null ? '#94a3b8' : left <= 0 ? '#ef4444' : left < 183 ? '#f59e0b' : '#10b981';
+        const name = `${c.firstName || ''} ${c.lastName || ''} Oturma izni ${r.country || ''}`;
+        return (
+          <div key={r.id} style={{ background: 'rgba(5,150,105,0.08)', border: `1px solid ${col}55`, borderRadius: '14px', padding: '14px 16px', display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#e8f1f8' }}>🪪 Oturma izni · {r.country || 'Ülke ?'}{r.category ? <span style={{ fontWeight: 400, color: '#94a3b8' }}> · {r.category}</span> : null}</div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Kart no: {r.permitNo || '—'}{r.issueDate ? ` · Veriliş ${formatDate(r.issueDate)}` : ''}</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: col, marginTop: '4px' }}>
+                {r.expiryDate ? (left <= 0 ? `Süresi doldu (${formatDate(r.expiryDate)})` : `Bitiş ${formatDate(r.expiryDate)} · ${left} gün`) : 'Bitiş tarihi yok'}
+                {schengen && left > 0 ? ' · Schengen\'e vizesiz giriş' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                {r.image && <button type="button" onClick={() => downloadUrl(r.image, name).catch(e => showToast?.('İndirilemedi: ' + e.message, 'error'))} style={{ padding: '5px 10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}>⬇️ İndir</button>}
+                <button type="button" onClick={() => remove(r.id)} style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>🗑 Sil</button>
+              </div>
+            </div>
+            {r.image && <img src={r.image} alt="Oturma izni" onError={onDocImgError} onClick={() => onImage?.(r.image, `Oturma izni - ${r.country || ''}`, name)} style={{ width: '160px', maxWidth: '100%', aspectRatio: '85/54', objectFit: 'cover', borderRadius: '8px', cursor: 'zoom-in', border: '1px solid rgba(255,255,255,0.15)' }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -10,7 +10,7 @@ import { deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { flightSortKey, nameWords, detectFlights } from '../lib/docparse.js';
 import { formatDate, formatPhoneNumber, formatWhatsAppPhone, generateUniqueId, getDaysLeft, safeParseJSON, safeParseObj, waUrl } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
-import { greenExemptIn, greenPassportStatus, passportValidityFor } from '../lib/travel.js';
+import { greenExemptIn, greenPassportStatus, passportValidityFor, schengenResidence } from '../lib/travel.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { logActivity, mailHtml, sendMailRequest } from '../lib/api.js';
 import { nameForSave, normEmail, normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
@@ -1895,6 +1895,11 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                               : { label: `🟠 Pasaport — 6 ay kuralı (${pStr})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                           }
 
+                          // 🪪 Tur bitişine kadar geçerli Schengen ülkesi oturma izni → Schengen turunda vize gerekmez
+                          if (schengenCountries.some(k => normalizeTr(k) === normalizeTr(tour.country))) {
+                            const rp = schengenResidence(customer, tour.endDate || tour.startDate);
+                            if (rp) return { label: `🪪 Oturma izni (${rp.country}) — vize gerekmez`, color: '#059669', bg: 'rgba(5,150,105,0.15)' };
+                          }
                           const visas = safeParseJSON(customer.schengenVisas);
                           // DEBUG: müşteri ve vize listesini console'a yaz
                           const validVisa = visas.find(v => {
