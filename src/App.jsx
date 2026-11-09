@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component } from 'react';
 // Firebase + localStorage CRM
 import { preloadHeavy } from './lib/heavy';
 import { db, auth } from './lib/firebase';
@@ -11,31 +11,22 @@ import { generateUniqueId } from './lib/format';
 import { labelStyle, inputStyle, Toast } from './components/ui';
 
 import { TavsiyelerModal } from './components/shared';
+import { BankInfoModule } from './modules/BankInfo';
+import { HotelsModule } from './modules/Hotels';
+import { ToursModule } from './modules/Tours';
+import { CustomerModule } from './modules/Customers';
+import { VisaModule } from './modules/Visa';
+import { QuotesModule } from './modules/Quotes';
+import { SettingsModule } from './modules/Settings';
+import { DS160Module } from './modules/DS160';
+import { AgenciesModule } from './modules/Agencies';
+import { DashboardModule } from './modules/Dashboard';
+import { LinkDuyuruModule, MusteriLinkiModule, TurLinkiModule } from './modules/LinkDuyuru';
+import { DuyurularModule } from './modules/Duyurular';
+import { BildirimlerModule } from './modules/Bildirimler';
+import { CreditCardsModule } from './modules/CreditCards';
+import { ActivityLogModule } from './modules/ActivityLog';
 
-// Ekran modülleri ayrı dosyalarda ve ancak açılınca yüklenir (ilk açılış hafif kalsın)
-// Yeni sürüm yayınlanınca eski parça dosyaları silinir: açık sekmede modül yüklenemezse sayfa bir kez yenilenir
-const lazyModule = (load, name) => lazy(() => load().then(m => { try { sessionStorage.removeItem('paydos_chunk_reload_' + name); } catch (e) { /* yok */ } return { default: m[name] }; }).catch(err => {
-  let done = false; try { done = sessionStorage.getItem('paydos_chunk_reload_' + name) === '1'; sessionStorage.setItem('paydos_chunk_reload_' + name, '1'); } catch (e) { /* yok */ }
-  if (!done) { window.location.reload(); return new Promise(() => {}); }
-  throw err;
-}));
-const BankInfoModule = lazyModule(() => import('./modules/BankInfo'), 'BankInfoModule');
-const HotelsModule = lazyModule(() => import('./modules/Hotels'), 'HotelsModule');
-const ToursModule = lazyModule(() => import('./modules/Tours'), 'ToursModule');
-const CustomerModule = lazyModule(() => import('./modules/Customers'), 'CustomerModule');
-const VisaModule = lazyModule(() => import('./modules/Visa'), 'VisaModule');
-const QuotesModule = lazyModule(() => import('./modules/Quotes'), 'QuotesModule');
-const SettingsModule = lazyModule(() => import('./modules/Settings'), 'SettingsModule');
-const DS160Module = lazyModule(() => import('./modules/DS160'), 'DS160Module');
-const AgenciesModule = lazyModule(() => import('./modules/Agencies'), 'AgenciesModule');
-const DashboardModule = lazyModule(() => import('./modules/Dashboard'), 'DashboardModule');
-const LinkDuyuruModule = lazyModule(() => import('./modules/LinkDuyuru'), 'LinkDuyuruModule');
-const MusteriLinkiModule = lazyModule(() => import('./modules/LinkDuyuru'), 'MusteriLinkiModule');
-const TurLinkiModule = lazyModule(() => import('./modules/LinkDuyuru'), 'TurLinkiModule');
-const DuyurularModule = lazyModule(() => import('./modules/Duyurular'), 'DuyurularModule');
-const BildirimlerModule = lazyModule(() => import('./modules/Bildirimler'), 'BildirimlerModule');
-const CreditCardsModule = lazyModule(() => import('./modules/CreditCards'), 'CreditCardsModule');
-const ActivityLogModule = lazyModule(() => import('./modules/ActivityLog'), 'ActivityLogModule');
 
 const defaultCustomers = [];
 const defaultUsers = [{ id: 1, email: 'onder@paydostur.com', password: '', name: 'Önder', role: 'admin' }];
@@ -923,14 +914,12 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       </aside>
       <main style={{ marginLeft: isMobile ? 0 : '260px', minHeight: '100vh' }}>
         {isMobile && <header style={{ position: 'sticky', top: 0, background: 'rgba(12,25,41,0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 50 }}><button onClick={() => setSidebarOpen(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '8px', padding: '8px 12px', color: '#e8f1f8', cursor: 'pointer', fontSize: '18px' }}>☰</button><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>✈️</span><span style={{ fontWeight: '700' }}>Paydos</span></div><button onClick={refreshAllData} disabled={refreshing} style={{ background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', padding: '8px 10px', color: '#3b82f6', cursor: refreshing ? 'wait' : 'pointer', fontSize: '16px', width: '40px' }}>{refreshing ? '⏳' : '🔄'}</button></header>}
-        <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Yükleniyor…</div>}>{renderModule()}</Suspense>
+        {renderModule()}
         {/* Müşteri kartı katmanı: alttaki ekran (ör. yarım kalmış vize formu) kapanmadan açılır */}
         {custOverlay != null && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 900, overflowY: 'auto', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 100%)' }}>
-            <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Yükleniyor…</div>}>
               <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings}
                 openCustomerId={custOverlay} onOpenCustomerHandled={() => {}} onBack={() => setCustOverlay(null)} currentUser={currentUser} onGo={(mod, act) => { setCustOverlay(null); goAction(mod, act); }} />
-            </Suspense>
           </div>
         )}
       </main>
@@ -943,7 +932,7 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => preloadHeavy().catch(() => {}), 800); return () => clearTimeout(t); }, []);
   return (
     <ErrorBoundary>
-      <Suspense fallback={null}><AppInner /></Suspense>
+      <AppInner />
     </ErrorBoundary>
   );
 }
