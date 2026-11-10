@@ -1,5 +1,6 @@
 // Ortak ekran parçaları: form stilleri, bildirim (Toast), tarih seçici, kart/modal kutuları
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { normalizeTr, titleCaseTr } from '../lib/turkish.js';
 import { travelCheck, TC_ICON, TC_COLOR } from '../lib/travel.js';
 import { formatDate } from '../lib/format.js';
 
@@ -298,3 +299,45 @@ export function StatCard({ value, label, color, onClick, sublabel }) { return (<
 export function Modal({ children, onClose, title }) { return (<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '20px' }}><div style={{ background: 'linear-gradient(180deg, #0f2744 0%, #0c1929 100%)', borderRadius: '12px', width: '100%', maxWidth: '400px', maxHeight: '85vh', overflow: 'auto', border: '1px solid rgba(255,255,255,0.1)' }}><div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ margin: 0, fontSize: '15px', flex: 1 }}>{title}</h3><button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', width: '28px', height: '28px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button></div><div style={{ padding: '14px 16px' }}>{children}</div></div></div>); }
 
 export function InfoBox({ label, value, highlight }) { return (<div style={{ background: highlight ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.03)', borderRadius: '6px', padding: '8px', border: highlight ? '1px solid rgba(245,158,11,0.2)' : 'none' }}><p style={{ fontSize: '10px', color: highlight ? '#f59e0b' : '#64748b', marginBottom: '2px', textTransform: 'uppercase' }}>{label}</p><p style={{ fontSize: '12px', margin: 0, color: value ? (highlight ? '#f59e0b' : '#e8f1f8') : '#64748b' }}>{value || '-'}</p></div>); }
+
+// 🔎 Müşteri adı kutusu — Türkçe harf duyarsız öneri listesi (tarayıcının <datalist>'i "arif" ile "Arıf"/"ARİF"i eşleştirmez).
+// Elle yazılan metin olduğu gibi kalır (onChange); listeden seçilirse onPick(customer) da çağrılır.
+// label(c): öneride/seçimde görünen metin (varsayılan "Ad Soyad").
+export function CustomerNameInput({ value, onChange, onPick, customers, placeholder, style, label, clearOnPick, max = 8 }) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const lab = label || ((c) => `${titleCaseTr(c.firstName || '')} ${titleCaseTr(c.lastName || '')}`.trim());
+  const q = normalizeTr(value || '').trim();
+  const hits = useMemo(() => {
+    if (q.length < 2) return [];
+    const words = q.split(/\s+/);
+    const digits = String(value || '').replace(/\D/g, '');
+    return (customers || []).filter(c => {
+      const full = normalizeTr(`${c.firstName || ''} ${c.lastName || ''}`);
+      if (words.every(w => full.includes(w))) return true;
+      return digits.length >= 4 && String(c.phone || '').replace(/\D/g, '').includes(digits);
+    }).filter(c => normalizeTr(lab(c)) !== q).slice(0, max);
+  }, [q, customers]);
+  const pick = (c) => { onPick?.(c); onChange?.(clearOnPick ? '' : lab(c)); setOpen(false); };
+  return (
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      <input type="text" value={value || ''} placeholder={placeholder} autoComplete="off" style={style}
+        onChange={e => { onChange?.(e.target.value); setOpen(true); setHi(0); }}
+        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={e => {
+          if (!open || !hits.length) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, hits.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter') { e.preventDefault(); pick(hits[hi] || hits[0]); }
+          else if (e.key === 'Escape') setOpen(false);
+        }} />
+      {open && hits.length > 0 && (
+        <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: '2px', zIndex: 50, background: '#0f2744', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: '200px' }}>
+          {hits.map((c, i) => (
+            <div key={c.id} onMouseDown={e => { e.preventDefault(); pick(c); }} onMouseEnter={() => setHi(i)}
+              style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '13px', color: '#e8f1f8', background: i === hi ? 'rgba(59,130,246,0.25)' : 'transparent', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+              <span>👤 {lab(c)}</span>{c.phone && <span style={{ color: '#64748b', fontSize: '11px' }}>{c.phone}</span>}
+            </div>))}
+        </div>)}
+    </div>);
+}

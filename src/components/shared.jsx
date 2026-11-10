@@ -5,7 +5,7 @@ import { db } from '../lib/firebase.js';
 import { titleCaseTr, asciiTr, normalizeTr, trHas, trUpper } from '../lib/turkish.js';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { NAMECHK_COLOR, detectFlights, detectHotel, nameCheck, nameWords, sameFlight } from '../lib/docparse.js';
-import { TravelCheckBox } from './ui';
+import { TravelCheckBox, CustomerNameInput } from './ui';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, safeParseObj, waUrl } from '../lib/format.js';
 import { pdfExtractPages, pdfPagesText, addCanvasPaged, loadHtml2Canvas, pdfFileText } from '../lib/pdf.js';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
@@ -165,7 +165,7 @@ export function BulkDocInbox({ customers, setCustomers, appSettings, showToast, 
   const index = useMemo(() => buildNameIndex(customers), [customers]);
   const byId = useMemo(() => new Map((customers || []).map(c => [String(c.id), c])), [customers]);
   const nameOf = (c) => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
-  const listId = useRef('cust-dl-' + Math.random().toString(36).slice(2));
+  const [addQ, setAddQ] = useState({}); // satır başına "+ müşteri ara" kutusu
   const setRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
   // Dashboard'a sürüklenip bırakılan dosyalar: pencere açılınca hemen okunur (bir kez)
   const startedRef = useRef(false);
@@ -299,7 +299,6 @@ export function BulkDocInbox({ customers, setCustomers, appSettings, showToast, 
             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Birden fazla dosya olabilir · toplu bilet PDF'i kişilere ayrılır</div>
             <input type="file" multiple accept="application/pdf,image/*" disabled={!!busy} style={{ display: 'none' }} onChange={e => { analyze(e.target.files); e.target.value = ''; }} />
           </label>
-          <datalist id={listId.current}>{(customers || []).map(c => <option key={c.id} value={`${nameOf(c)} · ${c.phone || c.id}`} />)}</datalist>
 
           {rows.length > 0 && <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {rows.map(r => (
@@ -321,10 +320,9 @@ export function BulkDocInbox({ customers, setCustomers, appSettings, showToast, 
                     </span>); })}
                   {r.cands.filter(id => !r.custIds.includes(id)).map(id => { const c = byId.get(id); return c && (
                     <button key={id} onClick={() => setRow(r.key, { custIds: [...r.custIds, id] })} style={{ ...inS, cursor: 'pointer', color: '#fbbf24' }}>＋ {nameOf(c)}</button>); })}
-                  <input list={listId.current} placeholder="+ müşteri ara…" onChange={e => {
-                    const v = e.target.value; const c = (customers || []).find(x => `${nameOf(x)} · ${x.phone || x.id}` === v);
-                    if (c) { setRow(r.key, { custIds: r.custIds.includes(String(c.id)) ? r.custIds : [...r.custIds, String(c.id)] }); e.target.value = ''; }
-                  }} style={{ ...inS, width: '170px' }} />
+                  <div style={{ width: '200px' }}><CustomerNameInput customers={customers} placeholder="+ müşteri ara…" value={addQ[r.key] || ''} label={nameOf} clearOnPick style={{ ...inS, width: '100%' }}
+                    onChange={v => setAddQ(x => ({ ...x, [r.key]: v }))}
+                    onPick={c => setRow(r.key, { custIds: r.custIds.includes(String(c.id)) ? r.custIds : [...r.custIds, String(c.id)] })} /></div>
                   {CUST_DOC_TYPES[r.type]?.[0] === '🏨' && (r.hotel ? <span style={{ fontSize: '11px', color: '#06b6d4' }}>🏨 {r.hotel.name || 'Otel adı okunamadı'}{r.hotel.checkIn ? ` · ${formatDate(r.hotel.checkIn)}${r.hotel.checkOut ? ' – ' + formatDate(r.hotel.checkOut) : ''}` : ' · tarih okunamadı'}</span> : <span style={{ fontSize: '11px', color: '#eab308' }}>🏨 Otel bilgisi okunamadı — belge yine linke eklenir</span>)}
                   {r.note && !r.custIds.length && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
                   {r.note && r.custIds.length > 1 && <span style={{ fontSize: '11px', color: '#eab308' }}>⚠️ {r.note}</span>}
