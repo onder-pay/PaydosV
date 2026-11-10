@@ -985,13 +985,25 @@ export const RES_EXTRA_DEFS = [
 
 export const resExtraSum = (r) => resExtras(r).reduce((t, x) => t + x.price, 0);
 
-export const resExtras = (r) => RES_EXTRA_DEFS
-  .filter(d => d.kind === 'flight' ? String(r?.[d.key] || '').trim() : r?.[d.key + 'On'])
-  .map(d => {
-    const qty = d.kind === 'flight' ? resPax(r) : 1;
-    const unitBuy = parseFloat(r?.[d.key + 'Buy']) || 0, unitPrice = parseFloat(r?.[d.key + 'Price']) || 0;
-    return { ...d, text: String(r?.[d.key] || '').trim() || d.def || '', qty, unitBuy, unitPrice, buy: unitBuy * qty, price: unitPrice * qty };
-  });
+// 👥 Uçuşlar kişi bazında ayrılmışsa (flightSplit): her kişinin elle yazılan uçuşu ayrı kalem (adet 1, kendi fiyatı) — r.personFlights
+export const resExtras = (r) => {
+  const split = !!r?.flightSplit && Array.isArray(r?.personFlights);
+  const per = split ? r.personFlights.flatMap(p => RES_EXTRA_DEFS.filter(d => d.kind === 'flight').map(d => {
+    const s = d.key === 'flightOut' ? 'out' : 'ret';
+    const text = String(p?.[s + 'Text'] || '').trim();
+    if (!text) return null;
+    const unitBuy = parseFloat(p[s + 'Buy']) || 0, unitPrice = parseFloat(p[s + 'Price']) || 0;
+    return { ...d, key: `${d.key}-${normalizeTr(p.name).replace(/[^a-z0-9]+/g, '_')}`, name: `${d.name} · ${p.name}`, person: p.name, text, qty: 1, unitBuy, unitPrice, buy: unitBuy, price: unitPrice };
+  }).filter(Boolean)) : [];
+  return [...per, ...RES_EXTRA_DEFS
+    .filter(d => !(split && d.kind === 'flight'))
+    .filter(d => d.kind === 'flight' ? String(r?.[d.key] || '').trim() : r?.[d.key + 'On'])
+    .map(d => {
+      const qty = d.kind === 'flight' ? resPax(r) : 1;
+      const unitBuy = parseFloat(r?.[d.key + 'Buy']) || 0, unitPrice = parseFloat(r?.[d.key + 'Price']) || 0;
+      return { ...d, text: String(r?.[d.key] || '').trim() || d.def || '', qty, unitBuy, unitPrice, buy: unitBuy * qty, price: unitPrice * qty };
+    })];
+};
 
 export const resPax = (r) => {
   const named = 1 + (r?.guestNames || []).filter(x => x && String(x).trim()).length;

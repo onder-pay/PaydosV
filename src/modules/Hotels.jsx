@@ -584,7 +584,11 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
   const [resTrf, setResTrf] = useState({ out: '', ret: '' }); // Transferler bölümünden seçilen transfer (id)
-  const openNewRes = () => { setResFlights({ out: '', ret: '', pkg: true }); setResFlightsOrig({ out: '', ret: '' }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
+  // 👥 Uçuşları kişi bazında ayır: { [normalizeTr(isim)]: { out, ret } } — '' yok · 'M' münferit · grup uçuşu id
+  const [splitSel, setSplitSel] = useState({});
+  const [splitOrig, setSplitOrig] = useState({}); // düzenleme açılırken kişilerin bağlı olduğu grup uçuşları
+  const resNames = (r) => [r?.customerName, ...(r?.guestNames || [])].map(n => String(n || '').trim()).filter(Boolean).filter((n, i, a) => a.findIndex(x => normalizeTr(x) === normalizeTr(n)) === i);
+  const openNewRes = () => { setSplitSel({}); setSplitOrig({}); setResFlights({ out: '', ret: '', pkg: true }); setResTrf({ out: '', ret: '' }); setEditingRes(null); setResData({...emptyRes, price: 0, priceManual: false, currency: selectedHotel?.prices?.double?.currency || '€'}); setShowResForm(true); };
   // Bu otel rezervasyonundaki kişilerin bulunduğu grup uçuşları — yön: uçuşun kendi yönü, yoksa giriş/çıkış tarihine yakınlık
   const resGroupFlights = (hotel, r) => {
     const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
@@ -599,12 +603,20 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     });
     return out;
   };
-  const [resFlightsOrig, setResFlightsOrig] = useState({ out: '', ret: '' }); // düzenleme açılırken bağlı olduğu grup uçuşları
   const openEditRes = (r) => {
     const g = selectedHotel ? resGroupFlights(selectedHotel, r) : { out: null, ret: null };
-    setResFlightsOrig({ out: g.out || '', ret: g.ret || '' });
     // Elle yazılmış uçuş varsa münferit; yoksa bağlı grup uçuşu seçili gelir
     setResFlights({ out: r.flightOut ? 'M' : (g.out || ''), ret: r.flightRet ? 'M' : (g.ret || ''), pkg: true });
+    // Kişi bazında: her kişinin kendi bağlı grup uçuşu (ayrılmamış odada da — uçuş değişirse doğru kişinin bileti iptal edilsin)
+    const orig = {}, sel = {};
+    resNames(r).forEach(nm => {
+      const k = normalizeTr(nm);
+      const pg = selectedHotel ? resGroupFlights(selectedHotel, { ...r, customerName: nm, guestNames: [] }) : { out: null, ret: null };
+      const pf = (r.personFlights || []).find(x => normalizeTr(x.name) === k);
+      orig[k] = { out: pg.out || '', ret: pg.ret || '' };
+      sel[k] = { out: pf?.outText ? 'M' : (pg.out || ''), ret: pf?.retText ? 'M' : (pg.ret || '') };
+    });
+    setSplitOrig(orig); setSplitSel(r.flightSplit ? sel : {});
     setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true);
   };
 
@@ -615,7 +627,8 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     let updatedHotel, savedRes;
     // ✍️ Münferit uçuş: grup uçuşu yerine elle yazılan uçuş bilgisi rezervasyonda saklanır
     // Seçilmeyen kalemin bilgileri temizlenir (eski fiyat proformaya sızmasın)
-    const on = { flightOut: resFlights.out === 'M', flightRet: resFlights.ret === 'M', transferOut: !!resData.transferOutOn, transferRet: !!resData.transferRetOn };
+    const split = !!resData.flightSplit && resNames(resData).length > 1;
+    const on = { flightOut: !split && resFlights.out === 'M', flightRet: !split && resFlights.ret === 'M', transferOut: !!resData.transferOutOn, transferRet: !!resData.transferRetOn };
     const resBase = { ...resData };
     RES_EXTRA_DEFS.forEach(d => {
       const k = d.key, use = on[k];
@@ -624,6 +637,17 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
       resBase[k + 'Price'] = use ? (parseFloat(resData[k + 'Price']) || 0) : 0;
       if (d.kind === 'transfer') resBase[k + 'On'] = use;
     });
+    // 👥 Kişi bazında uçuş: yalnız münferit (elle yazılan) uçuşun metni/fiyatı saklanır; grup uçuşu biletlerden okunur
+    resBase.flightSplit = split;
+    resBase.personFlights = split ? resNames(resData).map(nm => {
+      const sel = splitSel[normalizeTr(nm)] || {}, old = (resData.personFlights || []).find(x => normalizeTr(x.name) === normalizeTr(nm)) || {};
+      const o = { name: nm };
+      ['out', 'ret'].forEach(d => { const m = sel[d] === 'M';
+        o[d + 'Text'] = m ? String(old[d + 'Text'] || '').trim() : '';
+        o[d + 'Buy'] = m ? (parseFloat(old[d + 'Buy']) || 0) : 0;
+        o[d + 'Price'] = m ? (parseFloat(old[d + 'Price']) || 0) : 0; });
+      return o;
+    }) : [];
     if (editingRes) {
       savedRes = { ...resBase, id: editingRes.id };
       updatedHotel = { ...selectedHotel, reservations: (selectedHotel.reservations || []).map(r => r.id === editingRes.id ? savedRes : r) };
@@ -644,34 +668,45 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     // ✈️ Seçildiyse odadakiler gidiş / dönüş grup uçuşuna da eklenir (+ paket)
     const fp = { hotel: updatedHotel, people: peopleFromRes([savedRes]), makePkg: resFlights.pkg };
     let pk;
-    // Önceden bağlı olduğu grup uçuşu değiştiyse (münferite / uçuş yok'a / başka uçuşa) eski uçuştaki biletleri iptal et —
+    // Kişi bazında şimdiki / önceki seçim. Ayrılmamış odada herkes odanın seçimini alır.
+    // Önceden bağlı olduğu grup uçuşu değişen kişinin (münferite / uçuş yok'a / başka uçuşa) eski bileti iptal edilir —
     // yoksa hem münferit hem grup bileti sayılır
-    const oldNames = new Set([editingRes?.customerName, ...(editingRes?.guestNames || []), savedRes.customerName, ...(savedRes.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
+    const nowOf = (key, k) => split ? (splitSel[key]?.[k] || '') : resFlights[k];
+    const oldPeople = editingRes ? resNames(editingRes).map(nm => normalizeTr(nm)) : [];
+    const newKeys = new Set(fp.people.map(pp => pp.key));
     ['out', 'ret'].forEach(k => {
-      const oldId = resFlightsOrig[k], nowId = resFlights[k];
-      if (!editingRes || !oldId || String(oldId) === String(nowId)) return;
-      const fl = groupFlights.find(f => String(f.id) === String(oldId));
-      if (!fl) return;
-      let n = 0;
-      const rs = (fl.reservations || []).map(fr => {
-        if (fr.cancelled || !oldNames.has(normalizeTr(fr.customerName))) return fr;
-        if (fr.packageHotelId && String(fr.packageHotelId) !== String(updatedHotel.id)) return fr;
-        n++; return { ...fr, cancelled: true, cancelledAt: new Date().toISOString(), cancelNote: nowId === 'M' ? 'Otel rezervasyonunda münferit uçuşa çevrildi' : nowId ? 'Otel rezervasyonunda başka uçuşa taşındı' : 'Otel rezervasyonundan uçuş kaldırıldı' };
+      const byFlight = {};
+      oldPeople.forEach(key => {
+        const oldId = splitOrig[key]?.[k] || '';
+        // Listeden çıkarılan kişi: ayrılmamış odada odanın seçimi geçerli; ayrılmışta dokunulmaz
+        const nowId = newKeys.has(key) ? nowOf(key, k) : (split ? oldId : resFlights[k]);
+        if (!oldId || String(oldId) === String(nowId)) return;
+        (byFlight[oldId] = byFlight[oldId] || { keys: new Set(), nowId }).keys.add(key);
       });
-      if (n) { setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: rs } : x)); showToast?.(`✈️ ${n} bilet ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from}→${fl.to} grup uçuşundan çıkarıldı`, 'info'); }
+      Object.entries(byFlight).forEach(([oldId, { keys, nowId }]) => {
+        const fl = groupFlights.find(f => String(f.id) === String(oldId));
+        if (!fl) return;
+        let n = 0;
+        const rs = (fl.reservations || []).map(fr => {
+          if (fr.cancelled || !keys.has(normalizeTr(fr.customerName))) return fr;
+          if (fr.packageHotelId && String(fr.packageHotelId) !== String(updatedHotel.id)) return fr;
+          n++; return { ...fr, cancelled: true, cancelledAt: new Date().toISOString(), cancelNote: nowId === 'M' ? 'Otel rezervasyonunda münferit uçuşa çevrildi' : nowId ? 'Otel rezervasyonunda başka uçuşa taşındı' : 'Otel rezervasyonundan uçuş kaldırıldı' };
+        });
+        if (n) { setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: rs } : x)); showToast?.(`✈️ ${n} bilet ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from}→${fl.to} grup uçuşundan çıkarıldı`, 'info'); }
+      });
     });
-    // Aynı grup uçuşu seçili kaldıysa sadece yeni eklenen oda arkadaşları eklenir (mevcutlar tekrar eklenmez, uyarı çıkmaz)
-    [['out', resFlights.out], ['ret', resFlights.ret]].filter(([, x]) => x && x !== 'M').forEach(([k, fid]) => {
-      const fl = groupFlights.find(f => String(f.id) === String(fid));
-      if (!fl) return;
-      let fpx = fp;
-      if (editingRes && String(resFlightsOrig[k]) === String(fid)) {
-        const on = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
-        const fresh = fp.people.filter(pp => !on.has(pp.key));
-        if (!fresh.length) return;
-        fpx = { ...fp, people: fresh };
-      }
-      const r = addPeopleToFlight(fl, fpx, pk); if (r) pk = r.next;
+    // Seçilen grup uçuşlarına kişiler eklenir — uçuşta zaten olanlar tekrar eklenmez (aynı uçuş seçili kaldıysa yalnız yeni oda arkadaşı)
+    ['out', 'ret'].forEach(k => {
+      const byFlight = {};
+      fp.people.forEach(pp => { const fid = nowOf(pp.key, k); if (fid && fid !== 'M') (byFlight[fid] = byFlight[fid] || []).push(pp); });
+      Object.entries(byFlight).forEach(([fid, ppl]) => {
+        const fl = groupFlights.find(f => String(f.id) === String(fid));
+        if (!fl) return;
+        const onF = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
+        const fresh = ppl.filter(pp => !onF.has(pp.key));
+        if (!fresh.length) { if (!editingRes) showToast?.('Seçilen kişiler bu uçuşta zaten var', 'info'); return; }
+        const r = addPeopleToFlight(fl, { ...fp, people: fresh }, pk); if (r) pk = r.next;
+      });
     });
     // 🚐 Transferler bölümünden seçilen transfer: oda tek rezervasyon olarak (kişi sayısı = odadakiler) eklenir
     [resTrf.out, resTrf.ret].filter(Boolean).forEach(tid => {
@@ -3676,20 +3711,62 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       {resTrf[sk] && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kaydedince odadaki {1 + (resData.guestNames || []).filter(x => x && x.trim()).length} kişi bu transfere eklenir; fiyat transferin kişi başı fiyatından, proformaya girer.</div>}
                     </div>);
                   const n = 1 + (resData.guestNames || []).filter(x => x && x.trim()).length;
+                  // 👥 Kişi bazında uçuş: her kişi kendi gidiş/dönüşünü seçer (grup uçuşu ya da münferit; münferitte bilet fiyatı o kişiye ait)
+                  const names = resNames(resData);
+                  const split = !!resData.flightSplit && names.length > 1;
+                  const pfOf = (nm) => (resData.personFlights || []).find(x => normalizeTr(x.name) === normalizeTr(nm)) || { name: nm };
+                  const setPf = (nm, patch) => setResData(rd => { const list = [...(rd.personFlights || [])]; const i = list.findIndex(x => normalizeTr(x.name) === normalizeTr(nm));
+                    if (i >= 0) list[i] = { ...list[i], ...patch, name: nm }; else list.push({ name: nm, ...patch }); return { ...rd, personFlights: list }; });
+                  const pMoney = (nm, d) => [['Buy', 'Alış', 'rgba(239,68,68,0.35)'], ['Price', 'Satış', 'rgba(16,185,129,0.35)']].map(([sf, lb, bc]) => (
+                    <div key={sf} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                      <input type="number" inputMode="decimal" min="0" value={pfOf(nm)[d + sf] || ''} onChange={e => setPf(nm, { [d + sf]: e.target.value })} placeholder={lb}
+                        title={sf === 'Buy' ? 'Bizim maliyetimiz (opsiyonel)' : 'Bu kişinin bilet fiyatı — proformaya ayrı satır girer'} style={{ ...inputStyle, paddingRight: '24px', borderColor: bc }} />
+                      <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
+                    </div>));
+                  const pSel = (nm, key, dir, d) => { const k = normalizeTr(nm), v = splitSel[k]?.[key] || ''; return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <select value={v} onChange={e => { const val = e.target.value; setSplitSel(x => ({ ...x, [k]: { ...(x[k] || {}), [key]: val } })); }} style={inputStyle}>
+                        <option value="">{dir}: Uçuş yok</option>
+                        <option value="M">{dir}: ✍️ Münferit (elle yaz)</option>
+                        {opts(dir, d).map(f => <option key={f.id} value={f.id}>{lab(f)}</option>)}
+                      </select>
+                      {v === 'M' && <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <input value={pfOf(nm)[key + 'Text'] || ''} onChange={e => setPf(nm, { [key + 'Text']: e.target.value })} placeholder={dir === 'Gidiş' ? 'örn: 14.01 TK1523 İST→FRA 08:40' : 'örn: 18.01 PC1022 FRA→SAW 19:15'} style={{ ...inputStyle, flex: '1 1 100%', minWidth: 0 }} />
+                        {pMoney(nm, key)}
+                      </div>}
+                    </div>); };
+                  const toggleSplit = (on) => {
+                    if (on) { // odanın mevcut seçimi herkese kopyalanır; münferit metin/fiyat da
+                      const sel = {}; names.forEach(nm => { sel[normalizeTr(nm)] = { out: resFlights.out, ret: resFlights.ret }; });
+                      setSplitSel(sel);
+                      setResData(rd => ({ ...rd, flightSplit: true, personFlights: names.map(nm => ({ ...pfOf(nm), name: nm,
+                        ...(resFlights.out === 'M' && !pfOf(nm).outText ? { outText: rd.flightOut || '', outBuy: rd.flightOutBuy || '', outPrice: rd.flightOutPrice || '' } : {}),
+                        ...(resFlights.ret === 'M' && !pfOf(nm).retText ? { retText: rd.flightRet || '', retBuy: rd.flightRetBuy || '', retPrice: rd.flightRetPrice || '' } : {}) })) }));
+                    } else setResData(rd => ({ ...rd, flightSplit: false }));
+                  };
+                  const anyGroup = split ? names.some(nm => ['out', 'ret'].some(d => { const v = splitSel[normalizeTr(nm)]?.[d]; return v && v !== 'M'; }))
+                    : ((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M'));
                   return (
                     <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                      <label style={labelStyle}>✈️ Uçuş <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — grup uçuşu seçilirse odadaki {n} kişi eklenir · ⭐ giriş/çıkış tarihine uyan · münferit ise elle yazın)</span></label>
+                      <label style={labelStyle}>✈️ Uçuş <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — grup uçuşu seçilirse {split ? 'o kişi' : `odadaki ${n} kişi`} eklenir · ⭐ giriş/çıkış tarihine uyan · münferit ise elle yazın)</span></label>
                       {!opts('Gidiş').length && !opts('Dönüş').length && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri tarihli grup uçuşu yok — <b>Grup Uçuşları</b> sekmesinden ekleyebilir ya da münferit uçuşu elle yazabilirsiniz.</div>}
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>
+                      {names.length > 1 && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', margin: '2px 0 8px', fontSize: '12px', color: split ? '#60a5fa' : '#94a3b8', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={split} onChange={e => toggleSplit(e.target.checked)} /> 👥 Uçuşları kişi bazında ayır <span style={{ fontSize: '10px', color: '#64748b' }}>(odadakiler farklı uçuşlarla gidip dönüyorsa)</span></label>}
+                      {split ? names.map(nm => (
+                        <div key={normalizeTr(nm)} style={{ marginBottom: '8px', padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#e8f1f8', marginBottom: '6px' }}>👤 {nm}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{pSel(nm, 'out', 'Gidiş', resData.checkIn)}{pSel(nm, 'ret', 'Dönüş', resData.checkOut)}</div>
+                        </div>))
+                      : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>}
                       <label style={{ ...labelStyle, marginTop: '12px' }}>🚐 Transfer <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — gidiş ve dönüş ayrı · Transferler bölümünden seçin ya da elle yazın)</span></label>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{trf('transferOut', 'out', 'Gidiş', 'Havalimanı → Otel (araç, saat…)', resData.checkIn)}{trf('transferRet', 'ret', 'Dönüş', 'Otel → Havalimanı (araç, saat…)', resData.checkOut)}</div>
-                      {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && resPax(resData) > n && (
+                      {!split && anyGroup && resPax(resData) > n && (
                         <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontSize: '12px', lineHeight: 1.5 }}>
                           ⚠️ {resData.roomType || 'Oda'} odada {resPax(resData)} kişi var ama {n} isim yazılı — grup uçuşuna yalnız <b>{n} bilet</b> eklenir (biletler isimle tutulur).
                           Yukarıdaki oda arkadaşı kutusuna {resPax(resData) - n === 1 ? 'diğer kişinin' : 'diğer kişilerin'} adını yazın.
                         </div>
                       )}
-                      {((resFlights.out && resFlights.out !== 'M') || (resFlights.ret && resFlights.ret !== 'M')) && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
+                      {anyGroup && <label style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}><input type="checkbox" checked={resFlights.pkg} onChange={e => setResFlights(x => ({ ...x, pkg: e.target.checked }))} /> Otel + uçuşu paket yap (tek proforma)</label>}
                     </div>);
                 })()}
 
