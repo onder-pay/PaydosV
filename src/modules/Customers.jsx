@@ -506,11 +506,13 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
 
     // TC Kimlik opsiyonel — ama girildiyse eşsiz olmalı (aynı TC iki müşteride olamaz)
     if (formData.tcKimlik && formData.tcKimlik.trim()) {
-      const tcDup = customers.find(c =>
-        c.tcKimlik === formData.tcKimlik.trim() &&
-        (c._docId ? c._docId !== editingCustomer?._docId : String(c.id) !== String(editingCustomer?.id))
-      );
-      if (tcDup) {
+      const isSelf = (c) => editingCustomer && ((c._docId && c._docId === editingCustomer._docId) || (c.id != null && String(c.id) === String(editingCustomer.id)));
+      const tcDup = customers.find(c => String(c.tcKimlik || '').trim() === formData.tcKimlik.trim() && !isSelf(c));
+      // Düzenlemede TC değişmediyse mükerrer zaten vardı — bu kaydı güncellemek engellenmez, sadece uyarılır
+      const tcUnchanged = editingCustomer && String(editingCustomer.tcKimlik || '').trim() === formData.tcKimlik.trim();
+      if (tcDup && tcUnchanged) {
+        showToast?.(`⚠️ Bu TC ile ikinci bir kayıt daha var: ${titleCaseTr(`${tcDup.firstName || ''} ${tcDup.lastName || ''}`)}${tcDup.phone ? ` (${tcDup.phone})` : ''} — müşteri listesinden fazlasını silin`, 'warning');
+      } else if (tcDup) {
         showToast?.(sameCustName(tcDup, formData)
           ? `❌ Bu TC Kimlik No zaten kayıtlı: ${tcDup.firstName} ${tcDup.lastName} — mükerrer kayıt açmayın`
           : `❌ Bu TC başka isimle kayıtlı: ${titleCaseTr(`${tcDup.firstName || ''} ${tcDup.lastName || ''}`)}. TC eşsizdir — TC veya isimde hata var, kontrol ediniz.`, 'error');
