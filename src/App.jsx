@@ -138,6 +138,8 @@ function AppInner() {
   // Dashboard kısayolu: modüle git + formu aç ('new' | 'offer' | 'contract')
   const [quickAction, setQuickAction] = useState(null);
   const goAction = (mod, act) => { setQuickAction(act ? { mod, act } : null); navigateTo(mod); };
+  const [tourTab, setTourTab] = useState('list'); // Turlar: 'list' | 'offers' (Tur Teklifleri)
+  useEffect(() => { if (quickAction?.mod === 'tours' && quickAction.act === 'offer') setTourTab('offers'); }, [quickAction]);
   const qa = (mod) => ({ quickAction: quickAction?.mod === mod ? quickAction.act : null, onQuickActionDone: () => setQuickAction(null) });
 
   // 🔄 Tüm veriyi Firebase'den yenile (onSnapshot kaldırıldığı için manuel tazeleme)
@@ -870,7 +872,16 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'customers': return <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} openCustomerId={openCustomerId} onOpenCustomerHandled={() => setOpenCustomerId(null)} onBack={navigateBack} currentUser={currentUser} onGo={goAction} {...qa('customers')} />;
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onOpenCustomer={setCustOverlay} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
-      case 'tours': return <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...qa('tours')} />;
+      case 'tours': {
+        const tabB = (id, label) => <button key={id} onClick={() => setTourTab(id)} style={{ padding: '8px 16px', background: tourTab === id ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: tourTab === id ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: tourTab === id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>{label}</button>;
+        const offerCount = quotes.filter(q => q.type === 'tur-teklifi').length;
+        return <>
+          <div style={{ display: 'flex', gap: '8px', padding: '16px 20px 0', flexWrap: 'wrap' }}>{tabB('list', '🎫 Turlar')}{tabB('offers', `🧾 Tur Teklifleri (${offerCount})`)}</div>
+          {tourTab === 'offers'
+            ? <QuotesModule only="tur-teklifi" appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('tours')} />
+            : <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...(quickAction?.act === 'offer' ? {} : qa('tours'))} />}
+        </>;
+      }
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
       case 'quotes': return <QuotesModule appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('quotes')} />;
       case 'agencies': return <AgenciesModule agencies={agencies} setAgencies={setAgencies} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} />;

@@ -12,7 +12,9 @@ import { useEffect, useState } from 'react';
 import { TR_AYLAR, contractSure, genContractHTML, genOfferHTML, parseTrDate, refreshTourShareLinks, vizeSartiBul, hhmm, offerDateRange, offerDuration, offerLocation, trTarih, TR_GUNLER } from '../components/shared';
 
 
-export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours, quickAction, onQuickActionDone }) {
+export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast, appSettings, currentUser, tours, setTours, quickAction, onQuickActionDone, only }) {
+  // only='tur-teklifi' → Turlar bölümündeki "Tur Teklifleri" sekmesi; boşsa Teklif & Proforma (tur teklifleri hariç)
+  const scopeQuotes = only ? quotes.filter(q => q.type === only) : quotes.filter(q => q.type !== 'tur-teklifi');
   // Teklifi tura dönüştür (fiyat + tarih + destinasyon aktarılır)
   const convertOfferToTour = async (quote) => {
     const o = quote.offer || {};
@@ -60,7 +62,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
   const [pdfBusy, setPdfBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
-  const [filterType, setFilterType] = useState('all'); // all, teklif, proforma
+  const [filterType, setFilterType] = useState(only || 'all'); // all, teklif, proforma
   const emptyOffer = {
     title: 'Tur Adı', subtitle: '', startDate: '', endDate: '',
     destinations: [{ country: '', city: '' }],
@@ -486,7 +488,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
       ).slice(0, 10)
     : [];
 
-  const filteredQuotes = quotes
+  const filteredQuotes = scopeQuotes
     .filter(q => filterType === 'all' || q.type === filterType)
     .filter(q => 
       searchQuery.length < 1 || 
@@ -1557,22 +1559,24 @@ KURALLAR:
     <div style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', color: '#ffffff' }}>📄 Teklif & Proforma</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{filteredQuotes.length} / {quotes.length} kayıt</p>
+          <h2 style={{ margin: 0, fontSize: '20px', color: '#ffffff' }}>{only ? '🧾 Tur Teklifleri' : '📄 Teklif & Proforma'}</h2>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{filteredQuotes.length} / {scopeQuotes.length} kayıt</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>🧾 Tur Teklifi</button>
+          {only && <button onClick={() => { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Tur Teklifi</button>}
+          {!only && <>
           <button onClick={() => { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); }} style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📜 Sözleşme</button>
           <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
+          </>}
         </div>
       </div>
 
       {/* Filtre Butonları */}
-      {quotes.length > 0 && (
+      {scopeQuotes.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          {!only && <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
             <button onClick={() => setFilterType('all')} style={{ padding: '10px 20px', background: filterType === 'all' ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'rgba(255,255,255,0.05)', border: filterType === 'all' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'all' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-              📋 Tümü ({quotes.length})
+              📋 Tümü ({scopeQuotes.length})
             </button>
             <button onClick={() => setFilterType('teklif')} style={{ padding: '10px 20px', background: filterType === 'teklif' ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)' : 'rgba(255,255,255,0.05)', border: filterType === 'teklif' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'teklif' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               📝 Teklifler ({quotes.filter(q => q.type === 'teklif').length})
@@ -1580,13 +1584,10 @@ KURALLAR:
             <button onClick={() => setFilterType('proforma')} style={{ padding: '10px 20px', background: filterType === 'proforma' ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)', border: filterType === 'proforma' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'proforma' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               💰 Proformalar ({quotes.filter(q => q.type === 'proforma').length})
             </button>
-            <button onClick={() => setFilterType('tur-teklifi')} style={{ padding: '10px 20px', background: filterType === 'tur-teklifi' ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: filterType === 'tur-teklifi' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'tur-teklifi' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
-              🧾 Tur Teklifleri ({quotes.filter(q => q.type === 'tur-teklifi').length})
-            </button>
             <button onClick={() => setFilterType('sozlesme')} style={{ padding: '10px 20px', background: filterType === 'sozlesme' ? 'linear-gradient(135deg, #6366f1, #4f46e5)' : 'rgba(255,255,255,0.05)', border: filterType === 'sozlesme' ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: filterType === 'sozlesme' ? 'white' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
               📜 Sözleşmeler ({quotes.filter(q => q.type === 'sozlesme').length})
             </button>
-          </div>
+          </div>}
 
           {/* Arama */}
           <div style={{ position: 'relative' }}>
@@ -1608,10 +1609,10 @@ KURALLAR:
         <div style={{ textAlign: 'center', padding: '60px 20px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
           <h3 style={{ margin: '0 0 8px', fontSize: '16px', color: '#ffffff' }}>
-            {quotes.length === 0 ? 'Henüz teklif/proforma oluşturulmamış' : 'Sonuç bulunamadı'}
+            {scopeQuotes.length === 0 ? (only ? 'Henüz tur teklifi oluşturulmamış' : 'Henüz teklif/proforma oluşturulmamış') : 'Sonuç bulunamadı'}
           </h3>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            {quotes.length === 0 ? 'Yeni bir teklif veya proforma oluşturmak için "Yeni Oluştur" butonuna tıklayın' : 'Farklı bir arama terimi deneyin'}
+            {scopeQuotes.length === 0 ? (only ? '"Yeni Tur Teklifi" butonuyla oluşturun' : 'Yeni bir teklif veya proforma oluşturmak için "Yeni Oluştur" butonuna tıklayın') : 'Farklı bir arama terimi deneyin'}
           </p>
         </div>
       ) : (

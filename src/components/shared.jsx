@@ -361,7 +361,7 @@ export const SHORTCUTS = [
   { id: 'cust-new', mod: 'customers', act: 'new', icon: '👤', label: 'Yeni Müşteri', color: '#3b82f6' },
   { id: 'ds160-link', mod: 'ds160', act: 'link', icon: '🇺🇸', label: 'Amerika Vize Linki', color: '#8b5cf6' },
   { id: 'tour-new', mod: 'tours', act: 'new', icon: '🎫', label: 'Yeni Tur', color: '#f59e0b' },
-  { id: 'offer-new', mod: 'quotes', act: 'offer', icon: '🧾', label: 'Yeni Tur Teklifi', color: '#e8912a' },
+  { id: 'offer-new', mod: 'tours', act: 'offer', icon: '🧾', label: 'Yeni Tur Teklifi', color: '#e8912a' },
   { id: 'quote-new', mod: 'quotes', act: 'new', icon: '📄', label: 'Yeni Teklif / Proforma', color: '#ef4444' },
   { id: 'contract-new', mod: 'quotes', act: 'contract', icon: '📜', label: 'Yeni Sözleşme', color: '#6366f1' },
   { id: 'tavsiye', mod: 'tavsiyeler', act: null, icon: '⭐', label: 'Tavsiye Ekle', color: '#fb923c' },
