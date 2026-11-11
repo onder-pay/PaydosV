@@ -449,7 +449,13 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
     setFormData({ ...formData, items: updated });
   };
 
+  const [editingQuoteId, setEditingQuoteId] = useState(null); // ✏️ düzenlenen teklif/proforma (numara ve tarih korunur)
+  const editQuote = (q) => {
+    setFormData({ ...emptyForm, ...q, items: (q.items || []).length ? q.items.map(it => ({ ...it })) : emptyForm.items });
+    setEditingQuoteId(q.id); setViewingQuote(null); setFormStep('details'); setShowForm(true);
+  };
   const resetForm = () => {
+    setEditingQuoteId(null);
     setFormData(emptyForm);
     setFormStep('type');
     setShowForm(false);
@@ -467,6 +473,13 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
       return;
     }
 
+    if (editingQuoteId) {
+      const stamp = { updatedAt: new Date().toISOString(), updatedBy: currentUser?.name || currentUser?.email || '' };
+      setQuotes(prev => prev.map(q => q.id === editingQuoteId ? { ...q, ...formData, id: q.id, _docId: q._docId, number: q.number, createdAt: q.createdAt, createdBy: q.createdBy, ...stamp } : q));
+      showToast?.(`${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} güncellendi`, 'success');
+      resetForm();
+      return;
+    }
     const newQuote = {
       ...formData,
       id: Date.now(),
@@ -508,7 +521,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
         <div style={{ position: 'sticky', top: 0, background: 'rgba(10,22,40,0.98)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <button onClick={() => setViewingQuote(null)} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← Geri</button>
           <h2 style={{ margin: 0, fontSize: '16px', color: '#ffffff' }}>{viewingQuote.type === 'teklif' ? '📝 Teklif' : '💰 Proforma'}</h2>
-          <div style={{ width: '70px' }}></div>
+          <button onClick={() => editQuote(viewingQuote)} style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#f59e0b', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>✏️ Düzenle</button>
         </div>
 
         <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
@@ -603,7 +616,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
         {/* Header */}
         <div style={{ position: 'sticky', top: 0, background: 'rgba(10,22,40,0.98)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <button onClick={resetForm} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← İptal</button>
-          <h2 style={{ margin: 0, fontSize: '16px', color: '#ffffff' }}>📄 Yeni {formData.type === 'teklif' ? 'Teklif' : 'Proforma'}</h2>
+          <h2 style={{ margin: 0, fontSize: '16px', color: '#ffffff' }}>{editingQuoteId ? `✏️ ${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} Düzenle · ${formData.number || ''}` : `📄 Yeni ${formData.type === 'teklif' ? 'Teklif' : 'Proforma'}`}</h2>
           <div style={{ width: '70px' }}></div>
         </div>
 
@@ -674,7 +687,8 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
             <div>
               <div style={{ background: 'rgba(16,185,129,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
                 <p style={{ margin: 0, fontSize: '13px', color: '#10b981' }}>📋 Adım 3/3: Detaylar</p>
-                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{formData.customer.firstName} {formData.customer.lastName}</strong></p>
+                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Müşteri: <strong style={{ color: '#fff' }}>{formData.customer.firstName} {formData.customer.lastName}</strong>
+                  <button onClick={() => setFormStep('customer')} style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>değiştir</button></p>
               </div>
 
               <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '100px' }}>
@@ -1680,6 +1694,7 @@ KURALLAR:
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={() => setViewingQuote(quote)} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>👁️ Görüntüle</button>
+                <button onClick={() => editQuote(quote)} title="Düzenle" style={{ padding: '8px 12px', background: 'rgba(245,158,11,0.2)', border: 'none', borderRadius: '6px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️</button>
                 <button onClick={() => downloadPDF(quote)} style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.2)', border: 'none', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📄</button>
                 <button onClick={() => sendWhatsApp(quote)} style={{ padding: '8px 12px', background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '6px', color: '#25d366', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📱</button>
                 <button onClick={() => sendEmail(quote)} style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✉️</button>
