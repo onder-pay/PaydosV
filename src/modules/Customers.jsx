@@ -89,11 +89,14 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
   const fileInputRef = useRef(null);
 
-  // Dashboard'dan müşteri profili aç
+  // Dashboard'dan / başka modülden müşteri profili aç — yalnız o zaman "← Geri" geldiği modüle döner;
+  // kart Müşteriler içinden (arama/liste) açıldıysa geri, listeye/arama sonucuna döner
+  const cameFromOutside = useRef(false);
   useEffect(() => {
     if (openCustomerId) {
       const customer = customers.find(c => c.id === openCustomerId);
       if (customer) {
+        cameFromOutside.current = true;
         setSelectedCustomer(customer);
         setDetailTab('info');
       }
@@ -1095,7 +1098,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
         {/* Header */}
         <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', zIndex: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '16px', flex: 1, minWidth: 0 }}>
-            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (onBack) onBack(); }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
+            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (cameFromOutside.current) { cameFromOutside.current = false; onBack?.(); } }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ margin: 0, fontSize: isMobile ? '16px' : '18px', color: '#ffffff', fontWeight: '600', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>{showPhone(c.phone)}</p>
