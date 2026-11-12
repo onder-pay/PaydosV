@@ -9,8 +9,8 @@ export const passportImageOf = (c) => {
   return pp[0].image;
 };
 
-// Dosya adı: ASCII, boşluk/işaret yerine alt çizgi ("Önder Taşçı" → "Onder_Tasci")
-export const safeFileName = (s) => asciiTr(String(s || '')).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'dosya';
+// Dosya adı: ASCII, boşluk/işaret yerine alt çizgi ("Önder Taşçı" → "Onder_Tasci"); şapkalı/aksanlı harfler sade harfe ("Mekân" → "Mekan")
+export const safeFileName = (s) => asciiTr(String(s || '')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'dosya';
 const EXT = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'application/pdf': 'pdf' };
 // Adresteki dosyayı indirir (Storage adresi ya da data: görsel). Döner: { blob, ext }
 export const fetchFile = async (url) => {

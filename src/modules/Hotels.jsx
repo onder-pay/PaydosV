@@ -7,10 +7,11 @@ import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { formatDate, generateUniqueId, isSaneDate, safeParseJSON } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
 import { pdfFit, pdfText, pdfFileText } from '../lib/pdf.js';
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useRef, useState, Fragment } from 'react';
 import { RES_EXTRA_DEFS, resExtraSum, resExtras, resPax } from '../components/shared';
 import { CustomerNameInput } from '../components/ui';
 import { claudeRequest } from '../lib/api.js';
+import { safeFileName } from '../lib/files.js';
 
 
 export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights, transfers, setTransfers, packages, setPackages, visaApplications, customers, setCustomers, isMobile, showToast, addToUndo, onNavigateToCustomer, appSettings, currentUser }) {
@@ -579,8 +580,61 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
       const docId = h._docId || String(h.id);
       await deleteDoc(doc(db, 'hotels', docId));
     } catch(e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); return; }
+    // Otelin info sheet dosyaları da silinir (Storage'da sahipsiz dosya kalmasın)
+    if ((h.infoSheets || []).length) {
+      try { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await Promise.all(h.infoSheets.filter(f => f.path).map(f => deleteObject(ref(getStorage(), f.path)).catch(() => {}))); } catch (e) { /* dosya silinemese de otel silindi */ }
+    }
     showToast?.('🗑️ Otel silindi', 'info');
     setView('list');
+  };
+
+  // 📄 Hotel Info Sheet: otelin bilgi föyü (PDF / görsel / Word…) — dosya Firebase Storage'a, kaydı otelin infoSheets listesine yazılır.
+  // Yükleme sürerken otel listesi değişmiş olabilir: güncelleme her zaman en son otel verisine uygulanır.
+  const hotelsRef = useRef(hotels);
+  hotelsRef.current = hotels;
+  const [infoBusy, setInfoBusy] = useState('');
+  const INFO_MAX_MB = 20;
+  const patchHotel = async (hotelId, makePatch) => {
+    const cur = hotelsRef.current.find(x => String(x.id) === String(hotelId));
+    if (!cur) throw new Error('Otel bulunamadı');
+    const patch = { ...makePatch(cur), updatedAt: new Date().toISOString() };
+    setHotels(prev => prev.map(x => String(x.id) === String(hotelId) ? { ...x, ...patch } : x));
+    setSelectedHotel(sh => sh && String(sh.id) === String(hotelId) ? { ...sh, ...patch } : sh);
+    await setDoc(doc(db, 'hotels', cur._docId || String(cur.id)), cleanForFirestore(patch), { merge: true });
+  };
+  const uploadInfoSheets = async (hotel, fileList) => {
+    const files = [...(fileList || [])];
+    if (!files.length || infoBusy) return;
+    const big = files.find(f => f.size > INFO_MAX_MB * 1024 * 1024);
+    if (big) { showToast?.(`"${big.name}" ${INFO_MAX_MB} MB'tan büyük — yüklenmedi`, 'error'); return; }
+    const added = [];
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        setInfoBusy(`⏳ Yükleniyor ${i + 1}/${files.length}…`);
+        const path = `tur-belgeleri/otel-${hotel.id}/info_${Date.now()}_${safeFileName(f.name)}`;
+        const sRef = ref(getStorage(), path);
+        await uploadBytes(sRef, f, { contentType: f.type || 'application/octet-stream' });
+        added.push({ id: generateUniqueId(), name: f.name, url: await getDownloadURL(sRef), path, size: f.size, type: f.type || '', addedAt: new Date().toISOString(), addedBy: currentUser?.name || '' });
+      }
+    } catch (e) { showToast?.('❌ Yükleme hatası: ' + e.message, 'error'); }
+    // Bir kısmı yüklendiyse onlar yine de kaydedilir (Storage'da sahipsiz dosya kalmasın)
+    try {
+      if (added.length) {
+        await patchHotel(hotel.id, cur => ({ infoSheets: [...(cur.infoSheets || []), ...added] }));
+        showToast?.(`✅ ${added.length} dosya yüklendi`, 'success');
+      }
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+    setInfoBusy('');
+  };
+  const removeInfoSheet = async (hotel, f) => {
+    if (!window.confirm(`"${f.name}" silinsin mi?`)) return;
+    try { if (f.path) { const { getStorage, ref, deleteObject } = await import('firebase/storage'); await deleteObject(ref(getStorage(), f.path)).catch(() => {}); } } catch (e) { /* dosya zaten yoksa kayıt yine silinir */ }
+    try {
+      await patchHotel(hotel.id, cur => ({ infoSheets: (cur.infoSheets || []).filter(x => x.id !== f.id) }));
+      showToast?.('🗑️ Dosya silindi', 'info');
+    } catch (e) { showToast?.('❌ Silinemedi: ' + e.message, 'error'); }
   };
 
   const [resFlights, setResFlights] = useState({ out: '', ret: '', pkg: true }); // rezervasyonla birlikte grup uçuşuna ekle
@@ -2158,7 +2212,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <h3 style={{ margin: 0, fontSize: '15px', color: '#fff' }}>{titleCaseTr(h.name)}</h3>
+                    <h3 style={{ margin: 0, fontSize: '15px', color: '#fff' }}>{titleCaseTr(h.name)}{(h.infoSheets || []).length > 0 && <span title={`Info Sheet yüklü (${h.infoSheets.length} dosya)`} style={{ marginLeft: '6px', fontSize: '12px' }}>📄</span>}</h3>
                     <span style={{ fontSize: '11px', color: '#f59e0b' }}>{'★'.repeat(parseInt(h.stars) || 0)}</span>
                   </div>
                   <p style={{ margin: '4px 0', fontSize: '12px', color: '#94a3b8' }}>🌍 {titleCaseTr(h.city)}{h.country ? `, ${titleCaseTr(h.country)}` : ''}</p>
@@ -3058,6 +3112,36 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
             <div style={{ fontSize: '11px', color: '#94a3b8' }}>Kalan Tahsilat</div>
           </div>
         </div>
+
+        {/* 📄 Hotel Info Sheet — otelin bilgi föyü: yükle, aç, linkini kopyala, sil */}
+        {(() => {
+          const sheets = h.infoSheets || [];
+          const fmtSize = (b) => !b ? '' : b >= 1048576 ? `${(b / 1048576).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+          const icon = (f) => /pdf/.test(f.type || '') || /\.pdf$/.test(normalizeTr(f.name)) ? '📕' : /^image\//.test(f.type || '') ? '🖼️' : '📄';
+          const btn = { padding: '6px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' };
+          return (
+            <div style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '13px', color: '#22d3ee', fontWeight: '600' }}>📄 Hotel Info Sheet <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '400' }}>({sheets.length} dosya)</span></div>
+                <label title={`PDF, görsel, Word/Excel — dosya başına en çok ${INFO_MAX_MB} MB; birden çok dosya seçilebilir`} style={{ padding: '7px 14px', background: 'rgba(6,182,212,0.18)', border: '1px solid rgba(6,182,212,0.45)', borderRadius: '8px', color: '#22d3ee', cursor: infoBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                  {infoBusy || '📤 Info Sheet Yükle'}
+                  <input type="file" multiple accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx" disabled={!!infoBusy} style={{ display: 'none' }} onChange={e => { uploadInfoSheets(h, e.target.files); e.target.value = ''; }} />
+                </label>
+              </div>
+              {sheets.length === 0
+                ? <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>Otelin bilgi föyünü (info sheet / fact sheet) yükleyin — buradan açılır, linki kopyalanıp paylaşılır.</div>
+                : <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {sheets.map(f => (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
+                        <a href={f.url} target="_blank" rel="noopener noreferrer" title="Aç" style={{ flex: '1 1 160px', minWidth: 0, color: '#e8f1f8', fontSize: '13px', fontWeight: '600', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{icon(f)} {f.name}</a>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>{[fmtSize(f.size), f.addedAt ? formatDate(f.addedAt) : '', f.addedBy || ''].filter(Boolean).join(' · ')}</span>
+                        <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: 'none' }}>👁️ Aç</a>
+                        <button onClick={async () => { try { await navigator.clipboard.writeText(f.url); showToast?.('🔗 Link kopyalandı', 'success'); } catch (e) { window.prompt('Linki kopyalayın:', f.url); } }} style={btn}>🔗 Link</button>
+                        <button onClick={() => removeInfoSheet(h, f)} title="Sil" style={{ ...btn, color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)' }}>🗑️</button>
+                      </div>))}
+                  </div>}
+            </div>);
+        })()}
 
         {/* 💳 Ödeme ve iptal koşulları */}
         {(() => {
