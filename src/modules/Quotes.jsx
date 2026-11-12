@@ -6,7 +6,7 @@ import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { formatDate, formatWhatsAppPhone, safeParseJSON, waUrl } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
 import { jsPDF } from '../lib/heavy.js';
-import { normEmail, normalizeTr, titleCaseTr, trHas, trLower } from '../lib/turkish.js';
+import { normEmail, normalizeTr, titleCaseTr, trHas, trLower, fullNameTr } from '../lib/turkish.js';
 import { placeTr, tourCountries } from '../lib/data.js';
 import { useEffect, useState } from 'react';
 import { TR_AYLAR, contractSure, genContractHTML, genOfferHTML, parseTrDate, refreshTourShareLinks, vizeSartiBul, hhmm, offerDateRange, offerDuration, offerLocation, trTarih, TR_GUNLER } from '../components/shared';
@@ -463,22 +463,26 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
   };
 
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
-  useEffect(() => { if (!quickAction) return; if (quickAction === 'new') { resetForm(); setShowForm(true); }
+  useEffect(() => { if (!quickAction) return; if (only) { if (quickAction !== 'offer') return; } // Tur Teklifleri sekmesi yalnız 'offer' kısayolunu açar
+    if (quickAction === 'new') { resetForm(); setShowForm(true); }
     else if (quickAction === 'offer') { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }
     else if (quickAction === 'contract') { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); } onQuickActionDone?.(); }, [quickAction]);
 
   const handleSave = () => {
     if (!formData.type || !formData.customer || !formData.subject) {
       alert('Tür, müşteri ve konu zorunludur!');
-      return;
+      return null;
     }
 
+    // Kaydedilen belgeyi döndürür (alt çubuktaki WhatsApp / E-posta: önce kaydet, sonra gönder)
     if (editingQuoteId) {
       const stamp = { updatedAt: new Date().toISOString(), updatedBy: currentUser?.name || currentUser?.email || '' };
-      setQuotes(prev => prev.map(q => q.id === editingQuoteId ? { ...q, ...formData, id: q.id, _docId: q._docId, number: q.number, createdAt: q.createdAt, createdBy: q.createdBy, ...stamp } : q));
+      const merge = (q) => ({ ...q, ...formData, id: q.id, _docId: q._docId, number: q.number, createdAt: q.createdAt, createdBy: q.createdBy, ...stamp });
+      const cur = quotes.find(q => q.id === editingQuoteId);
+      setQuotes(prev => prev.map(q => q.id === editingQuoteId ? merge(q) : q));
       showToast?.(`${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} güncellendi`, 'success');
       resetForm();
-      return;
+      return cur ? merge(cur) : null;
     }
     const newQuote = {
       ...formData,
@@ -491,6 +495,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
     setQuotes([...quotes, newQuote]);
     showToast?.(`${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} oluşturuldu`, 'success');
     resetForm();
+    return newQuote;
   };
 
   const searchResults = customerSearchQuery.length >= 1
@@ -649,7 +654,8 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
             <div>
               <div style={{ background: 'rgba(139,92,246,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '1px solid rgba(139,92,246,0.2)' }}>
                 <p style={{ margin: 0, fontSize: '13px', color: '#8b5cf6' }}>📋 Adım 2/3: Müşteri Seçimi</p>
-                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Tür: <strong style={{ color: '#fff' }}>{formData.type === 'teklif' ? 'Teklif' : 'Proforma Fatura'}</strong></p>
+                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Tür: <strong style={{ color: '#fff' }}>{formData.type === 'teklif' ? 'Teklif' : 'Proforma Fatura'}</strong>
+                  {formData.customer && <button onClick={() => setFormStep('details')} style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>← vazgeç ({titleCaseTr(`${formData.customer.firstName || ''} ${formData.customer.lastName || ''}`)} kalsın)</button>}</p>
               </div>
 
               <input
@@ -666,7 +672,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
                     <div key={customer.id} onClick={() => { setFormData({ ...formData, customer }); setFormStep('details'); }} style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{titleCaseTr(customer.firstName)} {titleCaseTr(customer.lastName)}</p>
+                          <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '600', color: '#e8f1f8' }}>{fullNameTr(customer)}</p>
                           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{customer.phone} • {normEmail(customer.email)}</p>
                         </div>
                         <span style={{ fontSize: '20px' }}>→</span>
@@ -804,8 +810,8 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
         {formStep === 'details' && (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'rgba(10,22,40,0.98)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', gap: '12px' }}>
             <button onClick={handleSave} style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>💾 Kaydet</button>
-            <button style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📱 WhatsApp</button>
-            <button style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>✉️ E-posta</button>
+            <button onClick={() => { const q = handleSave(); if (q) sendWhatsApp(q); }} title="Kaydeder ve müşteriye WhatsApp mesajını açar" style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #25d366, #128c7e)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>📱 WhatsApp</button>
+            <button onClick={() => { const q = handleSave(); if (q) sendEmail(q); }} title="Kaydeder ve müşteriye e-postayı açar" style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>✉️ E-posta</button>
           </div>
         )}
       </div>
@@ -1687,10 +1693,10 @@ KURALLAR:
                 <span style={{ fontSize: '11px', color: '#64748b' }}>{quote.number}</span>
               </div>
               <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#ffffff' }}>{quote.subject}</h3>
-              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>{quote.customer.firstName} {quote.customer.lastName}</p>
+              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>{quote.customer?.firstName} {quote.customer?.lastName}</p>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'rgba(16,185,129,0.1)', borderRadius: '8px', marginBottom: '12px' }}>
                 <span style={{ fontSize: '12px', color: '#10b981' }}>Toplam</span>
-                <span style={{ fontSize: '16px', color: '#10b981', fontWeight: '700' }}>{quote.total.toFixed(2)} {quote.currency}</span>
+                <span style={{ fontSize: '16px', color: '#10b981', fontWeight: '700' }}>{(Number(quote.total) || 0).toFixed(2)} {quote.currency}</span>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={() => setViewingQuote(quote)} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>👁️ Görüntüle</button>
@@ -1766,7 +1772,7 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
   const freePaxUnit = hotelSingle + ucakUnit + fuarUnit;
   // Ortak gider toplamı (free pax satırının birim fiyatı otomatik)
   const sharedTotal = c.shared.reduce((s, r) => {
-    const unit = /free pax/i.test(r.name) ? freePaxUnit : n(r.unit);
+    const unit = /free pax/.test(normalizeTr(r.name)) ? freePaxUnit : n(r.unit);
     return s + n(r.qty) * unit;
   }, 0);
   const perPersonShared = n(c.peopleCount) > 0 ? sharedTotal / n(c.peopleCount) : 0;
@@ -1867,7 +1873,7 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
               <thead><tr><th style={th}>Gider Kalemi</th><th style={th}>Adet/Gün</th><th style={th}>Birim Fiyat</th><th style={th}>Toplam</th><th style={th}></th></tr></thead>
               <tbody>
                 {c.shared.map((r, i) => {
-                  const isFreePax = /free pax/i.test(r.name);
+                  const isFreePax = /free pax/.test(normalizeTr(r.name));
                   const unit = isFreePax ? freePaxUnit : n(r.unit);
                   return (
                     <tr key={i}>

@@ -13,7 +13,7 @@ import { getActiveBanks } from '../lib/banks.js';
 import { greenExemptIn, greenPassportStatus, passportValidityFor, schengenResidence } from '../lib/travel.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { logActivity, mailHtml, sendMailRequest } from '../lib/api.js';
-import { nameForSave, normEmail, normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
+import { nameForSave, normEmail, normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
 import { fetchFile, loadJSZip, passportImageOf, safeFileName, saveBlob } from '../lib/files.js';
 
 
@@ -116,7 +116,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
         setDoc(doc(db, 'customers', newId), cust).catch(() => {});
         olusturuldu++;
       }
-      return { ...r, customerId: cust.id, customerName: `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim() };
+      return { ...r, customerId: cust.id, customerName: fullNameTr(cust) };
     });
 
     if (bagli + olusturuldu > 0) {
@@ -1421,7 +1421,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
         setCustomers(prev => [...prev, newCust]);
         try { await setDoc(doc(db, 'customers', newId), newCust, { merge: true }); } catch (e) { console.error('Müşteri kaydı hatası:', e); }
         resData.customerId = newId;
-        resData.customerName = `${titleCaseTr(firstName)} ${titleCaseTr(lastName)}`.trim();
+        resData.customerName = fullNameTr(firstName, lastName);
       }
     }
 

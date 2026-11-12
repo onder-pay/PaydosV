@@ -6,7 +6,7 @@ import { canonPassportType, isoToCountry, passportTypes, placeTr, schengenCountr
 import { claudeRequest, logActivity } from '../lib/api.js';
 import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, setDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
-import { extraFieldVal, fieldKeyLegacy, fieldKeyTr, nameForSave, normEmail, normalizeTr, titleCaseTr, trHas, asciiTr, namePairForSave } from '../lib/turkish.js';
+import { extraFieldVal, fieldKeyLegacy, fieldKeyTr, nameForSave, normEmail, normalizeTr, titleCaseTr, trHas, asciiTr, namePairForSave, fullNameTr } from '../lib/turkish.js';
 import { formatDate, formatPassportNo, formatWhatsAppPhone, generateUniqueId, getDaysLeft, isSaneDate, isValidTc, safeParseActivities, safeParseDate, safeParseJSON, safeParseObj, safeParseTags, showPhone, waUrl } from '../lib/format.js';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { useEffect, useRef, useState, useMemo } from 'react';
@@ -16,7 +16,7 @@ import { passportImageOf, downloadUrl } from '../lib/files.js';
 import { residencePermitsOf } from '../lib/travel.js';
 
 
-export function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, currentUser, quickAction, onQuickActionDone, onGo }) {
+export function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, alwaysBack, currentUser, quickAction, onQuickActionDone, onGo }) {
   // 🖱️ Sağ tık / uzun bas menüsü: { x, y, c }  ·  tura ekle için tur seçici
   const [ctxMenu, setCtxMenu] = useState(null);
   const [tourPickFor, setTourPickFor] = useState(null); // tek müşteri ya da { many: [müşteriler] }
@@ -89,14 +89,15 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
   const [aiSaving, setAiSaving] = useState(false); // AI hızlı ekle: görseller yüklenirken çift tıklamayı engelle
   const fileInputRef = useRef(null);
 
-  // Dashboard'dan / başka modülden müşteri profili aç — yalnız o zaman "← Geri" geldiği modüle döner;
-  // kart Müşteriler içinden (arama/liste) açıldıysa geri, listeye/arama sonucuna döner
-  const cameFromOutside = useRef(false);
+  // Dashboard'dan / başka modülden müşteri profili aç — yalnız o kartta "← Geri" geldiği modüle döner;
+  // kart Müşteriler içinden (arama/liste) açıldıysa geri, listeye/arama sonucuna döner.
+  // alwaysBack: başka ekranın üstünde açılan kart katmanı (kendi listesi yok) — geri her zaman katmanı kapatır.
+  const outsideId = useRef(null);
   useEffect(() => {
     if (openCustomerId) {
       const customer = customers.find(c => c.id === openCustomerId);
       if (customer) {
-        cameFromOutside.current = true;
+        outsideId.current = customer.id;
         setSelectedCustomer(customer);
         setDetailTab('info');
       }
@@ -625,7 +626,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
       return;
     }
     showToast?.('✅ Kaydedildi', 'success');
-    logActivity(editingCustomer ? 'status' : 'create', 'Müşteri', `${titleCaseTr(fullData.firstName)} ${titleCaseTr(fullData.lastName)}`.trim(), currentUser);
+    logActivity(editingCustomer ? 'status' : 'create', 'Müşteri', fullNameTr(fullData), currentUser);
     // Kaydet sonrası: formu kapat, düzenlenen müşterinin detayında kal (listeye düşme)
     if (editingCustomer) {
       const savedId = editingCustomer._docId || editingCustomer.id;
@@ -646,7 +647,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
     const same = (c) => (c._docId || (c.id != null ? String(c.id) : null)) === key;
     setCustomers(prev => prev.filter(c => !same(c)));
     if (selectedCustomer && same(selectedCustomer)) setSelectedCustomer(null);
-    logActivity('delete', 'Müşteri', `${titleCaseTr(cust.firstName)} ${titleCaseTr(cust.lastName)}`.trim(), currentUser);
+    logActivity('delete', 'Müşteri', fullNameTr(cust), currentUser);
     try { await deleteDoc(doc(db, 'customers', key)); }
     catch (e) { showToast?.('❌ Firestore\'dan silinemedi: ' + e.message, 'error'); }
   };
@@ -1098,9 +1099,9 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
         {/* Header */}
         <div style={{ position: 'sticky', top: 0, background: 'linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(10,22,40,0.95) 100%)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: isMobile ? '12px 14px' : '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', zIndex: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '16px', flex: 1, minWidth: 0 }}>
-            <button onClick={() => { setSelectedCustomer(null); setDetailTab('info'); if (cameFromOutside.current) { cameFromOutside.current = false; onBack?.(); } }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
+            <button onClick={() => { const out = alwaysBack || (outsideId.current != null && String(outsideId.current) === String(c.id)); outsideId.current = null; setSelectedCustomer(null); setDetailTab('info'); if (out) onBack?.(); }} style={{ flex: 'none', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: isMobile ? '10px 12px' : '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>{isMobile ? '←' : '← Geri'}</button>
             <div style={{ minWidth: 0 }}>
-              <h2 style={{ margin: 0, fontSize: isMobile ? '16px' : '18px', color: '#ffffff', fontWeight: '600', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h2>
+              <h2 style={{ margin: 0, fontSize: isMobile ? '16px' : '18px', color: '#ffffff', fontWeight: '600', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.verified !== true ? '⚠️ ' : '✓ '}{fullNameTr(c)}</h2>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>{showPhone(c.phone)}</p>
             </div>
           </div>
@@ -1630,7 +1631,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
           <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', minWidth: 0 }}>
             {selectable && <input type="checkbox" checked={selIds.includes(c.id)} onClick={e => e.stopPropagation()} onChange={() => toggleSel(c.id)} aria-label="Seç" style={{ width: '18px', height: '18px', marginTop: '1px', accentColor: '#f59e0b', flex: 'none', cursor: 'pointer' }} />}
           <div style={{ minWidth: 0 }}>
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{c.verified !== true ? '⚠️ ' : ''}{fullNameTr(c)}</h3>
             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} {c.city && `• ${c.city}`}</p>
             {(c.companyName || c.sector) && <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>{[c.companyName, c.sector].filter(Boolean).join(' · ')}</p>}
           </div>
@@ -1659,7 +1660,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
       {ctxMenu && (
         <div onClick={e => e.stopPropagation()} onContextMenu={e => e.preventDefault()} style={{ position: 'fixed', left: Math.min(ctxMenu.x, window.innerWidth - 230), top: Math.min(ctxMenu.y, window.innerHeight - 190), zIndex: 3000, width: '220px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '6px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
-          <div style={{ padding: '6px 14px 8px', fontSize: '11px', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{titleCaseTr(ctxMenu.c.firstName)} {titleCaseTr(ctxMenu.c.lastName)}</div>
+          <div style={{ padding: '6px 14px 8px', fontSize: '11px', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fullNameTr(ctxMenu.c)}</div>
           <button style={ctxItem} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); onGo?.('visa', { type: 'visaFor', customer: c }); }}>📑 Vize başvurusu yap</button>
           <button style={ctxItem} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { setTourPickFor(ctxMenu.c); setTourPickQ(''); setCtxMenu(null); }}>🎫 Tura ekle</button>
           <button style={{ ...ctxItem, color: '#94a3b8' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const c = ctxMenu.c; setCtxMenu(null); setSelectedCustomer(c); }}>👤 Müşteri kartını aç</button>
@@ -1669,7 +1670,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
         const selCusts = selIds.map(id => customers.find(c => c.id === id)).filter(Boolean);
         return (
           <div style={{ position: 'fixed', left: isMobile ? '8px' : '50%', right: isMobile ? '8px' : 'auto', transform: isMobile ? 'none' : 'translateX(-50%)', bottom: isMobile ? '12px' : '24px', zIndex: 2500, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '10px 12px', background: '#0f2744', border: '1px solid rgba(245,158,11,0.5)', borderRadius: '14px', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`).join(', ')}>{selCusts.length} kişi seçili</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#f59e0b', marginRight: '4px' }} title={selCusts.map(c => `${fullNameTr(c)}`).join(', ')}>{selCusts.length} kişi seçili</span>
             <button onClick={() => { setTourPickFor({ many: selCusts }); setTourPickQ(''); }} style={{ padding: '8px 12px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#0c1929', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>🎫 Tura ekle</button>
             <button onClick={() => { setSelIds([]); onGo?.('visa', { type: 'visaForMany', customers: selCusts }); }} style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📑 Vize başvurusu</button>
             <button onClick={() => { if (window.confirm(`Seçilen ${selCusts.length} müşteriden yazılı ticari ileti (kampanya) onayı alındı mı?\n\nOnaylarsanız müşteri linkinde kampanya bildirimi varsayılan açık gelir; müşteri istediğinde kapatır.`)) setKampanyaOnay(selCusts, true); }} title="Yazılı kampanya onayı işle" style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid rgba(168,85,247,0.45)', background: 'none', color: '#c084fc', fontWeight: 700, cursor: 'pointer', fontSize: '13px' }}>📣 Kampanya onayı</button>
@@ -1686,7 +1687,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <h3 style={{ margin: 0, fontSize: '16px' }}>🎫 Tura ekle</h3>
                 <button onClick={() => setTourPickFor(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>✕</button>
               </div>
-              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tourPickFor.many ? `Seçilen ${tourPickFor.many.length} kişi` : `${titleCaseTr(tourPickFor.firstName)} ${titleCaseTr(tourPickFor.lastName)}`} hangi tura eklensin?</p>
+              <p style={{ margin: '4px 0 10px', fontSize: '12px', color: '#94a3b8' }}>{tourPickFor.many ? `Seçilen ${tourPickFor.many.length} kişi` : `${fullNameTr(tourPickFor)}`} hangi tura eklensin?</p>
               <input autoFocus value={tourPickQ} onChange={e => setTourPickQ(e.target.value)} placeholder="Tur ara..." style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px' }} />
             </div>
             <div style={{ overflowY: 'auto', padding: '8px' }}>
@@ -1811,7 +1812,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                     <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(6,182,212,0.2)', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                           <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                         </div>
                         <div style={{ textAlign: 'right', fontSize: '10px' }}>
@@ -1904,7 +1905,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div onClick={() => setSelectedCustomer(c)} style={{ cursor: 'pointer' }}>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -1935,7 +1936,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
               <div key={c.id} style={{ background: 'rgba(245,158,11,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(245,158,11,0.2)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div onClick={() => setSelectedCustomer(c)} style={{ cursor: 'pointer' }}>
-                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>🎂 {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>🎂 {fullNameTr(c)}</h3>
                     <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -1967,7 +1968,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(16,185,129,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2005,7 +2006,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(234,179,8,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(234,179,8,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone} • {expVisa?.country}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2038,7 +2039,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(139,92,246,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2071,7 +2072,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2105,7 +2106,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                 <div key={c.id} onClick={() => setSelectedCustomer(c)} style={{ background: 'rgba(5,150,105,0.1)', borderRadius: '10px', padding: '12px', border: '1px solid rgba(5,150,105,0.2)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+                      <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>{fullNameTr(c)}</h3>
                       <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{c.phone}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2858,7 +2859,7 @@ export function CustomerShareModal({ customer, onClose, onSaved, appSettings, sh
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '14px', padding: '18px', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', color: '#e8f1f8' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>🔗 Müşteri Linki — {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h3>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>🔗 Müşteri Linki — {fullNameTr(c)}</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '22px', cursor: 'pointer' }}>×</button>
         </div>
         <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>Bilet, otel belgesi, vize… tek linkte. Belge ekledikçe aynı link güncellenir.{c.shareToken ? ' Bu müşterinin linki daha önce oluşturuldu.' : ''} 🔐 Müşteri ilk açılışta kendi 4 haneli PIN'ini belirler; PIN müşteri kartında görünür.</p>

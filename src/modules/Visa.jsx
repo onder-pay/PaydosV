@@ -9,7 +9,7 @@ import { formatDate, formatWhatsAppPhone, generateUniqueId, getDaysLeft, isValid
 import { getActiveBanks } from '../lib/banks.js';
 import { htmlToPdfDownload } from '../lib/pdf.js';
 import { logActivity } from '../lib/api.js';
-import { normalizeTr, titleCaseTr, trHas } from '../lib/turkish.js';
+import { normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
 import { fingerprintStatus } from '../lib/travel.js';
 
@@ -557,7 +557,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       return;
     }
     const subject = `${visa.country} Vize Randevu Bilgisi`;
-    const body = `Sayın ${visa.customerName},\n\n${visa.country} vize randevunuz ${formatDate(visa.appointmentDate)} tarihinde${visa.appointmentTime ? ` saat ${visa.appointmentTime}` : ''} için alınmıştır.\n\nPNR: ${visa.pnr || '-'}\n\nPaydos Turizm`;
+    const body = `Sayın ${titleCaseTr(visa.customerName)},\n\n${visa.country} vize randevunuz ${formatDate(visa.appointmentDate)} tarihinde${visa.appointmentTime ? ` saat ${visa.appointmentTime}` : ''} için alınmıştır.\n\nPNR: ${visa.pnr || '-'}\n\nPaydos Turizm`;
     window.open(`mailto:${visa.customerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
   };
 
@@ -682,7 +682,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     await generateProforma(visa);
     const price = visa.visaPrice || visa.price || 0;
     const currency = visa.visaCurrency || visa.currency || '€';
-    const msg = `Sayın ${visa.customerName || ''},\n\n${visa.country ? visa.country + ' ' : ''}${visa.visaDuration || visa.visaType || 'vize'} hizmet bedeli: ${price} ${currency}\n\nProforma faturanız ekte yer almaktadır.\n\nPaydos Turizm`;
+    const msg = `Sayın ${titleCaseTr(visa.customerName || '')},\n\n${visa.country ? visa.country + ' ' : ''}${visa.visaDuration || visa.visaType || 'vize'} hizmet bedeli: ${price} ${currency}\n\nProforma faturanız ekte yer almaktadır.\n\nPaydos Turizm`;
     window.open(waUrl(formatWhatsAppPhone(phone), msg), '_blank');
     showToast?.('Proforma indirildi — WhatsApp\'ta dosyayı ekleyip gönderin', 'info');
   };
@@ -769,7 +769,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const openEditVisa = (visa) => {
     const customer = findVisaCust(visa.customerId);
     setRelinkQ(customer ? '' : (visa.customerName || '')); // sahipsiz başvuruda seçim kutusu isimle dolu açılır
-    const cat = visaCategories.find(c => c.id === visa.category);
+    // Kategorisi kayıtlı olmayan (eski) başvuru 'Diğer' ile açılır — yoksa form boş sayfa olarak geliyordu, başvuru düzenlenemiyordu
+    const cat = getCategoryInfo(visa.category || visa.categoryId);
     setSelectedCustomer(customer);
     setSelectedCategory(cat);
     setFormData(visa);
@@ -961,7 +962,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {searchResults.map(c => (
                   <div key={c.id} onClick={() => selectCustomer(c)} style={{ background: 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px' }}>{fullNameTr(c)}</h4>
                     <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{c.phone} • {c.city || '-'}</p>
                   </div>
                 ))}
@@ -1449,7 +1450,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   const rawPhone = formData.customerPhone || linked?.phone || '';
                   if (!rawPhone) { alert('Telefon numarası bulunamadı!'); return; }
                   let message = appSettings?.whatsappTemplate || 'Randevu: {tarih} {saat}';
-                  message = message.replace('{isim}', formData.customerName || '').replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
+                  message = message.replace('{isim}', titleCaseTr(formData.customerName || '')).replace('{ulke}', formData.country || '').replace('{tarih}', formatDate(formData.appointmentDate) || '').replace('{saat}', formData.appointmentTime || '-').replace('{pnr}', formData.pnr || '-');
                   const phone = rawPhone.replace(/\D/g, '');
                   const fullPhone = formatWhatsAppPhone(phone);
                   window.open(waUrl(fullPhone, message), '_blank');
@@ -1559,7 +1560,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   return (
                     <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', fontSize: '13px', opacity: on ? 1 : 0.55 }}>
                       <input type="checkbox" checked={on} onChange={() => setBulkVisa({ ...bv, skip: on ? [...bv.skip, c.id] : bv.skip.filter(x => x !== c.id) })} style={{ width: '17px', height: '17px', accentColor: '#f59e0b' }} />
-                      <span style={{ flex: 1 }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</span>
+                      <span style={{ flex: 1 }}>{fullNameTr(c)}</span>
                       {open && <span title={`${open.country || ''} ${open.visaDuration || ''} · ${open.status || ''}`} style={{ fontSize: '11px', color: '#f59e0b' }}>⚠️ açık başvuru var ({open.status || '—'})</span>}
                     </label>
                   );

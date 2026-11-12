@@ -2,7 +2,7 @@
 import { EMPTY_REST, cityKey, parseMapsInput, tourCities } from '../lib/tourcity.js';
 import { collection, deleteDoc, doc, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
-import { titleCaseTr, asciiTr, normalizeTr, trHas, trUpper } from '../lib/turkish.js';
+import { titleCaseTr, asciiTr, normalizeTr, trHas, trUpper, fullNameTr } from '../lib/turkish.js';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { NAMECHK_COLOR, detectFlights, detectHotel, nameCheck, nameWords, sameFlight } from '../lib/docparse.js';
 import { TravelCheckBox, CustomerNameInput } from './ui';
@@ -164,7 +164,7 @@ export function BulkDocInbox({ customers, setCustomers, appSettings, showToast, 
   const [done, setDone] = useState(null); // [{ c, link, text, added }]
   const index = useMemo(() => buildNameIndex(customers), [customers]);
   const byId = useMemo(() => new Map((customers || []).map(c => [String(c.id), c])), [customers]);
-  const nameOf = (c) => `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+  const nameOf = (c) => fullNameTr(c);
   const [addQ, setAddQ] = useState({}); // satır başına "+ müşteri ara" kutusu
   const setRow = (key, patch) => setRows(rs => rs.map(r => r.key === key ? { ...r, ...patch } : r));
   // Dashboard'a sürüklenip bırakılan dosyalar: pencere açılınca hemen okunur (bir kez)
@@ -419,7 +419,7 @@ export const matchCustomers = (index, words) => {
 // Müşteri linkini yayınla: paylasimlar/<kod> + müşteri kartına shareToken/shareTrip. Hem tek tek (Müşteri Linki)
 // hem toplu belge yüklemede kullanılır. Döner: { link, text } (WhatsApp mesajı şablondan)
 export const publishCustomerLink = async (c, trip, token, appSettings) => {
-      const name = `${titleCaseTr(c.firstName)} ${titleCaseTr(c.lastName)}`.trim();
+      const name = fullNameTr(c);
       const fl = (trip.flights || []).filter(f => /^[A-Z0-9]{2}\d{1,4}$/.test(String(f.code || '').toUpperCase().replace(/[\s-]/g, '')) || (!f.code && f.from && f.to && f.ymd));
       const flights = fl.map((f, i) => ({
         dir: fl.length === 2 ? (i === 0 ? 'Gidiş' : 'Dönüş') : 'Uçuş',

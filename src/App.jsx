@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, Fragment, Component } from 'react';
 // Firebase + localStorage CRM
-import { preloadHeavy } from './lib/heavy';
+import { preloadHeavy, HEAVY_NOT_READY } from './lib/heavy';
 import { db, auth } from './lib/firebase';
 import { collection, doc, setDoc, getDoc, getDocs, writeBatch, deleteDoc, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
@@ -139,7 +139,10 @@ function AppInner() {
   const [quickAction, setQuickAction] = useState(null);
   const goAction = (mod, act) => { setQuickAction(act ? { mod, act } : null); navigateTo(mod); };
   const [tourTab, setTourTab] = useState('list'); // Turlar: 'list' | 'offers' (Tur Teklifleri)
-  useEffect(() => { if (quickAction?.mod === 'tours' && quickAction.act === 'offer') setTourTab('offers'); }, [quickAction]);
+  // Kısayol / başka ekrandan gelen iş hangi sekmeye aitse o sekme açılır: 'Yeni Tur Teklifi' → teklifler;
+  // 'Yeni Tur', müşteriyi tura ekleme, müşteri kartından tura dönüş → tur listesi (yoksa iş yanlış sekmeye düşer ve kaybolur)
+  const tourTabNow = quickAction?.mod === 'tours' ? (quickAction.act === 'offer' ? 'offers' : 'list') : lastTourId ? 'list' : tourTab;
+  useEffect(() => { if (tourTabNow !== tourTab) setTourTab(tourTabNow); }, [tourTabNow]);
   const qa = (mod) => ({ quickAction: quickAction?.mod === mod ? quickAction.act : null, onQuickActionDone: () => setQuickAction(null) });
 
   // 🔄 Tüm veriyi Firebase'den yenile (onSnapshot kaldırıldığı için manuel tazeleme)
@@ -313,6 +316,17 @@ function AppInner() {
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
+  // Excel/PDF kütüphanesi henüz inmeden (açılıştan sonraki ilk saniyeler ya da bağlantı kopukken) bir Excel/PDF düğmesine
+  // basılırsa düğme sessizce hiçbir şey yapmıyordu — hata yakalanıp bildirim olarak gösterilir, kütüphane yeniden denenir
+  useEffect(() => {
+    const onErr = (ev) => {
+      const m = ev?.error?.message || ev?.reason?.message || ev?.message || '';
+      if (m.includes(HEAVY_NOT_READY)) { ev.preventDefault?.(); showToast('⏳ ' + HEAVY_NOT_READY, 'warning'); }
+    };
+    window.addEventListener('error', onErr); window.addEventListener('unhandledrejection', onErr);
+    return () => { window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr); };
+  }, [showToast]);
 
   // Undo fonksiyonu
   const addToUndo = useCallback((action) => {
@@ -757,7 +771,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
   useEffect(() => { const t = setInterval(() => setClockTick(x => x + 1), 60 * 60 * 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     if (!dataReady) return;
-    const target = (appSettings?.visaStatuses || []).find(st => /konsolos/i.test(st));
+    const target = (appSettings?.visaStatuses || []).find(st => normalizeTr(st).includes('konsolos'));
     if (!target) return;
     const d = new Date();
     const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -873,13 +887,13 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
       case 'visa': return <VisaModule customers={customers} visaApplications={visaApplications} setVisaApplications={setVisaApplications} isMobile={isMobile} onNavigateToCustomers={() => setActiveModule('customers')} onOpenCustomer={setCustOverlay} onNavigateHome={() => setActiveModule('dashboard')} appSettings={appSettings} setAppSettings={setAppSettings} showToast={showToast} addToUndo={addToUndo} creditCards={creditCards} currentUser={currentUser} {...qa('visa')} />;
       case 'ds160': return <DS160Module isMobile={isMobile} showToast={showToast} appSettings={appSettings} setAppSettings={setAppSettings} />;
       case 'tours': {
-        const tabB = (id, label) => <button key={id} onClick={() => setTourTab(id)} style={{ padding: '8px 16px', background: tourTab === id ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: tourTab === id ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: tourTab === id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>{label}</button>;
+        const tabB = (id, label) => <button key={id} onClick={() => { setTourTab(id); if (id === 'offers' && lastTourId) setLastTourId(null); }} style={{ padding: '8px 16px', background: tourTabNow === id ? 'linear-gradient(135deg, #e8912a, #d97706)' : 'rgba(255,255,255,0.05)', border: tourTabNow === id ? 'none' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: tourTabNow === id ? '#fff' : '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>{label}</button>;
         const offerCount = quotes.filter(q => q.type === 'tur-teklifi').length;
         return <>
           <div style={{ display: 'flex', gap: '8px', padding: '16px 20px 0', flexWrap: 'wrap' }}>{tabB('list', '🎫 Turlar')}{tabB('offers', `🧾 Tur Teklifleri (${offerCount})`)}</div>
-          {tourTab === 'offers'
+          {tourTabNow === 'offers'
             ? <QuotesModule only="tur-teklifi" appSettings={appSettings} quotes={quotes} setQuotes={setQuotes} customers={customers} isMobile={isMobile} showToast={showToast} currentUser={currentUser} tours={tours} setTours={setTours} {...qa('tours')} />
-            : <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...(quickAction?.act === 'offer' ? {} : qa('tours'))} />}
+            : <ToursModule tours={tours} setTours={setTours} customers={customers} setCustomers={setCustomers} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} initialTourId={lastTourId} onTourOpened={() => setLastTourId(null)} onNavigateToCustomer={(c, tourId) => { setOpenCustomerId(c.id); if (tourId) setLastTourId(tourId); navigateTo('customers'); }} onGo={goAction} quotes={quotes} {...qa('tours')} />}
         </>;
       }
       case 'hotels': return <HotelsModule hotels={hotels} setHotels={setHotels} groupFlights={groupFlights} setGroupFlights={setGroupFlights} transfers={transfers} setTransfers={setTransfers} packages={packages} setPackages={setPackages} visaApplications={visaApplications} customers={customers} setCustomers={setCustomers} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings} currentUser={currentUser} onNavigateToCustomer={(c) => { setOpenCustomerId(c.id); navigateTo('customers'); }} />;
@@ -930,7 +944,7 @@ select option:checked { background-color: #2563eb !important; color: #ffffff !im
         {custOverlay != null && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 900, overflowY: 'auto', background: 'linear-gradient(135deg, #0c1929 0%, #1a3a5c 100%)' }}>
               <CustomerModule customers={customers} setCustomers={setCustomers} tours={tours} visaApplications={visaApplications} isMobile={isMobile} showToast={showToast} addToUndo={addToUndo} appSettings={appSettings}
-                openCustomerId={custOverlay} onOpenCustomerHandled={() => {}} onBack={() => setCustOverlay(null)} currentUser={currentUser} onGo={(mod, act) => { setCustOverlay(null); goAction(mod, act); }} />
+                openCustomerId={custOverlay} onOpenCustomerHandled={() => {}} onBack={() => setCustOverlay(null)} alwaysBack currentUser={currentUser} onGo={(mod, act) => { setCustOverlay(null); goAction(mod, act); }} />
           </div>
         )}
       </main>

@@ -1,7 +1,7 @@
 // 🏨 Oteller ve Uçuşlar modülü (otel, grup uçuşu, transfer, paket)
 import { MEAL_CODE, MEAL_CONCEPTS, MEAL_EN, MEAL_TR, tourCountries } from '../lib/data.js';
 import { XLSX, jsPDF } from '../lib/heavy.js';
-import { asciiTr, normalizeTr, titleCaseTr, trUpper } from '../lib/turkish.js';
+import { asciiTr, normalizeTr, titleCaseTr, trUpper, fullNameTr } from '../lib/turkish.js';
 import { db } from '../lib/firebase.js';
 import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { formatDate, generateUniqueId, isSaneDate, safeParseJSON } from '../lib/format.js';
@@ -609,16 +609,22 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     // Elle yazılmış uçuş varsa münferit; yoksa bağlı grup uçuşu seçili gelir
     setResFlights({ out: r.flightOut ? 'M' : (g.out || ''), ret: r.flightRet ? 'M' : (g.ret || ''), pkg: true });
     // Kişi bazında: her kişinin kendi bağlı grup uçuşu (ayrılmamış odada da — uçuş değişirse doğru kişinin bileti iptal edilsin)
-    const orig = {}, sel = {};
-    resNames(r).forEach(nm => {
+    const orig = {}, sel = {}, names = resNames(r);
+    names.forEach(nm => {
       const k = normalizeTr(nm);
       const pg = selectedHotel ? resGroupFlights(selectedHotel, { ...r, customerName: nm, guestNames: [] }) : { out: null, ret: null };
       const pf = (r.personFlights || []).find(x => normalizeTr(x.name) === k);
       orig[k] = { out: pg.out || '', ret: pg.ret || '' };
       sel[k] = { out: pf?.outText ? 'M' : (pg.out || ''), ret: pf?.retText ? 'M' : (pg.ret || '') };
     });
-    setSplitOrig(orig); setSplitSel(r.flightSplit ? sel : {});
-    setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true}); setShowResForm(true);
+    // Kayıt ayrılmamış ama odadakiler farklı grup uçuşlarında (ör. birinin bileti Grup Uçuşları'ndan iptal edilmiş / başka uçuşa alınmış):
+    // form kişi bazında açılır — yoksa Kaydet'te odanın uçuşu herkese yeniden uygulanır (iptal edilen bilet geri eklenir).
+    // Odaya elle yazılmış münferit uçuş varsa dokunulmaz (fiyatı oda başına hesaplı; kullanıcı isterse kutuyla ayırır).
+    const diverge = !r.flightSplit && names.length > 1 && !r.flightOut && !r.flightRet
+      && ['out', 'ret'].some(d => new Set(names.map(nm => orig[normalizeTr(nm)][d])).size > 1);
+    const split = (!!r.flightSplit && names.length > 1) || diverge;
+    setSplitOrig(orig); setSplitSel(split ? sel : {});
+    setResTrf({ out: '', ret: '' }); setEditingRes(r); setResData({...r, priceManual: true, flightSplit: split}); setShowResForm(true);
   };
 
   const saveReservation = async () => {
@@ -696,17 +702,21 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
         if (n) { setGroupFlights(prev => prev.map(x => x.id === fl.id ? { ...x, reservations: rs } : x)); showToast?.(`✈️ ${n} bilet ${fl.airline || ''} ${fl.flightNo || ''} ${fl.from}→${fl.to} grup uçuşundan çıkarıldı`, 'info'); }
       });
     });
-    // Seçilen grup uçuşlarına kişiler eklenir — uçuşta zaten olanlar tekrar eklenmez (aynı uçuş seçili kaldıysa yalnız yeni oda arkadaşı)
+    // Seçilen grup uçuşlarına kişiler eklenir (kişi bazında ayrıldıysa herkes kendi uçuşuna)
     ['out', 'ret'].forEach(k => {
       const byFlight = {};
       fp.people.forEach(pp => { const fid = nowOf(pp.key, k); if (fid && fid !== 'M') (byFlight[fid] = byFlight[fid] || []).push(pp); });
       Object.entries(byFlight).forEach(([fid, ppl]) => {
         const fl = groupFlights.find(f => String(f.id) === String(fid));
         if (!fl) return;
-        const onF = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
-        const fresh = ppl.filter(pp => !onF.has(pp.key));
-        if (!fresh.length) { if (!editingRes) showToast?.('Seçilen kişiler bu uçuşta zaten var', 'info'); return; }
-        const r = addPeopleToFlight(fl, { ...fp, people: fresh }, pk); if (r) pk = r.next;
+        // Bu rezervasyon zaten bu uçuşa bağlıysa yalnız yeni eklenen kişiler eklenir (mevcutlar tekrar eklenmez, uyarı çıkmaz)
+        let list = ppl;
+        if (editingRes && ppl.some(pp => String(splitOrig[pp.key]?.[k] || '') === String(fid))) {
+          const onF = new Set((fl.reservations || []).filter(x => !x.cancelled).map(x => normalizeTr(x.customerName)));
+          list = ppl.filter(pp => !onF.has(pp.key));
+          if (!list.length) return;
+        }
+        const r = addPeopleToFlight(fl, { ...fp, people: list }, pk); if (r) pk = r.next;
       });
     });
     // 🚐 Transferler bölümünden seçilen transfer: oda tek rezervasyon olarak (kişi sayısı = odadakiler) eklenir
@@ -1515,7 +1525,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                       {hits.map(c => (
                         <div key={c.id} onMouseDown={() => { setP({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim() }); setPCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                          {fullNameTr(c)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                         </div>
                       ))}
                     </div>
@@ -1721,7 +1731,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>
                         {hits.map(c => (
                           <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setTCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                            {fullNameTr(c)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                           </div>
                         ))}
                       </div>
@@ -1935,7 +1945,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#0f2744', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', marginTop: '4px', maxHeight: '220px', overflowY: 'auto' }}>
                         {hits.map(c => (
                           <div key={c.id} onMouseDown={() => { setR({ customerId: c.id, customerName: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone || '' }); setFCustSearch(''); }} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px', color: '#e8f1f8', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                            {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
+                            {fullNameTr(c)} <span style={{ color: '#64748b' }}>· {c.phone || '—'}</span>
                           </div>
                         ))}
                       </div>
@@ -3377,7 +3387,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                           onTouchStart={e => { const t = e.touches[0]; const x = t.clientX, y = t.clientY; const el = e.currentTarget; clearTimeout(el._lp); el._lp = setTimeout(() => setNameMenu({ x, y, res: r }), 600); }}
                           onTouchEnd={e => clearTimeout(e.currentTarget._lp)} onTouchMove={e => clearTimeout(e.currentTarget._lp)}>
                           <span onClick={() => { const c = customers.find(x => String(x.id) === String(r.customerId)); if (c && onNavigateToCustomer) onNavigateToCustomer(c); }} style={{ cursor: 'pointer', color: '#93c5fd', textDecoration: 'underline dotted', textUnderlineOffset: '3px' }}>
-                            {r.customerName}
+                            {titleCaseTr(r.customerName)}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
                           {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.qty > 1 ? `${x.unitPrice.toLocaleString('tr-TR')} × ${x.qty} = ` : ''}${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
@@ -3465,7 +3475,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                               <div key={c.id} onMouseDown={() => handleCustSelect(c)} style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: '13px' }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                <div style={{ color: '#fff', fontWeight: '600' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
+                                <div style={{ color: '#fff', fontWeight: '600' }}>{fullNameTr(c)}</div>
                                 {c.phone && <div style={{ fontSize: '11px', color: '#64748b' }}>{c.phone}</div>}
                               </div>
                             ))}

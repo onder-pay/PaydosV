@@ -23,6 +23,8 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
   `I` → `ı` yalnızca yazı İ/I ayrımı yapıyorsa (içinde `İ` ya da `ı` varsa): `"YILMAZ ŞAHİN"` → `"Yılmaz Şahin"`.
   Ayrım yoksa (`"ISMAIL GEDIKOGLU"` MRZ/ASCII Excel, `"MERIÇ EMIROGLU"` Ç'li ama İ'siz) `I` = `i` → `"İsmail Gedikoglu"`, `"Meriç Emiroglu"`.
   `Ç/Ş/Ğ` gibi harflerin varlığı ayrım yapıldığını GÖSTERMEZ. `"Ismaıl"`, `"Merıç"` üretmek YASAK.
+- Ad + soyad birlikte gösterilir: `fullNameTr(c)` ya da `fullNameTr(ad, soyad)`. Ayrı ayrı `titleCaseTr(ad)` + `titleCaseTr(soyad)` YASAK:
+  İ/ı ayrımı tüm isimde aranır — `"MELİH"` + `"KANSIZ"` → `"Melih Kansız"` (ayrı ayrı yapılırsa `"Kansiz"` olur).
 - Sıralama: `a.localeCompare(b, 'tr')`.
 
 ### 3. Kayıt → olduğu gibi

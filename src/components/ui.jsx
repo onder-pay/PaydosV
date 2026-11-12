@@ -1,6 +1,6 @@
 // Ortak ekran parçaları: form stilleri, bildirim (Toast), tarih seçici, kart/modal kutuları
 import { useState, useEffect, useMemo } from 'react';
-import { normalizeTr, titleCaseTr } from '../lib/turkish.js';
+import { normalizeTr, fullNameTr } from '../lib/turkish.js';
 import { travelCheck, TC_ICON, TC_COLOR } from '../lib/travel.js';
 import { formatDate } from '../lib/format.js';
 
@@ -306,7 +306,7 @@ export function InfoBox({ label, value, highlight }) { return (<div style={{ bac
 export function CustomerNameInput({ value, onChange, onPick, customers, placeholder, style, label, clearOnPick, max = 8 }) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
-  const lab = label || ((c) => `${titleCaseTr(c.firstName || '')} ${titleCaseTr(c.lastName || '')}`.trim());
+  const lab = label || ((c) => fullNameTr(c));
   const q = normalizeTr(value || '').trim();
   const hits = useMemo(() => {
     if (q.length < 2) return [];

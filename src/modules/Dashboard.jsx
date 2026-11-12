@@ -1,7 +1,7 @@
 // 📊 Ana sayfa (Dashboard) modülü
 import { StatCard } from '../components/ui';
 import { formatWhatsAppPhone, getDaysLeft, safeParseDate, safeParseJSON, safeParseObj } from '../lib/format.js';
-import { titleCaseTr, trHas } from '../lib/turkish.js';
+import { trHas, fullNameTr } from '../lib/turkish.js';
 import { useState } from 'react';
 import { BulkDocInbox, userShortcuts } from '../components/shared';
 
@@ -245,7 +245,7 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
                 todayBirthdays.map(c => (
                   <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                     <div>
-                      <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
+                      <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {fullNameTr(c)}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>{c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                     </div>
                     {c.phone && (
@@ -268,7 +268,7 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
                   return (
                     <div key={c.id} onClick={() => { setShowBirthdays(false); onNavigate?.(c); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '10px', marginBottom: '6px', cursor: 'pointer' }}>
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{titleCaseTr(c.firstName)} {titleCaseTr(c.lastName)}</div>
+                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{fullNameTr(c)}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{bday} · {c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                       </div>
                       {c.phone && (
