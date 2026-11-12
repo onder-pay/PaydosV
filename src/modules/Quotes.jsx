@@ -621,7 +621,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
         {/* Header */}
         <div style={{ position: 'sticky', top: 0, background: 'rgba(10,22,40,0.98)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
           <button onClick={resetForm} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 16px', color: '#e8f1f8', cursor: 'pointer', fontSize: '14px' }}>← İptal</button>
-          <h2 style={{ margin: 0, fontSize: '16px', color: '#ffffff' }}>{editingQuoteId ? `✏️ ${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} Düzenle · ${formData.number || ''}` : `📄 Yeni ${formData.type === 'teklif' ? 'Teklif' : 'Proforma'}`}</h2>
+          <h2 style={{ margin: 0, fontSize: '16px', color: '#ffffff' }}>{editingQuoteId ? `✏️ ${formData.type === 'teklif' ? 'Teklif' : 'Proforma'} Düzenle · ${formData.number || ''}` : `📄 Yeni ${formData.type === 'teklif' ? 'Teklif' : formData.type === 'proforma' ? 'Proforma' : 'Teklif / Proforma'}`}</h2>
           <div style={{ width: '70px' }}></div>
         </div>
 
