@@ -1962,6 +1962,28 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                   </select>
                 </div>
               </div>
+              {/* 💳 Havayoluna ödeme: ön ödeme + kalan ödeme, tarihleriyle (bizim havayoluna ödediğimiz) */}
+              {(() => {
+                const ap = f.airlinePay || {};
+                const setAp = (patch) => set({ airlinePay: { ...ap, ...patch } });
+                const total = (parseFloat(f.capacity) || 0) * (parseFloat(String(f.buyPrice).replace(',', '.')) || 0);
+                const dep = parseFloat(ap.depAmount) || 0, bal = parseFloat(ap.balAmount) || 0;
+                const row = (k, title, ph) => (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.1fr 1fr 1fr auto', gap: '8px', alignItems: 'end', marginBottom: '8px' }}>
+                    <div style={{ gridColumn: isMobile ? '1 / -1' : 'auto', fontSize: '13px', fontWeight: 600, color: '#e8f1f8', paddingBottom: isMobile ? 0 : '10px' }}>{title}</div>
+                    <div><label style={labelStyle}>Tutar ({f.currency || '€'})</label><input type="number" inputMode="decimal" min="0" style={inS} value={ap[k + 'Amount'] ?? ''} onChange={e => setAp({ [k + 'Amount']: e.target.value })} placeholder={ph} /></div>
+                    <div><label style={labelStyle}>Son ödeme tarihi</label><input type="date" style={inS} value={ap[k + 'Date'] || ''} onChange={e => setAp({ [k + 'Date']: e.target.value })} /></div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: ap[k + 'Paid'] ? '#10b981' : '#94a3b8', paddingBottom: '10px', cursor: 'pointer', whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!ap[k + 'Paid']} onChange={e => setAp({ [k + 'Paid']: e.target.checked })} /> Ödendi</label>
+                  </div>);
+                return (
+                  <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                    <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: 700, marginBottom: '8px' }}>💳 Havayoluna Ödeme <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>(bizim havayoluna ödediğimiz{total > 0 ? ` · toplam alış ${total.toLocaleString('tr-TR')} ${f.currency || '€'} = ${f.capacity} × ${f.buyPrice}` : ''})</span></div>
+                    {row('dep', 'Ön ödeme', 'örn. 5000')}
+                    {row('bal', 'Kalan ödeme', total > 0 && dep > 0 ? String(Math.max(0, Math.round((total - dep) * 100) / 100)) : 'kalan tutar')}
+                    {total > 0 && dep > 0 && !String(ap.balAmount ?? '').trim() && <button type="button" onClick={() => setAp({ balAmount: String(Math.max(0, Math.round((total - dep) * 100) / 100)) })} style={{ padding: '5px 10px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px' }}>Kalanı hesapla: {Math.max(0, Math.round((total - dep) * 100) / 100).toLocaleString('tr-TR')} {f.currency || '€'}</button>}
+                    {total > 0 && dep > 0 && bal > 0 && Math.abs(dep + bal - total) > 0.5 && <div style={{ fontSize: '11px', color: '#fbbf24' }}>⚠️ Ön ödeme + kalan = {(dep + bal).toLocaleString('tr-TR')} {f.currency || '€'}; toplam alış {total.toLocaleString('tr-TR')} {f.currency || '€'} ile uyuşmuyor.</div>}
+                  </div>);
+              })()}
               <div><label style={labelStyle}>Notlar</label><input style={inS} value={f.notes} onChange={e => set({ notes: e.target.value })} placeholder="Opsiyon tarihi, PNR, özel şartlar..." /></div>
               <button onClick={saveFlight} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
             </div>
@@ -2111,6 +2133,11 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                 </div>
               ))}
             </div>
+            {airlinePayments(fl).length > 0 && (
+              <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)', display: 'flex', gap: '8px 18px', flexWrap: 'wrap', alignItems: 'center', fontSize: '13px' }}>
+                <b style={{ color: '#f59e0b' }}>💳 Havayoluna ödeme</b>
+                {airlinePayments(fl).map(x => <span key={x.key} style={{ color: x.color, fontWeight: 600 }}>{x.text}</span>)}
+              </div>)}
             {dups.size > 0 && (
               <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '13px' }}>
                 ⚠️ <b>Tekrar eden yolcu var:</b> {[...new Set(active.filter(r => dups.has(r.id)).map(r => titleCaseTr(r.customerName)))].join(', ')} — aynı kişi listede birden fazla. Fazla kaydı ⊘ ile iptal edin.
@@ -2177,6 +2204,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       </div>
                     </div>
                     <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} {fl.depTime}</p>
+                    {airlinePayments(fl).filter(x => !x.paid).slice(0, 1).map(x => <p key={x.key} style={{ margin: '-4px 0 10px', fontSize: '11px', color: x.color, fontWeight: 600 }}>💳 {x.text}</p>)}
                     <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', height: '8px', marginBottom: '6px', overflow: 'hidden' }}>
                       <div style={{ width: `${doluluk}%`, height: '100%', background: doluluk >= 90 ? '#ef4444' : doluluk >= 70 ? '#e8912a' : '#10b981', borderRadius: '8px' }} />
                     </div>
@@ -3895,6 +3923,20 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
 
   return null;
 }
+
+// 💳 Havayoluna ödemeler (ön ödeme / kalan): [{ key, label, amount, date, paid, days, color, text }] — days: bugünden kaç gün sonra (geçmişse eksi)
+export const airlinePayments = (fl) => {
+  const ap = fl?.airlinePay || {}, cur = fl?.currency || '€';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return [['dep', 'Ön ödeme'], ['bal', 'Kalan ödeme']].map(([k, label]) => {
+    const amount = parseFloat(ap[k + 'Amount']) || 0, date = ap[k + 'Date'] || '', paid = !!ap[k + 'Paid'];
+    if (!amount && !date) return null;
+    const days = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Math.round((new Date(date + 'T00:00:00') - today) / 86400000) : null;
+    const color = paid ? '#10b981' : days == null ? '#94a3b8' : days < 0 ? '#ef4444' : days <= 7 ? '#ef4444' : days <= 30 ? '#f59e0b' : '#34d399';
+    const when = paid ? '✓ ödendi' : days == null ? 'tarih yok' : days < 0 ? `${-days} gün GECİKTİ` : days === 0 ? 'BUGÜN' : `${days} gün kaldı`;
+    return { key: k, label, amount, date, paid, days, color, text: `${label}: ${amount ? amount.toLocaleString('tr-TR') + ' ' + cur : '—'}${date ? ' · ' + formatDate(date) : ''} · ${when}` };
+  }).filter(Boolean);
+};
 
 // 👥 Tekrar eden yolcu: aynı kişi listede birden fazla (aynı müşteri kaydı ya da aynı isim — harf/büyüklük ve kelime sırası farkı yok sayılır).
 // Döner: Map(rezervasyon id → aynı kişinin kaç kaydı var)
