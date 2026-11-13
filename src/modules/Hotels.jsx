@@ -1984,7 +1984,10 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                     {total > 0 && dep > 0 && bal > 0 && Math.abs(dep + bal - total) > 0.5 && <div style={{ fontSize: '11px', color: '#fbbf24' }}>⚠️ Ön ödeme + kalan = {(dep + bal).toLocaleString('tr-TR')} {f.currency || '€'}; toplam alış {total.toLocaleString('tr-TR')} {f.currency || '€'} ile uyuşmuyor.</div>}
                   </div>);
               })()}
-              <div><label style={labelStyle}>Notlar</label><input style={inS} value={f.notes} onChange={e => set({ notes: e.target.value })} placeholder="Opsiyon tarihi, PNR, özel şartlar..." /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '200px 1fr', gap: '10px' }}>
+                <div><label style={labelStyle}>PNR <span style={{ fontSize: '10px', color: '#64748b' }}>(grup rezervasyon kodu)</span></label><input style={{ ...inS, fontFamily: 'monospace', letterSpacing: '1px', fontWeight: 700 }} value={f.pnr || ''} onChange={e => set({ pnr: e.target.value.toUpperCase().replace(/\s+/g, '') })} placeholder="örn. ABC123" maxLength={20} autoCapitalize="characters" /></div>
+                <div><label style={labelStyle}>Notlar</label><input style={inS} value={f.notes} onChange={e => set({ notes: e.target.value })} placeholder="Opsiyon tarihi, özel şartlar..." /></div>
+              </div>
               <button onClick={saveFlight} style={{ padding: '13px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>💾 Kaydet</button>
             </div>
           </div>
@@ -2074,7 +2077,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
               <div>
                 <button onClick={() => { setFlightView('list'); setSelectedFlight(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
                 <h2 style={{ fontSize: '19px', margin: 0 }}>✈️ {fl.from} → {fl.to} <span style={{ fontSize: '13px', color: '#e8912a' }}>({fl.direction})</span></h2>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} · {fl.depTime}{fl.arrTime ? ` → ${fl.arrTime}` : ''}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} · {fl.depTime}{fl.arrTime ? ` → ${fl.arrTime}` : ''}{fl.pnr && <span onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(fl.pnr); showToast('PNR kopyalandı: ' + fl.pnr, 'success'); } catch (er) { window.prompt('PNR:', fl.pnr); } }} title="Kopyalamak için tıklayın" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer' }}>PNR {fl.pnr}</span>}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => {
@@ -2105,7 +2108,8 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       'Ekstralar': (r.extras || []).map(e => e.type).join(', '),
                       'Paket Otel': r.packageHotelName || '',
                       'Ödeme': r.paid ? 'Ödedi' : 'Ödemedi',
-                      'Not': r.notes || ''
+                      'Not': r.notes || '',
+                      ...(fl.pnr ? { 'PNR': fl.pnr } : {})
                     };
                   });
                   const ws = XLSX.utils.json_to_sheet(rows);
@@ -2203,7 +2207,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                         <button onClick={(e) => { e.stopPropagation(); const rezSayisi = (fl.reservations || []).filter(r => !r.cancelled).length; if (window.confirm(`"${fl.from} → ${fl.to}" uçuşunu${rezSayisi > 0 ? ` ve ${rezSayisi} rezervasyonunu` : ''} silmek istiyor musunuz?`)) { setGroupFlights(prev => prev.filter(x => x.id !== fl.id)); showToast('Uçuş silindi', 'warning'); } }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
                       </div>
                     </div>
-                    <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} {fl.depTime}</p>
+                    <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} {fl.depTime}{fl.pnr && <span onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(fl.pnr); showToast('PNR kopyalandı: ' + fl.pnr, 'success'); } catch (er) { window.prompt('PNR:', fl.pnr); } }} title="Kopyalamak için tıklayın" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer' }}>PNR {fl.pnr}</span>}</p>
                     {airlinePayments(fl).filter(x => !x.paid).slice(0, 1).map(x => <p key={x.key} style={{ margin: '-4px 0 10px', fontSize: '11px', color: x.color, fontWeight: 600 }}>💳 {x.text}</p>)}
                     <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', height: '8px', marginBottom: '6px', overflow: 'hidden' }}>
                       <div style={{ width: `${doluluk}%`, height: '100%', background: doluluk >= 90 ? '#ef4444' : doluluk >= 70 ? '#e8912a' : '#10b981', borderRadius: '8px' }} />
