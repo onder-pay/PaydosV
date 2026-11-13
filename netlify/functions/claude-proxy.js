@@ -198,7 +198,19 @@ exports.handler = async (event) => {
       body: JSON.stringify(body)
     });
 
-    const data = await resp.json();
+    // Yanıt her zaman JSON olmayabilir (ör. anahtar/kredi sorunu ya da ağ geçidi hatasında düz metin döner):
+    // resp.json() o durumda "Unexpected token … is not valid JSON" diye asıl mesajı gizliyordu
+    const raw = await resp.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch (e) {
+      console.error('Anthropic JSON olmayan yanıt:', resp.status, raw.slice(0, 500));
+      return {
+        statusCode: resp.ok ? 502 : resp.status,
+        headers,
+        body: JSON.stringify({ error: `Claude servisi beklenmeyen yanıt verdi (${resp.status}): ${raw.slice(0, 300)}` })
+      };
+    }
 
     if (!resp.ok) {
       console.error('Anthropic error:', data);

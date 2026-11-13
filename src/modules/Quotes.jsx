@@ -8,7 +8,7 @@ import { getActiveBanks } from '../lib/banks.js';
 import { jsPDF } from '../lib/heavy.js';
 import { normEmail, normalizeTr, titleCaseTr, trHas, trLower, fullNameTr } from '../lib/turkish.js';
 import { placeTr, tourCountries } from '../lib/data.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TR_AYLAR, contractSure, genContractHTML, genOfferHTML, parseTrDate, refreshTourShareLinks, vizeSartiBul, hhmm, offerDateRange, offerDuration, offerLocation, trTarih, TR_GUNLER } from '../components/shared';
 
 
@@ -93,40 +93,11 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
   const [offer, setOffer] = useState(emptyOffer);
   const [flightRaw, setFlightRaw] = useState('');
   const [dayAiBusy, setDayAiBusy] = useState(null); // AI ile doldurulan gün: sıra no ya da 'all'
-  // Uçuş girilince/değişince gidiş ve dönüş gününe toplanma–uçuş–varış maddeleri (elle yazılmış güne dokunulmaz)
+  // Uçuş girilince/değişince toplanma–uçuş–varış maddeleri ait oldukları güne yazılır (gece yarısını geçen bacak ertesi güne).
+  // Kayıtlı teklif açıldığında uçuşun o anki hâli: elle yazılmış eski teklife açılışta madde eklenmesin diye
+  const loadedFlights = useRef(null);
   useEffect(() => {
-    setOffer(p => {
-      const days = p.days || [];
-      if (!days.length) return p;
-      const dayFor = (f, fallback) => { const fd = parseTrDate(f?.date); if (fd) { const k = days.findIndex(d => { const x = parseTrDate(d.date); return x && x.d.getMonth() === fd.d.getMonth() && x.d.getDate() === fd.d.getDate(); }); if (k >= 0) return k; } return fallback; };
-      const free = (d) => !(d.items || []).some(it => String(it.text || '').trim() && !it.auto);
-      let changed = false;
-      const next = days.map(d => ({ ...d }));
-      const strip = (its) => its.map(({ shift, ...x }) => x);
-      [[p.flightOut, false, 0], [p.flightRet, true, days.length - 1]].forEach(([f, ret, fb]) => {
-        const all = flightAutoItems(f, ret);
-        if (!all.length) { // uçuş silindi: yalnız otomatik maddeleri olan gün temizlenir
-          const k0 = dayFor(f, fb);
-          if (k0 >= 0 && free(next[k0]) && (next[k0].items || []).some(it => it.auto && String(it.text || '').trim())) { next[k0].items = [{ time: '', text: '' }]; changed = true; }
-          return;
-        }
-        const maxShift = all.reduce((m, x) => Math.max(m, x.shift || 0), 0);
-        // Dönüşte ertesi güne sarkan uçuş varsa ve gün eşleşmesi yoksa: son gün = varış günü
-        let k = dayFor(f, ret ? Math.max(0, days.length - 1 - maxShift) : fb);
-        if (k < 0 || (ret && days.length < 2 && k === 0)) return;
-        // Her madde uçuş gününden "shift" gün sonraki güne (gün yoksa son güne)
-        const groups = new Map();
-        all.forEach(x => { const kk = Math.min(k + (x.shift || 0), next.length - 1); groups.set(kk, [...(groups.get(kk) || []), x]); });
-        groups.forEach((its, kk) => {
-          if (!free(next[kk])) return;
-          const items = strip(its);
-          const cur = (next[kk].items || []).filter(it => String(it.text || '').trim());
-          if (JSON.stringify(cur) === JSON.stringify(items)) return;
-          next[kk].items = items; changed = true;
-        });
-      });
-      return changed ? { ...p, days: next } : p;
-    });
+    setOffer(p => { const days = planAutoDays(p, loadedFlights.current); return days ? { ...p, days } : p; });
   }, [JSON.stringify([offer.flightOut, offer.flightRet]), offer.days?.length]);
   const [flightBusy, setFlightBusy] = useState(false);
   const [flightWarn, setFlightWarn] = useState([]);
@@ -465,7 +436,7 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
   // ⚡ Dashboard kısayolu: modül açılınca istenen formu hemen aç
   useEffect(() => { if (!quickAction) return; if (only) { if (quickAction !== 'offer') return; } // Tur Teklifleri sekmesi yalnız 'offer' kısayolunu açar
     if (quickAction === 'new') { resetForm(); setShowForm(true); }
-    else if (quickAction === 'offer') { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }
+    else if (quickAction === 'offer') { loadedFlights.current = null; setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }
     else if (quickAction === 'contract') { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); } onQuickActionDone?.(); }, [quickAction]);
 
   const handleSave = () => {
@@ -925,7 +896,7 @@ ${flightRaw}`;
   // ===== ✨ Günlük programı AI ile doldur =====
   // Gün notu ("Metzingen outlet alışverişi") + turun uçuş/otel/şehir bilgisi → saatli maddeler. which: gün sırası ya da 'all'
   // 'all': notu olan ya da hiç maddesi olmayan günler doldurulur; elle yazılmış (notsuz) günlere dokunulmaz.
-  const dayFilled = (d) => (d.items || []).some(it => String(it.text || '').trim());
+  const dayFilled = (d) => (d.items || []).some(it => String(it.text || '').trim() && !it.auto); // yalnız uçuş maddesi olan gün "boş" sayılır: AI kalan zamanı yazar
   const aiFillDays = async (which) => {
     const days = offer.days || [];
     const idx = which === 'all' ? days.map((d, i) => i).filter(i => String(days[i].note || '').trim() || !dayFilled(days[i])) : [which];
@@ -942,13 +913,24 @@ ${flightRaw}`;
         `Dönüş uçuşu (${offer.flightRet?.date || '?'}): ${legs(offer.flightRet) || '-'}`,
         `Otel: ${(offer.hotels || []).map(h => h.name).filter(Boolean).join(' / ') || '-'}`,
       ].join('\n');
-      const list = days.map((d, i) => `${i}. ${d.title || ''} · ${d.date || ''}${d.place ? ` · ${d.place}` : ''}${d.note ? ` · NOT: ${d.note}` : ''}${idx.includes(i) ? ' [DOLDUR]' : ` [mevcut: ${(d.items || []).filter(it => it.text).map(it => `${it.time || ''} ${it.text}`.trim()).join('; ')}]`}`).join('\n');
+      // Günün sabit uçuş maddeleri (otomatik): AI bunları tekrar yazmaz, yalnız kalan zamanı planlar
+      const blocks = autoBlocks(offer);
+      const hm2 = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      const fixedOf = (d, i) => {
+        const fx = (d.items || []).filter(it => it.auto && String(it.text || '').trim());
+        if (!fx.length) return '';
+        const lim = dayLimits(blocks.out.get(i), blocks.ret.get(i));
+        const rule = lim.end ? 'tur bu gün bitiyor, madde YAZMA' : [lim.from != null ? `yalnız ${hm2(lim.from)} varışından SONRASINI yaz` : '', lim.to != null ? `yalnız ${hm2(lim.to)} toplanmasından ÖNCESİNİ yaz` : ''].filter(Boolean).join('; ');
+        return ` [SABİT UÇUŞ MADDELERİ (tekrar yazma): ${fx.map(it => `${it.time || ''} ${it.text}`.trim()).join('; ')}${rule ? ` → ${rule}` : ''}]`;
+      };
+      const list = days.map((d, i) => `${i}. ${d.title || ''} · ${d.date || ''}${d.place ? ` · ${d.place}` : ''}${d.note ? ` · NOT: ${d.note}` : ''}${idx.includes(i) ? ` [DOLDUR]${fixedOf(d, i)}` : ` [mevcut: ${(d.items || []).filter(it => it.text).map(it => `${it.time || ''} ${it.text}`.trim()).join('; ')}]`}`).join('\n');
       const prompt = `Bir Türk seyahat acentesinin grup turu teklifi için günlük program yazıyorsun. Sadece [DOLDUR] işaretli günleri yaz.
 SADECE şu JSON'u döndür: {"days":[{"index":0,"items":[{"time":"09:00","text":"..."}]}]}
 Kurallar:
 - Türkçe, kısa ve resmi cümleler ("Otelden hareket.", "Serbest zaman ve alışveriş."). Her gün 4-8 madde, saat sırasıyla.
 - time: "HH:MM" ya da saat belli değilse "" (ör. "Akşam: serbest zaman" yerine time "" text "Akşam serbest zaman."). 
 - Uçuş günlerinde verilen uçuş saatlerine uy: dış hat uçuşunda havalimanında buluşma kalkıştan 3 saat önce; varıştan sonra bagaj, transfer, otele yerleşme.
+- Günde [SABİT UÇUŞ MADDELERİ] varsa onları TEKRAR YAZMA (toplanma, uçuş, varış, havalimanı/otel transferi sistemde hazır). Yalnız yanında yazan aralığı planla: varış 16:50 ise o gün sabah/öğle programı, fuar ziyareti vb. YAZMA — akşam (otele yerleşme, yemek, konaklama). Yazılacak zaman yoksa o gün için "items": [] döndür.
 - Dönüş gününde otelden çıkış ve havalimanı transferi uçuştan en az 3 saat önce olsun.
 - Gün notundaki yerleri ve etkinlikleri programa koy; not yoksa bölgeye uygun, gerçekçi bir gün yaz (şehir turu, serbest zaman).
 - Mağaza/müze açılış-kapanış saatini emin değilsen yazma. Fiyat, bilet ücreti, uydurma yer adı YAZMA.
@@ -964,10 +946,22 @@ ${list}`;
       const data = await resp.json();
       const m = (data.content?.[0]?.text || '').replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
       if (!m) throw new Error('AI yanıtı okunamadı');
-      const out = (JSON.parse(m[0]).days || []).filter(x => idx.includes(+x.index) && Array.isArray(x.items) && x.items.length);
-      if (!out.length) throw new Error('AI gün yazmadı');
+      const out = (JSON.parse(m[0]).days || []).filter(x => idx.includes(+x.index) && Array.isArray(x.items));
+      if (!out.some(x => x.items.length) && !out.some(x => (days[+x.index]?.items || []).some(it => it.auto))) throw new Error('AI gün yazmadı');
       const clean = (items) => items.map(it => ({ time: /^\d{1,2}[:.]\d{2}$/.test(String(it.time || '').trim()) ? String(it.time).trim().replace('.', ':').padStart(5, '0') : '', text: String(it.text || '').trim() })).filter(it => it.text);
-      setOffer(p => ({ ...p, days: p.days.map((d, i) => { const hit = out.find(x => +x.index === i); return hit ? { ...d, items: clean(hit.items) } : d; }) }));
+      // Uçuş maddeleri korunur; AI'ın yazdıkları çevresine yerleşir. Uçuş saatiyle çakışan ya da uçuşu tekrarlayan AI maddesi atılır.
+      setOffer(p => { const bl = autoBlocks(p); return { ...p, days: p.days.map((d, i) => {
+        const hit = out.find(x => +x.index === i); if (!hit) return d;
+        const autos = (d.items || []).filter(it => it.auto && String(it.text || '').trim());
+        if (!autos.length) return hit.items.length ? { ...d, items: clean(hit.items) } : d;
+        const go = bl.out.get(i), gr = bl.ret.get(i), lim = dayLimits(go, gr);
+        const tm = (x) => hhmm(x.time), autoT = new Set(autos.map(tm).filter(t => t != null));
+        let ai = lim.end ? [] : clean(hit.items).filter(x => { const t = tm(x); if (t == null) return !/ucus|havaliman|check-in/.test(normalizeTr(x.text)); return !autoT.has(t) && !(lim.from != null && t < lim.from) && !(lim.to != null && t >= lim.to); });
+        const outA = autos.filter(it => it.dir !== 'ret'), retA = autos.filter(it => it.dir === 'ret');
+        if (outA.length) ai = mergeBlock(ai, outA, false, !!go?.shifted);
+        if (retA.length) ai = mergeBlock(ai, retA, true, !!gr?.shifted);
+        return { ...d, items: ai };
+      }) }; });
       showToast?.(`✨ ${out.length} gün AI ile dolduruldu — okuyup düzeltin`, 'success');
     } catch (e) { showToast?.('AI programı yazamadı: ' + e.message, 'error'); }
     finally { setDayAiBusy(null); }
@@ -996,7 +990,7 @@ ${list}`;
       days.push({
         title: `${i + 1}. GÜN`,
         date: `${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${gunler[d.getDay()]}`,
-        place: eski?.place || '', note: eski?.note || '',
+        place: eski?.place || '', note: eski?.note || '', ...(eski?.autoSig ? { autoSig: eski.autoSig } : {}),
         items: (eski && eski.items.some(x => (x.time||'').trim() || (x.text||'').trim())) ? eski.items : [{ time: '', text: '' }]
       });
     }
@@ -1489,6 +1483,7 @@ KURALLAR:
                 <input style={{...inS, borderStyle: 'dashed', fontSize: '12px'}} value={d.note || ''} onChange={e => setDay(i, { note: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && dayAiBusy === null) aiFillDays(i); }} placeholder="✨ Kısa not yaz, AI doldursun (örn. Metzingen outlet alışverişi, akşam Stuttgart)" />
                 <button disabled={dayAiBusy !== null} onClick={() => aiFillDays(i)} style={{ flex: '0 0 auto', padding: '6px 12px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.35)', borderRadius: '6px', color: '#c084fc', cursor: dayAiBusy !== null ? 'wait' : 'pointer', fontSize: '11px', fontWeight: 600 }}>{dayAiBusy === i ? '⏳' : '✨ AI'}</button>
               </div>
+              {(() => { const c = dayFlightConflict(offer, i); return c ? <div style={{ margin: '0 0 6px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontSize: '12px' }}>⚠️ Uçuş saatleriyle çakışıyor: {c}. Düzeltin ya da ✨ AI ile yeniden yazdırın.</div> : null; })()}
               {d.items.map((it, k) => (
                 <div key={k} style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
                   <input list="offerTimes" style={{...inS, flex: '0 0 88px', textAlign: 'center'}} value={it.time || ''} onChange={e => setDay(i, { items: d.items.map((x,m)=>m===k?{...x, time: e.target.value, auto: false}:x) })} placeholder="12:00" />
@@ -1583,7 +1578,7 @@ KURALLAR:
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>{filteredQuotes.length} / {scopeQuotes.length} kayıt</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {only && <button onClick={() => { setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Tur Teklifi</button>}
+          {only && <button onClick={() => { loadedFlights.current = null; setOffer(emptyOffer); setOfferId(null); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Tur Teklifi</button>}
           {!only && <>
           <button onClick={() => { setContract(emptyContract); setContractId(null); setCustSearchC(''); setShowContract(true); }} style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📜 Sözleşme</button>
           <button onClick={() => setShowForm(true)} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Oluştur</button>
@@ -1671,7 +1666,7 @@ KURALLAR:
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{offerDuration(quote.offer || {})}{offerLocation(quote.offer || {}) ? ' · ' + offerLocation(quote.offer) : ''}</div>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button onClick={() => { setOffer({ ...emptyOffer, ...quote.offer }); setOfferId(quote.id); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Aç / Düzenle</button>
+                <button onClick={() => { { const o = { ...emptyOffer, ...quote.offer }; loadedFlights.current = { out: JSON.stringify(o.flightOut || null), ret: JSON.stringify(o.flightRet || null) }; setOffer(o); } setOfferId(quote.id); setFlightRaw(''); setFlightWarn([]); setShowTourOffer(true); }} style={{ flex: '1 1 auto', padding: '8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderRadius: '6px', color: '#3b82f6', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>✏️ Aç / Düzenle</button>
                 {canSeeCost && (
                   <button onClick={() => { setCostQuote(quote); setShowCostCalc(true); }} style={{ padding: '8px 12px', background: quote.cost ? 'rgba(16,185,129,0.2)' : 'rgba(232,145,42,0.2)', border: 'none', borderRadius: '6px', color: quote.cost ? '#10b981' : '#e8912a', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }} title="Maliyet Hesaplama (tahmini)">💰 Maliyet{quote.cost ? ' ✓' : ''}</button>
                 )}
@@ -1934,6 +1929,95 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
     </div>
   );
 }
+
+// Uçuş maddelerinin günlere dağılımı: { out|ret: Map(günSırası → { items, shifted }) }. shifted: uçuş tarihinden sonraki güne düşen kısım.
+export const autoBlocks = (p) => {
+  const days = p.days || [], res = { out: new Map(), ret: new Map() };
+  if (!days.length) return res;
+  const dayFor = (f, fallback) => { const fd = parseTrDate(f?.date); if (fd) { const k = days.findIndex(d => { const x = parseTrDate(d.date); return x && x.d.getMonth() === fd.d.getMonth() && x.d.getDate() === fd.d.getDate(); }); if (k >= 0) return k; } return fallback; };
+  [['out', p.flightOut, false], ['ret', p.flightRet, true]].forEach(([dir, f, ret]) => {
+    const all = flightAutoItems(f, ret);
+    if (!all.length) return;
+    const maxShift = all.reduce((m, x) => Math.max(m, x.shift || 0), 0);
+    // Dönüşte ertesi güne sarkan uçuş varsa ve gün eşleşmesi yoksa: son gün = varış günü
+    const k = dayFor(f, ret ? Math.max(0, days.length - 1 - maxShift) : 0);
+    if (k < 0 || (ret && days.length < 2 && k === 0)) return;
+    all.forEach(({ shift, ...x }) => { const kk = Math.min(k + (shift || 0), days.length - 1); const g = res[dir].get(kk) || { items: [], shifted: false }; g.items.push({ ...x, dir }); if (shift) g.shifted = true; res[dir].set(kk, g); });
+  });
+  return res;
+};
+const itemMin = (x) => hhmm(x?.time);
+// Günün kendi maddeleriyle uçuş bloğunu sıraya koyar: gidişte (ve dönüşün ertesi güne sarkan varışında) bloktan erken saatli
+// maddeler önce, kalanı sonra; dönüş gününde gün içi program önce, uçuş bloğu sonda.
+export const mergeBlock = (rest, block, ret, shifted) => {
+  if (!rest.length) return block;
+  if (!block.length) return rest;
+  const bt = block.map(itemMin).filter(t => t != null);
+  if (ret && !shifted) {
+    const last = bt.length ? bt[bt.length - 1] : null;
+    const after = rest.filter(x => last != null && itemMin(x) != null && itemMin(x) > last);
+    return [...rest.filter(x => !after.includes(x)), ...block, ...after];
+  }
+  const first = bt.length ? bt[0] : null;
+  const before = rest.filter(x => first != null && itemMin(x) != null && itemMin(x) < first);
+  return [...before, ...block, ...rest.filter(x => !before.includes(x))];
+};
+// Günlere otomatik uçuş maddelerini uygular; değişiklik yoksa null. Her güne uygulanan bloğun imzası (autoSig) saklanır:
+// imza aynıysa güne dokunulmaz — kullanıcının sonradan sildiği/düzelttiği madde geri gelmez. Dolu güne blok eklenir (silinmez).
+// loaded: kayıtlı teklif açıldığındaki uçuşlar { out, ret } (JSON) — hiç otomatik maddesi olmayan (elle yazılmış) eski teklife
+// açılışta ekleme yapılmaz; uçuş değiştirilirse uygulanır.
+export const planAutoDays = (p, loaded) => {
+  const days = p.days || [];
+  if (!days.length) return null;
+  const blocks = autoBlocks(p);
+  const sigOf = (its) => its.length ? JSON.stringify(its.map(x => [x.time, x.text])) : '';
+  const txt = (it) => String(it.text || '').trim();
+  let changed = false;
+  const next = days.map(d => ({ ...d }));
+  [['out', p.flightOut, false], ['ret', p.flightRet, true]].forEach(([dir, f, ret]) => {
+    const mine = (it) => it.auto && (it.dir === dir || !it.dir);
+    const hasSig = next.some(d => d.autoSig && d.autoSig[dir] !== undefined);
+    const hasAuto = next.some(d => (d.items || []).some(it => it.auto && txt(it)));
+    const handWritten = !hasSig && !hasAuto && !!loaded && loaded[dir] === JSON.stringify(f || null);
+    next.forEach((d, i) => {
+      const g = blocks[dir].get(i), B = g ? g.items : [], sig = sigOf(B), prev = d.autoSig?.[dir];
+      const setSig = () => { if (prev !== sig) { next[i] = { ...next[i], autoSig: { ...(next[i].autoSig || {}), [dir]: sig } }; changed = true; } };
+      if (prev === sig) return;
+      const items = (next[i].items || []).filter(txt);
+      if (!B.length) { // bu güne artık blok düşmüyor: bu sürümün yazdığı (yönü belli) maddeler kalkar
+        if (items.some(it => it.auto && it.dir === dir)) { const keep = items.filter(it => !(it.auto && it.dir === dir)); next[i] = { ...next[i], items: keep.length ? keep : [{ time: '', text: '' }] }; changed = true; }
+        if (prev !== undefined) setSig();
+        return;
+      }
+      if (handWritten) { setSig(); return; }
+      const merged = mergeBlock(items.filter(it => !mine(it)), B, ret, !!g.shifted);
+      if (JSON.stringify(merged) !== JSON.stringify(next[i].items || [])) { next[i] = { ...next[i], items: merged }; changed = true; }
+      setSig();
+    });
+  });
+  return changed ? next : null;
+};
+// Günün kendi maddeleri uçuş saatleriyle çakışıyor mu: varıştan önce / toplanmadan sonra saatli madde. Döner: uyarı metni ya da ''
+export const dayFlightConflict = (p, i) => {
+  const d = (p.days || [])[i]; if (!d) return '';
+  const user = (d.items || []).filter(it => !it.auto && String(it.text || '').trim() && itemMin(it) != null);
+  if (!user.length) return '';
+  const b = autoBlocks(p), hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const out = b.out.get(i), ret = b.ret.get(i), msgs = [];
+  const lim = dayLimits(out, ret);
+  if (lim.from != null) { const n = user.filter(x => itemMin(x) < lim.from).length; if (n) msgs.push(`varış ${hm(lim.from)} — daha erken saatli ${n} madde var`); }
+  if (lim.to != null) { const n = user.filter(x => itemMin(x) >= lim.to).length; if (n) msgs.push(`havalimanında toplanma ${hm(lim.to)} — daha geç saatli ${n} madde var`); }
+  if (lim.end) msgs.push('tur bu gün varışla bitiyor — başka madde olmamalı');
+  return msgs.join(' · ');
+};
+// Günün programa açık aralığı: from = gidişin son varış saati (bu gündeyse), to = toplanma saati (bu gündeyse), end = dönüş varış günü
+export const dayLimits = (out, ret) => {
+  const lim = { from: null, to: null, end: false };
+  const meet = (g) => { const it = g.items.find(x => /toplanma/.test(normalizeTr(x.text))); return it ? itemMin(it) : null; };
+  if (out) { const arr = [...out.items].reverse().find(x => / varis\./.test(normalizeTr(x.text)) && !/aktarma/.test(normalizeTr(x.text))); if (arr && itemMin(arr) != null) lim.from = itemMin(arr); const m = meet(out); if (m != null && !out.shifted && lim.from == null) lim.to = m; }
+  if (ret) { if (ret.shifted) lim.end = true; else { const m = meet(ret); if (m != null) lim.to = m; } }
+  return lim;
+};
 
 export const flightAutoItems = (f, ret) => {
   const legs = (f?.legs || []).filter(l => hhmm(l.dep) != null);
