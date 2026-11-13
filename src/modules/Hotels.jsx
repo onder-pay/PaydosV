@@ -141,6 +141,8 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     const fl = selectedFlight;
     const active = (fl.reservations || []).filter(x => !x.cancelled && x.id !== r.id);
     if (!r.id && active.length >= (parseInt(fl.capacity) || 0)) { showToast('Kontenjan dolu!', 'error'); return; }
+    // Aynı kişi bu uçuşta zaten varsa sor (çift bilet olmasın)
+    if (dupPassengers([...active, { ...r, id: r.id || '__yeni__' }]).has(r.id || '__yeni__') && !window.confirm(`${titleCaseTr(r.customerName)} bu uçuşta zaten kayıtlı. Yine de eklensin mi?`)) return;
     let newRes;
     if (r.id) {
       newRes = (fl.reservations || []).map(x => x.id === r.id ? { ...x, ...r } : x);
@@ -1970,6 +1972,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
       if (flightView === 'detail' && selectedFlight) {
         const fl = groupFlights.find(x => x.id === selectedFlight.id) || selectedFlight;
         const active = (fl.reservations || []).filter(r => !r.cancelled);
+        const dups = dupPassengers(active);
         const kalan = (parseInt(fl.capacity) || 0) - active.length;
         const toplamSatis = active.reduce((s, r) => s + flightResTotal(r), 0);
         const toplamAlis = active.reduce((s, r) => s + (flightResCost(r) || (parseFloat(fl.buyPrice) || 0)), 0);
@@ -2108,6 +2111,11 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                 </div>
               ))}
             </div>
+            {dups.size > 0 && (
+              <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.45)', color: '#fca5a5', fontSize: '13px' }}>
+                ⚠️ <b>Tekrar eden yolcu var:</b> {[...new Set(active.filter(r => dups.has(r.id)).map(r => titleCaseTr(r.customerName)))].join(', ')} — aynı kişi listede birden fazla. Fazla kaydı ⊘ ile iptal edin.
+              </div>)}
+            {dups.size === 0 && active.length > 1 && <div style={{ marginBottom: '10px', fontSize: '12px', color: '#10b981' }}>✓ Tekrar eden yolcu yok ({active.length} kişi kontrol edildi)</div>}
             {active.length === 0 ? <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz rezervasyon yok.</p> : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -2117,9 +2125,9 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                   </tr></thead>
                   <tbody>
                     {active.map(r => (
-                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: dups.has(r.id) ? 'rgba(239,68,68,0.10)' : 'transparent' }}>
                         <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
-                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
+                        <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{dups.has(r.id) && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', borderRadius: '3px', fontSize: '10px', fontWeight: '700' }}>⚠️ TEKRAR ×{dups.get(r.id)}</span>}{r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
                         <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
                         <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
@@ -2155,6 +2163,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
               {groupFlights.map(fl => {
                 const active = (fl.reservations || []).filter(r => !r.cancelled);
+        const dups = dupPassengers(active);
                 const kalan = (parseInt(fl.capacity) || 0) - active.length;
                 const doluluk = fl.capacity > 0 ? Math.round((active.length / fl.capacity) * 100) : 0;
                 return (
@@ -2163,6 +2172,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       <span style={{ fontSize: '15px', fontWeight: '700', color: '#e8f1f8' }}>✈️ {fl.from} → {fl.to}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: fl.direction === 'Gidiş' ? 'rgba(59,130,246,0.2)' : 'rgba(232,145,42,0.2)', color: fl.direction === 'Gidiş' ? '#3b82f6' : '#e8912a', fontWeight: '700' }}>{fl.direction}</span>
+                        {dups.size > 0 && <span title="Aynı kişi bu uçuşta birden fazla kayıtlı" style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', fontWeight: '700' }}>⚠️ tekrar</span>}
                         <button onClick={(e) => { e.stopPropagation(); const rezSayisi = (fl.reservations || []).filter(r => !r.cancelled).length; if (window.confirm(`"${fl.from} → ${fl.to}" uçuşunu${rezSayisi > 0 ? ` ve ${rezSayisi} rezervasyonunu` : ''} silmek istiyor musunuz?`)) { setGroupFlights(prev => prev.filter(x => x.id !== fl.id)); showToast('Uçuş silindi', 'warning'); } }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
                       </div>
                     </div>
@@ -3885,6 +3895,18 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
 
   return null;
 }
+
+// 👥 Tekrar eden yolcu: aynı kişi listede birden fazla (aynı müşteri kaydı ya da aynı isim — harf/büyüklük ve kelime sırası farkı yok sayılır).
+// Döner: Map(rezervasyon id → aynı kişinin kaç kaydı var)
+export const dupPassengers = (list) => {
+  const nameKey = (r) => normalizeTr(r.customerName).split(/\s+/).filter(Boolean).sort().join(' ');
+  const groups = new Map();
+  const add = (k, r) => { if (!k) return; if (!groups.has(k)) groups.set(k, new Set()); groups.get(k).add(r.id); };
+  (list || []).forEach(r => { add('n:' + nameKey(r), r); if (r.customerId !== undefined && r.customerId !== null && r.customerId !== '') add('c:' + r.customerId, r); });
+  const out = new Map();
+  groups.forEach((ids, k) => { if (k.length > 2 && ids.size > 1) ids.forEach(id => out.set(id, Math.max(out.get(id) || 0, ids.size))); });
+  return out;
+};
 
 // FİYAT DÖNEMİ MODAL (Otel için)
 export function PricePeriodModal({ existing, roomTypes, concepts, onClose, onSave, showToast }) {
