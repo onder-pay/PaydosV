@@ -1,15 +1,28 @@
 // Seyahat kontrolü: pasaport geçerliliği (6 ay kuralı), yeşil pasaport muafiyeti, gidilen ülkeye göre vize/pasaport uyarıları
 import { trHas, normalizeTr } from './turkish.js';
 import { formatDate, safeParseJSON, safeParseDate, safeParseObj } from './format.js';
-import { VIZE_DURUM, IATA_COUNTRY, PLACE_COUNTRY, schengenCountries } from './data.js';
+import { VIZE_DURUM, IATA_COUNTRY, PLACE_COUNTRY, schengenCountries, EU_FREE_COUNTRIES, nationalityCountry, isTurkishNationality } from './data.js';
 
 // Pasaport, seyahat bitiş tarihinden itibaren en az 6 ay geçerli olmalı (yeşil pasaport dahil herkes için).
 export const PASSPORT_MIN_MONTHS = 6;
 
+// 🌐 Yabancı pasaport: uyruğu Türkiye olmayan pasaport. Türk pasaportu kuralları (yeşil pasaport, Dışişleri vize tablosu) bunlara uygulanmaz.
+export const isForeignPassport = (p) => !!p && !isTurkishNationality(p.nationality);
+// Yeşil (hususi) Türk pasaportu mu: türü "yeşil" ya da numarası S ile başlayan TÜRK pasaportu (yabancı pasaport no'su da S ile başlayabilir)
+export const isGreenPassport = (p) => !!p && !isForeignPassport(p) && (trHas(p.passportType, 'yesil') || /^s/.test(normalizeTr(p.passportNo)));
+// Müşterinin, verilen tarihe kadar geçerli AB/AEA/İsviçre pasaportu (bitişi girilmemişse de sayılır) → { country } ya da null
+export const euCitizen = (c, untilYmd) => {
+  const until = untilYmd || new Date().toISOString().slice(0, 10);
+  const p = safeParseJSON(c?.passports).find(x => x && isForeignPassport(x) && EU_FREE_COUNTRIES.includes(nationalityCountry(x.nationality)) && (!/^\d{4}-\d{2}-\d{2}$/.test(x.expiryDate || '') || x.expiryDate >= until));
+  return p ? { country: nationalityCountry(p.nationality) } : null;
+};
+// Müşterinin yalnız yabancı pasaportu varsa uyruğu (Türk pasaportu da varsa '')
+export const foreignOnly = (c) => { const l = safeParseJSON(c?.passports).filter(p => p && (p.passportNo || p.expiryDate)); return l.length && l.every(isForeignPassport) ? nationalityCountry(l[0].nationality) : ''; };
+
 // Yeşil (hususi) pasaport muafiyeti ancak pasaport bu kurala uyuyorsa. Birden fazla yeşil pasaportta en geç biten esas.
 // Döner: { green, ok, exp (Date|null), reason: 'ok'|'nodate'|'expires'|'months' }
 export const greenPassportStatus = (passports, tourEndStr) => {
-  const greens = (passports || []).filter(p => trHas(p.passportType, 'yesil') || (p.passportNo && p.passportNo.toUpperCase().startsWith('S')));
+  const greens = (passports || []).filter(isGreenPassport);
   if (!greens.length) return { green: false, ok: false, exp: null, reason: '' };
   const exp = greens.map(p => safeParseDate(p.expiryDate)).filter(Boolean).sort((a, b) => b - a)[0] || null;
   if (!exp) return { green: true, ok: false, exp: null, reason: 'nodate' };
@@ -91,6 +104,10 @@ export const travelCheck = (c, trip = {}) => {
   const isSch = schengenCountries.includes(country);
   const isUsa = country === 'Amerika Birleşik Devletleri';
   const green = greenPassportStatus(passports, end).green;
+  // 🌐 Yabancı pasaport: AB vatandaşı Schengen'de vizesiz; diğer durumlarda Türk pasaportu tablosu geçerli değil
+  const eu = euCitizen(c, end), fo = foreignOnly(c);
+  if (isSch && eu) { items.push({ level: 'ok', msg: `${country}: ${eu.country} vatandaşı — Schengen vizesi gerekmiyor` }); return { country, start, end, items }; }
+  if (fo) { items.push({ level: 'warn', msg: `Yabancı pasaport (${fo}): vize kuralı Türk pasaportuna göre değil — ${SHORT_COUNTRY[country] || country || 'gidilen ülke'} için ayrıca kontrol ediniz` }); return { country, start, end, items }; }
   if (!isSch && !isUsa) {
     // Diğer ülkeler: CRM'de vizesi tutulmuyor → Dışişleri tablosuna göre vizesiz / vizeli bilgisi
     const rule = country && VIZE_DURUM[country];

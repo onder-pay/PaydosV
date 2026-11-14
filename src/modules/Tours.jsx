@@ -10,7 +10,7 @@ import { deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { flightSortKey, nameWords, detectFlights } from '../lib/docparse.js';
 import { formatDate, formatPhoneNumber, formatWhatsAppPhone, generateUniqueId, getDaysLeft, safeParseJSON, safeParseObj, waUrl } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
-import { greenExemptIn, greenPassportStatus, passportValidityFor, schengenResidence } from '../lib/travel.js';
+import { greenExemptIn, greenPassportStatus, passportValidityFor, schengenResidence, isGreenPassport, euCitizen, foreignOnly } from '../lib/travel.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { logActivity, mailHtml, sendMailRequest } from '../lib/api.js';
 import { nameForSave, normEmail, normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
@@ -976,7 +976,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
     const added = todo.map((customer, i) => {
       const passports = safeParseJSON(customer.passports);
       const validPassport = passports.find(pp => pp.passportNo && getDaysLeft(pp.expiryDate) > 0) || passports[0];
-      const hasGreen = passports.some(pp => trHas(pp.passportType, 'yesil') || (pp.passportNo && pp.passportNo.toUpperCase().startsWith('S')));
+      const hasGreen = passports.some(isGreenPassport);
       let hasVisa = false, visaEndDate = '';
       if (hasGreen && greenExemptIn(tour?.country) && greenPassportStatus(passports, tour?.endDate || tour?.startDate).ok) { hasVisa = true; visaEndDate = 'GREEN_PASSPORT'; }
       else if (isSchengen) { const v = safeParseJSON(customer.schengenVisas).find(x => x.endDate && getDaysLeft(x.endDate) > 0); if (v) { hasVisa = true; visaEndDate = v.endDate; } }
@@ -1057,10 +1057,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
       // Vize durumu — tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(selectedTour?.country);
       // Yeşil pasaport: passportType "Yeşil" içeriyor VEYA pasaport no S ile başlıyor
-      const hasGreenPassport = passports.some(p =>
-        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
-        (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-      );
+      const hasGreenPassport = passports.some(isGreenPassport);
       let hasVisa = false;
       let visaEndDate = '';
       // Yeşil pasaport sahibi Schengen'den muaf — ancak pasaport tur bitişi + 6 ay geçerliyse
@@ -1143,10 +1140,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
       const passports = safeParseJSON(customer.passports);
       const validPassport = passports.find(p => p.passportNo && getDaysLeft(p.expiryDate) > 0) || passports[0];
       passport = validPassport?.passportNo || passport;
-      const hasGreenPassport = passports.some(p =>
-        trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
-        (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-      );
+      const hasGreenPassport = passports.some(isGreenPassport);
       // Vize durumu - tur ülkesi Schengen mi?
       const isSchengen = schengenCountries.includes(tour?.country);
       const isUSA = tour?.country === 'Amerika Birleşik Devletleri' || tour?.country === 'ABD';
@@ -1895,6 +1889,13 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                               : { label: `🟠 Pasaport — 6 ay kuralı (${pStr})`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                           }
 
+                          // 🌐 Yabancı pasaport: AB/AEA/İsviçre vatandaşı Schengen turunda vizesiz; yalnız yabancı pasaportu olan için
+                          // Türk pasaportu vize kuralları geçerli değil → ayrıca kontrol edilir
+                          if (schengenCountries.some(k => normalizeTr(k) === normalizeTr(tour.country))) {
+                            const eu = euCitizen(customer, tour.endDate || tour.startDate);
+                            if (eu) return { label: `🇪🇺 ${eu.country} vatandaşı — vize gerekmez`, color: '#059669', bg: 'rgba(5,150,105,0.15)' };
+                          }
+                          if (!domestic && foreignOnly(customer)) return { label: `🌐 Yabancı pasaport (${foreignOnly(customer)}) — vizeyi ayrıca kontrol edin`, color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
                           // 🪪 Tur bitişine kadar geçerli Schengen ülkesi oturma izni → Schengen turunda vize gerekmez
                           if (schengenCountries.some(k => normalizeTr(k) === normalizeTr(tour.country))) {
                             const rp = schengenResidence(customer, tour.endDate || tour.startDate);

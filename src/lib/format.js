@@ -61,9 +61,11 @@ export const formatPhoneNumber = (value) => {
 export const showPhone = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('90') && d.length === 12) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = d.slice(1); return /^5\d{9}$/.test(d) ? formatPhoneNumber(d) : String(v || ''); };
 
 // Pasaport No formatla: İlk harf büyük, 9 karakter
-export const formatPassportNo = (value) => {
-  const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+// foreign: yabancı pasaport — biçim ülkeye göre değişir (ör. Belçika "ES135601", Almanya "C01X00T47"): yalnız harf/rakam, en çok 12
+export const formatPassportNo = (value, foreign = false) => {
+  const cleaned = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!cleaned) return '';
+  if (foreign) return cleaned.slice(0, 12);
   const letter = cleaned[0].match(/[A-Z]/) ? cleaned[0] : '';
   if (!letter) return cleaned.slice(0, 1); // harf girilene kadar bekle
   const digits = cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 7);

@@ -12,7 +12,8 @@ export const MEAL_EN = { ro: 'Room Only (RO)', bb: 'Bed & Breakfast (BB)', hb: '
 
 export const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
 
-export const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)'];
+export const FOREIGN_PASSPORT = 'Yabancı Pasaport';
+export const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)', FOREIGN_PASSPORT];
 
 // Kayıttaki tür listede birebir yoksa (bot eskiden 'Yesil Pasaport (Hususi)' yazdı) listedeki karşılığı — Türkçe karakter kuralı
 export const canonPassportType = (t) => passportTypes.find(x => normalizeTr(x) === normalizeTr(t)) || t;
@@ -257,6 +258,29 @@ export const placeTr = (s0) => {
 export const countryCodeMap = { TUR:'Türkiye',DEU:'Almanya',FRA:'Fransa',GBR:'İngiltere',USA:'Amerika Birleşik Devletleri',NLD:'Hollanda',BEL:'Belçika',AUT:'Avusturya',CHE:'İsviçre',ITA:'İtalya',ESP:'İspanya',PRT:'Portekiz',GRC:'Yunanistan',SWE:'İsveç',NOR:'Norveç',DNK:'Danimarka',FIN:'Finlandiya',POL:'Polonya',CZE:'Çekya',HUN:'Macaristan',ROU:'Romanya',BGR:'Bulgaristan',HRV:'Hırvatistan',RUS:'Rusya',UKR:'Ukrayna',AZE:'Azerbaycan',KAZ:'Kazakistan',SAU:'Suudi Arabistan',ARE:'Birleşik Arap Emirlikleri',IRN:'İran',IRQ:'Irak',SYR:'Suriye',JOR:'Ürdün',LBN:'Lübnan',EGY:'Mısır',MAR:'Fas',TUN:'Tunus',ALB:'Arnavutluk',MKD:'Kuzey Makedonya',SRB:'Sırbistan',BIH:'Bosna Hersek',MNE:'Karadağ',GEO:'Gürcistan',ARM:'Ermenistan',CHN:'Çin',JPN:'Japonya',KOR:'Güney Kore',IND:'Hindistan',PAK:'Pakistan',BGD:'Bangladeş',IDN:'Endonezya',MYS:'Malezya',THA:'Tayland',VNM:'Vietnam',PHL:'Filipinler',BRA:'Brezilya',ARG:'Arjantin',MEX:'Meksika',CAN:'Kanada',AUS:'Avustralya',NZL:'Yeni Zelanda',ZAF:'Güney Afrika',NGA:'Nijerya',ETH:'Etiyopya',KEN:'Kenya' };
 
 export const isoToCountry = (code) => code ? (countryCodeMap[code.toUpperCase()] || code) : '';
+
+// AB / AEA / İsviçre vatandaşları Schengen bölgesinde serbest dolaşır (vize gerekmez): Schengen ülkeleri + Schengen dışı AB üyeleri
+export const EU_FREE_COUNTRIES = [...schengenCountries, 'Bulgaristan', 'Romanya', 'İrlanda', 'Kıbrıs'];
+// Pasaporttaki uyruk yazımı → CRM'deki ülke adı. "BEL", "BELG", "Belgium", "België", "BELÇİKA" → "Belçika"; boş ya da tanınmayan → olduğu gibi.
+const NAT_ALIAS = { belgium: 'Belçika', belgie: 'Belçika', belgique: 'Belçika', belgien: 'Belçika', belg: 'Belçika', germany: 'Almanya', deutschland: 'Almanya', deutsch: 'Almanya', german: 'Almanya', d: 'Almanya',
+  netherlands: 'Hollanda', nederland: 'Hollanda', nederlandse: 'Hollanda', dutch: 'Hollanda', france: 'Fransa', francaise: 'Fransa', french: 'Fransa', austria: 'Avusturya', osterreich: 'Avusturya',
+  switzerland: 'İsviçre', schweiz: 'İsviçre', suisse: 'İsviçre', italy: 'İtalya', italia: 'İtalya', italiana: 'İtalya', spain: 'İspanya', espana: 'İspanya', portugal: 'Portekiz', greece: 'Yunanistan', hellas: 'Yunanistan',
+  sweden: 'İsveç', sverige: 'İsveç', norway: 'Norveç', norge: 'Norveç', denmark: 'Danimarka', danmark: 'Danimarka', finland: 'Finlandiya', suomi: 'Finlandiya', poland: 'Polonya', polska: 'Polonya',
+  czechia: 'Çekya', 'czech republic': 'Çekya', hungary: 'Macaristan', romania: 'Romanya', bulgaria: 'Bulgaristan', croatia: 'Hırvatistan', ireland: 'İrlanda', luxembourg: 'Lüksemburg', cyprus: 'Kıbrıs',
+  'united kingdom': 'İngiltere', british: 'İngiltere', 'british citizen': 'İngiltere', uk: 'İngiltere', 'united states': 'Amerika Birleşik Devletleri', 'united states of america': 'Amerika Birleşik Devletleri', usa: 'Amerika Birleşik Devletleri', american: 'Amerika Birleşik Devletleri',
+  turkey: 'Türkiye', turkiye: 'Türkiye', turkish: 'Türkiye', turk: 'Türkiye', tc: 'Türkiye', 't.c.': 'Türkiye', tr: 'Türkiye', russia: 'Rusya', ukraine: 'Ukrayna', china: 'Çin' };
+const natFold = (x) => String(x || '').replace(/[İIı]/g, 'i').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u').replace(/[Şş]/g, 's').replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+export const nationalityCountry = (x) => {
+  const raw = String(x || '').trim();
+  if (!raw) return '';
+  const up = raw.toUpperCase();
+  if (countryCodeMap[up]) return countryCodeMap[up];
+  const f = natFold(raw);
+  if (NAT_ALIAS[f]) return NAT_ALIAS[f];
+  const names = [...new Set([...Object.values(countryCodeMap), ...EU_FREE_COUNTRIES])];
+  return names.find(n => natFold(n) === f) || raw;
+};
+export const isTurkishNationality = (x) => !String(x || '').trim() || nationalityCountry(x) === 'Türkiye';
 
 // Müşteri ödemesi tipi (vize ödemeleri)
 export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];

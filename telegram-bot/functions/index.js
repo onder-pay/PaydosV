@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
+const { applyMrz } = require('./mrz');
 const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
@@ -390,7 +391,10 @@ const namesMatch = (a, b) => {
   return fuzzyNameMatch(a, b);
 };
 
-const detectPT = no => {
+const FOREIGN_PT = 'Yabancı Pasaport'; // CRM FOREIGN_PASSPORT ile birebir
+const isForeignNat = (n) => !!String(n || '').trim() && !/^(tur|tr$|t\.?c\.?(\s|$))/.test(normTr(n)); // TUR, TÜRKİYE, Turkish, T.C., Türkiye Cumhuriyeti → yerli
+const detectPT = (no, foreign) => {
+  if (foreign) return FOREIGN_PT; // yabancı pasaport no'su S/D/G ile başlasa da Türk pasaportu türü değildir
   if (!no) return 'Bordo Pasaport (Umuma Mahsus)';
   const f = no.trim()[0]?.toUpperCase();
   if (f === 'S') return 'Yeşil Pasaport (Hususi)'; // CRM passportTypes ile birebir (eskiden 'Yesil' yazılıyordu)
@@ -473,7 +477,12 @@ Schengen vizede isim virgulle ayrilir: "COBAN, GÜL" -> lastName="COBAN", firstN
 JSON formatlar:
 
 Pasaport:
-{"type":"passport","firstName":"","lastName":"","birthDate":"YYYY-MM-DD","birthPlace":"","nationality":"","passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","gender":"","tcKimlik":""}
+{"type":"passport","firstName":"","lastName":"","birthDate":"YYYY-MM-DD","birthPlace":"","nationality":"","passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","gender":"","tcKimlik":"","mrz1":"","mrz2":""}
+- mrz1 / mrz2: pasaportun EN ALTINDAKI iki MRZ satirini HARFI HARFINE, "<" isaretleriyle birlikte kopyala (mrz1 "P<" ile baslar). SADECE bu iki alana yaz;
+  diger alanlari yine yukaridaki GORSEL alanlardan oku (MRZ yasagi surer). Sistem kontrol basamaklarini kendisi dogrular.
+- YABANCI PASAPORT (MRZ "P<TUR" ile BASLAMIYORSA, orn P<BEL, P<D<<, P<NLD): etiketler baska dildedir — soyad "Naam / Nom / Name / Surname", ad "Voornamen / Prenoms / Vornamen / Given names".
+  nationality = ulke kodu (BEL, DEU, NLD...). tcKimlik bos. passportNo oldugu gibi (2 harfle baslayabilir, orn ES135601).
+- expiryDate: "GECERLILIK TARIHI / DATE OF EXPIRY" alaninda YAZAN tarih. Verilis tarihine 10 yil ekleyerek TAHMIN ETME.
 
 Schengen vize:
 {"type":"schengen","firstName":"","lastName":"","passportNo":"","country":"","visaNumber":"","entryType":"","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","stayDuration":""}
@@ -529,13 +538,15 @@ GG-AA-YYYY -> direkt kullan
 5. firstName veya lastName bir SEHIR adi (IZMIR, ANKARA, ISTANBUL, BERLIN...) ISE YANLISTIR — virgullu "SOYAD, AD" satirini tekrar bul
 6. startDate, endDate'ten ONCE olmali. Degilse tarihleri karistirmissin, tekrar bak
 7. startDate bir DOGUM tarihi gibi cok eski (orn 1989, 2003) ise YANLISTIR — vize baslangici "SCHENGEN-STAATEN" altindaki SOLDAKI tarihtir` }
-  ]}], 500);
+  ]}], 700);
   if (!t) return { dtype: null, json: null };
   const m = t.replace(/```json|```/g, '').trim().match(/\{.*\}/s);
   if (!m) return { dtype: null, json: null };
   try {
     const json = JSON.parse(m[0]);
     const dtype = json.type === 'residence' ? 'residence' : json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
+    // MRZ doğrulaması: bitiş tarihi (kontrol basamağı tutuyorsa) ve yabancı pasaportta ad/soyad/uyruk/numara
+    if (dtype === 'passport') { const fx = applyMrz(json); if (fx.length) console.log('MRZ düzeltme:', fx.join(' | ')); } else { delete json.mrz1; delete json.mrz2; }
     console.log('Detected:', dtype, 'Name:', json.firstName, json.lastName);
     return { dtype, json };
   } catch(e) { console.error('JSON parse error:', e.message); return { dtype: null, json: null }; }
@@ -780,8 +791,8 @@ const savePassport = async (db, custs, json, img) => {
 
   // Görsel ancak kayıt gerçekten değişecekse yüklenir (aynı pasaport tekrar gelince Storage'a kopya birikmesin)
   const pp = {
-    id: genId(), nationality: !json.nationality || trHas(json.nationality, 'turk', 'tur') ? 'Türkiye' : json.nationality,
-    passportType: detectPT(json.passportNo), passportNo: json.passportNo || '',
+    id: genId(), nationality: isForeignNat(json.nationality) ? json.nationality : 'Türkiye',
+    passportType: detectPT(json.passportNo, isForeignNat(json.nationality)), passportNo: json.passportNo || '',
     issueDate: json.issueDate || '', expiryDate: json.expiryDate || '',
     createdAt: new Date().toISOString()
   };
@@ -1054,7 +1065,7 @@ const saveUsa = async (db, custs, json, img) => {
 
 // ========== FORMAT ==========
 const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${dmy(j.birthDate)}` : ''}`;
-const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${dmy(j.expiryDate)||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
+const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo, isForeignNat(j.nationality))}${isForeignNat(j.nationality) ? ` (${j.nationality})` : ''}\n📅 ${dmy(j.expiryDate)||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
 const fmtRes = j => `🪪 Oturma izni · ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.permitNo||'-'}${j.category ? ` | ${j.category}` : ''}\n📅 Bitiş: ${dmy(j.expiryDate)||'-'}`;
 const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${dmy(j.startDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${dmy(j.issueDate)||'-'} → ${dmy(j.endDate)||'-'}`;
