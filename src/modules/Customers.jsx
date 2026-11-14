@@ -2551,6 +2551,7 @@ Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gr
 birthPlace: pasaporttaki DOĞUM YERİ / PLACE OF BIRTH alanı (il/ilçe, büyük harfle yazılır, ör. DENIZLI). Pasaport görseli varsa mutlaka oku.
 YABANCI PASAPORT (MRZ ilk satırında ülke kodu TUR değilse, ör. P<BEL, P<DEU): passportType "Yabancı Pasaport", nationality ülkenin Türkçe adı (Belçika, Almanya…);
 soyad = MRZ'de << işaretinden ÖNCEKİ kısım (P<BELBRAET<<YMKE<SONJA → lastName BRAET, firstName YMKE SONJA); pasaport no olduğu gibi (2 harfle başlayabilir, ör. ES135601); tcKimlik boş.
+Alman pasaportunda "[b] Geburtsname / Name at birth" (doğum/kızlık soyadı) soyada EKLENMEZ: P<D<<KARACA<<AYLIN → lastName KARACA (TUTAR değil). Ülke kodu D = Almanya; pasaport no 9 karakter harf+rakam (ör. C4WTYZH4V).
 expiryDate = DATE OF EXPIRY alanı ya da MRZ ikinci satırdaki bitiş (YYMMDD). Veriliş tarihine yıl ekleyerek TAHMİN ETME.
 Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Türk pasaport no genellikle 1 harf + 7 rakam.`;
 

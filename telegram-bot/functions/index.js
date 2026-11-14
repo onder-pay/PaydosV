@@ -482,6 +482,8 @@ Pasaport:
   diger alanlari yine yukaridaki GORSEL alanlardan oku (MRZ yasagi surer). Sistem kontrol basamaklarini kendisi dogrular.
 - YABANCI PASAPORT (MRZ "P<TUR" ile BASLAMIYORSA, orn P<BEL, P<D<<, P<NLD): etiketler baska dildedir — soyad "Naam / Nom / Name / Surname", ad "Voornamen / Prenoms / Vornamen / Given names".
   nationality = ulke kodu (BEL, DEU, NLD...). tcKimlik bos. passportNo oldugu gibi (2 harfle baslayabilir, orn ES135601).
+  ALMAN PASAPORTU: "1. [a] Name / Surname / Nom" = SOYAD (orn KARACA). "[b] Geburtsname / Name at birth / Nom de naissance" (orn TUTAR) DOGUM/KIZLIK SOYADIDIR — lastName'e EKLEME, tamamen atla.
+  Ulke kodu "D" = Almanya. Pasaport no harf+rakam karisik 9 karakterdir (orn C4WTYZH4V).
 - expiryDate: "GECERLILIK TARIHI / DATE OF EXPIRY" alaninda YAZAN tarih. Verilis tarihine 10 yil ekleyerek TAHMIN ETME.
 
 Schengen vize:
