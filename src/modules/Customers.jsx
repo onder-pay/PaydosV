@@ -864,7 +864,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                       <label style={labelStyle}>Pasaport No</label>
                       <input type="text" value={passport.passportNo || ''}
                         onChange={e => { const fo = !isTurkishNationality(passport.nationality); const pNo = formatPassportNo(e.target.value, fo); const dt = fo ? FOREIGN_PASSPORT : detectPassportType(pNo); updatePassport(passport.id, 'passportNo', pNo); if (dt) updatePassport(passport.id, 'passportType', dt); }}
-                        placeholder={isTurkishNationality(passport.nationality) ? 'U1234567' : 'ES135601'} maxLength={isTurkishNationality(passport.nationality) ? 8 : 12}
+                        placeholder={isTurkishNationality(passport.nationality) ? 'U1234567' : 'ES135601'} maxLength={isTurkishNationality(passport.nationality) ? 9 : 12}
                         style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace', borderColor: passport.passportNo && validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality)) ? '#ef4444' : undefined }} />
                       {passport.passportNo && validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality)) && (
                         <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px' }}>{validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality))}</div>

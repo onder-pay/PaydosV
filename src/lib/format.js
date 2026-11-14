@@ -60,7 +60,7 @@ export const formatPhoneNumber = (value) => {
 // Ekranda telefon: TR cep numarası ise "+90 5XX XXX XX XX", değilse olduğu gibi (kayıt değişmez)
 export const showPhone = (v) => { let d = String(v || '').replace(/\D/g, ''); if (d.startsWith('90') && d.length === 12) d = d.slice(2); if (d.startsWith('0') && d.length === 11) d = d.slice(1); return /^5\d{9}$/.test(d) ? formatPhoneNumber(d) : String(v || ''); };
 
-// Pasaport No formatla: İlk harf büyük, 9 karakter
+// Pasaport No formatla: ilk harf büyük + en çok 8 rakam (9 karakter)
 // foreign: yabancı pasaport — biçim ülkeye göre değişir (ör. Belçika "ES135601", Almanya "C01X00T47"): yalnız harf/rakam, en çok 12
 export const formatPassportNo = (value, foreign = false) => {
   const cleaned = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -68,7 +68,7 @@ export const formatPassportNo = (value, foreign = false) => {
   if (foreign) return cleaned.slice(0, 12);
   const letter = cleaned[0].match(/[A-Z]/) ? cleaned[0] : '';
   if (!letter) return cleaned.slice(0, 1); // harf girilene kadar bekle
-  const digits = cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 7);
+  const digits = cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 8); // yeni Türk pasaportları 1 harf + 8 rakam (S36173132); eskiler 7
   return letter + digits;
 };
 
