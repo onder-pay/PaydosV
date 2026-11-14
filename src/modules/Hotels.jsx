@@ -18,6 +18,18 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
   const [view, setView] = useState('list'); // list, detail, form
   // ===== GRUP UÇUŞ =====
   const [mainTab, setMainTab] = useState('hotels'); // 'hotels' | 'flights'
+  // Detay ekranlarının (otel / uçuş / transfer) üstündeki bölüm düğmeleri: açık detaydan çıkmadan diğer bölüme geçilir.
+  // Bulunulan bölümün düğmesi o bölümün listesine döner.
+  const detailTabs = (active) => {
+    const go = (id) => { setView('list'); setFlightView('list'); setSelectedFlight(null); setTransferView('list'); setSelectedTransfer(null); setMainTab(id); };
+    const tabs = [['hotels', `🏨 Oteller (${hotels.length})`], ['flights', `✈️ Grup Uçuşlar (${groupFlights.length})`], ['transfers', `🚐 Transferler (${transfers.length})`], ['packages', `📦 Paketler (${packages.length})`]];
+    return (
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px' }}>
+        {tabs.map(([id, label]) => <button key={id} onClick={() => go(id)} style={id === active
+          ? { padding: '9px 16px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', color: '#0c1929', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }
+          : { padding: '9px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>{label}</button>)}
+      </div>);
+  };
   const emptyFlight = {
     airline: '', flightNo: '', from: '', to: '', date: '', depTime: '', arrTime: '',
     direction: 'Gidiş', // Gidiş | Dönüş
@@ -1825,6 +1837,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
         }
         return (
           <div style={{ padding: isMobile ? '12px' : '24px' }}>
+            {detailTabs('transfers')}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <button onClick={() => { setTransferView('list'); setSelectedTransfer(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
@@ -2082,6 +2095,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
         }
         return (
           <div style={{ padding: isMobile ? '12px' : '24px' }}>
+            {detailTabs('flights')}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <button onClick={() => { setFlightView('list'); setSelectedFlight(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
@@ -3064,6 +3078,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
 
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
+        {detailTabs('hotels')}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
           <div>
             <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Otel Listesi</button>
