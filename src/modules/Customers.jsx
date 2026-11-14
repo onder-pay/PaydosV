@@ -3228,7 +3228,8 @@ export const sameCustName = (a, b) => {
 
 export const validatePassportNo = (passportNo, foreign = false) => {
   if (!passportNo) return null;
-  if (foreign) return /^[A-Z0-9]{5,12}$/.test(passportNo) ? null : '❌ Pasaport no 5-12 harf/rakam olmalı';
+  // Kayıtta küçük harf / boşluk / tire olabilir (bot ya da eski giriş): karşılaştırmadan önce sadeleştirilir
+  if (foreign) return /^[A-Z0-9]{5,12}$/.test(String(passportNo).toUpperCase().replace(/[^A-Z0-9]/g, '')) ? null : '❌ Pasaport no 5-12 harf/rakam olmalı';
   const regex = /^[A-Z][0-9]{7,8}$/;
   if (!regex.test(passportNo)) return '❌ Pasaport no 1 harf + 7-8 rakam olmalı (örn: U1234567)';
   return null; // geçerli
