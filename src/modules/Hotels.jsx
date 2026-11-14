@@ -113,6 +113,12 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     setFlightPick(cur => cur ? { ...cur, done: { msg, pkgs } } : cur);
     return { next };
   };
+  // 📋 Uçuş bilgilerini panoya kopyalar (müşteriye / gruba yapıştırmak için — fiyat yok)
+  const copyFlightInfo = async (fl) => {
+    const text = flightInfoText(fl);
+    try { await navigator.clipboard.writeText(text); showToast('📋 Uçuş bilgileri kopyalandı', 'success'); }
+    catch (e) { window.prompt('Kopyalayın:', text); }
+  };
   const saveFlight = () => {
     const f = editingFlight;
     if (!f.airline || !f.from || !f.to || !f.date) { showToast('Havayolu, güzergah ve tarih zorunlu', 'error'); return; }
@@ -2076,7 +2082,8 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <button onClick={() => { setFlightView('list'); setSelectedFlight(null); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', marginBottom: '8px' }}>← Geri</button>
-                <h2 style={{ fontSize: '19px', margin: 0 }}>✈️ {fl.from} → {fl.to} <span style={{ fontSize: '13px', color: '#e8912a' }}>({fl.direction})</span></h2>
+                <h2 style={{ fontSize: '19px', margin: 0 }}>✈️ {fl.from} → {fl.to} <span style={{ fontSize: '13px', color: '#e8912a' }}>({fl.direction})</span>
+                  <button onClick={() => copyFlightInfo(fl)} title="Uçuş bilgilerini kopyala" style={{ marginLeft: '8px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '6px', color: '#93c5fd', cursor: 'pointer', fontSize: '12px', padding: '4px 9px', verticalAlign: 'middle' }}>📋 Kopyala</button></h2>
                 <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{fl.airline} {fl.flightNo} · {formatDate(fl.date)} · {fl.depTime}{fl.arrTime ? ` → ${fl.arrTime}` : ''}{fl.pnr && <span onClick={async (e) => { e.stopPropagation(); try { await navigator.clipboard.writeText(fl.pnr); showToast('PNR kopyalandı: ' + fl.pnr, 'success'); } catch (er) { window.prompt('PNR:', fl.pnr); } }} title="Kopyalamak için tıklayın" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#93c5fd', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer' }}>PNR {fl.pnr}</span>}</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -2191,8 +2198,10 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
           {groupFlights.length === 0 ? (
             <p style={{ color: '#64748b', fontSize: '13px' }}>Henüz grup uçuş yok. "➕ Grup Uçuş Ekle" ile başlayın — havayolundan aldığınız kontenjanı girin, rezervasyonlarla doldurun.</p>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
-              {groupFlights.map(fl => {
+            (() => {
+              // Gidişler ve dönüşler ayrı sütunda; her biri tarih + saat sırasıyla
+              const byDate = (a, b) => `${a.date || ''} ${a.depTime || ''}`.localeCompare(`${b.date || ''} ${b.depTime || ''}`);
+              const card = (fl) => {
                 const active = (fl.reservations || []).filter(r => !r.cancelled);
         const dups = dupPassengers(active);
                 const kalan = (parseInt(fl.capacity) || 0) - active.length;
@@ -2204,6 +2213,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: fl.direction === 'Gidiş' ? 'rgba(59,130,246,0.2)' : 'rgba(232,145,42,0.2)', color: fl.direction === 'Gidiş' ? '#3b82f6' : '#e8912a', fontWeight: '700' }}>{fl.direction}</span>
                         {dups.size > 0 && <span title="Aynı kişi bu uçuşta birden fazla kayıtlı" style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', fontWeight: '700' }}>⚠️ tekrar</span>}
+                        <button onClick={(e) => { e.stopPropagation(); copyFlightInfo(fl); }} title="Uçuş bilgilerini kopyala" style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '6px', color: '#93c5fd', cursor: 'pointer', fontSize: '12px', padding: '3px 7px' }}>📋</button>
                         <button onClick={(e) => { e.stopPropagation(); const rezSayisi = (fl.reservations || []).filter(r => !r.cancelled).length; if (window.confirm(`"${fl.from} → ${fl.to}" uçuşunu${rezSayisi > 0 ? ` ve ${rezSayisi} rezervasyonunu` : ''} silmek istiyor musunuz?`)) { setGroupFlights(prev => prev.filter(x => x.id !== fl.id)); showToast('Uçuş silindi', 'warning'); } }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px', padding: '2px 7px' }} title="Sil">🗑️</button>
                       </div>
                     </div>
@@ -2218,8 +2228,18 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              };
+              const cols = [['🛫 Gidişler', groupFlights.filter(f => f.direction !== 'Dönüş').sort(byDate), '#3b82f6'], ['🛬 Dönüşler', groupFlights.filter(f => f.direction === 'Dönüş').sort(byDate), '#e8912a']];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '18px', alignItems: 'start' }}>
+                  {cols.map(([title, list, color]) => (
+                    <div key={title}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color, marginBottom: '10px', paddingBottom: '6px', borderBottom: `2px solid ${color}55` }}>{title} <span style={{ color: '#64748b', fontWeight: '400', fontSize: '12px' }}>({list.length})</span></div>
+                      {list.length === 0 ? <p style={{ color: '#64748b', fontSize: '12px' }}>Uçuş yok.</p>
+                        : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>{list.map(card)}</div>}
+                    </div>))}
+                </div>);
+            })()
           )}
         </div>
       );
@@ -3928,6 +3948,19 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
 
   return null;
 }
+
+// Uçuşun paylaşılacak metni: yön, güzergah, havayolu + uçuş no, tarih (gün adıyla), saatler, PNR
+export const flightInfoText = (fl) => {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(fl?.date || '') ? new Date(fl.date + 'T00:00:00') : null;
+  const gun = d ? ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][d.getDay()] : '';
+  return [
+    `✈️ ${fl.direction ? fl.direction + ': ' : ''}${fl.from || ''} → ${fl.to || ''}`,
+    [fl.airline, fl.flightNo].filter(Boolean).join(' '),
+    `📅 ${formatDate(fl.date)}${gun ? ' ' + gun : ''}`,
+    fl.depTime ? `🕐 Kalkış ${fl.depTime}${fl.arrTime ? ' · Varış ' + fl.arrTime : ''}` : '',
+    fl.pnr ? `PNR: ${fl.pnr}` : ''
+  ].filter(Boolean).join('\n');
+};
 
 // 💳 Havayoluna ödemeler (ön ödeme / kalan): [{ key, label, amount, date, paid, days, color, text }] — days: bugünden kaç gün sonra (geçmişse eksi)
 export const airlinePayments = (fl) => {
