@@ -1000,6 +1000,11 @@ export const resExtras = (r) => {
       const qty = d.kind === 'flight' ? resPax(r) : 1;
       const unitBuy = parseFloat(r?.[d.key + 'Buy']) || 0, unitPrice = parseFloat(r?.[d.key + 'Price']) || 0;
       return { ...d, text: String(r?.[d.key] || '').trim() || d.def || '', qty, unitBuy, unitPrice, buy: unitBuy * qty, price: unitPrice * qty };
+    }),
+    // 🧾 Diğer hizmetler (değişiklik ücreti, ek hizmet…): açıklama + alış + satış; her biri ayrı kalem (r.otherItems)
+    ...(Array.isArray(r?.otherItems) ? r.otherItems : []).filter(o => o && (String(o.text || '').trim() || parseFloat(o.price) || parseFloat(o.buy))).map((o, i) => {
+      const unitBuy = parseFloat(o.buy) || 0, unitPrice = parseFloat(o.price) || 0;
+      return { key: `other-${o.id || i}`, kind: 'other', icon: '🧾', name: 'Diğer hizmet', text: String(o.text || '').trim() || 'Diğer hizmet', qty: 1, unitBuy, unitPrice, buy: unitBuy, price: unitPrice };
     })];
 };
 

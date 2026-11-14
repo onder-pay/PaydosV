@@ -706,6 +706,9 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
       resBase[k + 'Price'] = use ? (parseFloat(resData[k + 'Price']) || 0) : 0;
       if (d.kind === 'transfer') resBase[k + 'On'] = use;
     });
+    // 🧾 Diğer hizmetler: boş satırlar atılır
+    resBase.otherItems = (resData.otherItems || []).filter(o => String(o.text || '').trim() || parseFloat(o.price) || parseFloat(o.buy))
+      .map(o => ({ id: o.id || generateUniqueId(), text: String(o.text || '').trim(), buy: parseFloat(o.buy) || 0, price: parseFloat(o.price) || 0 }));
     // 👥 Kişi bazında uçuş: yalnız münferit (elle yazılan) uçuşun metni/fiyatı saklanır; grup uçuşu biletlerden okunur
     resBase.flightSplit = split;
     resBase.personFlights = split ? resNames(resData).map(nm => {
@@ -3549,7 +3552,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                           {total.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} {r.currency || '€'}
                           {(rt.linkedSell > 0 || resExtraSum(r) > 0 || rt.other.length > 0) && (
                             <div style={{ fontSize: '10px', fontWeight: 400, color: '#94a3b8', whiteSpace: 'nowrap' }} title={[...rt.linked, ...rt.other].map(x => `${x.label}: ${x.amount} ${x.currency}`).join('\n')}>
-                              🏨 {(parseFloat(r.price) || 0).toLocaleString('tr-TR')}{rt.linked.filter(x => x.kind === 'flight').length + resExtras(r).filter(x => x.kind === 'flight').length ? ` · ✈️ ${(rt.linked.filter(x => x.kind === 'flight').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'flight').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}{rt.linked.filter(x => x.kind === 'transfer').length + resExtras(r).filter(x => x.kind === 'transfer').length ? ` · 🚐 ${(rt.linked.filter(x => x.kind === 'transfer').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'transfer').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}
+                              🏨 {(parseFloat(r.price) || 0).toLocaleString('tr-TR')}{rt.linked.filter(x => x.kind === 'flight').length + resExtras(r).filter(x => x.kind === 'flight').length ? ` · ✈️ ${(rt.linked.filter(x => x.kind === 'flight').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'flight').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}{rt.linked.filter(x => x.kind === 'transfer').length + resExtras(r).filter(x => x.kind === 'transfer').length ? ` · 🚐 ${(rt.linked.filter(x => x.kind === 'transfer').reduce((t, x) => t + x.amount, 0) + resExtras(r).filter(x => x.kind === 'transfer').reduce((t, x) => t + x.price, 0)).toLocaleString('tr-TR')}` : ''}{resExtras(r).filter(x => x.kind === 'other').length ? ` · 🧾 ${resExtras(r).filter(x => x.kind === 'other').reduce((t, x) => t + x.price, 0).toLocaleString('tr-TR')}` : ''}
                               {rt.other.map((x, i) => <span key={i}> · +{x.amount} {x.currency}</span>)}
                             </div>
                           )}
@@ -3912,6 +3915,21 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                       : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{sel('out', 'Gidiş', resData.checkIn)}{sel('ret', 'Dönüş', resData.checkOut)}</div>}
                       <label style={{ ...labelStyle, marginTop: '12px' }}>🚐 Transfer <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — gidiş ve dönüş ayrı · Transferler bölümünden seçin ya da elle yazın)</span></label>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>{trf('transferOut', 'out', 'Gidiş', 'Havalimanı → Otel (araç, saat…)', resData.checkIn)}{trf('transferRet', 'ret', 'Dönüş', 'Otel → Havalimanı (araç, saat…)', resData.checkOut)}</div>
+                      <label style={{ ...labelStyle, marginTop: '12px' }}>🧾 Diğer hizmet <span style={{ fontSize: '10px', color: '#64748b' }}>(opsiyonel — değişiklik ücreti, ek bagaj, sigorta vb. · proformaya ayrı satır girer)</span></label>
+                      {(resData.otherItems || []).map((o, oi) => {
+                        const setO = (patch) => setResData(rd => ({ ...rd, otherItems: (rd.otherItems || []).map((x, k) => k === oi ? { ...x, ...patch } : x) }));
+                        return (
+                          <div key={o.id || oi} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px', alignItems: 'center' }}>
+                            <input value={o.text || ''} onChange={e => setO({ text: e.target.value })} placeholder="Açıklama (örn. Uçuş değişiklik ücreti)" style={{ ...inputStyle, flex: '1 1 220px', minWidth: 0 }} />
+                            {[['buy', 'Alış', 'rgba(239,68,68,0.35)', 'Bizim maliyetimiz (opsiyonel — girilirse kâra katılır)'], ['price', 'Satış', 'rgba(16,185,129,0.35)', 'Müşteriye satış — proformaya ayrı satır girer']].map(([k, lb, bc, tt]) => (
+                              <div key={k} style={{ position: 'relative', flex: '1 1 90px', minWidth: 0 }}>
+                                <input type="number" inputMode="decimal" value={o[k] ?? ''} onChange={e => setO({ [k]: e.target.value })} placeholder={lb} title={tt} style={{ ...inputStyle, paddingRight: '24px', borderColor: bc }} />
+                                <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>{resData.currency || '€'}</span>
+                              </div>))}
+                            <button type="button" onClick={() => setResData(rd => ({ ...rd, otherItems: (rd.otherItems || []).filter((_, k) => k !== oi) }))} title="Satırı sil" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', padding: '8px 10px' }}>×</button>
+                          </div>);
+                      })}
+                      <button type="button" onClick={() => setResData(rd => ({ ...rd, otherItems: [...(rd.otherItems || []), { id: generateUniqueId(), text: '', buy: '', price: '' }] }))} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '12px' }}>+ Diğer hizmet ekle</button>
                       {!split && anyGroup && resPax(resData) > n && (
                         <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontSize: '12px', lineHeight: 1.5 }}>
                           ⚠️ {resData.roomType || 'Oda'} odada {resPax(resData)} kişi var ama {n} isim yazılı — grup uçuşuna yalnız <b>{n} bilet</b> eklenir (biletler isimle tutulur).
