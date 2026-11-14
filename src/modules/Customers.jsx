@@ -2,7 +2,7 @@
 import { BirthDateInput, DateInput, FormInput, InfoBox, Modal, inputStyle, labelStyle, onDocImgError, selectStyle, TravelCheckBox } from '../components/ui';
 import { BulkDocInbox, visaAppBelongsTo, CUST_DOC_TYPES, customerLinkSlug, docTypeOf, publishCustomerLink, pdfUrlText, FingerprintBox } from '../components/shared';
 import { XLSX } from '../lib/heavy.js';
-import { canonPassportType, isoToCountry, passportTypes, placeTr, schengenCountries, turkishProvinces, tourCountries } from '../lib/data.js';
+import { canonPassportType, isoToCountry, passportTypes, FOREIGN_PASSPORT, nationalityCountry, isTurkishNationality, placeTr, schengenCountries, turkishProvinces, tourCountries } from '../lib/data.js';
 import { claudeRequest, logActivity } from '../lib/api.js';
 import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, setDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase.js';
@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { detectFlights, detectHotel, nameCheck, sameFlight } from '../lib/docparse.js';
 import { pdfFileText } from '../lib/pdf.js';
 import { passportImageOf, downloadUrl } from '../lib/files.js';
-import { residencePermitsOf } from '../lib/travel.js';
+import { residencePermitsOf, isGreenPassport, isForeignPassport, euCitizen } from '../lib/travel.js';
 
 
 export function CustomerModule({ customers, setCustomers, tours = [], visaApplications = [], isMobile, appSettings, showToast, addToUndo, openCustomerId, onOpenCustomerHandled, onBack, alwaysBack, currentUser, quickAction, onQuickActionDone, onGo }) {
@@ -202,10 +202,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
   // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
-    return pList.some(p =>
-      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
-      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-    );
+    return pList.some(isGreenPassport);
   });
 
   // Filtreleme fonksiyonu
@@ -855,16 +852,22 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <div>
                       <label style={labelStyle}>Uyruk</label>
-                      <input type="text" value={passport.nationality || 'Türkiye'} onChange={e => updatePassport(passport.id, 'nationality', e.target.value)} style={inputStyle} />
+                      <input type="text" value={passport.nationality || 'Türkiye'} placeholder="Türkiye, Belçika, Almanya…"
+                        onChange={e => { const v = e.target.value; updatePassport(passport.id, 'nationality', v);
+                          // Yabancı uyruk yazılınca tür "Yabancı Pasaport" olur; Türkiye'ye dönünce numaradan bulunur
+                          const fo = !isTurkishNationality(v);
+                          if (fo && passport.passportType !== FOREIGN_PASSPORT) updatePassport(passport.id, 'passportType', FOREIGN_PASSPORT);
+                          else if (!fo && passport.passportType === FOREIGN_PASSPORT) updatePassport(passport.id, 'passportType', detectPassportType(passport.passportNo) || passportTypes[0]); }}
+                        onBlur={e => { const c = nationalityCountry(e.target.value); if (c && c !== e.target.value) updatePassport(passport.id, 'nationality', c); }} style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Pasaport No</label>
                       <input type="text" value={passport.passportNo || ''}
-                        onChange={e => { const pNo = formatPassportNo(e.target.value); const dt = detectPassportType(pNo); updatePassport(passport.id, 'passportNo', pNo); if (dt) updatePassport(passport.id, 'passportType', dt); }}
-                        placeholder="U1234567" maxLength="8"
-                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace', borderColor: passport.passportNo && validatePassportNo(passport.passportNo) ? '#ef4444' : undefined }} />
-                      {passport.passportNo && validatePassportNo(passport.passportNo) && (
-                        <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px' }}>{validatePassportNo(passport.passportNo)}</div>
+                        onChange={e => { const fo = !isTurkishNationality(passport.nationality); const pNo = formatPassportNo(e.target.value, fo); const dt = fo ? FOREIGN_PASSPORT : detectPassportType(pNo); updatePassport(passport.id, 'passportNo', pNo); if (dt) updatePassport(passport.id, 'passportType', dt); }}
+                        placeholder={isTurkishNationality(passport.nationality) ? 'U1234567' : 'ES135601'} maxLength={isTurkishNationality(passport.nationality) ? 9 : 12}
+                        style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace', borderColor: passport.passportNo && validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality)) ? '#ef4444' : undefined }} />
+                      {passport.passportNo && validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality)) && (
+                        <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px' }}>{validatePassportNo(passport.passportNo, !isTurkishNationality(passport.nationality))}</div>
                       )}
                     </div>
                     <DateInput label="Veriliş" value={passport.issueDate || ''} onChange={v => updatePassport(passport.id, 'issueDate', v)} />
@@ -893,22 +896,25 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                             const resp = await claudeRequest({
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe (Türk pasaportunda Doğum tarihi alanının yakınında, BÜYÜK harfle yazılı il/ilçe adı, ör. DENIZLI, KARŞIYAKA; mutlaka oku, sadece hiç görünmüyorsa boş bırak). birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu. Okunamayan alanı boş bırak.' }] }] })
+                              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: 'Bu bir pasaport görüntüsü. SADECE şu JSON: {"passportNo":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","birthDate":"YYYY-MM-DD","birthPlace":"","tcKimlik":"","nationality":"TUR"}. birthPlace = DOĞUM YERİ / PLACE OF BIRTH alanındaki şehir/ilçe (Türk pasaportunda Doğum tarihi alanının yakınında, BÜYÜK harfle yazılı il/ilçe adı, ör. DENIZLI, KARŞIYAKA; mutlaka oku, sadece hiç görünmüyorsa boş bırak). birthDate = DOĞUM TARİHİ / DATE OF BIRTH. tcKimlik = TC KİMLİK NO / PERSONAL NO (11 hane). nationality 3 harfli ISO kodu (MRZ ilk satırındaki ülke kodu, ör. TUR, BEL, DEU). Yabancı pasaport da olabilir: passportNo belge numarasıdır, 2 harfle başlayabilir (ör. ES135601) — olduğu gibi yaz. expiryDate = DATE OF EXPIRY alanı ya da MRZ ikinci satırdaki bitiş (YYMMDD); veriliş tarihine yıl ekleyerek TAHMİN ETME. Okunamayan alanı boş bırak.' }] }] })
                             });
                             const data = await resp.json();
                             const parsed = JSON.parse((data.content?.[0]?.text || '').replace(/```json|```/g, '').trim());
+                            // Uyruk önce: yabancı pasaportta numara biçimi ve tür farklı
+                            const natC = parsed.nationality ? nationalityCountry(parsed.nationality) : '';
+                            const fo = !!natC && natC !== 'Türkiye';
                             if (parsed.passportNo) {
-                              const formattedNo = formatPassportNo(parsed.passportNo);
-                              const validationErr = validatePassportNo(formattedNo);
+                              const formattedNo = formatPassportNo(parsed.passportNo, fo);
+                              const validationErr = validatePassportNo(formattedNo, fo);
                               if (validationErr) {
                                 showToast?.(`⚠️ AI geçersiz pasaport no okudu: ${parsed.passportNo} — kaydedilmedi`, 'warning');
                               } else {
                                 updatePassport(passport.id, 'passportNo', formattedNo);
-                                const t = detectPassportType(formattedNo);
+                                const t = fo ? FOREIGN_PASSPORT : detectPassportType(formattedNo);
                                 if (t) updatePassport(passport.id, 'passportType', t);
                               }
                             }
-                            if (parsed.nationality) updatePassport(passport.id, 'nationality', isoToCountry(parsed.nationality));
+                            if (natC) updatePassport(passport.id, 'nationality', natC);
                             // Veriliş / bitiş tarihi de pasaporta yazılır (önceden okunuyor ama kaydedilmiyordu)
                             const okDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && isSaneDate(d);
                             if (okDate(parsed.issueDate)) updatePassport(passport.id, 'issueDate', parsed.issueDate);
@@ -1089,10 +1095,9 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
     const cPassports = safeParseJSON(c.passports);
     const cSchengen = safeParseJSON(c.schengenVisas).filter(v => v.country);
     const cUsa = safeParseObj(c.usaVisa);
-    const hasGreenPassport = cPassports.some(p =>
-      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
-      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-    );
+    const hasGreenPassport = cPassports.some(isGreenPassport);
+    const euCit = euCitizen(c); // AB/AEA/İsviçre pasaportu → Schengen vizesi gerekmez
+    const schExempt = hasGreenPassport || !!euCit;
 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, #0a1628 0%, #132742 50%, #0a1628 100%)', zIndex: 300, overflow: 'auto' }}>
@@ -1131,7 +1136,7 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
             {[
               { id: 'info', icon: '📋', label: 'Bilgiler', color: '#f59e0b' },
               { id: 'passport', icon: '🛂', label: 'Pasaport', color: '#3b82f6', count: cPassports.length },
-              { id: 'schengen', icon: '🇪🇺', label: hasGreenPassport ? 'Muaf ✓' : 'Schengen', color: '#10b981', count: hasGreenPassport ? null : cSchengen.length },
+              { id: 'schengen', icon: '🇪🇺', label: schExempt ? 'Muaf ✓' : 'Schengen', color: '#10b981', count: schExempt ? null : cSchengen.length },
               { id: 'usa', icon: '🇺🇸', label: 'ABD', color: '#8b5cf6', count: cUsa.endDate ? 1 : 0 },
               { id: 'timeline', icon: '📅', label: 'Geçmiş', color: '#a78bfa' }
             ].map((tab) => (
@@ -1249,14 +1254,14 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                       <div style={big}>{pp ? `${trHas(pp.passportType, 'yesil') ? '🟢 Yeşil' : trHas(pp.passportType, 'gri') ? 'Gri' : pp.passportType?.includes('Siyah') ? 'Siyah' : 'Bordo'} · ${pp.passportNo || '—'}` : '—'}</div>
                       <div style={{ ...small, color: ppColor, fontWeight: '600' }}>{pp?.expiryDate ? `Bitiş ${formatDate(pp.expiryDate)} · ` : ''}{ppNote}</div>
                     </button>
-                    <button type="button" onClick={() => setDetailTab(lastApp ? 'timeline' : 'schengen')} style={card(lastApp ? '#f59e0b' : hasGreenPassport ? '#10b981' : '#64748b')}>
+                    <button type="button" onClick={() => setDetailTab(lastApp ? 'timeline' : 'schengen')} style={card(lastApp ? '#f59e0b' : schExempt ? '#10b981' : '#64748b')}>
                       <div style={cardHead}><span>📑 VİZE</span>{myApps.length > 0 && <span>{myApps.length} başvuru</span>}</div>
                       {lastApp ? (<>
                         <div style={big}>{lastApp.country || 'Başvuru'}{lastApp.visaDuration ? ` · ${lastApp.visaDuration}` : ''}</div>
                         <div style={{ ...small, color: '#fbbf24', fontWeight: '600' }}>{lastApp.status || 'Durum yok'}{lastApp.appointmentDate ? ` · Randevu ${formatDate(lastApp.appointmentDate)}` : ''}</div>
-                      </>) : hasGreenPassport ? (<>
+                      </>) : schExempt ? (<>
                         <div style={big}>Schengen muaf</div>
-                        <div style={small}>Yeşil pasaport</div>
+                        <div style={small}>{hasGreenPassport ? 'Yeşil pasaport' : `${euCit.country} vatandaşı`}</div>
                       </>) : lastSch ? (<>
                         <div style={big}>{lastSch.country} vizesi</div>
                         <div style={{ ...small, color: getDaysLeft(lastSch.endDate) >= 0 ? '#10b981' : '#94a3b8' }}>{lastSch.endDate ? `Bitiş ${formatDate(lastSch.endDate)}${getDaysLeft(lastSch.endDate) < 0 ? ' · süresi dolmuş' : ''}` : 'Tarih yok'}</div>
@@ -1350,8 +1355,8 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: trHas(p.passportType, 'yesil') ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '700' }}>{idx + 1}</div>
                           <div>
-                            <h4 style={{ margin: 0, fontSize: '14px', color: trHas(p.passportType, 'yesil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{p.passportType || 'Pasaport'}</h4>
-                            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{p.nationality || 'Türkiye'}</p>
+                            <h4 style={{ margin: 0, fontSize: '14px', color: trHas(p.passportType, 'yesil') ? '#10b981' : '#3b82f6', fontWeight: '600' }}>{isForeignPassport(p) ? `🌐 ${FOREIGN_PASSPORT}` : (p.passportType || 'Pasaport')}</h4>
+                            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{nationalityCountry(p.nationality) || 'Türkiye'}</p>
                           </div>
                         </div>
                         {p.expiryDate && getDaysLeft(p.expiryDate) <= 180 && getDaysLeft(p.expiryDate) > 0 && (
@@ -1397,13 +1402,13 @@ export function CustomerModule({ customers, setCustomers, tours = [], visaApplic
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <FingerprintBox c={customers.find(x => x.id === c.id) || c} showToast={showToast} />
               <ResidencePermits c={customers.find(x => x.id === c.id) || c} showToast={showToast} onImage={(src, title, file) => setImagePreview({ show: true, src, title, file })} />
-              {hasGreenPassport ? (
+              {schExempt ? (
                 <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
                   <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', margin: '0 auto 16px' }}>✓</div>
                   <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#10b981', fontWeight: '600' }}>Schengen Vizesi Muafiyeti</h3>
-                  <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#94a3b8' }}>Bu müşteri <strong style={{ color: '#10b981' }}>Yeşil Pasaport</strong> sahibi olduğu için Schengen ülkelerine vizesiz seyahat edebilir.</p>
+                  <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#94a3b8' }}>Bu müşteri <strong style={{ color: '#10b981' }}>{hasGreenPassport ? 'Yeşil Pasaport' : `${euCit.country} pasaportu`}</strong> sahibi olduğu için Schengen ülkelerine vizesiz seyahat edebilir.</p>
                   <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '12px', display: 'inline-block' }}>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>📋 90 gün içinde toplam 90 gün kalış hakkı</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{hasGreenPassport ? '📋 90 gün içinde toplam 90 gün kalış hakkı' : '📋 AB / AEA / İsviçre vatandaşı — serbest dolaşım'}</p>
                   </div>
                 </div>
               ) : cSchengen.length === 0 ? (
@@ -2544,7 +2549,10 @@ JSON formatı:
 
 Pasaport tipi: S=Yeşil Pasaport (Hususi), U=Bordo Pasaport (Umuma Mahsus), Z=Gri Pasaport (Hizmet).
 birthPlace: pasaporttaki DOĞUM YERİ / PLACE OF BIRTH alanı (il/ilçe, büyük harfle yazılır, ör. DENIZLI). Pasaport görseli varsa mutlaka oku.
-Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.`;
+YABANCI PASAPORT (MRZ ilk satırında ülke kodu TUR değilse, ör. P<BEL, P<DEU): passportType "Yabancı Pasaport", nationality ülkenin Türkçe adı (Belçika, Almanya…);
+soyad = MRZ'de << işaretinden ÖNCEKİ kısım (P<BELBRAET<<YMKE<SONJA → lastName BRAET, firstName YMKE SONJA); pasaport no olduğu gibi (2 harfle başlayabilir, ör. ES135601); tcKimlik boş.
+expiryDate = DATE OF EXPIRY alanı ya da MRZ ikinci satırdaki bitiş (YYMMDD). Veriliş tarihine yıl ekleyerek TAHMİN ETME.
+Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Türk pasaport no genellikle 1 harf + 7 rakam.`;
 
                     const savedModel = appSettings?.claudeModel;
                     const model = (!savedModel || savedModel === 'claude-sonnet-4-20250514') ? 'claude-sonnet-4-6' : savedModel;
@@ -2571,6 +2579,8 @@ Tarihler YYYY-MM-DD. TC Kimlik 11 hane. Pasaport No genellikle 1 harf + 7 rakam.
                       throw new Error('Netlify proxy çalışmıyor. CLAUDE_API_KEY env var Netlify\'da tanımlı mı kontrol edin.');
                     }
                     const parsed = JSON.parse((data.content[0].text).replace(/```json|```/g, '').trim());
+                    // Uyruk CRM'deki ülke adına çevrilir; yabancı pasaportun türü her zaman "Yabancı Pasaport"
+                    (parsed._passports || []).forEach(p => { if (!p) return; const n = nationalityCountry(p.nationality); if (n) p.nationality = n; if (!isTurkishNationality(p.nationality)) p.passportType = FOREIGN_PASSPORT; });
 
                     // ── Akıllı mükerrer kontrol ──
                     // 1. Pasaport No eşleşmesi — aynı pasaport = kesinlikle aynı kişi, ekleme
@@ -3216,8 +3226,9 @@ export const sameCustName = (a, b) => {
   return nm(a) === nm(b);
 };
 
-export const validatePassportNo = (passportNo) => {
+export const validatePassportNo = (passportNo, foreign = false) => {
   if (!passportNo) return null;
+  if (foreign) return /^[A-Z0-9]{5,12}$/.test(passportNo) ? null : '❌ Pasaport no 5-12 harf/rakam olmalı';
   const regex = /^[A-Z][0-9]{7,8}$/;
   if (!regex.test(passportNo)) return '❌ Pasaport no 1 harf + 7-8 rakam olmalı (örn: U1234567)';
   return null; // geçerli

@@ -2,6 +2,7 @@
 import { StatCard } from '../components/ui';
 import { formatWhatsAppPhone, getDaysLeft, safeParseDate, safeParseJSON, safeParseObj } from '../lib/format.js';
 import { trHas, fullNameTr } from '../lib/turkish.js';
+import { isGreenPassport } from '../lib/travel.js';
 import { useState } from 'react';
 import { BulkDocInbox, userShortcuts } from '../components/shared';
 
@@ -36,10 +37,7 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
   // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
-    return pList.some(p =>
-      trHas(p.passportType, 'yesil') || // 'Yeşil'/'Yesil' (bot eskiden ş'siz yazdı)
-      (p.passportNo && p.passportNo.toUpperCase().startsWith('S'))
-    );
+    return pList.some(isGreenPassport);
   });
   // Bugün doğum günü olanlar
   const todayBirthdays = customers.filter(c => {
