@@ -89,7 +89,6 @@ export const isValidTc = (tc) => {
   return ((d10 + 10) % 10) === d[9] && d.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === d[10];
 };
 
-
 // Vize ödeme durumu: müşteri ödemeleri vize bedelini karşılıyor mu?
 // Vize bedeliyle aynı para birimindeki ödemeler bedele (indirim düşülmüş), ₺ ödemeler bedelin TL karşılığına oranlanır.
 // TL karşılığı = bedel × vizeci/muhasebecinin elle yazdığı kur (visaKur). Otomatik kur alınmaz. Ödeme yoksa mevcut durum korunur.

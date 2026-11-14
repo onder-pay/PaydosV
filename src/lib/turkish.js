@@ -48,6 +48,13 @@ export const titleCaseTr = (s) => {
   return lower.replace(/\u0307/g, '').replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, ch) => sep + (ch === 'i' ? 'İ' : ch.toLocaleUpperCase('tr-TR')));
 };
 
+// Ad + soyad BİRLİKTE gösterim: İ/ı ayrımı tüm isimde aranır. Ayrı ayrı titleCaseTr, adında İ olan kişinin soyadındaki I'yı
+// i yapar ("MELİH" + "KANSIZ" → "Melih Kansiz"; doğrusu "Melih Kansız"). Müşteri nesnesi ya da (ad, soyad) alır.
+export const fullNameTr = (a, b) => {
+  const [f, l] = a && typeof a === 'object' ? [a.firstName, a.lastName] : [a, b];
+  return titleCaseTr(`${f || ''} ${l || ''}`.replace(/\s+/g, ' ').trim());
+};
+
 // Kayda yazılacak isim: İ/ı ayrımı olmayan BÜYÜK harfli ve I içeren isim ("ISMAIL", "MERIÇ") olduğu gibi kalır — tahminle bozulmaz.
 export const nameForSave = (s) => {
   const t = String(s || '').trim().replace(/\s+/g, ' ');

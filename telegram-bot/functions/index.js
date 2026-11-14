@@ -4,9 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
-// Kullanıcıya gösterilen tarih her yerde GG.AA.YYYY (kayıt YYYY-AA-GG kalır)
-const dmy = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : (d || ''); };
+const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -483,6 +481,15 @@ Schengen vize:
 ABD vize:
 {"type":"usa","firstName":"","lastName":"","passportNo":"","issueDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}
 
+Oturma izni karti (Residence Permit / Aufenthaltstitel / Titre de sejour / Permesso di soggiorno / Άδεια Διαμονής / Verblijfsvergunning — bir ULKENIN verdigi oturma izni kartidir, pasaport ve vize DEGILDIR):
+{"type":"residence","firstName":"","lastName":"","birthDate":"YYYY-MM-DD","nationality":"","country":"","permitNo":"","category":"","issueDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD"}
+- country: karti VEREN ulke (ust baslik / ulke kodu: GRC=Yunanistan, D=Almanya, F=Fransa, I=Italya, NL=Hollanda...). Uyruk (nationality, orn TUR) ile KARISTIRMA
+- permitNo: kartin numarasi (orn E15476634 — genelde sag ustte)
+- category: izin turu Turkce kisa (orn "FAMILY MEMBER" -> "Aile üyesi", "WORK" -> "Çalışma", "STUDENT" -> "Öğrenci", "LONG-TERM RESIDENT" -> "Uzun süreli ikamet")
+- expiryDate: "CARD EXPIRY" / "GÜLTIG BIS" / "VALID UNTIL" (GG MM YYYY -> YYYY-MM-DD). issueDate yoksa bos birak
+- ISIM: "SURNAME Name" / "EPONYMO Onoma" alaninda BUYUK HARFLE yazilan kisim SOYADIDIR, kucuk harfli (Ilk harfi buyuk) kisim ADDIR.
+  Ornek "NERIMAN Huseyin Olcay" -> lastName="NERIMAN", firstName="Huseyin Olcay". Ayri satirlarda "Surname / Given names" varsa ona gore al.
+
 T.C. Kimlik Karti (ustte "TÜRKİYE CUMHURİYETİ KİMLİK KARTI / REPUBLIC OF TURKEY IDENTITY CARD" yazar, pasaport DEGILDIR):
 {"type":"idcard","firstName":"","lastName":"","tcKimlik":"","birthDate":"YYYY-MM-DD"}
 - tcKimlik: sol ustte "T.C. Kimlik No / TR Identity No" altindaki 11 hane
@@ -528,7 +535,7 @@ GG-AA-YYYY -> direkt kullan
   if (!m) return { dtype: null, json: null };
   try {
     const json = JSON.parse(m[0]);
-    const dtype = json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
+    const dtype = json.type === 'residence' ? 'residence' : json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
     console.log('Detected:', dtype, 'Name:', json.firstName, json.lastName);
     return { dtype, json };
   } catch(e) { console.error('JSON parse error:', e.message); return { dtype: null, json: null }; }
@@ -885,6 +892,45 @@ const approveVisaApp = async (db, custDocId, categoryId, country) => {
   }
 };
 
+// 🪪 Oturma izni (AB/Schengen ülkesi): müşterinin residencePermits listesine; aynı kart no varsa güncellenir.
+// Geçerli bir Schengen ülkesi oturma izni, Schengen'e vizesiz giriş sağlar (CRM tur listesinde gösterilir).
+const saveResidence = async (db, custs, json, img) => {
+  json.country = normalizeCountry(json.country);
+  if (json.firstName) json.firstName = cleanInvalidName(json.firstName);
+  if (json.lastName) json.lastName = cleanInvalidName(json.lastName);
+  let matches = custs.filter(c => namesMatch(`${json.firstName} ${json.lastName}`, `${c.firstName || ''} ${c.lastName || ''}`));
+  if (matches.length > 1 && json.birthDate) { const b = matches.filter(c => c.birthDate === json.birthDate); if (b.length) matches = b; }
+  const newRp = async () => ({ id: genId(), country: json.country || '', permitNo: json.permitNo || '', category: json.category || '',
+    issueDate: json.issueDate || '', expiryDate: json.expiryDate || '', image: await toStorage(img, 'oturma'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  if (!matches.length) {
+    // Kayıtlı değil: müşteri oturma izninden açılır (pasaport şart değil)
+    const [fn, ln] = namePairForSave(json.firstName || '', json.lastName || '');
+    if (!fn || !ln) return '⚠️ Kartta ad/soyad okunamadı — müşteri açılmadı. Fotoğrafı daha net çekip tekrar gönderin.';
+    const id = genId();
+    await db.collection('customers').doc(String(id)).set({
+      id, firstName: fn, lastName: ln, birthDate: json.birthDate || '', birthPlace: '', tcKimlik: '', gender: '',
+      phone: '', email: '', city: '', sector: '', companyName: '', notes: '', tkMemberNo: '', tags: '[]', activities: '[]',
+      passports: '[]', schengenVisas: '[]', usaVisa: '{}', residencePermits: JSON.stringify([await newRp()]), verified: false, createdBy: 'Telegram Bot (oturma izni)',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
+    return `✅ *Yeni müşteri* + oturma izni\n👤 ${fn} ${ln}${json.birthDate ? `\n🎂 ${dmy(json.birthDate)}` : ''}`;
+  }
+  if (matches.length > 1) return `⚠️ "${json.firstName} ${json.lastName}" adında ${matches.length} müşteri var:\n${matches.map(m => `• ${m.firstName} ${m.lastName}${m.birthDate ? ` (${dmy(m.birthDate)})` : ''}`).join('\n')}\n\nAyırt edilemiyor — CRM'den elle ekleyin.`;
+  const cust = matches[0];
+  let list = []; try { list = JSON.parse(cust.residencePermits || '[]'); } catch {}
+  if (!Array.isArray(list)) list = [];
+  const old = json.permitNo ? list.find(x => x.permitNo === json.permitNo) : null;
+  const rp = { id: old?.id || genId(), country: json.country || '', permitNo: json.permitNo || '', category: json.category || '',
+    issueDate: json.issueDate || '', expiryDate: json.expiryDate || '', image: await toStorage(img, 'oturma'), createdAt: old?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  list = old ? list.map(x => x.id === old.id ? rp : x) : [...list, rp];
+  const patch = { residencePermits: JSON.stringify(list), updatedAt: new Date().toISOString() };
+  if (!cust.birthDate && json.birthDate) patch.birthDate = json.birthDate;
+  await db.collection('customers').doc(String(cust._docId || cust.id)).set(patch, { merge: true });
+  const exp = json.expiryDate ? new Date(json.expiryDate + 'T00:00:00') : null;
+  const st = exp && exp < new Date() ? '\n🔴 Süresi dolmuş!' : '';
+  return `✅ Oturma izni ${old ? 'güncellendi' : 'eklendi'}\n👤 ${cust.firstName} ${cust.lastName}${st}`;
+};
+
 const saveSchengen = async (db, custs, json, img) => {
   const ref = db.collection('customers');
 
@@ -1009,6 +1055,7 @@ const saveUsa = async (db, custs, json, img) => {
 // ========== FORMAT ==========
 const fmtID = j => `🪪 Kimlik kartı · ${j.firstName||''} *${j.lastName||''}*${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}${j.birthDate ? `\n🎂 ${dmy(j.birthDate)}` : ''}`;
 const fmtPP = j => `🛂 ${j.firstName||''} *${j.lastName||''}* | ${j.passportNo||'-'} | ${detectPT(j.passportNo)}\n📅 ${dmy(j.expiryDate)||'-'}${j.tcKimlik ? ` | 🆔 ${j.tcKimlik}` : ''}`;
+const fmtRes = j => `🪪 Oturma izni · ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.permitNo||'-'}${j.category ? ` | ${j.category}` : ''}\n📅 Bitiş: ${dmy(j.expiryDate)||'-'}`;
 const fmtSch = j => `🇪🇺 ${j.firstName||''} *${j.lastName||''}* | ${j.country||'-'} | ${j.visaNumber||'-'}\n📅 ${dmy(j.startDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 const fmtUsa = j => `🇺🇸 ${j.firstName||''} *${j.lastName||''}*\n📅 ${dmy(j.issueDate)||'-'} → ${dmy(j.endDate)||'-'}`;
 
@@ -1171,6 +1218,26 @@ const botAccess = (settings, chatId) => {
 };
 const denyText = () => 'ℹ️ Bu bot yalnız Paydos vize grubunda çalışır. Pasaport ve vizeleri gruba gönderin.';
 
+// 📋 Telegram "Menü" düğmesindeki komut listesi (izinli sohbete, sürüm değişince bir kez kaydedilir)
+const BOT_COMMANDS_VER = 1;
+const BOT_COMMANDS = [
+  { command: 'pasaport', description: 'Müşterinin pasaport görseli — ör. /pasaport önder taşçı' },
+  { command: 'turpasaport', description: 'Turdaki herkesin pasaportu — ör. /turpasaport canton' },
+  { command: 'bugun', description: 'Bugün iDATA/VFS başvurusu yapılacaklar' },
+  { command: 'atama', description: 'Atama bekleyen başvurular' },
+  { command: 'yardim', description: 'Bot nasıl kullanılır' },
+];
+const HELP_TEXT = [
+  '🤖 Paydos vize botu',
+  '',
+  '📷 Pasaport, kimlik, oturma izni, Schengen/ABD vizesi fotoğrafını gruba atın → okunur, CRM\'de müşteriye kaydedilir.',
+  '',
+  '/pasaport Ad Soyad — pasaport görseli dosya olarak gelir (adın başı yeter: /pasaport ond taş)',
+  '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
+  '/bugun — bugün iDATA/VFS başvurusu yapılacaklar',
+  '/atama — atama bekleyen başvurular',
+].join('\n');
+
 // ========== WEBHOOK ==========
 exports.telegramBot = functions
   .region('europe-west1')
@@ -1198,6 +1265,12 @@ exports.telegramBot = functions
         }
         // Telegram'a "aldım" bildir (spinner kapansın)
         await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id });
+
+        if (parts[0] === 'pp') {
+          try { await require('./pasaport').handleCallback({ db: cfg.db, token: T, chatId: cbChatId, parts }); }
+          catch (e) { console.error('[BOT] pasaport düğmesi:', e); await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Pasaport gönderilemedi: ' + e.message }); }
+          return res.status(200).send('OK');
+        }
 
         if (parts[0] === 'va') {
           const step = parts[1];
@@ -1420,6 +1493,33 @@ exports.telegramBot = functions
         if (!isGroup && (msg.photo || txt)) await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: denyText() });
         return res.status(200).send('OK');
       }
+      // Menü komutlarını bu sohbete kaydet (sürüm başına bir kez; hata akışı bozmaz)
+      if (acc.ok) {
+        const done = (settingsMsg.botCommands || {})[String(msg.chat.id)];
+        if (done !== BOT_COMMANDS_VER) {
+          try {
+            const r = await tg(T, 'setMyCommands', { commands: BOT_COMMANDS, scope: { type: 'chat', chat_id: msg.chat.id } });
+            if (r.ok) await cfg.db.collection('app_settings').doc('main').set({ botCommands: { [String(msg.chat.id)]: BOT_COMMANDS_VER } }, { merge: true });
+          } catch (e) { console.warn('[BOT] setMyCommands:', e.message); }
+        }
+      }
+      if (acc.ok && /^\/(yardim|help|start)(@\w+)?$/.test(normTr(txt))) { // normTr: /YARDIM, /Yardım da olur
+        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: HELP_TEXT });
+        return res.status(200).send('OK');
+      }
+    }
+    // ===== 🛂 /pasaport Ad Soyad · /turpasaport Tur adı — pasaport görselleri gruba (bkz. pasaport.js) =====
+    const ppm = msg && typeof msg.text === 'string' ? msg.text.trim().match(/^\/(pasaport|turpasaport)(?:@\w+)?(?:\s+([\s\S]*))?$/i) : null;
+    if (ppm) {
+      try {
+        const P = require('./pasaport');
+        const args = { db: cfg.db, token: T, chatId: msg.chat.id, query: (ppm[2] || '').trim(), replyTo: msg.message_id };
+        if (ppm[1].toLowerCase() === 'pasaport') await P.handlePasaport(args); else await P.handleTurPasaport(args);
+      } catch (e) {
+        console.error('[BOT] /pasaport hatası:', e);
+        await tg(T, 'sendMessage', { chat_id: msg.chat.id, text: '❌ Pasaport gönderilemedi: ' + e.message });
+      }
+      return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
     const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
@@ -1478,7 +1578,7 @@ exports.telegramBot = functions
     // Tanı + Oku (tek adımda)
     const { dtype, json } = await detectType(K, b64);
     if (!dtype || !json) {
-      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı veya vize yükleyin.' });
+      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı, oturma izni veya vize yükleyin.' });
       return res.status(200).send('OK');
     }
 
@@ -1489,7 +1589,7 @@ exports.telegramBot = functions
     // ⛔ Tarih kontrolü — hatalı veya süresi dolmuş belge reddet
     const dateErrors = validateDates(json, dtype);
     if (dateErrors.length > 0) {
-      const typeLabel = dtype === 'passport' ? '🛂 Pasaport' : dtype === 'schengen' ? '🇪🇺 Schengen' : '🇺🇸 ABD Vize';
+      const typeLabel = dtype === 'residence' ? '🪪 Oturma izni' : dtype === 'passport' ? '🛂 Pasaport' : dtype === 'schengen' ? '🇪🇺 Schengen' : '🇺🇸 ABD Vize';
       await tg(T, 'editMessageText', {
         chat_id: chatId, message_id: lmid,
         text: `⛔ *TARİH HATASI — KAYDEDİLMEDİ*\n\n${typeLabel}\n👤 ${json.firstName || ''} ${json.lastName || ''}\n\n${dateErrors.map(e => `❌ ${e}`).join('\n')}\n\n💡 Lütfen CRM'den manuel kontrol edin.`,
@@ -1545,6 +1645,9 @@ exports.telegramBot = functions
       const r = await savePassport(cfg.db, custs, json, finalImg);
       result = r.text;
       if (r.custId) passportCust = { id: r.custId, name: r.custName, phone: r.custPhone, email: r.custEmail };
+    } else if (dtype === 'residence') {
+      info = fmtRes(json);
+      result = await saveResidence(cfg.db, custs, json, finalImg || b64);
     } else if (dtype === 'schengen') {
       info = fmtSch(json);
       result = await saveSchengen(cfg.db, custs, json, b64);

@@ -44,4 +44,7 @@ const namePairForSave = (first, last) => {
   }
   return [nameForSave(f), nameForSave(l)];
 };
-module.exports = { normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, statusLabels, TR_LETTERS, TR_DOTTED };
+// Kullanıcıya gösterilen tarih GG.AA.YYYY (kayıt YYYY-AA-GG kalır)
+const dmy = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : (d || ''); };
+
+module.exports = { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, statusLabels, TR_LETTERS, TR_DOTTED };

@@ -23,6 +23,8 @@ JavaScript'in varsayılan büyük/küçük harf işlemleri Türkçe'yi bozar:
   `I` → `ı` yalnızca yazı İ/I ayrımı yapıyorsa (içinde `İ` ya da `ı` varsa): `"YILMAZ ŞAHİN"` → `"Yılmaz Şahin"`.
   Ayrım yoksa (`"ISMAIL GEDIKOGLU"` MRZ/ASCII Excel, `"MERIÇ EMIROGLU"` Ç'li ama İ'siz) `I` = `i` → `"İsmail Gedikoglu"`, `"Meriç Emiroglu"`.
   `Ç/Ş/Ğ` gibi harflerin varlığı ayrım yapıldığını GÖSTERMEZ. `"Ismaıl"`, `"Merıç"` üretmek YASAK.
+- Ad + soyad birlikte gösterilir: `fullNameTr(c)` ya da `fullNameTr(ad, soyad)`. Ayrı ayrı `titleCaseTr(ad)` + `titleCaseTr(soyad)` YASAK:
+  İ/ı ayrımı tüm isimde aranır — `"MELİH"` + `"KANSIZ"` → `"Melih Kansız"` (ayrı ayrı yapılırsa `"Kansiz"` olur).
 - Sıralama: `a.localeCompare(b, 'tr')`.
 
 ### 3. Kayıt → olduğu gibi
@@ -50,7 +52,10 @@ Yeni kodda Türkçe metinle karşılaştırma yapan her satır için: "Bu `İ`/`
 - İngilizce otel belgelerinde (voucher) "Sun, 10 Jan 2027" gün-ay-yıl sırasıyla kalabilir.
 
 ## Kod düzeni
-- `src/App.jsx`: ekranlar/modüller. React'tan bağımsız yardımcılar `src/lib/` altında:
-  `turkish.js` (Türkçe harf), `format.js` (tarih, telefon, TC, JSON), `pdf.js` (PDF okuma/yazma), `docparse.js` (bilet/otel belgesi okuma),
-  `data.js` (sabit listeler), `heavy.js` (Excel/PDF kütüphaneleri — açılıştan sonra arka planda yüklenir).
-- Yeni yardımcı fonksiyonu App.jsx'e değil uygun `src/lib/` dosyasına yazın. lib dosyaları kendi aralarında `./x.js` uzantılı import eder.
+- `src/App.jsx`: giriş, menü, veri yükleme/kaydetme (AppInner). Ekran modülleri `src/modules/*.jsx` (App.jsx statik import eder; gecikmeli yükleme kullanılmıyor — kullanıcı tercihi).
+- `src/components/ui.jsx`: ortak ekran parçaları (Modal, Toast, tarih seçici, form stilleri). `src/components/shared.jsx`: birden çok modülün kullandığı parçalar/yardımcılar.
+- `src/lib/`: React'tan bağımsız yardımcılar — `turkish.js` (Türkçe harf), `format.js` (tarih, telefon, TC, JSON, vize ödeme durumu), `pdf.js`, `docparse.js` (bilet/otel belgesi okuma),
+  `data.js` (sabit listeler), `travel.js` (pasaport/vize kontrolü), `api.js` (Claude proxy, mail, işlem logu), `files.js` (dosya indirme, ZIP, pasaport görseli), `banks.js`, `tourcity.js`, `heavy.js` (Excel/PDF — arka planda yüklenir).
+- Yeni yardımcı App.jsx'e değil uygun `src/lib/` dosyasına; yalnız bir modülün kullandığı yardımcı o modülün dosyasına.
+- `src/lib` ve `src/components` dosyaları `src/modules`'tan import ETMEZ (döngüsel bağımlılık oluşmasın; ortak olan lib/components'e taşınır).
+- lib dosyaları kendi aralarında `./x.js` uzantılı import eder.

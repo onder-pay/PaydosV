@@ -1,9 +1,11 @@
 // Ağır kütüphaneler (Excel, PDF, Türkçe PDF fontu) ilk açılışı yavaşlatmasın diye ayrı parçada.
 // Uygulama açıldıktan hemen sonra arka planda yüklenir (preloadHeavy); kodun geri kalanı eskisi gibi
-// XLSX.utils… / new jsPDF() diye senkron kullanır. Yüklenmeden tıklanırsa anlaşılır bir hata verir.
+// XLSX.utils… / new jsPDF() diye senkron kullanır. Yüklenmeden tıklanırsa HEAVY_NOT_READY hatası fırlar;
+// App bunu yakalayıp bildirim olarak gösterir (düğme sessiz kalmaz) ve yükleme yeniden denenir.
 let _xlsx = null, _jsPDF = null, _font = null, _loading = null;
 
-const notReady = () => new Error('Excel/PDF modülü yükleniyor — birkaç saniye sonra tekrar deneyin');
+export const HEAVY_NOT_READY = 'Excel/PDF modülü yükleniyor — birkaç saniye sonra tekrar deneyin';
+const notReady = () => new Error(HEAVY_NOT_READY);
 
 export const preloadHeavy = () => {
   if (!_loading) {
