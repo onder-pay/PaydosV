@@ -3037,7 +3037,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
     const totalBuy = reservations.reduce((s, r) => s + (parseFloat(r.buyPrice) || 0), 0);
     const totalProfit = totalRevenue - totalBuy;
     const resWords = normalizeTr(resSearch).split(/\s+/).filter(Boolean);
-    const shownRes = resWords.length ? reservations.filter(r => { const hay = normalizeTr(`${r.customerName || ''} ${r.tag || ''}`); return resWords.every(w => hay.includes(w)); }) : reservations;
+    const shownRes = resWords.length ? reservations.filter(r => { const hay = normalizeTr(`${r.customerName || ''} ${(r.guestNames || []).join(' ')} ${r.tag || ''}`); return resWords.every(w => hay.includes(w)); }) : reservations;
 
     return (
       <div style={{ padding: isMobile ? '12px' : '24px' }}>
@@ -3516,6 +3516,7 @@ export function HotelsModule({ hotels, setHotels, groupFlights, setGroupFlights,
                             {titleCaseTr(r.customerName)}
                           </span>
                           {r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}
+                          {(r.guestNames || []).filter(n => n && String(n).trim()).length > 0 && <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '400', marginTop: '2px' }}>👥 {r.guestNames.filter(n => n && String(n).trim()).map(n => titleCaseTr(String(n).trim())).join(', ')}</div>}
                           {resExtras(r).length > 0 && <div style={{ marginTop: '3px', fontSize: '10.5px', color: '#94a3b8' }}>{resExtras(r).map(x => `${x.icon} ${x.name}: ${x.text}${x.price ? ` (${x.qty > 1 ? `${x.unitPrice.toLocaleString('tr-TR')} × ${x.qty} = ` : ''}${x.price.toLocaleString('tr-TR')} ${r.currency || '€'})` : ''}`).join(' · ')}</div>}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '11px' }}>{formatDate(r.checkIn)} → {formatDate(r.checkOut)}</td>
