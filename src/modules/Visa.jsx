@@ -1221,8 +1221,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <input type="date" value={formData.applicationDate || ''} onChange={e => setFormData({...formData, applicationDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri Tarihte Başvuru <span style={{ color: '#64748b' }}>(boş = normal)</span></label>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri Tarihte Başvuru</label>
                   <input type="date" min={nextBizDay()} value={formData.processDate || ''} onChange={e => setFormData({...formData, processDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: `1px solid ${formData.processDate ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.2)'}`, borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                  {!formData.processDate && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Boş = normal başvuru</div>}
                   {formData.processDate && <div style={{ fontSize: '11px', color: '#a855f7', marginTop: '4px' }}>⏳ Vizeci bu başvuruyu {formatDate(formData.processDate)} tarihinde yapacak <button type="button" onClick={() => setFormData({...formData, processDate: ''})} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>× kaldır</button></div>}
                 </div>
                 <div>
