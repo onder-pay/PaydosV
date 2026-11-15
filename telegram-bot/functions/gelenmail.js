@@ -87,23 +87,38 @@ const matchVisas = (row, visas) => {
   return visas.filter(v => !closed(v) && nameKey(v.customerName) === key && (!v.country || !purpose || purpose.includes(normTr(v.country)) || normTr(v.country).includes(purpose.split(/\s*-\s*/)[0])));
 };
 
-// Müşteriye giden randevu maili
-const buildRandevuMail = (v, cust, row) => {
-  const isim = titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || row.name);
-  const ulke = v.country || String(row.purpose || '').split(/\s*-\s*/)[0] || 'Vize';
-  const tarih = dmy(row.appointmentDate);
-  const text = `Sayın ${isim},
+// Müşteriye giden randevu maili. Şablon Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir
+// (app_settings.randevuMailTemplate = { subject, body }); boşsa aşağıdaki varsayılan (CRM data.js RANDEVU_MAIL_DEFAULT ile aynı).
+// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr}. Değeri boş olan alanın "Etiket: " satırı atılır.
+const RANDEVU_MAIL_DEFAULT = {
+  subject: '{ulke} vize randevunuz — {tarih} {saat}',
+  body: `Sayın {isim},
 
-${ulke} vize randevunuz alınmıştır.
+{ulke} vize randevunuz alınmıştır.
 
-Tarih: ${tarih}${row.appointmentTime ? `\nSaat: ${row.appointmentTime}` : ''}${row.office ? `\nYer: iDATA ${row.office}` : ''}
-PNR: ${row.pnr}
+Tarih: {tarih}
+Saat: {saat}
+Yer: iDATA {ofis}
+PNR: {pnr}
 
 Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
 Sorularınız için bize ulaşabilirsiniz.
-Paydos Turizm`;
-  return { subject: `${ulke} vize randevunuz — ${tarih}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}`, text, html: mailHtml(esc(text)), attachments: [] };
+Paydos Turizm`,
+};
+const buildRandevuMail = (v, cust, row, tpl) => {
+  const vals = {
+    isim: titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || row.name),
+    ulke: v.country || String(row.purpose || '').split(/\s*-\s*/)[0] || 'Vize',
+    tarih: dmy(row.appointmentDate), saat: row.appointmentTime || '', ofis: row.office || '', pnr: row.pnr || '',
+  };
+  const fill = (str) => String(str).replace(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g, (m, k) => vals[k]);
+  const emptyKey = (line) => (line.match(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g) || []).some(k => !vals[k.slice(1, -1)]);
+  const bodyTpl = String(tpl?.body || '').trim() ? tpl.body : RANDEVU_MAIL_DEFAULT.body;
+  const subjTpl = String(tpl?.subject || '').trim() ? tpl.subject : RANDEVU_MAIL_DEFAULT.subject;
+  // "Saat: {saat}" gibi yalnız etiket + boş alan olan satır atılır
+  const text = bodyTpl.replace(/\r\n/g, '\n').split('\n').filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim()))).map(fill).join('\n');
+  return { subject: fill(subjTpl).replace(/\s+/g, ' ').trim(), text, html: mailHtml(esc(text)), attachments: [] };
 };
 
 // ---- Gönderen sınıflandırma ----
@@ -246,7 +261,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
               if (!to) mailNote = '⚠️ müşterinin e-postası yok, randevu maili gitmedi';
               else {
                 try {
-                  await send(smtp, { to, ...buildRandevuMail(v, cust, row) });
+                  await send(smtp, { to, ...buildRandevuMail(v, cust, row, settings.randevuMailTemplate) });
                   res.randevuMail++;
                   if (!test) Object.assign(patch, { randevuMailFor: mailKey, randevuMailAt: now, randevuMailTo: to });
                   mailNote = test ? `örnek randevu maili ${esc(to)} adresine gönderildi (müşteriye gitmedi)` : `randevu maili gönderildi: ${esc(to)}`;
@@ -286,6 +301,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
 exports.parseIdataMail = parseIdataMail;
 exports.matchVisas = matchVisas;
 exports.buildRandevuMail = buildRandevuMail;
+exports.RANDEVU_MAIL_DEFAULT = RANDEVU_MAIL_DEFAULT;
 exports.processInbox = processInbox;
 
 exports.vizeGelenMail = functions

@@ -6,6 +6,7 @@ import { deleteDoc, deleteField, doc, setDoc } from 'firebase/firestore';
 import { generateUniqueId, waUrl } from '../lib/format.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
+import { RANDEVU_MAIL_DEFAULT } from '../lib/data.js';
 import { normEmail, normalizeTr, trHas } from '../lib/turkish.js';
 import { useMemo, useState } from 'react';
 
@@ -374,6 +375,34 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
           </div>
         </div>
         {on && !im.host && <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ IMAP sunucusu girilmeden okuma başlamaz.</p>}
+      </div>
+        ); })()}
+
+      {(() => { const tp = appSettings?.randevuMailTemplate || {}; const custom = !!(String(tp.subject || '').trim() || String(tp.body || '').trim());
+        const subject = String(tp.subject || '').trim() ? tp.subject : RANDEVU_MAIL_DEFAULT.subject; const body = String(tp.body || '').trim() ? tp.body : RANDEVU_MAIL_DEFAULT.body;
+        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { subject, body, ...patch } });
+        const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
+        const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'İzmir Ofis', pnr: 'SDP9CV82NMP' };
+        const fill = (x) => String(x).replace(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g, (m, k) => sample[k]);
+        return (
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📅 Randevu Maili Şablonu <span style={{ fontSize: '11px', color: custom ? '#f59e0b' : '#64748b', marginLeft: '6px' }}>{custom ? 'DÜZENLENDİ' : 'VARSAYILAN'}</span></h3>
+          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { subject: '', body: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
+        </div>
+        <p style={{ margin: '6px 0 12px', fontSize: '12px', color: '#64748b' }}>
+          iDATA randevusu başvuruya işlenince müşteriye giden mail. Kullanılabilir alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code>.
+          Değeri boş gelen alanın satırı (ör. saat yoksa "Saat: {'{saat}'}") mailden çıkarılır.
+        </p>
+        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Konu</label>
+        <input type="text" value={subject} onChange={e => setTp({ subject: e.target.value })} style={{ ...inp, marginBottom: '10px' }} />
+        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Mail metni</label>
+        <textarea value={body} onChange={e => setTp({ body: e.target.value })} rows={14} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+        <div style={{ marginTop: '12px', fontSize: '11px', color: '#94a3b8' }}>Önizleme (örnek bilgilerle)</div>
+        <div style={{ marginTop: '4px', padding: '12px 14px', background: '#ffffff', borderRadius: '8px', color: '#1f2937', fontSize: '13px' }}>
+          <div style={{ fontWeight: '700', marginBottom: '8px' }}>{fill(subject)}</div>
+          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{fill(body)}</div>
+        </div>
       </div>
         ); })()}
 

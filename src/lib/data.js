@@ -286,3 +286,22 @@ export const isTurkishNationality = (x) => !String(x || '').trim() || nationalit
 
 // Müşteri ödemesi tipi (vize ödemeleri)
 export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];
+
+// iDATA randevusu işlenince müşteriye giden otomatik mailin varsayılan şablonu (bot gelenmail.js RANDEVU_MAIL_DEFAULT ile birebir aynı).
+// Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir (appSettings.randevuMailTemplate).
+export const RANDEVU_MAIL_DEFAULT = {
+  subject: '{ulke} vize randevunuz — {tarih} {saat}',
+  body: `Sayın {isim},
+
+{ulke} vize randevunuz alınmıştır.
+
+Tarih: {tarih}
+Saat: {saat}
+Yer: iDATA {ofis}
+PNR: {pnr}
+
+Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
+
+Sorularınız için bize ulaşabilirsiniz.
+Paydos Turizm`,
+};
