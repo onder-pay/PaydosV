@@ -181,6 +181,8 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
 };
 
 exports.processEvrakMails = processEvrakMails;
+exports.sendMail = sendMail;
+exports.mailHtml = mailHtml;
 exports.buildSureliMail = buildSureliMail;
 
 exports.vizeEvrakMail = functions

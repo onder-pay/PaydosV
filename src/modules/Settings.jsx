@@ -332,6 +332,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         {[
           { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
           { key: 'autoSureliMail', title: '⏳ Randevu → süreli evrak maili', desc: "Schengen'de randevu tarihi girilince SGK / banka dökümü vb. süreli evraklar, randevuya göre hesaplanmış tarihlerle gider." },
+          { key: 'autoRandevuMail', title: '📅 iDATA randevusu → randevu maili', desc: 'Gelen kutusundan okunan iDATA randevusu başvuruya işlenince müşteriye tarih, saat, ofis ve PNR maili gider. (Gelen Kutusunu Oku açık olmalı.)' },
         ].map(t => { const on = appSettings?.[t.key] !== false; return (
           <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div>
@@ -360,6 +361,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '6px 0 12px', fontSize: '12px', color: '#64748b' }}>
           15 dakikada bir vize posta kutusuna bakılır (08:00–21:00). iDATA randevu maili gelince randevu tarihi, saati ve PNR başvuruya yazılır; isim tek bir açık başvuruyla birebir eşleşmezse yalnız Telegram vize grubuna haber verilir.
           Müşteriden gelen mail de gruba bildirilir. Mailler silinmez, okundu işaretlenmez, ekler kaydedilmez. Kullanıcı ve şifre Vize SMTP'den alınır. Açıldığı andan önceki mailler işlenmez.
+          <br/>Test: Telegram vize grubuna <strong style={{ color: '#94a3b8' }}>/mailtest</strong> yazın — son 5 mail okunur, ne yapılacağı gruba yazılır; hiçbir şey kaydedilmez, müşteriye mail gitmez (örnek randevu maili kendi adresinize gelir). Okuma kapalıyken de çalışır.
         </p>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', maxWidth: '380px' }}>
           <div style={{ flex: '1 1 220px' }}>

@@ -1249,6 +1249,7 @@ const HELP_TEXT = [
   '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
   '/bugun — bugün iDATA/VFS başvurusu yapılacaklar',
   '/atama — atama bekleyen başvurular',
+  '/mailtest — vize gelen kutusu testi: son 5 mail okunur, ne yapılacağı yazılır (hiçbir şey kaydedilmez)',
 ].join('\n');
 
 // ========== WEBHOOK ==========
@@ -1535,7 +1536,7 @@ exports.telegramBot = functions
       return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
-    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
+    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
     if (cmd) {
       const chat = msg.chat || {};
       const isGroup = chat.type === 'group' || chat.type === 'supergroup';
@@ -1552,7 +1553,8 @@ exports.telegramBot = functions
       if (saved !== String(chat.id)) { await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Önce bu grubu kaydedin: /grup' }); return res.status(200).send('OK'); }
       try {
         const A = require('./atama');
-        if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
+        if (cmd.toLowerCase() === 'mailtest') await require('./gelenmail').processInbox({ db: cfg.db, test: true, chatId: chat.id }); // ASCII komut adı
+        else if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
         else {
           const n = await A.announceAtama({ db: cfg.db, token: T, chatId: chat.id });
           if (!n) await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Duyurulmamış yeni "Atama Bekliyor" başvuru yok.' });
