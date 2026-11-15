@@ -243,7 +243,7 @@ const VE_TIPLER = {
   emekli: "Emekli",
   ev_hanimi_bekar: "Ev Hanımı / Bekar (Çalışmayan)",
 };
-const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email, tcNo, not, resitDegil }) => {
+const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email, tcNo, not, resitDegil, kaynak }) => {
   const vdb = getVizeEvrakDb();
   if (!vdb) throw new Error('vizeevrak baglantisi yok (secret eksik olabilir)');
   const id = genId();
@@ -261,7 +261,7 @@ const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email,
     evrakListesi,
     olusturulmaTarihi: FieldValue.serverTimestamp(),
     durum: "aktif",
-    kaynak: "Telegram Bot",
+    kaynak: kaynak || "Telegram Bot",
   });
   return id;
 };
@@ -1702,6 +1702,54 @@ exports.telegramBot = functions
   }
   return res.status(200).send('OK');
 });
+
+// ===== CRM'den Vize Evrak linki =====
+// CRM'de açılan Schengen başvurusu için Vize Evrak kaydı oluşturur, linki başvuruya (visa_applications.evrakLink) yazar ve döner.
+// POST { visaId, tipId } — Authorization: Bearer <Firebase ID token>. Başvuruda link varsa yenisi açılmaz, mevcut döner.
+// Yayın: npx firebase-tools deploy --only functions:vizeEvrakLink
+const VE_LINK_ALLOWED = [/^https:\/\/crm\.paydostur\.com$/, /^https:\/\/[a-z0-9-]+--paydosv\.netlify\.app$/, /^https:\/\/paydosv\.netlify\.app$/, /^http:\/\/localhost(:\d+)?$/];
+const veLinkFor = async ({ db, visaId, tipId, olustur = vizeEvrakBasvuruOlustur }) => {
+  if (!visaId || !/^[\w-]{1,80}$/.test(String(visaId))) return { status: 400, error: 'Başvuru belirtilmedi' };
+  if (!VE_TIPLER[tipId]) return { status: 400, error: 'Başvuru sahibinin durumu seçilmedi' };
+  const ref = db.collection('visa_applications').doc(String(visaId));
+  const snap = await ref.get();
+  if (!snap.exists) return { status: 404, error: 'Başvuru bulunamadı (önce kaydedin)' };
+  const v = snap.data();
+  const mevcut = String(v.evrakLink || '').trim();
+  if (/^https:\/\/\S+$/.test(mevcut)) return { status: 200, link: mevcut, mevcut: true };
+  if ((v.categoryId || v.category || 'schengen') !== 'schengen') return { status: 400, error: 'Vize Evrak linki yalnız Schengen başvurularında oluşturulur' };
+  const cust = v.customerId != null ? await getCustomerById(db, v.customerId) : null;
+  const tur = v.visaDuration || v.visaType || '';
+  const veId = await olustur({
+    amacId: trHas(tur, 'turistik') ? 'turistik' : 'ticari', tipId, // /turistik/i "TURİSTİK"i tanımaz
+    adSoyad: (cust && cust.name) || v.customerName || '', telefon: (cust && cust.phone) || v.customerPhone || '', email: normEmail((cust && cust.email) || v.customerEmail || ''),
+    tcNo: '', not: `CRM — ${tur}`, resitDegil: false, kaynak: 'CRM',
+  });
+  const link = `https://vize.paydostur.com/#/yukle/${veId}`;
+  await ref.set({ evrakLink: link, evrakTip: tipId }, { merge: true });
+  return { status: 200, link };
+};
+exports.veLinkFor = veLinkFor;
+exports.vizeEvrakLink = functions
+  .region('europe-west1')
+  .runWith({ timeoutSeconds: 60, secrets: ['VIZE_EVRAK_SA'] })
+  .https.onRequest(async (req, res) => {
+    const origin = req.get('origin') || '';
+    if (VE_LINK_ALLOWED.some(re => re.test(origin))) { res.set('Access-Control-Allow-Origin', origin); res.set('Vary', 'Origin'); }
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST gerekli' });
+    const h = req.get('authorization') || '';
+    const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+    try { if (!t) throw new Error('jeton yok'); await admin.auth().verifyIdToken(t); } catch { return res.status(401).json({ error: 'Oturum doğrulanamadı — CRM\'e yeniden giriş yapın' }); }
+    try {
+      const { getFirestore } = require('firebase-admin/firestore');
+      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const r = await veLinkFor({ db: getFirestore('paydos'), visaId: body.visaId, tipId: body.tipId });
+      return res.status(r.status).json(r.error ? { error: r.error } : { link: r.link, mevcut: !!r.mevcut });
+    } catch (e) { console.error('[VİZEEVRAK] link:', e); return res.status(500).json({ error: e.message || 'Link oluşturulamadı' }); }
+  });
 
 // Belge linki API (PIN korumalı) — ayrı fonksiyon: npx firebase-tools deploy --only functions:belge
 exports.belge = require('./belge').belge;

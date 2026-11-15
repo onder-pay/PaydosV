@@ -8,7 +8,7 @@ import { deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, getDaysLeft, isValidTc, safeParseJSON, visaPaidStatus, waUrl } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
 import { htmlToPdfDownload } from '../lib/pdf.js';
-import { logActivity } from '../lib/api.js';
+import { logActivity, vizeEvrakLinkCall, VIZE_EVRAK_TIPLER } from '../lib/api.js';
 import { normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
 import { fingerprintStatus } from '../lib/travel.js';
@@ -689,6 +689,21 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 
   const [saving, setSaving] = useState(false);
 
+  // Vize Evrak yükleme linki: sunucu Vize Evrak kaydını açar, linki başvuruya yazar; yerel listeye de işlenir
+  const [evrakLinkBusy, setEvrakLinkBusy] = useState(false);
+  const [detailTip, setDetailTip] = useState('');
+  const copyEvrakLink = (link) => navigator.clipboard?.writeText(link).then(() => showToast?.('Evrak linki kopyalandı', 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+  const createEvrakLink = async (docId, tipId) => {
+    setEvrakLinkBusy(true);
+    try {
+      const link = await vizeEvrakLinkCall({ visaId: docId, tipId });
+      setVisaApplications(prev => prev.map(v => (v._docId || String(v.id)) === String(docId) ? { ...v, evrakLink: link, evrakTip: tipId } : v));
+      showToast?.('🔗 Evrak yükleme linki oluşturuldu', 'success');
+      return link;
+    } catch (e) { showToast?.('Evrak linki oluşturulamadı: ' + e.message, 'error'); return ''; }
+    finally { setEvrakLinkBusy(false); }
+  };
+
   const handleSubmit = async () => {
     if (!findVisaCust(formData.customerId)) {
       showToast?.('Başvuru bir CRM müşterisine bağlı olmalı — listeden müşteri seçin', 'error');
@@ -733,6 +748,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
           const saveData = { ...newVisa, updatedAt: new Date().toISOString() };
           await setDoc(doc(db, 'visa_applications', docId), saveData, { merge: true });
           showToast?.(`${formData.customerName} için vize başvurusu oluşturuldu`, 'success');
+          // Schengen + durum seçildiyse Vize Evrak linki kendiliğinden oluşur (başvuru sunucuya yazıldıktan sonra)
+          if (newVisa.categoryId === 'schengen' && newVisa.evrakTip && !newVisa.evrakLink) createEvrakLink(docId, newVisa.evrakTip);
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('create', 'Vize', `${formData.customerName || ''} — ${autoCountry} ${formData.visaDuration || ''}`.trim(), currentUser);
 
@@ -1202,11 +1219,32 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               </div>
 
               {/* Vize Evrak yükleme linki — otomatik maillerde {evrak_linki} */}
+              {(() => { const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
+                const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
+                return (
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Evrak yükleme linki (Vize Evrak)</label>
-                <input type="url" value={formData.evrakLink || ''} onChange={e => setFormData({...formData, evrakLink: e.target.value.trim()})} placeholder="https://vize.paydostur.com/#/yukle/…" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Bottan açılan Schengen başvurularında kendiliğinden dolar. Maillerde müşteriye gider; boşsa müşteriden evrakları maile cevap olarak göndermesi istenir.</div>
+                {isSch && !formData.evrakLink && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <select value={formData.evrakTip || ''} onChange={e => setFormData({ ...formData, evrakTip: e.target.value })} style={{ ...fld, flex: '1 1 220px', width: 'auto' }}>
+                      <option value="" style={{ background: '#0c1929' }}>Başvuru sahibinin durumu — seçin</option>
+                      {VIZE_EVRAK_TIPLER.map(t => <option key={t.id} value={t.id} style={{ background: '#0c1929' }}>{t.ad}</option>)}
+                    </select>
+                    {editingVisa && <button type="button" disabled={!formData.evrakTip || evrakLinkBusy} onClick={async () => {
+                      const link = await createEvrakLink(editingVisa._docId || String(editingVisa.id), formData.evrakTip);
+                      if (link) setFormData(f => ({ ...f, evrakLink: link }));
+                    }} style={{ padding: '10px 14px', background: formData.evrakTip ? 'linear-gradient(135deg, #14b8a6, #0d9488)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: formData.evrakTip ? 'pointer' : 'not-allowed', fontSize: '13px' }}>{evrakLinkBusy ? '⏳ Oluşturuluyor…' : '🔗 Link oluştur'}</button>}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="url" value={formData.evrakLink || ''} onChange={e => setFormData({...formData, evrakLink: e.target.value.trim()})} placeholder="https://vize.paydostur.com/#/yukle/…" style={{ ...fld, flex: 1 }} />
+                  {formData.evrakLink && <button type="button" onClick={() => copyEvrakLink(formData.evrakLink)} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Kopyala</button>}
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{formData.evrakLink ? 'Bu link otomatik maillerde müşteriye gider.' : isSch
+                  ? (editingVisa ? 'Durumu seçip "Link oluştur" deyin; link maillerde müşteriye gider.' : 'Durumu seçerseniz başvuru kaydedilince link kendiliğinden oluşur ve maillerde müşteriye gider.')
+                  : 'Vize Evrak linki yalnız Schengen başvurularında otomatik oluşur; varsa elle yapıştırabilirsiniz.'}{!formData.evrakLink && ' Link yoksa müşteriden evrakları maile cevap olarak göndermesi istenir.'}</div>
               </div>
+                ); })()}
               {/* PNR + Etiket */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
@@ -2053,6 +2091,28 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <p style={{ margin: '2px 0 0', fontSize: '13px', color: selectedVisa.cancelReason ? '#e8f1f8' : '#64748b' }}>{selectedVisa.cancelReason || 'Girilmemiş (eski kayıt) — Düzenle\'den ekleyebilirsiniz'}</p>
                 </div>
               )}
+              {(() => { const cur = visaApplications.find(v => v.id === selectedVisa.id) || selectedVisa; const link = cur.evrakLink || '';
+                const isSch = (cur.categoryId || cur.category || 'schengen') === 'schengen';
+                if (!link && !isSch) return null;
+                return (
+                <div style={{ background: 'rgba(20,184,166,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(20,184,166,0.2)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#14b8a6' }}>🔗 Evrak yükleme linki (Vize Evrak)</p>
+                  {link ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                      <a href={link} target="_blank" rel="noopener noreferrer" style={{ flex: '1 1 200px', fontSize: '12px', color: '#5eead4', wordBreak: 'break-all' }}>{link}</a>
+                      <button type="button" onClick={() => copyEvrakLink(link)} style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>📋 Kopyala</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      <select value={detailTip} onChange={e => setDetailTip(e.target.value)} style={{ flex: '1 1 200px', padding: '8px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
+                        <option value="" style={{ background: '#0c1929' }}>Başvuru sahibinin durumu — seçin</option>
+                        {VIZE_EVRAK_TIPLER.map(t => <option key={t.id} value={t.id} style={{ background: '#0c1929' }}>{t.ad}</option>)}
+                      </select>
+                      <button type="button" disabled={!detailTip || evrakLinkBusy} onClick={() => createEvrakLink(cur._docId || String(cur.id), detailTip)} style={{ padding: '8px 12px', background: detailTip ? 'linear-gradient(135deg, #14b8a6, #0d9488)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: detailTip ? 'pointer' : 'not-allowed', fontSize: '12px' }}>{evrakLinkBusy ? '⏳ Oluşturuluyor…' : '🔗 Link oluştur'}</button>
+                    </div>
+                  )}
+                </div>
+                ); })()}
               {selectedVisa.appointmentDate && (
                 <div style={{ background: 'rgba(59,130,246,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#3b82f6' }}>📅 Randevu</p>

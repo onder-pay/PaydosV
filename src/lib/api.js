@@ -44,6 +44,21 @@ export const logActivity = async (action, modul, detay, user, extra = {}) => {
   } catch (e) { /* log yazımı akışı bozmaz */ }
 };
 
+// Vize Evrak yükleme linki (Firebase fonksiyonu vizeEvrakLink): başvuru için Vize Evrak kaydı açar, linki başvuruya yazar ve döner
+export const VIZE_EVRAK_TIPLER = [
+  { id: 'sirket_sahibi_ortagi', ad: 'Şirket Sahibi / Ortağı / Şahsi İş Yeri Sahibi' },
+  { id: 'sigortali_calisan', ad: 'Sigortalı Çalışan' },
+  { id: 'emekli', ad: 'Emekli' },
+  { id: 'ev_hanimi_bekar', ad: 'Ev Hanımı / Bekar (Çalışmayan)' },
+];
+export const vizeEvrakLinkCall = async ({ visaId, tipId }) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  const r = await fetch('https://europe-west1-paydos-crm.cloudfunctions.net/vizeEvrakLink', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ visaId, tipId }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.link) throw new Error(j.error || `HTTP ${r.status}`);
+  return j.link;
+};
+
 // Web Push bildirim sunucusu (Firebase fonksiyonu bildirim.js) — CRM işlemleri giriş jetonuyla
 export const BILDIRIM_API = 'https://europe-west1-paydos-crm.cloudfunctions.net/bildirim';
 export const bildirimCall = async (body) => {
