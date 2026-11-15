@@ -290,7 +290,6 @@ export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];
 // Randevu mailinin (randevu bilgisi + Schengen'de süreli evraklar) varsayılan şablonu — bot evrakmail.js RANDEVU_MAIL_DEFAULT ile birebir aynı.
 // Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir (appSettings.randevuMailTemplate).
 export const RANDEVU_MAIL_DEFAULT = {
-  subject: '{ulke} vize randevunuz — {tarih} {saat}',
   body: `Sayın {isim},
 
 {ulke} vize randevunuz alınmıştır.

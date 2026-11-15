@@ -39,6 +39,14 @@ const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px
 
 const custName = (v, cust) => titleTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
 
+// Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (şablondaki konu kullanılmaz; CRM sendVisaEmail ile aynı).
+// Vize türü ülkeyi zaten içeriyorsa ("ALMANYA TİCARİ") ülke yinelenmez.
+const mailSubject = (v, cust) => {
+  const tur = titleTr(String(v.visaDuration || v.visaType || '').trim());
+  const ulke = titleTr(String(v.country || '').trim());
+  return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+};
+
 // 1. aşama: CRM şablonu (sendVisaEmail ile aynı kurallar)
 const buildTemplateMail = (v, cust, settings) => {
   const vize_turu = v.visaDuration || v.visaType || '';
@@ -60,18 +68,17 @@ const buildTemplateMail = (v, cust, settings) => {
   const linkEk = link && !/{evrak_linki}/.test(String(t.body || '')) ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${link}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
   const text = rep(t.body) + linkEk;
   const attachments = (settings.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vize_turu)).map(a => ({ filename: a.name, url: a.url }));
-  return { subject: rep(t.subject), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
+  return { subject: mailSubject(v, cust), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
 };
 
 // 2. aşama: randevu maili — randevu bilgisi (tarih, saat, ofis, PNR) + Schengen'de süreli evraklar, TEK mailde.
-// Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { subject, body, sureli }); boş alan varsayılana düşer.
+// Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { body, sureli, suresiz }); boş alan varsayılana düşer.
 // Varsayılanlar CRM src/lib/data.js RANDEVU_MAIL_DEFAULT ile birebir aynı olmalı.
 // Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen); süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
 // {evrak_linki}: başvurudaki Vize Evrak yükleme linki (visa_applications.evrakLink). "[link]" ile başlayan satır yalnız link varsa,
 // "[linkyok]" ile başlayan yalnız link yoksa çıkar.
 // Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
 const RANDEVU_MAIL_DEFAULT = {
-  subject: '{ulke} vize randevunuz — {tarih} {saat}',
   body: `Sayın {isim},
 
 {ulke} vize randevunuz alınmıştır.
@@ -139,7 +146,7 @@ const buildRandevuMail = (v, cust, today, tpl) => {
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
     .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
     .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { subject: fill(pick(tpl?.subject, RANDEVU_MAIL_DEFAULT.subject)).replace(/\s+/g, ' ').trim(), text, html: mailHtml(esc(text)), attachments: [] };
+  return { subject: mailSubject(v, cust), text, html: mailHtml(esc(text)), attachments: [] };
 };
 
 const sendMail = async (smtp, { to, subject, text, html, attachments }) => {
@@ -241,6 +248,7 @@ exports.mailHtml = mailHtml;
 exports.buildRandevuMail = buildRandevuMail;
 exports.RANDEVU_MAIL_DEFAULT = RANDEVU_MAIL_DEFAULT;
 exports.istDate = istDate;
+exports.mailSubject = mailSubject;
 
 exports.vizeEvrakMail = functions
   .region('europe-west1')

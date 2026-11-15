@@ -484,7 +484,9 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
       .replace(/{vize_turu}/g, vize_turu)
       .replace(/{evrak_linki}/g, evrakLink);
 
-    const subject = replace(template.subject || '');
+    // Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (bot evrakmail.js mailSubject ile aynı; şablondaki konu kullanılmaz)
+    const turAd = titleCaseTr(String(vize_turu).trim()), ulkeAd = titleCaseTr(String(visa.country || '').trim());
+    const subject = [titleCaseTr(isim), ulkeAd && !trHas(turAd, ulkeAd) ? ulkeAd : '', turAd].filter(Boolean).join(' - ') || 'Vize başvurunuz';
     // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (bot evrakmail.js ile aynı metin)
     const linkEk = evrakLink && !/{evrak_linki}/.test(template.body || '') ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${evrakLink}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
     const bodyText = replace(template.body || '') + linkEk;
