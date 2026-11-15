@@ -474,6 +474,7 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
     const ref_no = String(visa.id || '').slice(-8).toUpperCase() || '-';
     const ulke = visa.country || catId;
 
+    const evrakLink = /^https:\/\/\S+$/.test(String(visa.evrakLink || '').trim()) ? String(visa.evrakLink).trim() : '';
     const replace = (str) => str
       .replace(/{isim}/g, isim)
       .replace(/{ulke}/g, ulke)
@@ -481,10 +482,12 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
       .replace(/{saat}/g, '')
       .replace(/{ref_no}/g, ref_no)
       .replace(/{vize_turu}/g, vize_turu)
-      .replace(/{evrak_linki}/g, /^https:\/\/\S+$/.test(String(visa.evrakLink || '').trim()) ? String(visa.evrakLink).trim() : '');
+      .replace(/{evrak_linki}/g, evrakLink);
 
     const subject = replace(template.subject || '');
-    const bodyText = replace(template.body || '');
+    // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (bot evrakmail.js ile aynı metin)
+    const linkEk = evrakLink && !/{evrak_linki}/.test(template.body || '') ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${evrakLink}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
+    const bodyText = replace(template.body || '') + linkEk;
     const html = mailHtml(bodyText, VISA_EMAIL);
 
     // Vize türüne bağlı ekleri bul

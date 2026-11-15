@@ -55,7 +55,10 @@ const buildTemplateMail = (v, cust, settings) => {
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
     .replace(/{vize_turu}/g, vize_turu)
     .replace(/{evrak_linki}/g, evrakLinkOf(v));
-  const text = rep(t.body);
+  // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (CRM sendVisaEmail ile aynı metin)
+  const link = evrakLinkOf(v);
+  const linkEk = link && !/{evrak_linki}/.test(String(t.body || '')) ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${link}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
+  const text = rep(t.body) + linkEk;
   const attachments = (settings.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vize_turu)).map(a => ({ filename: a.name, url: a.url }));
   return { subject: rep(t.subject), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
 };
