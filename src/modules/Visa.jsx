@@ -1094,7 +1094,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   )}
                   {(() => {
                     const okAt = (x) => x && /^\d{4}-/.test(String(x)) ? formatDate(String(x).slice(0, 10)) : '';
-                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' ? '— kurulumdan önceki başvuru' : '';
+                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' || x === 'gecis-atlandi' ? '— kurulumdan önceki başvuru' : '';
                     const off = !!formData.autoMailOff;
                     const evrak = off ? '⏸ bu başvuruda kapalı'
                       : okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
@@ -1103,8 +1103,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       : appSettings?.autoEmailOnVisa === false ? '⏸ ayarlarda kapalı'
                       : formData.status === 'Atama Bekliyor' ? '⏳ sırada (15 dk içinde)' : 'Atama Bekliyor olunca gider';
                     const appt = String(formData.appointmentDate || '').slice(0, 10);
-                    const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
-                    const sureli = !isSch ? '— sadece Schengen' : off ? '⏸ bu başvuruda kapalı'
+                    const sureli = off ? '⏸ bu başvuruda kapalı'
                       : appt && formData.sureliMailFor === appt && okAt(formData.sureliMailAt) ? `✅ gönderildi ${okAt(formData.sureliMailAt)}`
                       : appt && formData.sureliMailFor === appt && skipTxt(formData.sureliMailAt) ? skipTxt(formData.sureliMailAt)
                       : appSettings?.autoSureliMail === false ? '⏸ ayarlarda kapalı'
@@ -1112,7 +1111,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     return (
                       <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span>📧 Evrak maili: {evrak}</span>
-                        <span>⏳ Süreli evrak maili: {sureli}</span>
+                        <span>📅 Randevu maili: {sureli}</span>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: off ? '#f87171' : '#94a3b8' }}>
                           <input type="checkbox" checked={off} onChange={e => setFormData(f => ({ ...f, autoMailOff: e.target.checked }))} />
                           Bu başvuruya otomatik mail gönderme
@@ -1630,7 +1629,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
             const a1 = appSettings?.autoEmailOnVisa !== false, a2 = appSettings?.autoSureliMail !== false;
             const on = a1 || a2;
             return (
-              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Süreli evrak maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
+              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Randevu maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
                 onClick={() => { if (on && !window.confirm('Otomatik evrak mailleri kapatılsın mı?\n\nKapalıyken Atama Bekliyor olan / randevusu girilen başvurulara mail gitmez; tekrar açınca da geriye dönük gitmez.')) return; setAppSettings({ ...appSettings, autoEmailOnVisa: !on, autoSureliMail: !on }); showToast?.(on ? '⏸ Otomatik evrak mailleri kapatıldı' : '📧 Otomatik evrak mailleri açıldı', on ? 'warning' : 'success'); }}
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: on ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)', border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '10px', color: on ? '#2dd4bf' : '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit' }}>
                 <span style={{ width: '30px', height: '16px', borderRadius: '8px', background: on ? '#14b8a6' : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0 }}><span style={{ position: 'absolute', top: '2px', left: on ? '16px' : '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></span>

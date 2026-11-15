@@ -287,7 +287,7 @@ export const isTurkishNationality = (x) => !String(x || '').trim() || nationalit
 // Müşteri ödemesi tipi (vize ödemeleri)
 export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];
 
-// iDATA randevusu işlenince müşteriye giden otomatik mailin varsayılan şablonu (bot gelenmail.js RANDEVU_MAIL_DEFAULT ile birebir aynı).
+// Randevu mailinin (randevu bilgisi + Schengen'de süreli evraklar) varsayılan şablonu — bot evrakmail.js RANDEVU_MAIL_DEFAULT ile birebir aynı.
 // Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir (appSettings.randevuMailTemplate).
 export const RANDEVU_MAIL_DEFAULT = {
   subject: '{ulke} vize randevunuz — {tarih} {saat}',
@@ -297,11 +297,23 @@ export const RANDEVU_MAIL_DEFAULT = {
 
 Tarih: {tarih}
 Saat: {saat}
-Yer: iDATA {ofis}
+Yer: {ofis}
 PNR: {pnr}
 
 Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
+{sureli_evraklar}
+
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
+  sureli: `Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+
+• SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
+• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
+[ticari] • Oda kaydı faaliyet belgesi — {uc_ay} tarihinden sonra alınmış olmalı (son 3 ay).
+• Maaş bordrosu (çalışanlar için) — son 3 ay: {uc_ay} sonrası dönemler.
+• Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
+• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
+
+Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
 };

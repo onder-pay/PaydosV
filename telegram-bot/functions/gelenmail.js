@@ -2,8 +2,8 @@
 // 15 dakikada bir IMAP ile gelen kutusuna bakar. Mailler SİLİNMEZ, okundu işaretlenmez.
 // 1) iDATA randevu maili (gönderen idata.com.tr): tablodaki AD SOYAD / PNR / OFİS / RANDEVU TARİHİ okunur.
 //    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır; eşleşmezse yalnız gruba haber verilir.
-//    Yazılınca müşteriye randevu maili gider (tarih, saat, ofis, PNR) — app_settings.autoRandevuMail === false ise ya da başvuruda
-//    autoMailOff varsa gitmez. (Schengen'de süreli evrak maili evrakmail.js tarafından ayrıca gider.)
+//    Müşteriye randevu mailini evrakmail.js gönderir (randevu tarihi yazılan her başvuruya, en geç 15 dk içinde;
+//    app_settings.autoSureliMail === false ise ya da başvuruda autoMailOff varsa gitmez).
 // Test: grupta /mailtest → son 5 mail okunur, ne yapılacağı yazılır; HİÇBİR ŞEY kaydedilmez, müşteriye mail gitmez
 //    (örnek randevu maili acentenin kendi adresine gider). Okuma kapalıyken de çalışır.
 // 2) Müşteriden gelen mail: gönderen adresi CRM'deki müşteri e-postasıyla eşleşirse gruba "mail geldi" bildirimi. Ek KAYDEDİLMEZ.
@@ -17,7 +17,7 @@ const fetch = require('node-fetch');
 if (!admin.apps.length) admin.initializeApp();
 const { getFirestore } = require('firebase-admin/firestore');
 const { normTr, titleCaseTr, normEmail, dmy } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
-const { sendMail, mailHtml } = require('./evrakmail');
+const { sendMail, buildRandevuMail } = require('./evrakmail');
 
 const TZ = 'Europe/Istanbul';
 const MAX_PER_RUN = 25;
@@ -87,40 +87,6 @@ const matchVisas = (row, visas) => {
   return visas.filter(v => !closed(v) && nameKey(v.customerName) === key && (!v.country || !purpose || purpose.includes(normTr(v.country)) || normTr(v.country).includes(purpose.split(/\s*-\s*/)[0])));
 };
 
-// Müşteriye giden randevu maili. Şablon Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir
-// (app_settings.randevuMailTemplate = { subject, body }); boşsa aşağıdaki varsayılan (CRM data.js RANDEVU_MAIL_DEFAULT ile aynı).
-// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr}. Değeri boş olan alanın "Etiket: " satırı atılır.
-const RANDEVU_MAIL_DEFAULT = {
-  subject: '{ulke} vize randevunuz — {tarih} {saat}',
-  body: `Sayın {isim},
-
-{ulke} vize randevunuz alınmıştır.
-
-Tarih: {tarih}
-Saat: {saat}
-Yer: iDATA {ofis}
-PNR: {pnr}
-
-Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
-
-Sorularınız için bize ulaşabilirsiniz.
-Paydos Turizm`,
-};
-const buildRandevuMail = (v, cust, row, tpl) => {
-  const vals = {
-    isim: titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || row.name),
-    ulke: v.country || String(row.purpose || '').split(/\s*-\s*/)[0] || 'Vize',
-    tarih: dmy(row.appointmentDate), saat: row.appointmentTime || '', ofis: row.office || '', pnr: row.pnr || '',
-  };
-  const fill = (str) => String(str).replace(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g, (m, k) => vals[k]);
-  const emptyKey = (line) => (line.match(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g) || []).some(k => !vals[k.slice(1, -1)]);
-  const bodyTpl = String(tpl?.body || '').trim() ? tpl.body : RANDEVU_MAIL_DEFAULT.body;
-  const subjTpl = String(tpl?.subject || '').trim() ? tpl.subject : RANDEVU_MAIL_DEFAULT.subject;
-  // "Saat: {saat}" gibi yalnız etiket + boş alan olan satır atılır
-  const text = bodyTpl.replace(/\r\n/g, '\n').split('\n').filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim()))).map(fill).join('\n');
-  return { subject: fill(subjTpl).replace(/\s+/g, ' ').trim(), text, html: mailHtml(esc(text)), attachments: [] };
-};
-
 // ---- Gönderen sınıflandırma ----
 const isIdataSender = (addr) => /(^|[@.])idata\.com\.tr$/.test(addr);
 const isAutoMail = (m) => /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
@@ -187,7 +153,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   const res = { okunan: 0, randevu: 0, randevuMail: 0, eslesmeyen: 0, musteri: 0, taninmayan: 0, atlanan: 0, hata: '' };
   if (!test && cfg.on !== true) return res;
   const target = test ? chatId : settings.telegramVizeGrupId;
-  const randevuMailOn = settings.autoRandevuMail !== false;
+  const randevuMailOn = settings.autoSureliMail !== false;
   const host = String(cfg.host || '').trim();
   const user = String(cfg.user || smtp.user || '').trim();
   const pass = String(cfg.pass || smtp.pass || '');
@@ -249,24 +215,20 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now };
             if (row.office) patch.idataOffice = row.office;
             if (!v.processor) patch.processor = 'İdata';
-            // Randevu maili: aynı randevu için bir kez
-            const mailKey = `${row.appointmentDate} ${row.appointmentTime}`.trim();
+            // Randevu mailini evrakmail.js gönderir; burada yalnız ne olacağı yazılır. Testte örnek mail acentenin kendi adresine gider.
             let mailNote = '';
+            const cust = await getCust(v);
+            const custTo = [cust?.email, v.customerEmail].map(normEmail).find(validEmail) || '';
             if (!randevuMailOn) mailNote = 'randevu maili kapalı (Ayarlar)';
             else if (v.autoMailOff) mailNote = 'bu başvuruda otomatik mail kapalı';
-            else if (!test && v.randevuMailFor === mailKey) mailNote = 'randevu maili daha önce gönderilmişti';
-            else {
-              const cust = await getCust(v);
-              const to = test ? user : [cust?.email, v.customerEmail].map(normEmail).find(validEmail) || '';
-              if (!to) mailNote = '⚠️ müşterinin e-postası yok, randevu maili gitmedi';
-              else {
-                try {
-                  await send(smtp, { to, ...buildRandevuMail(v, cust, row, settings.randevuMailTemplate) });
-                  res.randevuMail++;
-                  if (!test) Object.assign(patch, { randevuMailFor: mailKey, randevuMailAt: now, randevuMailTo: to });
-                  mailNote = test ? `örnek randevu maili ${esc(to)} adresine gönderildi (müşteriye gitmedi)` : `randevu maili gönderildi: ${esc(to)}`;
-                } catch (e) { mailNote = `❌ randevu maili gönderilemedi: ${esc(e.message)}`; }
-              }
+            else if (!custTo) mailNote = '⚠️ müşterinin e-postası yok, randevu maili gitmez';
+            else if (!test) mailNote = `randevu maili 15 dakika içinde gider: ${esc(custTo)}`;
+            if (test && randevuMailOn) {
+              try {
+                await send(smtp, { to: user, ...buildRandevuMail({ ...v, ...patch }, cust, istDate(), settings.randevuMailTemplate) });
+                res.randevuMail++;
+                mailNote = `${mailNote ? `${mailNote}\n✉️ ` : `gerçekte müşteriye giderdi: ${esc(custTo)}\n✉️ `}örnek randevu maili ${esc(user)} adresine gönderildi (müşteriye gitmedi)`;
+              } catch (e) { mailNote = `❌ örnek randevu maili gönderilemedi: ${esc(e.message)}`; }
             }
             if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
             res.randevu++;
@@ -300,8 +262,6 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
 
 exports.parseIdataMail = parseIdataMail;
 exports.matchVisas = matchVisas;
-exports.buildRandevuMail = buildRandevuMail;
-exports.RANDEVU_MAIL_DEFAULT = RANDEVU_MAIL_DEFAULT;
 exports.processInbox = processInbox;
 
 exports.vizeGelenMail = functions

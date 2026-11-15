@@ -328,12 +328,11 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
 
       {mode === 'visa' && (<>
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Evrak Mailleri</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: '15px', color: '#e8f1f8' }}>🤖 Otomatik Vize Mailleri</h3>
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>15 dakikada bir kontrol edilir (08:00–21:00). E-postası olmayanlar Telegram vize grubuna yazılır. Kapalıyken gelen başvurulara, tekrar açınca geriye dönük mail gitmez.</p>
         {[
           { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
-          { key: 'autoSureliMail', title: '⏳ Randevu → süreli evrak maili', desc: "Schengen'de randevu tarihi girilince SGK / banka dökümü vb. süreli evraklar, randevuya göre hesaplanmış tarihlerle gider." },
-          { key: 'autoRandevuMail', title: '📅 iDATA randevusu → randevu maili', desc: 'Gelen kutusundan okunan iDATA randevusu başvuruya işlenince müşteriye tarih, saat, ofis ve PNR maili gider. (Gelen Kutusunu Oku açık olmalı.)' },
+          { key: 'autoSureliMail', title: '📅 Randevu → randevu maili', desc: "Randevu tarihi başvuruya yazılınca (elle ya da iDATA mailinden) müşteriye tarih, saat, ofis ve PNR maili gider; Schengen'de SGK / banka dökümü gibi süreli evraklar aynı mailde yer alır. Şablonu aşağıda." },
         ].map(t => { const on = appSettings?.[t.key] !== false; return (
           <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div>
@@ -378,27 +377,38 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
       </div>
         ); })()}
 
-      {(() => { const tp = appSettings?.randevuMailTemplate || {}; const custom = !!(String(tp.subject || '').trim() || String(tp.body || '').trim());
-        const subject = String(tp.subject || '').trim() ? tp.subject : RANDEVU_MAIL_DEFAULT.subject; const body = String(tp.body || '').trim() ? tp.body : RANDEVU_MAIL_DEFAULT.body;
-        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { subject, body, ...patch } });
+      {(() => { const tp = appSettings?.randevuMailTemplate || {}; const D = RANDEVU_MAIL_DEFAULT; const has = (x) => !!String(x || '').trim();
+        const custom = has(tp.subject) || has(tp.body) || has(tp.sureli);
+        const subject = has(tp.subject) ? tp.subject : D.subject, body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli;
+        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { subject, body, sureli, ...patch } });
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
-        const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'İzmir Ofis', pnr: 'SDP9CV82NMP' };
-        const fill = (x) => String(x).replace(/\{(isim|ulke|tarih|saat|ofis|pnr)\}/g, (m, k) => sample[k]);
+        const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
+        // Önizleme: botla aynı kurallar, örnek bilgilerle (Schengen, ticari değil)
+        const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026' };
+        const sureliTxt = sureli.split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+        const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt };
+        const fill = (x) => String(x).replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar)\}/g, (m, k) => sample[k]);
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📅 Randevu Maili Şablonu <span style={{ fontSize: '11px', color: custom ? '#f59e0b' : '#64748b', marginLeft: '6px' }}>{custom ? 'DÜZENLENDİ' : 'VARSAYILAN'}</span></h3>
-          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { subject: '', body: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
+          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { subject: '', body: '', sureli: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
         </div>
-        <p style={{ margin: '6px 0 12px', fontSize: '12px', color: '#64748b' }}>
-          iDATA randevusu başvuruya işlenince müşteriye giden mail. Kullanılabilir alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code>.
-          Değeri boş gelen alanın satırı (ör. saat yoksa "Saat: {'{saat}'}") mailden çıkarılır.
+        <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
+          Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{sureli_evraklar}'}</code>.
+          Değeri boş gelen alanın satırı (ör. PNR girilmediyse "PNR: {'{pnr}'}") mailden çıkarılır.
         </p>
-        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Konu</label>
-        <input type="text" value={subject} onChange={e => setTp({ subject: e.target.value })} style={{ ...inp, marginBottom: '10px' }} />
-        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Mail metni</label>
+        <label style={lbl}>Konu</label>
+        <input type="text" value={subject} onChange={e => setTp({ subject: e.target.value })} style={inp} />
+        <label style={lbl}>Mail metni</label>
         <textarea value={body} onChange={e => setTp({ body: e.target.value })} rows={14} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
-        <div style={{ marginTop: '12px', fontSize: '11px', color: '#94a3b8' }}>Önizleme (örnek bilgilerle)</div>
+        <label style={lbl}>Süreli evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{sureli_evraklar}'} yerine konur</label>
+        <textarea value={sureli} onChange={e => setTp({ sureli: e.target.value })} rows={10} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+        <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
+          Randevuya göre hesaplanan tarihler: <code>{'{on_dort_gun}'}</code> (14 gün kuralı), <code>{'{uc_ay}'}</code>, <code>{'{alti_ay}'}</code>, <code>{'{son_gun}'}</code> (randevudan bir gün önce).
+          Başına <code>[ticari]</code> yazılan satır yalnız ticari / fuar vizesinde çıkar.
+        </p>
+        <div style={{ marginTop: '12px', fontSize: '11px', color: '#94a3b8' }}>Önizleme (örnek Schengen başvurusu)</div>
         <div style={{ marginTop: '4px', padding: '12px 14px', background: '#ffffff', borderRadius: '8px', color: '#1f2937', fontSize: '13px' }}>
           <div style={{ fontWeight: '700', marginBottom: '8px' }}>{fill(subject)}</div>
           <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{fill(body)}</div>
