@@ -480,7 +480,8 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
       .replace(/{tarih}/g, tarih)
       .replace(/{saat}/g, '')
       .replace(/{ref_no}/g, ref_no)
-      .replace(/{vize_turu}/g, vize_turu);
+      .replace(/{vize_turu}/g, vize_turu)
+      .replace(/{evrak_linki}/g, /^https:\/\/\S+$/.test(String(visa.evrakLink || '').trim()) ? String(visa.evrakLink).trim() : '');
 
     const subject = replace(template.subject || '');
     const bodyText = replace(template.body || '');

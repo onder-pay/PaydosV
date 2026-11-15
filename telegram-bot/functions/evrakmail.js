@@ -53,7 +53,8 @@ const buildTemplateMail = (v, cust, settings) => {
     .replace(/{tarih}/g, trDate(istDate()))
     .replace(/{saat}/g, v.appointmentTime || '')
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
-    .replace(/{vize_turu}/g, vize_turu);
+    .replace(/{vize_turu}/g, vize_turu)
+    .replace(/{evrak_linki}/g, evrakLinkOf(v));
   const text = rep(t.body);
   const attachments = (settings.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vize_turu)).map(a => ({ filename: a.name, url: a.url }));
   return { subject: rep(t.subject), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
@@ -63,6 +64,8 @@ const buildTemplateMail = (v, cust, settings) => {
 // Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { subject, body, sureli }); boş alan varsayılana düşer.
 // Varsayılanlar CRM src/lib/data.js RANDEVU_MAIL_DEFAULT ile birebir aynı olmalı.
 // Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen); süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
+// {evrak_linki}: başvurudaki Vize Evrak yükleme linki (visa_applications.evrakLink). "[link]" ile başlayan satır yalnız link varsa,
+// "[linkyok]" ile başlayan yalnız link yoksa çıkar.
 // Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
 const RANDEVU_MAIL_DEFAULT = {
   subject: '{ulke} vize randevunuz — {tarih} {saat}',
@@ -81,6 +84,11 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {suresiz_evraklar}
 
+[link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
+[link] {evrak_linki}
+[link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
+[linkyok] Evraklarınızı bu maile cevap olarak gönderebilirsiniz.
+
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
   sureli: `SÜRELİ EVRAKLAR
@@ -96,6 +104,8 @@ Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge 
 Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
   suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };
+// Vize Evrak yükleme linki: yalnız https ve boşluksuz ise kullanılır
+const evrakLinkOf = (v) => { const l = String(v.evrakLink || '').trim(); return /^https:\/\/\S+$/.test(l) ? l : ''; };
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const pick = (x, def) => (String(x || '').trim() ? String(x) : def);
 const buildRandevuMail = (v, cust, today, tpl) => {
@@ -107,20 +117,23 @@ const buildRandevuMail = (v, cust, today, tpl) => {
     on_dort_gun: from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`,
     uc_ay: trDate(addMonths(appt, -3)), alti_ay: trDate(addMonths(appt, -6)), son_gun: trDate(addDays(appt, -1)),
   };
-  const block = (x) => !isSchengen(v) ? '' : String(x || '').replace(/\r\n/g, '\n').split('\n')
-    .filter(l => ticari || !/^\s*\[ticari\]/.test(l)).map(l => l.replace(/^\s*\[ticari\]\s*/, ''))
-    .join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+  const link = evrakLinkOf(v);
+  // Satır başı koşulları: [ticari] [link] [linkyok]
+  const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
+    .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
+  const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
   const sureli = block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli));
   const suresiz = block(tpl?.suresiz);
   const office = String(v.idataOffice || '').trim();
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
-    ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz,
+    ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz, evrak_linki: link,
   };
-  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar)\}/g;
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
   const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
-  const text = pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body).replace(/\r\n/g, '\n').split('\n')
+  const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
     .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
     .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   return { subject: fill(pick(tpl?.subject, RANDEVU_MAIL_DEFAULT.subject)).replace(/\s+/g, ' ').trim(), text, html: mailHtml(esc(text)), attachments: [] };

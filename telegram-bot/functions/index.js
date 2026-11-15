@@ -1416,6 +1416,7 @@ exports.telegramBot = functions
                   not: `Telegram bot — ${typeObj.name}`,
                   resitDegil: false,
                 });
+                try { await cfg.db.collection('visa_applications').doc(String(rec.id)).set({ evrakLink: `https://vize.paydostur.com/#/yukle/${veId}` }, { merge: true }); } catch (e) { console.warn('[VİZEEVRAK] link kayda yazılamadı:', e.message); } // otomatik maillerde {evrak_linki}
                 vizeEvrakMsg = `\n\n📁 *Vize Evrak* başvurusu da oluşturuldu.\n🔗 Müşteri linki:\nvize.paydostur.com/#/yukle/${veId}`;
               } catch (e) {
                 console.error('[VİZEEVRAK] başvuru hatası:', e);

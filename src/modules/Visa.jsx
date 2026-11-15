@@ -1201,6 +1201,12 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 </div>
               </div>
 
+              {/* Vize Evrak yükleme linki — otomatik maillerde {evrak_linki} */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Evrak yükleme linki (Vize Evrak)</label>
+                <input type="url" value={formData.evrakLink || ''} onChange={e => setFormData({...formData, evrakLink: e.target.value.trim()})} placeholder="https://vize.paydostur.com/#/yukle/…" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Bottan açılan Schengen başvurularında kendiliğinden dolar. Maillerde müşteriye gider; boşsa müşteriden evrakları maile cevap olarak göndermesi istenir.</div>
+              </div>
               {/* PNR + Etiket */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>

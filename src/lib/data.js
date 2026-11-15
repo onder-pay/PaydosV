@@ -306,6 +306,11 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {suresiz_evraklar}
 
+[link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
+[link] {evrak_linki}
+[link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
+[linkyok] Evraklarınızı bu maile cevap olarak gönderebilirsiniz.
+
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
   sureli: `SÜRELİ EVRAKLAR
