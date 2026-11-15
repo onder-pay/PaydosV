@@ -15,10 +15,11 @@ export const claudeRequest = async ({ headers = {}, ...opts }) => {
 // Müşteri maillerinin gövdesi — beyaz kart + üstte Paydos logosu. Mail istemcileri göreli yolu çözemez, adres tam olmalı.
 export const MAIL_LOGO_URL = 'https://crm.paydostur.com/icons/paydos-wordmark.png';
 
-export const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+// contact: alt bilgide gösterilecek e-posta (vize maillerinde vize@paydostur.com)
+export const mailHtml = (bodyText, contact = '') => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
 <div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
 <pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
-<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com${contact ? ` · <a href="mailto:${contact}" style="color:#6b7280">${contact}</a>` : ''}</div></div></div>`;
 
 export const sendMailRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
@@ -41,6 +42,36 @@ export const logActivity = async (action, modul, detay, user, extra = {}) => {
       ...extra
     });
   } catch (e) { /* log yazımı akışı bozmaz */ }
+};
+
+// SİSTEM HATA KAYDI — ekranda çıkan hata bildirimleri ve yakalanmamış program hataları işlem loguna (action: 'error') yazılır;
+// bot haftalık özet mailinde bunları sayar. kaynak: 'ekran' (hata bildirimi) | 'js' (program hatası).
+// Aynı mesaj oturumda bir kez, oturum başına en çok 40 kayıt — hata döngüsü logu doldurmasın.
+const _errSeen = new Set();
+export const logError = (kaynak, mesaj) => {
+  try {
+    const detay = String(mesaj || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+    if (!detay || _errSeen.has(detay) || _errSeen.size >= 40 || !auth.currentUser) return;
+    _errSeen.add(detay);
+    const id = generateUniqueId();
+    setDoc(doc(db, 'activity_logs', id), { id, action: 'error', modul: 'Sistem', detay, kaynak,
+      userName: auth.currentUser.displayName || auth.currentUser.email || 'Bilinmiyor', userEmail: auth.currentUser.email || '', time: new Date().toISOString() }).catch(() => {});
+  } catch (e) { /* kayıt yazımı akışı bozmaz */ }
+};
+
+// Vize Evrak yükleme linki (Firebase fonksiyonu vizeEvrakLink): başvuru için Vize Evrak kaydı açar, linki başvuruya yazar ve döner
+export const VIZE_EVRAK_TIPLER = [
+  { id: 'sirket_sahibi_ortagi', ad: 'Şirket Sahibi / Ortağı / Şahsi İş Yeri Sahibi' },
+  { id: 'sigortali_calisan', ad: 'Sigortalı Çalışan' },
+  { id: 'emekli', ad: 'Emekli' },
+  { id: 'ev_hanimi_bekar', ad: 'Ev Hanımı / Bekar (Çalışmayan)' },
+];
+export const vizeEvrakLinkCall = async ({ visaId, tipId }) => {
+  const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+  const r = await fetch('https://europe-west1-paydos-crm.cloudfunctions.net/vizeEvrakLink', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ visaId, tipId }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.link) throw new Error(j.error || `HTTP ${r.status}`);
+  return j.link;
 };
 
 // Web Push bildirim sunucusu (Firebase fonksiyonu bildirim.js) — CRM işlemleri giriş jetonuyla

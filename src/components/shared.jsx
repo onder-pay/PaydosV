@@ -10,7 +10,7 @@ import { formatDate, formatWhatsAppPhone, generateUniqueId, safeParseObj, waUrl 
 import { pdfExtractPages, pdfPagesText, addCanvasPaged, loadHtml2Canvas, pdfFileText } from '../lib/pdf.js';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
 import { DEFAULT_BANK } from '../lib/banks.js';
-import { SOZLESME_SABIT, VIZE_DURUM } from '../lib/data.js';
+import { SOZLESME_SABIT, VIZE_DURUM, VISA_EMAIL } from '../lib/data.js';
 import { jsPDF } from '../lib/heavy.js';
 import { FINGERPRINT_MONTHS, fingerprintLabel } from '../lib/travel.js';
 
@@ -474,17 +474,23 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
     const ref_no = String(visa.id || '').slice(-8).toUpperCase() || '-';
     const ulke = visa.country || catId;
 
+    const evrakLink = /^https:\/\/\S+$/.test(String(visa.evrakLink || '').trim()) ? String(visa.evrakLink).trim() : '';
     const replace = (str) => str
       .replace(/{isim}/g, isim)
       .replace(/{ulke}/g, ulke)
       .replace(/{tarih}/g, tarih)
       .replace(/{saat}/g, '')
       .replace(/{ref_no}/g, ref_no)
-      .replace(/{vize_turu}/g, vize_turu);
+      .replace(/{vize_turu}/g, vize_turu)
+      .replace(/{evrak_linki}/g, evrakLink);
 
-    const subject = replace(template.subject || '');
-    const bodyText = replace(template.body || '');
-    const html = mailHtml(bodyText);
+    // Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (bot evrakmail.js mailSubject ile aynı; şablondaki konu kullanılmaz)
+    const turAd = titleCaseTr(String(vize_turu).trim()), ulkeAd = titleCaseTr(String(visa.country || '').trim());
+    const subject = [titleCaseTr(isim), ulkeAd && !trHas(turAd, ulkeAd) ? ulkeAd : '', turAd].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+    // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (bot evrakmail.js ile aynı metin)
+    const linkEk = evrakLink && !/{evrak_linki}/.test(template.body || '') ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${evrakLink}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
+    const bodyText = replace(template.body || '') + linkEk;
+    const html = mailHtml(bodyText, VISA_EMAIL);
 
     // Vize türüne bağlı ekleri bul
     const allAttachments = appSettings?.attachments || [];
@@ -499,6 +505,7 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
         html,
         text: bodyText,
         attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url })),
+        replyTo: VISA_EMAIL, // müşteri "Yanıtla" deyince vize adresine gelsin (gönderen hesap farklı olsa da)
         smtp: appSettings?.smtpVisa
       })
     });

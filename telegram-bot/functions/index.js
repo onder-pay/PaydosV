@@ -6,6 +6,10 @@ const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
 const { applyMrz } = require('./mrz');
 const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
+// Bottaki her console.error aynı zamanda sistem hata kaydına düşer (haftalık özet için; bkz. syslog.js). Kişisel veri içermesin diye 300 karakterle sınırlı.
+const { logError, flushErrors } = require('./syslog');
+const _consoleError = console.error.bind(console);
+console.error = (...a) => { _consoleError(...a); try { logError('bot', a.map(x => (x && x.message) || String(x)).join(' ').slice(0, 300)); } catch { /* kayıt asıl işi bozmaz */ } };
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -243,7 +247,7 @@ const VE_TIPLER = {
   emekli: "Emekli",
   ev_hanimi_bekar: "Ev Hanımı / Bekar (Çalışmayan)",
 };
-const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email, tcNo, not, resitDegil }) => {
+const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email, tcNo, not, resitDegil, kaynak }) => {
   const vdb = getVizeEvrakDb();
   if (!vdb) throw new Error('vizeevrak baglantisi yok (secret eksik olabilir)');
   const id = genId();
@@ -261,7 +265,7 @@ const vizeEvrakBasvuruOlustur = async ({ amacId, tipId, adSoyad, telefon, email,
     evrakListesi,
     olusturulmaTarihi: FieldValue.serverTimestamp(),
     durum: "aktif",
-    kaynak: "Telegram Bot",
+    kaynak: kaynak || "Telegram Bot",
   });
   return id;
 };
@@ -482,6 +486,8 @@ Pasaport:
   diger alanlari yine yukaridaki GORSEL alanlardan oku (MRZ yasagi surer). Sistem kontrol basamaklarini kendisi dogrular.
 - YABANCI PASAPORT (MRZ "P<TUR" ile BASLAMIYORSA, orn P<BEL, P<D<<, P<NLD): etiketler baska dildedir — soyad "Naam / Nom / Name / Surname", ad "Voornamen / Prenoms / Vornamen / Given names".
   nationality = ulke kodu (BEL, DEU, NLD...). tcKimlik bos. passportNo oldugu gibi (2 harfle baslayabilir, orn ES135601).
+  ALMAN PASAPORTU: "1. [a] Name / Surname / Nom" = SOYAD (orn KARACA). "[b] Geburtsname / Name at birth / Nom de naissance" (orn TUTAR) DOGUM/KIZLIK SOYADIDIR — lastName'e EKLEME, tamamen atla.
+  Ulke kodu "D" = Almanya. Pasaport no harf+rakam karisik 9 karakterdir (orn C4WTYZH4V).
 - expiryDate: "GECERLILIK TARIHI / DATE OF EXPIRY" alaninda YAZAN tarih. Verilis tarihine 10 yil ekleyerek TAHMIN ETME.
 
 Schengen vize:
@@ -1247,6 +1253,8 @@ const HELP_TEXT = [
   '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
   '/bugun — bugün iDATA/VFS başvurusu yapılacaklar',
   '/atama — atama bekleyen başvurular',
+  '/ozet — haftalık sistem özetini (hatalar, işlemler, vize akışı) şimdi e-postayla gönder',
+  '/mailtest — vize gelen kutusu testi: son 5 mail okunur, ne yapılacağı yazılır (hiçbir şey kaydedilmez)',
 ].join('\n');
 
 // ========== WEBHOOK ==========
@@ -1413,6 +1421,7 @@ exports.telegramBot = functions
                   not: `Telegram bot — ${typeObj.name}`,
                   resitDegil: false,
                 });
+                try { await cfg.db.collection('visa_applications').doc(String(rec.id)).set({ evrakLink: `https://vize.paydostur.com/#/yukle/${veId}` }, { merge: true }); } catch (e) { console.warn('[VİZEEVRAK] link kayda yazılamadı:', e.message); } // otomatik maillerde {evrak_linki}
                 vizeEvrakMsg = `\n\n📁 *Vize Evrak* başvurusu da oluşturuldu.\n🔗 Müşteri linki:\nvize.paydostur.com/#/yukle/${veId}`;
               } catch (e) {
                 console.error('[VİZEEVRAK] başvuru hatası:', e);
@@ -1533,7 +1542,7 @@ exports.telegramBot = functions
       return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
-    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün)(?:@\w+)?(?=\s|$)/i) || [])[1] : '';
+    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest|ozet)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
     if (cmd) {
       const chat = msg.chat || {};
       const isGroup = chat.type === 'group' || chat.type === 'supergroup';
@@ -1550,7 +1559,9 @@ exports.telegramBot = functions
       if (saved !== String(chat.id)) { await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Önce bu grubu kaydedin: /grup' }); return res.status(200).send('OK'); }
       try {
         const A = require('./atama');
-        if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
+        if (cmd.toLowerCase() === 'ozet') { const r = await require('./ozet').sendOzet({ db: cfg.db, force: true }); await tg(T, 'sendMessage', { chat_id: chat.id, text: r.ok ? `📊 Haftalık özet maili gönderildi: ${r.to}\n${r.hata} hata · ${r.islem} işlem (son 7 gün)` : `❌ Özet gönderilemedi: ${r.error}` }); }
+        else if (cmd.toLowerCase() === 'mailtest') await require('./gelenmail').processInbox({ db: cfg.db, test: true, chatId: chat.id }); // ASCII komut adı
+        else if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
         else {
           const n = await A.announceAtama({ db: cfg.db, token: T, chatId: chat.id });
           if (!n) await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Duyurulmamış yeni "Atama Bekliyor" başvuru yok.' });
@@ -1695,8 +1706,57 @@ exports.telegramBot = functions
       } catch {}
     }
   }
+  await flushErrors(); // bekleyen hata kayıtları yazılsın
   return res.status(200).send('OK');
 });
+
+// ===== CRM'den Vize Evrak linki =====
+// CRM'de açılan Schengen başvurusu için Vize Evrak kaydı oluşturur, linki başvuruya (visa_applications.evrakLink) yazar ve döner.
+// POST { visaId, tipId } — Authorization: Bearer <Firebase ID token>. Başvuruda link varsa yenisi açılmaz, mevcut döner.
+// Yayın: npx firebase-tools deploy --only functions:vizeEvrakLink
+const VE_LINK_ALLOWED = [/^https:\/\/crm\.paydostur\.com$/, /^https:\/\/[a-z0-9-]+--paydosv\.netlify\.app$/, /^https:\/\/paydosv\.netlify\.app$/, /^http:\/\/localhost(:\d+)?$/];
+const veLinkFor = async ({ db, visaId, tipId, olustur = vizeEvrakBasvuruOlustur }) => {
+  if (!visaId || !/^[\w-]{1,80}$/.test(String(visaId))) return { status: 400, error: 'Başvuru belirtilmedi' };
+  if (!VE_TIPLER[tipId]) return { status: 400, error: 'Başvuru sahibinin durumu seçilmedi' };
+  const ref = db.collection('visa_applications').doc(String(visaId));
+  const snap = await ref.get();
+  if (!snap.exists) return { status: 404, error: 'Başvuru bulunamadı (önce kaydedin)' };
+  const v = snap.data();
+  const mevcut = String(v.evrakLink || '').trim();
+  if (/^https:\/\/\S+$/.test(mevcut)) return { status: 200, link: mevcut, mevcut: true };
+  if ((v.categoryId || v.category || 'schengen') !== 'schengen') return { status: 400, error: 'Vize Evrak linki yalnız Schengen başvurularında oluşturulur' };
+  const cust = v.customerId != null ? await getCustomerById(db, v.customerId) : null;
+  const tur = v.visaDuration || v.visaType || '';
+  const veId = await olustur({
+    amacId: trHas(tur, 'turistik') ? 'turistik' : 'ticari', tipId, // /turistik/i "TURİSTİK"i tanımaz
+    adSoyad: (cust && cust.name) || v.customerName || '', telefon: (cust && cust.phone) || v.customerPhone || '', email: normEmail((cust && cust.email) || v.customerEmail || ''),
+    tcNo: '', not: `CRM — ${tur}`, resitDegil: false, kaynak: 'CRM',
+  });
+  const link = `https://vize.paydostur.com/#/yukle/${veId}`;
+  await ref.set({ evrakLink: link, evrakTip: tipId }, { merge: true });
+  return { status: 200, link };
+};
+exports.veLinkFor = veLinkFor;
+exports.vizeEvrakLink = functions
+  .region('europe-west1')
+  .runWith({ timeoutSeconds: 60, secrets: ['VIZE_EVRAK_SA'] })
+  .https.onRequest(async (req, res) => {
+    const origin = req.get('origin') || '';
+    if (VE_LINK_ALLOWED.some(re => re.test(origin))) { res.set('Access-Control-Allow-Origin', origin); res.set('Vary', 'Origin'); }
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST gerekli' });
+    const h = req.get('authorization') || '';
+    const t = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+    try { if (!t) throw new Error('jeton yok'); await admin.auth().verifyIdToken(t); } catch { return res.status(401).json({ error: 'Oturum doğrulanamadı — CRM\'e yeniden giriş yapın' }); }
+    try {
+      const { getFirestore } = require('firebase-admin/firestore');
+      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const r = await veLinkFor({ db: getFirestore('paydos'), visaId: body.visaId, tipId: body.tipId });
+      return res.status(r.status).json(r.error ? { error: r.error } : { link: r.link, mevcut: !!r.mevcut });
+    } catch (e) { console.error('[VİZEEVRAK] link:', e); return res.status(500).json({ error: e.message || 'Link oluşturulamadı' }); }
+  });
 
 // Belge linki API (PIN korumalı) — ayrı fonksiyon: npx firebase-tools deploy --only functions:belge
 exports.belge = require('./belge').belge;
@@ -1708,4 +1768,6 @@ exports.vizeBugunDuyuru = require('./atama').vizeBugunDuyuru;
 exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
 exports.vizeEvrakMail = require('./evrakmail').vizeEvrakMail; // Atama Bekliyor → evrak maili; randevu → süreli evrak maili (15 dk'da bir)
+exports.vizeGelenMail = require('./gelenmail').vizeGelenMail; // vize@ gelen kutusu: iDATA randevu maili → başvuru, müşteri maili → bildirim (15 dk'da bir)
+exports.haftalikOzet = require('./ozet').haftalikOzet; // pazartesi 09:10 haftalık sistem özeti maili (hatalar + işlemler)
 exports.duyuruGor = require('./duyurugor').duyuruGor; // linkteki duyurunun görülme / tıklanma kaydı

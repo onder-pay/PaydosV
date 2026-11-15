@@ -7,6 +7,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut, reauthenticate
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { normalizeTr, trUpper, normEmail } from './lib/turkish';
 import { generateUniqueId } from './lib/format';
+import { logError } from './lib/api';
 
 import { labelStyle, inputStyle, Toast } from './components/ui';
 
@@ -309,6 +310,7 @@ function AppInner() {
   const toastSeq = useRef(0);
   const showToast = useCallback((message, type = 'info', undo = null) => {
     const id = `${Date.now()}_${++toastSeq.current}`;
+    if (type === 'error') logError('ekran', message); // haftalık sistem özeti için
     setToasts(prev => [...prev, { id, message, type, undo }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), undo ? 8000 : 4000);
   }, []);
@@ -323,6 +325,7 @@ function AppInner() {
     const onErr = (ev) => {
       const m = ev?.error?.message || ev?.reason?.message || ev?.message || '';
       if (m.includes(HEAVY_NOT_READY)) { ev.preventDefault?.(); showToast('⏳ ' + HEAVY_NOT_READY, 'warning'); }
+      else if (m && !/ResizeObserver|Script error/.test(m)) logError('js', m); // yakalanmamış program hatası → haftalık özet
     };
     window.addEventListener('error', onErr); window.addEventListener('unhandledrejection', onErr);
     return () => { window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr); };

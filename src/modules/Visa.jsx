@@ -8,7 +8,7 @@ import { deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, getDaysLeft, isValidTc, safeParseJSON, visaPaidStatus, waUrl } from '../lib/format.js';
 import { getActiveBanks } from '../lib/banks.js';
 import { htmlToPdfDownload } from '../lib/pdf.js';
-import { logActivity } from '../lib/api.js';
+import { logActivity, vizeEvrakLinkCall, VIZE_EVRAK_TIPLER } from '../lib/api.js';
 import { normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
 import { fingerprintStatus } from '../lib/travel.js';
@@ -18,6 +18,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
+  const [typeOpen, setTypeOpen] = useState(false); // detay sayfasında vize türü listesi açık mı (seçiliyken tek satır görünür)
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
@@ -414,7 +415,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const month2Days = getMonthDays(month2Year, month2Month);
 
   const resetForm = () => {
-    setFormStep('search');
+    setFormStep('search'); setTypeOpen(false);
     setSearchQuery('');
     setSelectedCustomer(null);
     setRelinkQ('');
@@ -505,7 +506,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 
   const selectCategory = (cat) => {
     setSelectedCategory(cat);
-    setFormStep('details');
+    setFormStep('details'); setTypeOpen(false);
     const today = new Date().toISOString().split('T')[0];
     setFormData({
       customerId: selectedCustomer.id,
@@ -689,6 +690,21 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 
   const [saving, setSaving] = useState(false);
 
+  // Vize Evrak yükleme linki: sunucu Vize Evrak kaydını açar, linki başvuruya yazar; yerel listeye de işlenir
+  const [evrakLinkBusy, setEvrakLinkBusy] = useState(false);
+  const [detailTip, setDetailTip] = useState('');
+  const copyEvrakLink = (link) => navigator.clipboard?.writeText(link).then(() => showToast?.('Vize evrak linki kopyalandı', 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+  const createEvrakLink = async (docId, tipId) => {
+    setEvrakLinkBusy(true);
+    try {
+      const link = await vizeEvrakLinkCall({ visaId: docId, tipId });
+      setVisaApplications(prev => prev.map(v => (v._docId || String(v.id)) === String(docId) ? { ...v, evrakLink: link, evrakTip: tipId } : v));
+      showToast?.('🔗 Vize evrak linki oluşturuldu', 'success');
+      return link;
+    } catch (e) { showToast?.('Vize evrak linki oluşturulamadı: ' + e.message, 'error'); return ''; }
+    finally { setEvrakLinkBusy(false); }
+  };
+
   const handleSubmit = async () => {
     if (!findVisaCust(formData.customerId)) {
       showToast?.('Başvuru bir CRM müşterisine bağlı olmalı — listeden müşteri seçin', 'error');
@@ -733,6 +749,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
           const saveData = { ...newVisa, updatedAt: new Date().toISOString() };
           await setDoc(doc(db, 'visa_applications', docId), saveData, { merge: true });
           showToast?.(`${formData.customerName} için vize başvurusu oluşturuldu`, 'success');
+          // Schengen + durum seçildiyse Vize Evrak linki kendiliğinden oluşur (başvuru sunucuya yazıldıktan sonra)
+          if (newVisa.categoryId === 'schengen' && newVisa.evrakTip && !newVisa.evrakLink) createEvrakLink(docId, newVisa.evrakTip);
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('create', 'Vize', `${formData.customerName || ''} — ${autoCountry} ${formData.visaDuration || ''}`.trim(), currentUser);
 
@@ -775,7 +793,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     setSelectedCategory(cat);
     setFormData(visa);
     setEditingVisa(visa);
-    setFormStep('details');
+    setFormStep('details'); setTypeOpen(false);
     setShowForm(true);
   };
 
@@ -1094,7 +1112,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   )}
                   {(() => {
                     const okAt = (x) => x && /^\d{4}-/.test(String(x)) ? formatDate(String(x).slice(0, 10)) : '';
-                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' ? '— kurulumdan önceki başvuru' : '';
+                    const skipTxt = (x) => x === 'kapali-atlandi' ? '⏸ otomatik mail kapalıyken atlandı' : x === 'ilk-kurulum-atlandi' || x === 'gecis-atlandi' ? '— kurulumdan önceki başvuru' : '';
                     const off = !!formData.autoMailOff;
                     const evrak = off ? '⏸ bu başvuruda kapalı'
                       : okAt(formData.evrakMailAt) ? `✅ gönderildi ${okAt(formData.evrakMailAt)}${formData.evrakMailTo ? ` · ${formData.evrakMailTo}` : ''}`
@@ -1103,8 +1121,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       : appSettings?.autoEmailOnVisa === false ? '⏸ ayarlarda kapalı'
                       : formData.status === 'Atama Bekliyor' ? '⏳ sırada (15 dk içinde)' : 'Atama Bekliyor olunca gider';
                     const appt = String(formData.appointmentDate || '').slice(0, 10);
-                    const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
-                    const sureli = !isSch ? '— sadece Schengen' : off ? '⏸ bu başvuruda kapalı'
+                    const sureli = off ? '⏸ bu başvuruda kapalı'
                       : appt && formData.sureliMailFor === appt && okAt(formData.sureliMailAt) ? `✅ gönderildi ${okAt(formData.sureliMailAt)}`
                       : appt && formData.sureliMailFor === appt && skipTxt(formData.sureliMailAt) ? skipTxt(formData.sureliMailAt)
                       : appSettings?.autoSureliMail === false ? '⏸ ayarlarda kapalı'
@@ -1112,7 +1129,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     return (
                       <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span>📧 Evrak maili: {evrak}</span>
-                        <span>⏳ Süreli evrak maili: {sureli}</span>
+                        <span>📅 Randevu maili: {sureli}</span>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: off ? '#f87171' : '#94a3b8' }}>
                           <input type="checkbox" checked={off} onChange={e => setFormData(f => ({ ...f, autoMailOff: e.target.checked }))} />
                           Bu başvuruya otomatik mail gönderme
@@ -1120,11 +1137,40 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       </div>
                     );
                   })()}
+              {/* Vize Evrak yükleme linki — otomatik maillerde {evrak_linki} */}
+              {(() => { const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
+                const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
+                return (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>🔗 Vize evrak linki</label>
+                {isSch && !formData.evrakLink && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <select value={formData.evrakTip || ''} onChange={e => setFormData({ ...formData, evrakTip: e.target.value })} style={{ ...fld, flex: '1 1 220px', width: 'auto' }}>
+                      <option value="" style={{ background: '#0c1929' }}>Başvuru sahibinin durumu — seçin</option>
+                      {VIZE_EVRAK_TIPLER.map(t => <option key={t.id} value={t.id} style={{ background: '#0c1929' }}>{t.ad}</option>)}
+                    </select>
+                    {editingVisa && <button type="button" disabled={!formData.evrakTip || evrakLinkBusy} onClick={async () => {
+                      const link = await createEvrakLink(editingVisa._docId || String(editingVisa.id), formData.evrakTip);
+                      if (link) setFormData(f => ({ ...f, evrakLink: link }));
+                    }} style={{ padding: '10px 14px', background: formData.evrakTip ? 'linear-gradient(135deg, #14b8a6, #0d9488)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: formData.evrakTip ? 'pointer' : 'not-allowed', fontSize: '13px' }}>{evrakLinkBusy ? '⏳ Oluşturuluyor…' : '🔗 Link oluştur'}</button>}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="url" value={formData.evrakLink || ''} onChange={e => setFormData({...formData, evrakLink: e.target.value.trim()})} placeholder="https://vize.paydostur.com/#/yukle/…" style={{ ...fld, flex: 1 }} />
+                  {formData.evrakLink && <button type="button" onClick={() => copyEvrakLink(formData.evrakLink)} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>📋 Kopyala</button>}
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{formData.evrakLink ? 'Bu link otomatik maillerde müşteriye gider.' : isSch
+                  ? (editingVisa ? 'Durumu seçip "Link oluştur" deyin; link maillerde müşteriye gider.' : 'Durumu seçerseniz başvuru kaydedilince link kendiliğinden oluşur ve maillerde müşteriye gider.')
+                  : 'Vize Evrak linki yalnız Schengen başvurularında otomatik oluşur; varsa elle yapıştırabilirsiniz.'}{!formData.evrakLink && ' Link yoksa müşteriden evrakları maile cevap olarak göndermesi istenir.'}</div>
+              </div>
+                ); })()}
                 </>);
               })()}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Yeni başvuruda önce yalnız vize türü seçilir; seçilince detaylar açılır (tür tek satırda, "Değiştir" ile liste) */}
+            <style>{'.visa-pick-only > *:not(:first-child) { display: none !important; }'}</style>
+            <div className={!editingVisa && !formData.visaDuration && (appSettings?.visaDurations?.[selectedCategory.id] || []).length > 0 ? 'visa-pick-only' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Vize Türü — Ayarlardan Otomatik */}
               {(() => {
                 const cat = selectedCategory.id; // 'schengen', 'usa' vs
@@ -1134,10 +1180,25 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <p style={{ margin: 0, fontSize: '12px', color: '#f59e0b' }}>⚠️ Henüz vize türü eklenmemiş. Ayarlar → Vize Türleri ve Fiyatları bölümünden ekleyin.</p>
                   </div>
                 );
+                const cur = types.find(d => (typeof d === 'string' ? d : d.name) === formData.visaDuration);
+                // Tür seçiliyken tek satır + Değiştir
+                if (formData.visaDuration && !typeOpen) return (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Vize Türü *</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: `${selectedCategory.color}25`, border: `2px solid ${selectedCategory.color}`, borderRadius: '10px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: selectedCategory.color }}>{selectedCategory.icon} {formData.visaDuration}</div>
+                        {cur && typeof cur === 'object' && cur.price > 0 && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{cur.price} {cur.currency || '€'}</div>}
+                      </div>
+                      <button type="button" onClick={() => setTypeOpen(true)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', fontWeight: '600', flexShrink: 0 }}>✏️ Değiştir</button>
+                    </div>
+                  </div>
+                );
                 return (
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
-                      Vize Türü * {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}
+                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+                      <span>{formData.visaDuration ? 'Vize Türü *' : 'Vize türünü seçin *'} {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}</span>
+                      {formData.visaDuration && <button type="button" onClick={() => setTypeOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>Kapat</button>}
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                       {types.map((d, idx) => {
@@ -1149,9 +1210,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency,
+                            onClick={() => { setTypeOpen(false); setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency,
                               // Yeni başvuruda tür seçilince o türe özel varsayılan maliyetler gelir; mevcut başvurunun maliyetine dokunulmaz
-                              ...(!editingVisa ? { costs: getVisaCostDefaults(appSettings, selectedCategory.id, name) } : {}) })}
+                              ...(!editingVisa ? { costs: getVisaCostDefaults(appSettings, selectedCategory.id, name) } : {}) }); }}
                             style={{
                               padding: '12px 10px', textAlign: 'left',
                               background: selected ? `${selectedCategory.color}25` : 'rgba(255,255,255,0.05)',
@@ -1178,8 +1239,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <input type="date" value={formData.applicationDate || ''} onChange={e => setFormData({...formData, applicationDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri Tarihte Başvuru <span style={{ color: '#64748b' }}>(boş = normal)</span></label>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>İleri Tarihte Başvuru</label>
                   <input type="date" min={nextBizDay()} value={formData.processDate || ''} onChange={e => setFormData({...formData, processDate: e.target.value})} style={{ width: '100%', padding: '12px', background: '#0d1f33', border: `1px solid ${formData.processDate ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.2)'}`, borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                  {!formData.processDate && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Boş = normal başvuru</div>}
                   {formData.processDate && <div style={{ fontSize: '11px', color: '#a855f7', marginTop: '4px' }}>⏳ Vizeci bu başvuruyu {formatDate(formData.processDate)} tarihinde yapacak <button type="button" onClick={() => setFormData({...formData, processDate: ''})} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>× kaldır</button></div>}
                 </div>
                 <div>
@@ -1489,13 +1551,13 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               })()}
             </div>
 
-            <LoadingButton 
+            {(editingVisa || formData.visaDuration || (appSettings?.visaDurations?.[selectedCategory.id] || []).length === 0) && <LoadingButton 
               onClick={handleSubmit} 
               loading={saving}
               style={{ width: '100%', marginTop: '18px', padding: '15px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}
             >
               {editingVisa ? '💾 Değişiklikleri Kaydet' : '✅ Başvuruyu Kaydet'}
-            </LoadingButton>
+            </LoadingButton>}
 
             {editingVisa && (
               <div style={{ textAlign: 'center', marginTop: '14px' }}>
@@ -1630,7 +1692,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
             const a1 = appSettings?.autoEmailOnVisa !== false, a2 = appSettings?.autoSureliMail !== false;
             const on = a1 || a2;
             return (
-              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Süreli evrak maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
+              <button type="button" title={`Atama Bekliyor maili: ${a1 ? 'açık' : 'kapalı'} · Randevu maili: ${a2 ? 'açık' : 'kapalı'}\nTıkla: ${on ? 'ikisini de kapat' : 'ikisini de aç'} (ayrı ayrı: Ayarlar → Mail)`}
                 onClick={() => { if (on && !window.confirm('Otomatik evrak mailleri kapatılsın mı?\n\nKapalıyken Atama Bekliyor olan / randevusu girilen başvurulara mail gitmez; tekrar açınca da geriye dönük gitmez.')) return; setAppSettings({ ...appSettings, autoEmailOnVisa: !on, autoSureliMail: !on }); showToast?.(on ? '⏸ Otomatik evrak mailleri kapatıldı' : '📧 Otomatik evrak mailleri açıldı', on ? 'warning' : 'success'); }}
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: on ? 'rgba(20,184,166,0.12)' : 'rgba(239,68,68,0.12)', border: `1px solid ${on ? 'rgba(20,184,166,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: '10px', color: on ? '#2dd4bf' : '#f87171', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit' }}>
                 <span style={{ width: '30px', height: '16px', borderRadius: '8px', background: on ? '#14b8a6' : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0 }}><span style={{ position: 'absolute', top: '2px', left: on ? '16px' : '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} /></span>
@@ -2048,6 +2110,28 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <p style={{ margin: '2px 0 0', fontSize: '13px', color: selectedVisa.cancelReason ? '#e8f1f8' : '#64748b' }}>{selectedVisa.cancelReason || 'Girilmemiş (eski kayıt) — Düzenle\'den ekleyebilirsiniz'}</p>
                 </div>
               )}
+              {(() => { const cur = visaApplications.find(v => v.id === selectedVisa.id) || selectedVisa; const link = cur.evrakLink || '';
+                const isSch = (cur.categoryId || cur.category || 'schengen') === 'schengen';
+                if (!link && !isSch) return null;
+                return (
+                <div style={{ background: 'rgba(20,184,166,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(20,184,166,0.2)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#14b8a6' }}>🔗 Vize evrak linki</p>
+                  {link ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                      <a href={link} target="_blank" rel="noopener noreferrer" style={{ flex: '1 1 200px', fontSize: '12px', color: '#5eead4', wordBreak: 'break-all' }}>{link}</a>
+                      <button type="button" onClick={() => copyEvrakLink(link)} style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px' }}>📋 Kopyala</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      <select value={detailTip} onChange={e => setDetailTip(e.target.value)} style={{ flex: '1 1 200px', padding: '8px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}>
+                        <option value="" style={{ background: '#0c1929' }}>Başvuru sahibinin durumu — seçin</option>
+                        {VIZE_EVRAK_TIPLER.map(t => <option key={t.id} value={t.id} style={{ background: '#0c1929' }}>{t.ad}</option>)}
+                      </select>
+                      <button type="button" disabled={!detailTip || evrakLinkBusy} onClick={() => createEvrakLink(cur._docId || String(cur.id), detailTip)} style={{ padding: '8px 12px', background: detailTip ? 'linear-gradient(135deg, #14b8a6, #0d9488)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: '600', cursor: detailTip ? 'pointer' : 'not-allowed', fontSize: '12px' }}>{evrakLinkBusy ? '⏳ Oluşturuluyor…' : '🔗 Link oluştur'}</button>
+                    </div>
+                  )}
+                </div>
+                ); })()}
               {selectedVisa.appointmentDate && (
                 <div style={{ background: 'rgba(59,130,246,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#3b82f6' }}>📅 Randevu</p>

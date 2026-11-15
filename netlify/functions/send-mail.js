@@ -39,7 +39,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { to, from, subject, html, text, attachments, smtp } = JSON.parse(event.body || '{}');
+    const { to, from, replyTo, subject, html, text, attachments, smtp } = JSON.parse(event.body || '{}');
 
     if (!to || !subject) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'to ve subject zorunlu' }) };
@@ -101,6 +101,7 @@ exports.handler = async (event) => {
     const info = await transporter.sendMail({
       from: finalFrom,
       to,
+      replyTo: validEmail(replyTo) ? replyTo.trim() : undefined,
       subject,
       text: text || '',
       html: html || undefined,

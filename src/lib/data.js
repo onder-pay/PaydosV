@@ -12,6 +12,8 @@ export const MEAL_EN = { ro: 'Room Only (RO)', bb: 'Bed & Breakfast (BB)', hb: '
 
 export const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı', 'Amasya', 'Ankara', 'Antalya', 'Artvin', 'Aydın', 'Balıkesir', 'Bilecik', 'Bingöl', 'Bitlis', 'Bolu', 'Burdur', 'Bursa', 'Çanakkale', 'Çankırı', 'Çorum', 'Denizli', 'Diyarbakır', 'Edirne', 'Elazığ', 'Erzincan', 'Erzurum', 'Eskişehir', 'Gaziantep', 'Giresun', 'Gümüşhane', 'Hakkari', 'Hatay', 'Isparta', 'Mersin', 'İstanbul', 'İzmir', 'Kars', 'Kastamonu', 'Kayseri', 'Kırklareli', 'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Kahramanmaraş', 'Mardin', 'Muğla', 'Muş', 'Nevşehir', 'Niğde', 'Ordu', 'Rize', 'Sakarya', 'Samsun', 'Siirt', 'Sinop', 'Sivas', 'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Şanlıurfa', 'Uşak', 'Van', 'Yozgat', 'Zonguldak', 'Aksaray', 'Bayburt', 'Karaman', 'Kırıkkale', 'Batman', 'Şırnak', 'Bartın', 'Ardahan', 'Iğdır', 'Yalova', 'Karabük', 'Kilis', 'Osmaniye', 'Düzce'];
 
+// Vize işlemlerinin acente adresi: müşteriler buraya yazar; vize maillerinin yanıt adresi ve alt bilgisi
+export const VISA_EMAIL = 'vize@paydostur.com';
 export const FOREIGN_PASSPORT = 'Yabancı Pasaport';
 export const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)', FOREIGN_PASSPORT];
 
@@ -284,3 +286,42 @@ export const isTurkishNationality = (x) => !String(x || '').trim() || nationalit
 
 // Müşteri ödemesi tipi (vize ödemeleri)
 export const PAYMENT_METHODS = ['Nakit', 'Havale/EFT', 'Kredi Kartı'];
+
+// Randevu mailinin (randevu bilgisi + Schengen'de süreli evraklar) varsayılan şablonu — bot evrakmail.js RANDEVU_MAIL_DEFAULT ile birebir aynı.
+// Ayarlar → Vize mail → Randevu Maili Şablonu'ndan düzenlenir (appSettings.randevuMailTemplate).
+export const RANDEVU_MAIL_DEFAULT = {
+  body: `Sayın {isim},
+
+{ulke} vize randevunuz alınmıştır.
+
+Tarih: {tarih}
+Saat: {saat}
+Yer: {ofis}
+PNR: {pnr}
+
+Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
+
+{sureli_evraklar}
+
+{suresiz_evraklar}
+
+[link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
+[link] {evrak_linki}
+[link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
+[linkyok] Evraklarınızı bu maile cevap olarak gönderebilirsiniz.
+
+Sorularınız için bize ulaşabilirsiniz.
+Paydos Turizm`,
+  sureli: `SÜRELİ EVRAKLAR
+Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+
+• SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
+• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
+[ticari] • Oda kaydı faaliyet belgesi — {uc_ay} tarihinden sonra alınmış olmalı (son 3 ay).
+• Maaş bordrosu (çalışanlar için) — son 3 ay: {uc_ay} sonrası dönemler.
+• Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
+• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
+
+Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
+};

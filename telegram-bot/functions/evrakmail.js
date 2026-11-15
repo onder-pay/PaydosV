@@ -1,11 +1,11 @@
 // ===== Vize: otomatik evrak mailleri =====
 // 1) Başvuru "Atama Bekliyor" olunca → CRM'deki vize türü şablonu (Ayarlar → Vize Türü Bazlı Mail Şablonları) + bağlı ekler.
-// 2) Randevu tarihi girilince (Schengen) → süreli evraklar listesi, randevuya göre hesaplanmış tarihlerle.
+// 2) Randevu tarihi girilince (elle ya da iDATA mailinden, her kategori) → randevu maili; Schengen'de süreli evraklar listesi aynı mailde.
 //    Randevu değişirse yeni tarihle tekrar gönderilir.
 // 15 dakikada bir çalışır. Aynı mail iki kez gitmez (visa_applications.evrakMailAt / sureliMailFor).
 // E-postası olmayan başvuru bekletilir: vizeci e-postayı ekleyince sonraki turda gider; gruba bir kez haber verilir.
 // İlk çalışmada mevcut birikmiş kayıtlara mail gitmez, sessizce işaretlenir (app_settings/main.evrakMailBasladi).
-// Açma/kapama: app_settings.autoEmailOnVisa (Atama Bekliyor maili) ve autoSureliMail (süreli evrak maili).
+// Açma/kapama: app_settings.autoEmailOnVisa (Atama Bekliyor maili) ve autoSureliMail (randevu maili).
 // Kapalıyken gelen başvurular "kapalıyken atlandı" diye işaretlenir — tekrar açınca geriye dönük mail yağmaz.
 // Başvuru bazında: visa_applications.autoMailOff === true ise o başvuruya otomatik mail gitmez.
 const functions = require('firebase-functions');
@@ -29,13 +29,23 @@ const addMonths = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTC
 const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 const closed = (v) => /onay|red|iptal/.test(normTr(v.status)); // 'IPTAL' tr-lower'da 'ıptal' olurdu
 
+// Vize işlemlerinin acente adresi (CRM data.js VISA_EMAIL ile aynı): yanıt adresi ve alt bilgi
+const VISA_EMAIL = 'vize@paydostur.com';
 // CRM'deki mailHtml ile aynı görünüm
 const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
 <div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
 <pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
-<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com · <a href="mailto:${VISA_EMAIL}" style="color:#6b7280">${VISA_EMAIL}</a></div></div></div>`;
 
 const custName = (v, cust) => titleTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
+
+// Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (şablondaki konu kullanılmaz; CRM sendVisaEmail ile aynı).
+// Vize türü ülkeyi zaten içeriyorsa ("ALMANYA TİCARİ") ülke yinelenmez.
+const mailSubject = (v, cust) => {
+  const tur = titleTr(String(v.visaDuration || v.visaType || '').trim());
+  const ulke = titleTr(String(v.country || '').trim());
+  return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+};
 
 // 1. aşama: CRM şablonu (sendVisaEmail ile aynı kurallar)
 const buildTemplateMail = (v, cust, settings) => {
@@ -51,43 +61,92 @@ const buildTemplateMail = (v, cust, settings) => {
     .replace(/{tarih}/g, trDate(istDate()))
     .replace(/{saat}/g, v.appointmentTime || '')
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
-    .replace(/{vize_turu}/g, vize_turu);
-  const text = rep(t.body);
+    .replace(/{vize_turu}/g, vize_turu)
+    .replace(/{evrak_linki}/g, evrakLinkOf(v));
+  // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (CRM sendVisaEmail ile aynı metin)
+  const link = evrakLinkOf(v);
+  const linkEk = link && !/{evrak_linki}/.test(String(t.body || '')) ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${link}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
+  const text = rep(t.body) + linkEk;
   const attachments = (settings.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vize_turu)).map(a => ({ filename: a.name, url: a.url }));
-  return { subject: rep(t.subject), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
+  return { subject: mailSubject(v, cust), text, html: mailHtml(text), attachments }; // CRM test maili ile birebir (şablon HTML'i olduğu gibi)
 };
 
-// 2. aşama: süreli evraklar (Schengen) — randevu tarihine göre hesaplanır
-const buildSureliMail = (v, cust, today) => {
-  const appt = String(v.appointmentDate || '').slice(0, 10);
-  const from14 = addDays(appt, -14);
-  const sonGun = addDays(appt, -1);
-  // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz (İ≠i) — önce ASCII küçük harfe indir
-  const tn = normTr(`${v.visaDuration || ''} ${v.visaType || ''}`);
-  const ticari = /ticari|fuar|\bis\b/.test(tn);
-  const al14 = from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`;
-  const items = [
-    `• SGK hizmet dökümü (e-Devlet, barkodlu) — ${al14}. Randevudan en fazla 14 gün önce alınmış olmalı.`,
-    `• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — ${al14}. 14 gün geçerlidir.`,
-    ...(ticari ? [`• Oda kaydı faaliyet belgesi — ${trDate(addMonths(appt, -3))} tarihinden sonra alınmış olmalı (son 3 ay).`] : []),
-    `• Maaş bordrosu (çalışanlar için) — son 3 ay: ${trDate(addMonths(appt, -3))} sonrası dönemler.`,
-    `• Biyometrik fotoğraf — ${trDate(addMonths(appt, -6))} tarihinden sonra çekilmiş olmalı (son 6 ay).`,
-    `• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.`,
-  ];
-  const ulke = v.country || 'Schengen';
-  const text = `Sayın ${custName(v, cust)},
+// 2. aşama: randevu maili — randevu bilgisi (tarih, saat, ofis, PNR) + Schengen'de süreli evraklar, TEK mailde.
+// Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { body, sureli, suresiz }); boş alan varsayılana düşer.
+// Varsayılanlar CRM src/lib/data.js RANDEVU_MAIL_DEFAULT ile birebir aynı olmalı.
+// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen); süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
+// {evrak_linki}: başvurudaki Vize Evrak yükleme linki (visa_applications.evrakLink). "[link]" ile başlayan satır yalnız link varsa,
+// "[linkyok]" ile başlayan yalnız link yoksa çıkar.
+// Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
+const RANDEVU_MAIL_DEFAULT = {
+  body: `Sayın {isim},
 
-${ulke} vize randevunuz ${v.appointmentTime ? `${trDate(appt)} tarihinde saat ${v.appointmentTime} için` : `${trDate(appt)} tarihine`} alınmıştır.
+{ulke} vize randevunuz alınmıştır.
 
-Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+Tarih: {tarih}
+Saat: {saat}
+Yer: {ofis}
+PNR: {pnr}
 
-${items.join('\n')}
+Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
-Tüm belgeler en geç ${trDate(sonGun)} tarihinde hazır olmalıdır.
+{sureli_evraklar}
+
+{suresiz_evraklar}
+
+[link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
+[link] {evrak_linki}
+[link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
+[linkyok] Evraklarınızı bu maile cevap olarak gönderebilirsiniz.
 
 Sorularınız için bize ulaşabilirsiniz.
-Paydos Turizm`;
-  return { subject: `${ulke} vize randevunuz ${trDate(appt)} — süreli evraklar`, text, html: mailHtml(esc(text)), attachments: [] };
+Paydos Turizm`,
+  sureli: `SÜRELİ EVRAKLAR
+Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+
+• SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
+• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
+[ticari] • Oda kaydı faaliyet belgesi — {uc_ay} tarihinden sonra alınmış olmalı (son 3 ay).
+• Maaş bordrosu (çalışanlar için) — son 3 ay: {uc_ay} sonrası dönemler.
+• Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
+• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
+
+Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
+};
+// Vize Evrak yükleme linki: yalnız https ve boşluksuz ise kullanılır
+const evrakLinkOf = (v) => { const l = String(v.evrakLink || '').trim(); return /^https:\/\/\S+$/.test(l) ? l : ''; };
+const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
+const pick = (x, def) => (String(x || '').trim() ? String(x) : def);
+const buildRandevuMail = (v, cust, today, tpl) => {
+  const appt = String(v.appointmentDate || '').slice(0, 10);
+  // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz (İ≠i) — önce ASCII küçük harfe indir
+  const ticari = /ticari|fuar|\bis\b/.test(normTr(`${v.visaDuration || ''} ${v.visaType || ''}`));
+  const from14 = addDays(appt, -14);
+  const sv = {
+    on_dort_gun: from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`,
+    uc_ay: trDate(addMonths(appt, -3)), alti_ay: trDate(addMonths(appt, -6)), son_gun: trDate(addDays(appt, -1)),
+  };
+  const link = evrakLinkOf(v);
+  // Satır başı koşulları: [ticari] [link] [linkyok]
+  const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
+    .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
+  const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+  const sureli = block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli));
+  const suresiz = block(tpl?.suresiz);
+  const office = String(v.idataOffice || '').trim();
+  const vals = {
+    isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
+    ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz, evrak_linki: link,
+  };
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki)\}/g;
+  const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
+  const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
+  const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
+    .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
+    .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { subject: mailSubject(v, cust), text, html: mailHtml(esc(text)), attachments: [] };
 };
 
 const sendMail = async (smtp, { to, subject, text, html, attachments }) => {
@@ -103,7 +162,7 @@ const sendMail = async (smtp, { to, subject, text, html, attachments }) => {
     } catch (e) { console.warn('[evrakmail] ek indirilemedi:', a.filename, e.message); }
   }
   const from = validEmail(smtp.from) ? smtp.from.trim() : smtp.user.trim();
-  return transporter.sendMail({ from, to, subject, text, html, attachments: files.length ? files : undefined });
+  return transporter.sendMail({ from, to, replyTo: VISA_EMAIL, subject, text, html, attachments: files.length ? files : undefined });
 };
 
 const tg = async (token, chatId, text) => {
@@ -150,27 +209,40 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); }
   }
 
-  // 2) Randevu girilmiş Schengen başvuruları → süreli evrak maili (randevu değişirse yeniden)
+  // 2) Randevusu girilmiş başvurular → randevu maili (randevu değişirse yeniden)
+  // Eskiden yalnız Schengen'e gidiyordu: geçişte mevcut diğer kategori randevularına toplu mail gitmesin diye bir kez sessizce işaretlenir.
+  const stateRef = db.collection('bot_state').doc('evrakMail');
+  const gecis = !firstRun && !((await stateRef.get()).data() || {}).randevuTumKategori;
   const s2 = await db.collection('visa_applications').where('appointmentDate', '>=', today).get();
   for (const d of s2.docs) {
     const v = { id: d.id, ...d.data() };
     const appt = String(v.appointmentDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(appt) || v.sureliMailFor === appt || closed(v)) continue;
-    if ((v.categoryId || v.category || 'schengen') !== 'schengen' || v.autoMailOff) continue;
+    if (v.autoMailOff) continue;
+    if (gecis && !isSchengen(v)) { await d.ref.set({ sureliMailFor: appt, sureliMailAt: 'gecis-atlandi' }, { merge: true }); continue; }
     if (firstRun || !sureliOn) { await d.ref.set({ sureliMailFor: appt, sureliMailAt: firstRun ? 'ilk-kurulum-atlandi' : 'kapali-atlandi' }, { merge: true }); continue; }
     const cust = await getCust(v);
     const to = emailOf(v, cust);
     if (!to) { if (v.sureliEpostaYokFor !== appt) { res.epostaYok.push(`${custName(v, cust)} (randevu ${trDate(appt)})`); await d.ref.set({ sureliEpostaYokFor: appt }, { merge: true }); } continue; }
-    try { await send(smtp, { to, ...buildSureliMail(v, cust, today) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; }
+    try { await send(smtp, { to, ...buildRandevuMail(v, cust, today, settings.randevuMailTemplate) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; }
     catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); }
   }
 
+  // Haftalık özet için sistem hata kaydı (isim yazılmaz)
+  if (res.hata.length || res.epostaYok.length || res.sablonYok.length) {
+    const { logError, flushErrors } = require('./syslog');
+    for (const h of res.hata) logError('evrakmail', `Mail gönderilemedi: ${String(h).split(': ').slice(1).join(': ') || h}`, db);
+    if (res.epostaYok.length) logError('evrakmail', `E-postası olmadığı için mail gidemedi (${res.epostaYok.length} başvuru)`, db);
+    for (const t of new Set(res.sablonYok)) logError('evrakmail', `Şablonu olmayan vize türü: ${t}`, db);
+    await flushErrors();
+  }
   if (firstRun) await settingsRef.set({ evrakMailBasladi: now }, { merge: true });
+  if (firstRun || gecis) await stateRef.set({ randevuTumKategori: now }, { merge: true });
 
   // Gruba özet (sadece bir şey olduysa)
   const lines = [];
   if (res.atama) lines.push(`📧 Evrak maili gönderildi: <b>${res.atama}</b> kişi`);
-  if (res.sureli) lines.push(`⏳ Süreli evrak maili gönderildi: <b>${res.sureli}</b> kişi`);
+  if (res.sureli) lines.push(`📅 Randevu maili gönderildi: <b>${res.sureli}</b> kişi`);
   if (res.epostaYok.length) lines.push(`⚠️ E-postası olmadığı için mail gidemedi — CRM'e e-posta ekleyin, sonraki turda gider:\n${res.epostaYok.map(n => `• ${esc(n)}`).join('\n')}`);
   if (res.sablonYok.length) lines.push(`⚠️ Şablonu olmayan vize türü (Ayarlar → Vize Türü Bazlı Mail Şablonları):\n${[...new Set(res.sablonYok)].map(n => `• ${esc(n)}`).join('\n')}`);
   if (res.hata.length) lines.push(`❌ Gönderilemedi (tekrar denenecek):\n${res.hata.slice(0, 10).map(n => `• ${esc(n)}`).join('\n')}`);
@@ -179,7 +251,12 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
 };
 
 exports.processEvrakMails = processEvrakMails;
-exports.buildSureliMail = buildSureliMail;
+exports.sendMail = sendMail;
+exports.mailHtml = mailHtml;
+exports.buildRandevuMail = buildRandevuMail;
+exports.RANDEVU_MAIL_DEFAULT = RANDEVU_MAIL_DEFAULT;
+exports.istDate = istDate;
+exports.mailSubject = mailSubject;
 
 exports.vizeEvrakMail = functions
   .region('europe-west1')
