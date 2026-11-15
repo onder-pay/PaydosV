@@ -1,7 +1,7 @@
 // 🌍 Vize modülü
 import { LoadingButton, inputStyle, selectStyle } from '../components/ui';
 import { PAYMENT_METHODS, VIZE_DURUM } from '../lib/data.js';
-import { VISA_COST_CATEGORIES, getVisaCostItems, sendVisaEmail, visaAppBelongsTo, FingerprintBox } from '../components/shared';
+import { VISA_COST_CATEGORIES, getVisaCostItems, visaAppBelongsTo, FingerprintBox } from '../components/shared';
 import { XLSX } from '../lib/heavy.js';
 import { db } from '../lib/firebase.js';
 import { deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
@@ -9,6 +9,7 @@ import { formatDate, formatWhatsAppPhone, generateUniqueId, getDaysLeft, isValid
 import { getActiveBanks } from '../lib/banks.js';
 import { htmlToPdfDownload } from '../lib/pdf.js';
 import { logActivity, vizeEvrakLinkCall, VIZE_EVRAK_TIPLER } from '../lib/api.js';
+import { buildInfoMail, buildRandevuMail, sendVisaMail, visaMailSubject, visaMailTo } from '../lib/visamail.js';
 import { normalizeTr, titleCaseTr, trHas, fullNameTr } from '../lib/turkish.js';
 import { useEffect, useState } from 'react';
 import { fingerprintStatus } from '../lib/travel.js';
@@ -552,15 +553,6 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     window.open(waUrl(fullPhone, message), '_blank');
   };
 
-  const sendEmail = (visa) => {
-    if (!visa.customerEmail) {
-      alert('Müşteri e-posta adresi bulunamadı!');
-      return;
-    }
-    const subject = `${visa.country} Vize Randevu Bilgisi`;
-    const body = `Sayın ${titleCaseTr(visa.customerName)},\n\n${visa.country} vize randevunuz ${formatDate(visa.appointmentDate)} tarihinde${visa.appointmentTime ? ` saat ${visa.appointmentTime}` : ''} için alınmıştır.\n\nPNR: ${visa.pnr || '-'}\n\nPaydos Turizm`;
-    window.open(`mailto:${visa.customerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
-  };
 
   const sendWhatsApp = (visa) => {
     const phone = visa.customerPhone?.replace(/\D/g, '');
@@ -689,6 +681,92 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   };
 
   const [saving, setSaving] = useState(false);
+
+  // ✉️ Elle mail: şablon seç (bilgilendirme / randevu / boş) → metni gör, düzelt → gönder.
+  // Metin otomatik mailin aynısıdır (lib/visamail.js). Kayıtlı başvuruda gönderilen mail işaretlenir: aynı mail otomatik olarak tekrar gitmez.
+  const [mailBox, setMailBox] = useState(null); // { visa, cust, kind, to, subject, text, attachments, note, busy }
+  const MAIL_KINDS = [{ id: 'info', label: '📨 Bilgilendirme' }, { id: 'randevu', label: '📅 Randevu' }, { id: 'bos', label: '✏️ Boş' }];
+  const mailDraft = (visa, cust, kind) => {
+    const m = kind === 'info' ? buildInfoMail(visa, cust, appSettings) : kind === 'randevu' ? buildRandevuMail(visa, cust, appSettings) : null;
+    if (m && m.error) return { subject: visaMailSubject(visa, cust), text: '', attachments: [], note: m.error };
+    if (m) return { subject: m.subject, text: m.text, attachments: m.attachments, note: '' };
+    const isim = titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || visa.customerName || '');
+    return { subject: visaMailSubject(visa, cust), text: `Sayın ${isim},\n\n\n\nPaydos Turizm`, attachments: [], note: '' };
+  };
+  const openMail = (visa, kind) => {
+    const cust = findVisaCust(visa.customerId);
+    const k = kind || (visa.appointmentDate ? 'randevu' : 'info');
+    setMailBox({ visa, cust, kind: k, to: visaMailTo(visa, cust), ...mailDraft(visa, cust, k), busy: false });
+  };
+  const formVisa = () => ({
+    ...formData, id: editingVisa?.id || formData.id || '', _docId: editingVisa?._docId,
+    categoryId: formData.categoryId || selectedCategory?.id || formData.category || 'schengen',
+    country: formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : ''),
+  });
+  const sendMailBox = async () => {
+    const mb = mailBox; if (!mb || mb.busy) return;
+    setMailBox({ ...mb, busy: true });
+    try {
+      const to = await sendVisaMail({ to: mb.to, subject: mb.subject, text: mb.text, attachments: mb.attachments, appSettings });
+      const now = new Date().toISOString();
+      const appt = String(mb.visa.appointmentDate || '').slice(0, 10);
+      const patch = mb.kind === 'info' ? { evrakMailAt: now, evrakMailTo: to } : mb.kind === 'randevu' && appt ? { sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to } : null;
+      const docId = mb.visa._docId || (mb.visa.id ? String(mb.visa.id) : '');
+      const saved = docId && visaApplications.some(v => (v._docId || String(v.id)) === docId);
+      if (patch && saved) {
+        await setDoc(doc(db, 'visa_applications', docId), patch, { merge: true }).catch(e => console.warn('Mail işareti yazılamadı:', e.message));
+        setVisaApplications(prev => prev.map(v => (v._docId || String(v.id)) === docId ? { ...v, ...patch } : v));
+        if (editingVisa && (editingVisa._docId || String(editingVisa.id)) === docId) setFormData(f => ({ ...f, ...patch }));
+        if (selectedVisa && (selectedVisa._docId || String(selectedVisa.id)) === docId) setSelectedVisa(sv => ({ ...sv, ...patch }));
+      }
+      logActivity('mail', 'Vize', `${titleCaseTr(mb.visa.customerName || '')} — ${MAIL_KINDS.find(k => k.id === mb.kind)?.label.slice(2).trim() || 'Mail'} → ${to}`, currentUser);
+      showToast?.(`✉️ Mail gönderildi: ${to}`, 'success');
+      setMailBox(null);
+    } catch (e) {
+      showToast?.('Mail gönderilemedi: ' + e.message, 'error');
+      setMailBox(m => m && { ...m, busy: false });
+    }
+  };
+  const renderMailBox = () => {
+    if (!mailBox) return null;
+    const mb = mailBox;
+    const fld = { width: '100%', padding: '10px 12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
+    const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
+    const auto = mb.kind === 'info' ? 'bilgilendirme' : mb.kind === 'randevu' ? 'randevu' : '';
+    return (
+      <div onClick={() => !mb.busy && setMailBox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '14px', padding: '16px', width: '100%', maxWidth: '640px', maxHeight: '92vh', overflow: 'auto', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', color: '#e8f1f8' }}>✉️ Mail Gönder</h3>
+            <button type="button" onClick={() => !mb.busy && setMailBox(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+            {MAIL_KINDS.map(k => (
+              <button key={k.id} type="button" disabled={mb.busy} onClick={() => setMailBox({ ...mb, kind: k.id, ...mailDraft(mb.visa, mb.cust, k.id) })}
+                style={{ padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', background: mb.kind === k.id ? 'rgba(20,184,166,0.25)' : 'rgba(255,255,255,0.05)', border: mb.kind === k.id ? '1px solid #14b8a6' : '1px solid rgba(255,255,255,0.12)', color: mb.kind === k.id ? '#5eead4' : '#e8f1f8' }}>{k.label}</button>
+            ))}
+          </div>
+          {mb.note && <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#f59e0b' }}>⚠️ {mb.note}</p>}
+          <label style={lbl}>Alıcı</label>
+          <input type="email" value={mb.to} onChange={e => setMailBox({ ...mb, to: e.target.value })} placeholder="musteri@ornek.com" style={fld} />
+          {!mb.to && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#f59e0b' }}>Müşterinin kayıtlı e-postası yok — adresi yazın.</p>}
+          <label style={lbl}>Konu</label>
+          <input type="text" value={mb.subject} onChange={e => setMailBox({ ...mb, subject: e.target.value })} style={fld} />
+          <label style={lbl}>Mail metni</label>
+          <textarea value={mb.text} onChange={e => setMailBox({ ...mb, text: e.target.value })} rows={14} style={{ ...fld, resize: 'vertical', lineHeight: 1.5 }} />
+          {mb.attachments?.length > 0 && <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#94a3b8' }}>📎 Ekler: {mb.attachments.map(a => a.filename).join(', ')}</p>}
+          <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#64748b' }}>
+            Vize SMTP hesabından gider; müşteri yanıtlarsa vize@paydostur.com adresine gelir.
+            {auto && ' Gönderilince bu başvuruya ' + auto + ' maili otomatik olarak bir daha gitmez.'}
+          </p>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+            <button type="button" disabled={mb.busy} onClick={() => setMailBox(null)} style={{ flex: 1, padding: '12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#e8f1f8', cursor: 'pointer', fontSize: '13px' }}>Vazgeç</button>
+            <button type="button" disabled={mb.busy || !mb.text.trim()} onClick={sendMailBox} style={{ flex: 2, padding: '12px', background: mb.text.trim() ? 'linear-gradient(135deg, #14b8a6, #0d9488)' : 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', cursor: mb.text.trim() ? 'pointer' : 'not-allowed', fontSize: '14px' }}>{mb.busy ? '⏳ Gönderiliyor…' : '📤 Gönder'}</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Vize Evrak yükleme linki: sunucu Vize Evrak kaydını açar, linki başvuruya yazar; yerel listeye de işlenir
   const [evrakLinkBusy, setEvrakLinkBusy] = useState(false);
@@ -1518,25 +1596,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   window.open(waUrl(fullPhone, message), '_blank');
                 }} style={act('#25d366')}>📱 Randevu Bilgisi (WA)</button>}
                       <button type="button" onClick={() => { if (formData.customerEmail) window.open(`mailto:${formData.customerEmail}`, '_blank'); else alert('E-posta adresi bulunamadı'); }} style={act('#60a5fa')}>📧 E-posta</button>
-                      <button type="button" onClick={async () => {
-                  if (!formData.customerEmail) { showToast?.('Müşterinin e-posta adresi yok', 'error'); return; }
-                  const visa = {
-                    id: editingVisa?.id || Date.now().toString(),
-                    categoryId: selectedCategory?.id || 'schengen',
-                    country: formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : ''),
-                    visaDuration: formData.visaDuration || formData.visaType || '',
-                    customerEmail: formData.customerEmail
-                  };
-                  const customer = customers?.find(c => c.id === formData.customerId) || {
-                    firstName: (formData.customerName || '').split(' ')[0],
-                    lastName: (formData.customerName || '').split(' ').slice(1).join(' '),
-                    email: formData.customerEmail
-                  };
-                  showToast?.('📧 Bilgi maili gönderiliyor...', 'info');
-                  const result = await sendVisaEmail({ visa, customer, appSettings });
-                  if (result.ok) showToast?.('📧 Bilgi maili gönderildi', 'success');
-                  else showToast?.(`❌ Mail gönderilemedi: ${result.error}`, 'error');
-                }} style={act('#14b8a6')}>📨 Bilgi Maili</button>
+                      <button type="button" onClick={() => openMail(formVisa())} style={act('#14b8a6')}>✉️ Mail Gönder</button>
                     </div>
                     {editingVisa && (<>
                       <div style={{ ...head, marginTop: '14px' }}>BELGELER</div>
@@ -1916,6 +1976,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 
       {/* FORM */}
       {showForm && renderForm()}
+      {renderMailBox()}
 
       {/* GÜN DETAY MODAL */}
       {/* iDATA HAZIR BİLGİ MODAL (kopyala) */}
@@ -2160,7 +2221,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
             {/* İletişim Butonları */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
               <button onClick={() => sendWhatsApp(selectedVisa)} style={{ padding: '10px', background: 'rgba(37,211,102,0.2)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25d366', cursor: 'pointer', fontSize: '12px' }}>💬 WhatsApp</button>
-              <button onClick={() => sendEmail(selectedVisa)} style={{ padding: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>📧 E-posta</button>
+              <button onClick={() => openMail(visaApplications.find(v => v.id === selectedVisa.id) || selectedVisa)} style={{ padding: '10px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '8px', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>✉️ Mail Gönder</button>
               <button onClick={() => generateProforma(selectedVisa)} style={{ padding: '10px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', color: '#f59e0b', cursor: 'pointer', fontSize: '12px' }}>📄 Proforma</button>
             </div>
 

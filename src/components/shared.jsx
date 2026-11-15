@@ -8,9 +8,9 @@ import { NAMECHK_COLOR, detectFlights, detectHotel, nameCheck, nameWords, sameFl
 import { TravelCheckBox, CustomerNameInput } from './ui';
 import { formatDate, formatWhatsAppPhone, generateUniqueId, safeParseObj, waUrl } from '../lib/format.js';
 import { pdfExtractPages, pdfPagesText, addCanvasPaged, loadHtml2Canvas, pdfFileText } from '../lib/pdf.js';
-import { mailHtml, sendMailRequest } from '../lib/api.js';
+import { buildInfoMail, sendVisaMail, visaMailTo } from '../lib/visamail.js';
 import { DEFAULT_BANK } from '../lib/banks.js';
-import { SOZLESME_SABIT, VIZE_DURUM, VISA_EMAIL } from '../lib/data.js';
+import { SOZLESME_SABIT, VIZE_DURUM } from '../lib/data.js';
 import { jsPDF } from '../lib/heavy.js';
 import { FINGERPRINT_MONTHS, fingerprintLabel } from '../lib/travel.js';
 
@@ -458,60 +458,15 @@ export const publishCustomerLink = async (c, trip, token, appSettings) => {
 // Tur belge linki WhatsApp mesajı — Ayarlar > Tur'dan değiştirilebilir. {isim} {tur} {belgeler} {link}
 export const DEFAULT_SHARE_MSG = 'Sayın {isim},\n\n{tur} için belgeleriniz ({belgeler}):\n{link}\n\nİyi yolculuklar dileriz.\nPaydos Turizm';
 
+// Bilgilendirme mailini (vize türü şablonu + ekler + evrak linki) gönderir. Metin src/lib/visamail.js'ten — bot ile aynı.
 export async function sendVisaEmail({ visa, customer, appSettings }) {
   try {
-    const vize_turu = visa.visaDuration || visa.visaType || '';
-    const catId = visa.categoryId || 'schengen';
-    const templates = appSettings?.emailTemplates || {};
-    const template = templates[vize_turu] || templates[catId];
-    if (!template || (!template.subject && !template.body)) return { ok: false, error: 'Şablon bulunamadı veya boş' };
-
-    const email = customer?.email || visa?.customerEmail;
-    if (!email) return { ok: false, error: 'Müşteri e-postası yok' };
-
-    const isim = `${customer?.firstName || ''} ${customer?.lastName || ''}`.trim() || visa.customerName || '';
-    const tarih = new Date().toLocaleDateString('tr-TR');
-    const ref_no = String(visa.id || '').slice(-8).toUpperCase() || '-';
-    const ulke = visa.country || catId;
-
-    const evrakLink = /^https:\/\/\S+$/.test(String(visa.evrakLink || '').trim()) ? String(visa.evrakLink).trim() : '';
-    const replace = (str) => str
-      .replace(/{isim}/g, isim)
-      .replace(/{ulke}/g, ulke)
-      .replace(/{tarih}/g, tarih)
-      .replace(/{saat}/g, '')
-      .replace(/{ref_no}/g, ref_no)
-      .replace(/{vize_turu}/g, vize_turu)
-      .replace(/{evrak_linki}/g, evrakLink);
-
-    // Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (bot evrakmail.js mailSubject ile aynı; şablondaki konu kullanılmaz)
-    const turAd = titleCaseTr(String(vize_turu).trim()), ulkeAd = titleCaseTr(String(visa.country || '').trim());
-    const subject = [titleCaseTr(isim), ulkeAd && !trHas(turAd, ulkeAd) ? ulkeAd : '', turAd].filter(Boolean).join(' - ') || 'Vize başvurunuz';
-    // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (bot evrakmail.js ile aynı metin)
-    const linkEk = evrakLink && !/{evrak_linki}/.test(template.body || '') ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${evrakLink}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
-    const bodyText = replace(template.body || '') + linkEk;
-    const html = mailHtml(bodyText, VISA_EMAIL);
-
-    // Vize türüne bağlı ekleri bul
-    const allAttachments = appSettings?.attachments || [];
-    const linkedAttachments = allAttachments.filter(a => a.linkedTypes?.includes(vize_turu));
-
-    const resp = await sendMailRequest({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: email,
-        subject,
-        html,
-        text: bodyText,
-        attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url })),
-        replyTo: VISA_EMAIL, // müşteri "Yanıtla" deyince vize adresine gelsin (gönderen hesap farklı olsa da)
-        smtp: appSettings?.smtpVisa
-      })
-    });
-    const data = await resp.json();
-    if (!resp.ok) return { ok: false, error: data.error || 'Gönderim hatası' };
-    return { ok: true, attachmentCount: linkedAttachments.length };
+    const mail = buildInfoMail(visa, customer, appSettings);
+    if (mail.error) return { ok: false, error: mail.error };
+    const to = visaMailTo(visa, customer);
+    if (!to) return { ok: false, error: 'Müşteri e-postası yok' };
+    await sendVisaMail({ to, ...mail, appSettings });
+    return { ok: true, attachmentCount: mail.attachments.length };
   } catch (err) {
     return { ok: false, error: err.message };
   }
