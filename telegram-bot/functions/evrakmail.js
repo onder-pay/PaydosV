@@ -228,6 +228,14 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); }
   }
 
+  // Haftalık özet için sistem hata kaydı (isim yazılmaz)
+  if (res.hata.length || res.epostaYok.length || res.sablonYok.length) {
+    const { logError, flushErrors } = require('./syslog');
+    for (const h of res.hata) logError('evrakmail', `Mail gönderilemedi: ${String(h).split(': ').slice(1).join(': ') || h}`, db);
+    if (res.epostaYok.length) logError('evrakmail', `E-postası olmadığı için mail gidemedi (${res.epostaYok.length} başvuru)`, db);
+    for (const t of new Set(res.sablonYok)) logError('evrakmail', `Şablonu olmayan vize türü: ${t}`, db);
+    await flushErrors();
+  }
   if (firstRun) await settingsRef.set({ evrakMailBasladi: now }, { merge: true });
   if (firstRun || gecis) await stateRef.set({ randevuTumKategori: now }, { merge: true });
 

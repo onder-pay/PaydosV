@@ -377,6 +377,27 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
       </div>
         ); })()}
 
+      {(() => { const on = appSettings?.sistemOzetOn !== false;
+        return (
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📊 Haftalık Sistem Özeti <span style={{ fontSize: '11px', color: on ? '#14b8a6' : '#ef4444', marginLeft: '6px' }}>{on ? 'AÇIK' : 'KAPALI'}</span></h3>
+          <div onClick={() => setAppSettings({ ...appSettings, sistemOzetOn: !on })}
+            style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: on ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+            <div style={{ position: 'absolute', top: '3px', left: on ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+          </div>
+        </div>
+        <p style={{ margin: '6px 0 12px', fontSize: '12px', color: '#64748b' }}>
+          Her pazartesi 09:10'da son 7 günün özeti e-postayla gelir: ekranda çıkan hatalar, bot ve otomatik mail hataları (en çok tekrar eden üstte), yapılan işlemler ve vize akışı sayıları.
+          Hemen almak için Telegram vize grubuna <strong style={{ color: '#94a3b8' }}>/ozet</strong> yazın. Hatalar ayrıca İşlemler ekranında "Hata" olarak görünür.
+        </p>
+        <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Özetin gideceği e-posta</label>
+        <input type="email" value={appSettings?.sistemOzetMail || ''} onChange={e => setAppSettings({ ...appSettings, sistemOzetMail: normEmail(e.target.value) })} placeholder="onder@paydostur.com"
+          style={{ width: '100%', maxWidth: '380px', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }} />
+        <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>Boş bırakılırsa onder@paydostur.com adresine gider. Gönderim Vize SMTP hesabıyla yapılır.</p>
+      </div>
+        ); })()}
+
       {(() => { const tp = appSettings?.randevuMailTemplate || {}; const D = RANDEVU_MAIL_DEFAULT; const has = (x) => !!String(x || '').trim();
         const custom = has(tp.body) || has(tp.sureli) || has(tp.suresiz);
         const subject = 'Mustafa Karakuzu - Almanya - Ticari', body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli, suresiz = tp.suresiz || '';

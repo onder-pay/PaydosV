@@ -6,6 +6,10 @@ const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
 const { applyMrz } = require('./mrz');
 const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
+// Bottaki her console.error aynı zamanda sistem hata kaydına düşer (haftalık özet için; bkz. syslog.js). Kişisel veri içermesin diye 300 karakterle sınırlı.
+const { logError, flushErrors } = require('./syslog');
+const _consoleError = console.error.bind(console);
+console.error = (...a) => { _consoleError(...a); try { logError('bot', a.map(x => (x && x.message) || String(x)).join(' ').slice(0, 300)); } catch { /* kayıt asıl işi bozmaz */ } };
 
 // Schengen ülke adlarını Türkçe'ye çevir (AI'ın okuduğu dil ne olursa olsun)
 // Türkçe karakter kuralı (bkz. CLAUDE.md): karşılaştırma normTr ile iki tarafta da ASCII küçük harf
@@ -1249,6 +1253,7 @@ const HELP_TEXT = [
   '/turpasaport Tur adı — turdaki herkesin pasaportu; boş yazılırsa turlar listelenir',
   '/bugun — bugün iDATA/VFS başvurusu yapılacaklar',
   '/atama — atama bekleyen başvurular',
+  '/ozet — haftalık sistem özetini (hatalar, işlemler, vize akışı) şimdi e-postayla gönder',
   '/mailtest — vize gelen kutusu testi: son 5 mail okunur, ne yapılacağı yazılır (hiçbir şey kaydedilmez)',
 ].join('\n');
 
@@ -1537,7 +1542,7 @@ exports.telegramBot = functions
       return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
-    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
+    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest|ozet)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
     if (cmd) {
       const chat = msg.chat || {};
       const isGroup = chat.type === 'group' || chat.type === 'supergroup';
@@ -1554,7 +1559,8 @@ exports.telegramBot = functions
       if (saved !== String(chat.id)) { await tg(T, 'sendMessage', { chat_id: chat.id, text: 'ℹ️ Önce bu grubu kaydedin: /grup' }); return res.status(200).send('OK'); }
       try {
         const A = require('./atama');
-        if (cmd.toLowerCase() === 'mailtest') await require('./gelenmail').processInbox({ db: cfg.db, test: true, chatId: chat.id }); // ASCII komut adı
+        if (cmd.toLowerCase() === 'ozet') { const r = await require('./ozet').sendOzet({ db: cfg.db, force: true }); await tg(T, 'sendMessage', { chat_id: chat.id, text: r.ok ? `📊 Haftalık özet maili gönderildi: ${r.to}\n${r.hata} hata · ${r.islem} işlem (son 7 gün)` : `❌ Özet gönderilemedi: ${r.error}` }); }
+        else if (cmd.toLowerCase() === 'mailtest') await require('./gelenmail').processInbox({ db: cfg.db, test: true, chatId: chat.id }); // ASCII komut adı
         else if (/^bug/i.test(cmd)) await A.announceTodo({ db: cfg.db, token: T, chatId: chat.id });
         else {
           const n = await A.announceAtama({ db: cfg.db, token: T, chatId: chat.id });
@@ -1700,6 +1706,7 @@ exports.telegramBot = functions
       } catch {}
     }
   }
+  await flushErrors(); // bekleyen hata kayıtları yazılsın
   return res.status(200).send('OK');
 });
 
@@ -1762,4 +1769,5 @@ exports.vizeAtamaDuyuru = require('./atama').vizeAtamaDuyuru;
 exports.vizeAtamaDuyuruAksam = require('./atama').vizeAtamaDuyuruAksam;
 exports.vizeEvrakMail = require('./evrakmail').vizeEvrakMail; // Atama Bekliyor → evrak maili; randevu → süreli evrak maili (15 dk'da bir)
 exports.vizeGelenMail = require('./gelenmail').vizeGelenMail; // vize@ gelen kutusu: iDATA randevu maili → başvuru, müşteri maili → bildirim (15 dk'da bir)
+exports.haftalikOzet = require('./ozet').haftalikOzet; // pazartesi 09:10 haftalık sistem özeti maili (hatalar + işlemler)
 exports.duyuruGor = require('./duyurugor').duyuruGor; // linkteki duyurunun görülme / tıklanma kaydı

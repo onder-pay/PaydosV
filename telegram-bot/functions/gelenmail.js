@@ -168,6 +168,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   try { box = await fetchMails({ host, port, user, pass }, test ? { testLast: 5 } : { lastUid: st.lastUid, uidValidity: st.uidValidity }); }
   catch (e) {
     res.hata = e.message || String(e);
+    if (!test) { const { logError, flushErrors } = require('./syslog'); logError('gelenmail', `Gelen kutusu okunamadı: ${res.hata}`, db); await flushErrors(); }
     // Aynı hata her 15 dakikada gruba yazılmasın: günde bir kez
     if (test) await notify(settings.telegramBotToken, target, `🧪 ❌ Gelen kutusuna bağlanılamadı (${esc(user)} @ ${esc(host)}:${port}): ${esc(res.hata)}`);
     else if (st.hataGun !== istDate()) {
@@ -250,6 +251,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
     } catch (e) { console.warn('[gelenmail] mail işlenemedi uid', m.uid, e.message); }
   }
 
+  if (!test && res.eslesmeyen) { const { logError, flushErrors } = require('./syslog'); logError('gelenmail', `iDATA randevusu başvuruyla eşleşmedi (${res.eslesmeyen} randevu)`, db); await flushErrors(); }
   if (test) {
     const head = `🧪 <b>TEST — hiçbir şey kaydedilmedi, müşteriye mail gitmedi</b>\n✅ Bağlantı tamam: ${esc(user)} (kutuda ${box.toplam ?? '?'} mail, son ${box.mails.length} tanesi okundu)\nOtomatik okuma: ${cfg.on === true ? 'AÇIK' : 'KAPALI'} · Randevu maili: ${randevuMailOn ? 'AÇIK' : 'KAPALI'}`;
     await notify(settings.telegramBotToken, target, `${head}\n\n${lines.length ? lines.join('\n\n') : 'Son maillerde işlenecek bir şey yok.'}`);

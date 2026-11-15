@@ -44,6 +44,21 @@ export const logActivity = async (action, modul, detay, user, extra = {}) => {
   } catch (e) { /* log yazımı akışı bozmaz */ }
 };
 
+// SİSTEM HATA KAYDI — ekranda çıkan hata bildirimleri ve yakalanmamış program hataları işlem loguna (action: 'error') yazılır;
+// bot haftalık özet mailinde bunları sayar. kaynak: 'ekran' (hata bildirimi) | 'js' (program hatası).
+// Aynı mesaj oturumda bir kez, oturum başına en çok 40 kayıt — hata döngüsü logu doldurmasın.
+const _errSeen = new Set();
+export const logError = (kaynak, mesaj) => {
+  try {
+    const detay = String(mesaj || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+    if (!detay || _errSeen.has(detay) || _errSeen.size >= 40 || !auth.currentUser) return;
+    _errSeen.add(detay);
+    const id = generateUniqueId();
+    setDoc(doc(db, 'activity_logs', id), { id, action: 'error', modul: 'Sistem', detay, kaynak,
+      userName: auth.currentUser.displayName || auth.currentUser.email || 'Bilinmiyor', userEmail: auth.currentUser.email || '', time: new Date().toISOString() }).catch(() => {});
+  } catch (e) { /* kayıt yazımı akışı bozmaz */ }
+};
+
 // Vize Evrak yükleme linki (Firebase fonksiyonu vizeEvrakLink): başvuru için Vize Evrak kaydı açar, linki başvuruya yazar ve döner
 export const VIZE_EVRAK_TIPLER = [
   { id: 'sirket_sahibi_ortagi', ad: 'Şirket Sahibi / Ortağı / Şahsi İş Yeri Sahibi' },
