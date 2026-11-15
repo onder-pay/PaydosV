@@ -692,15 +692,15 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   // Vize Evrak yükleme linki: sunucu Vize Evrak kaydını açar, linki başvuruya yazar; yerel listeye de işlenir
   const [evrakLinkBusy, setEvrakLinkBusy] = useState(false);
   const [detailTip, setDetailTip] = useState('');
-  const copyEvrakLink = (link) => navigator.clipboard?.writeText(link).then(() => showToast?.('Evrak linki kopyalandı', 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
+  const copyEvrakLink = (link) => navigator.clipboard?.writeText(link).then(() => showToast?.('Vize evrak linki kopyalandı', 'success')).catch(() => showToast?.('Kopyalanamadı', 'error'));
   const createEvrakLink = async (docId, tipId) => {
     setEvrakLinkBusy(true);
     try {
       const link = await vizeEvrakLinkCall({ visaId: docId, tipId });
       setVisaApplications(prev => prev.map(v => (v._docId || String(v.id)) === String(docId) ? { ...v, evrakLink: link, evrakTip: tipId } : v));
-      showToast?.('🔗 Evrak yükleme linki oluşturuldu', 'success');
+      showToast?.('🔗 Vize evrak linki oluşturuldu', 'success');
       return link;
-    } catch (e) { showToast?.('Evrak linki oluşturulamadı: ' + e.message, 'error'); return ''; }
+    } catch (e) { showToast?.('Vize evrak linki oluşturulamadı: ' + e.message, 'error'); return ''; }
     finally { setEvrakLinkBusy(false); }
   };
 
@@ -1141,7 +1141,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
                 return (
               <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>🔗 Evrak yükleme linki (Vize Evrak)</label>
+                <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>🔗 Vize evrak linki</label>
                 {isSch && !formData.evrakLink && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
                     <select value={formData.evrakTip || ''} onChange={e => setFormData({ ...formData, evrakTip: e.target.value })} style={{ ...fld, flex: '1 1 220px', width: 'auto' }}>
@@ -2096,7 +2096,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 if (!link && !isSch) return null;
                 return (
                 <div style={{ background: 'rgba(20,184,166,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(20,184,166,0.2)' }}>
-                  <p style={{ margin: 0, fontSize: '10px', color: '#14b8a6' }}>🔗 Evrak yükleme linki (Vize Evrak)</p>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#14b8a6' }}>🔗 Vize evrak linki</p>
                   {link ? (
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                       <a href={link} target="_blank" rel="noopener noreferrer" style={{ flex: '1 1 200px', fontSize: '12px', color: '#5eead4', wordBreak: 'break-all' }}>{link}</a>
