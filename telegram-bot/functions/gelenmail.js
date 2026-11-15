@@ -1,0 +1,231 @@
+// ===== Vize: gelen kutusunu okuma (vize@paydostur.com) =====
+// 15 dakikada bir IMAP ile gelen kutusuna bakar. Mailler SİLİNMEZ, okundu işaretlenmez.
+// 1) iDATA randevu maili (gönderen idata.com.tr): tablodaki AD SOYAD / PNR / OFİS / RANDEVU TARİHİ okunur.
+//    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır; eşleşmezse yalnız gruba haber verilir.
+//    (Randevu yazılınca süreli evrak maili evrakmail.js tarafından ayrıca gider.)
+// 2) Müşteriden gelen mail: gönderen adresi CRM'deki müşteri e-postasıyla eşleşirse gruba "mail geldi" bildirimi. Ek KAYDEDİLMEZ.
+// 3) Tanınmayan gönderen: yalnız bildirilir. Otomatik/toplu mailler (noreply, bülten) sessizce geçilir.
+// Ayar: app_settings/main.imapVisa = { on, host, port } — kullanıcı/şifre Vize SMTP'den (smtpVisa) alınır.
+// İlk çalışmada kutudaki eski mailler işlenmez; yalnız o andan sonra gelenler okunur.
+// Okuma konumu bot_state/imapVisa'da durur (app_settings/main'i CRM bütün olarak yazdığı için orada tutulmaz — eski konumla ezilirdi).
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const fetch = require('node-fetch');
+if (!admin.apps.length) admin.initializeApp();
+const { getFirestore } = require('firebase-admin/firestore');
+const { normTr, titleCaseTr, normEmail, dmy } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
+
+const TZ = 'Europe/Istanbul';
+const MAX_PER_RUN = 25;
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const closed = (v) => /onay|red|iptal/.test(normTr(v.status));
+const istDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+
+// ---- iDATA randevu maili ----
+const stripTags = (s) => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/\s+/g, ' ').trim();
+const DATE_RE = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/;
+const TIME_RE = /(\d{1,2}):(\d{2})/;
+const PNR_RE = /^(?=.*\d)(?=.*[A-Z])[A-Z0-9]{6,16}$/;
+
+const rowFromCells = (cells) => {
+  const pi = cells.findIndex(c => PNR_RE.test(c));
+  const di = cells.findIndex(c => DATE_RE.test(c));
+  if (pi < 1 || di < 0 || di <= pi) return null;
+  const dm = DATE_RE.exec(cells[di]);
+  const tm = TIME_RE.exec(cells.slice(di).join(' ').replace(DATE_RE, ' '));
+  const mid = cells.slice(pi + 1, di);
+  const name = cells.slice(0, pi).join(' ').replace(/\s+/g, ' ').trim();
+  if (name.length < 3 || /\d/.test(name)) return null;
+  return {
+    name, pnr: cells[pi], purpose: mid[0] || '', office: mid[1] || '', serviceType: mid[2] || '',
+    appointmentDate: `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`,
+    appointmentTime: tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '',
+  };
+};
+
+// Döner: [{ name, pnr, purpose, office, serviceType, appointmentDate (YYYY-AA-GG), appointmentTime }]
+const parseIdataMail = ({ html, text } = {}) => {
+  const rows = [];
+  const add = (r) => { if (r && !rows.some(x => x.pnr === r.pnr)) rows.push(r); };
+  // 1) HTML tablo satırları
+  for (const tr of String(html || '').match(/<tr[\s\S]*?<\/tr>/gi) || []) {
+    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map(stripTags).filter(Boolean);
+    if (cells.length >= 4) add(rowFromCells(cells));
+  }
+  if (rows.length) return rows;
+  // 2) Düz metin: başlık satırından sonraki hücreler (sekme / satır / 2+ boşlukla ayrılmış)
+  const t = String(text || '');
+  const m = /RANDEVU\s+TAR[İI]H[İI]/.exec(t.toLocaleUpperCase('tr-TR')); // görüntülenen başlık; eşleşme konumu için
+  if (!m) return rows;
+  const cells = t.slice(m.index + m[0].length).split(/\t|\r?\n|\s{2,}/).map(s => s.trim()).filter(Boolean);
+  let buf = [];
+  for (const c of cells) {
+    if (/^(secilen|randevunuzu|sayin)/.test(normTr(c))) break;
+    buf.push(c);
+    if (DATE_RE.test(c)) {
+      if (!TIME_RE.test(c.replace(DATE_RE, ' '))) continue; // saat ayrı hücrede olabilir
+      add(rowFromCells(buf)); buf = [];
+    } else if (/^\d{1,2}:\d{2}$/.test(c) && buf.some(x => DATE_RE.test(x))) { add(rowFromCells(buf)); buf = []; }
+  }
+  if (buf.length) add(rowFromCells(buf));
+  return rows;
+};
+
+const nameKey = (s) => normTr(s).split(/\s+/).filter(Boolean).sort().join(' ');
+// İsim birebir (kelime sırası serbest) + ülke uyumlu + kapanmamış başvurular
+const matchVisas = (row, visas) => {
+  const samePnr = visas.filter(v => v.pnr && String(v.pnr).trim().toUpperCase() === row.pnr);
+  if (samePnr.length === 1) return samePnr;
+  const key = nameKey(row.name);
+  const purpose = normTr(row.purpose);
+  return visas.filter(v => !closed(v) && nameKey(v.customerName) === key && (!v.country || !purpose || purpose.includes(normTr(v.country)) || normTr(v.country).includes(purpose.split(/\s*-\s*/)[0])));
+};
+
+// ---- Gönderen sınıflandırma ----
+const isIdataSender = (addr) => /(^|[@.])idata\.com\.tr$/.test(addr);
+const isAutoMail = (m) => /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
+  || !!m.listUnsubscribe || /bulk|junk|list/.test(String(m.precedence || '')) || (m.autoSubmitted && !/^no$/i.test(m.autoSubmitted));
+
+// ---- IMAP ----
+// Döner: { uidValidity, lastUid, mails: [{ uid, from, fromName, subject, text, html, attachments:[{filename,size}], ... }] }
+const fetchInbox = async ({ host, port, user, pass }, state) => {
+  const { ImapFlow } = require('imapflow');
+  const { simpleParser } = require('mailparser');
+  const client = new ImapFlow({ host, port, secure: port === 993, auth: { user, pass }, logger: false });
+  await client.connect();
+  const out = { uidValidity: '', lastUid: 0, mails: [] };
+  try {
+    const lock = await client.getMailboxLock('INBOX', { readOnly: true });
+    try {
+      out.uidValidity = String(client.mailbox.uidValidity);
+      const newest = Number(client.mailbox.uidNext) - 1;
+      const fresh = !state.lastUid || String(state.uidValidity || '') !== out.uidValidity;
+      if (fresh) { out.lastUid = newest; return out; } // ilk kurulum: eskiler işlenmez
+      out.lastUid = Number(state.lastUid);
+      if (newest <= out.lastUid) return out;
+      const uids = [];
+      for await (const msg of client.fetch(`${out.lastUid + 1}:*`, { uid: true }, { uid: true })) if (msg.uid > out.lastUid) uids.push(msg.uid);
+      uids.sort((a, b) => a - b);
+      for (const uid of uids.slice(0, MAX_PER_RUN)) {
+        const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
+        out.lastUid = uid;
+        if (!msg || !msg.source) continue;
+        const p = await simpleParser(msg.source);
+        const f = (p.from && p.from.value && p.from.value[0]) || {};
+        out.mails.push({
+          uid, from: normEmail(f.address), fromName: f.name || '', subject: p.subject || '', text: p.text || '', html: typeof p.html === 'string' ? p.html : '',
+          attachments: (p.attachments || []).filter(a => a.contentDisposition !== 'inline').map(a => ({ filename: a.filename || 'ek', size: a.size || 0 })),
+          listUnsubscribe: p.headers.get('list-unsubscribe'), precedence: p.headers.get('precedence'), autoSubmitted: p.headers.get('auto-submitted'),
+        });
+      }
+    } finally { lock.release(); }
+  } finally { try { await client.logout(); } catch { /* bağlantı zaten kapalı */ } }
+  return out;
+};
+
+const tg = async (token, chatId, text) => {
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), parse_mode: 'HTML', disable_web_page_preview: true }) });
+  } catch (e) { console.warn('[gelenmail] telegram:', e.message); }
+};
+
+// Döner: { okunan, randevu, eslesmeyen, musteri, taninmayan, atlanan, hata }
+const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg } = {}) => {
+  const settingsRef = db.collection('app_settings').doc('main');
+  const settings = (await settingsRef.get()).data() || {};
+  const cfg = settings.imapVisa || {};
+  const smtp = settings.smtpVisa || {};
+  const stateRef = db.collection('bot_state').doc('imapVisa');
+  const st = (await stateRef.get()).data() || {};
+  const res = { okunan: 0, randevu: 0, eslesmeyen: 0, musteri: 0, taninmayan: 0, atlanan: 0, hata: '' };
+  if (cfg.on !== true) return res;
+  const host = String(cfg.host || '').trim();
+  const user = String(cfg.user || smtp.user || '').trim();
+  const pass = String(cfg.pass || smtp.pass || '');
+  const port = parseInt(String(cfg.port || '993').trim(), 10) || 993;
+  if (!host || !user || !pass) { console.log('[gelenmail] IMAP ayarı eksik (Ayarlar → Vize mail → Gelen kutusu)'); return res; }
+
+  let box;
+  try { box = await fetchMails({ host, port, user, pass }, { lastUid: st.lastUid, uidValidity: st.uidValidity }); }
+  catch (e) {
+    res.hata = e.message || String(e);
+    // Aynı hata her 15 dakikada gruba yazılmasın: günde bir kez
+    if (st.hataGun !== istDate()) {
+      await stateRef.set({ hataGun: istDate() }, { merge: true });
+      await notify(settings.telegramBotToken, settings.telegramVizeGrupId, `❌ Gelen kutusu okunamadı (${esc(user)}): ${esc(res.hata)}\nAyarlar → Vize mail → Gelen kutusu bilgilerini kontrol edin.`);
+    }
+    return res;
+  }
+
+  const lines = [];
+  let visas = null;
+  const loadVisas = async () => {
+    if (!visas) visas = (await db.collection('visa_applications').get()).docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+    return visas;
+  };
+  const custByEmail = async (addr) => {
+    if (!addr) return null;
+    const s = await db.collection('customers').where('email', '==', addr).limit(1).get();
+    if (!s.empty) { const c = s.docs[0].data(); return titleCaseTr(`${c.firstName || ''} ${c.lastName || ''}`.trim()); }
+    const v = await db.collection('visa_applications').where('customerEmail', '==', addr).limit(1).get();
+    return v.empty ? null : titleCaseTr(v.docs[0].data().customerName || '');
+  };
+  const now = new Date().toISOString();
+
+  for (const m of box.mails) {
+    res.okunan++;
+    try {
+      const rows = parseIdataMail(m);
+      if (rows.length) {
+        const trusted = isIdataSender(m.from);
+        for (const row of rows) {
+          const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}</b>, PNR <code>${esc(row.pnr)}</code>`;
+          const hits = matchVisas(row, await loadVisas());
+          if (trusted && hits.length === 1) {
+            const v = hits[0];
+            const old = v.appointmentDate && (String(v.appointmentDate).slice(0, 10) !== row.appointmentDate || (v.appointmentTime || '') !== row.appointmentTime)
+              ? ` (önceki: ${dmy(String(v.appointmentDate).slice(0, 10))}${v.appointmentTime ? ` ${v.appointmentTime}` : ''})` : '';
+            const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now };
+            if (row.office) patch.idataOffice = row.office;
+            if (!v.processor) patch.processor = 'İdata';
+            await v.ref.set(patch, { merge: true });
+            Object.assign(v, patch);
+            res.randevu++;
+            lines.push(`📅 <b>${esc(titleCaseTr(v.customerName))}</b> randevusu başvuruya işlendi${old}\n${info}`);
+          } else {
+            res.eslesmeyen++;
+            const why = !trusted ? 'mail iDATA adresinden gelmedi (iletilmiş olabilir)' : hits.length ? `${hits.length} başvuru eşleşti` : 'eşleşen açık başvuru yok';
+            lines.push(`⚠️ <b>${esc(titleCaseTr(row.name))}</b> iDATA randevusu — ${why}, elle girin\n${info}`);
+          }
+        }
+        continue;
+      }
+      if (isAutoMail(m)) { res.atlanan++; continue; }
+      const ek = m.attachments.length ? `, ${m.attachments.length} ek` : '';
+      const konu = esc((m.subject || '(konu yok)').slice(0, 120));
+      const who = await custByEmail(m.from);
+      if (who) { res.musteri++; lines.push(`📩 <b>${esc(who)}</b> mail gönderdi: ${konu}${ek}`); }
+      else { res.taninmayan++; lines.push(`✉️ Tanınmayan gönderen ${esc(m.fromName ? `${m.fromName} ` : '')}&lt;${esc(m.from)}&gt;: ${konu}${ek}`); }
+    } catch (e) { console.warn('[gelenmail] mail işlenemedi uid', m.uid, e.message); }
+  }
+
+  await stateRef.set({ lastUid: box.lastUid, uidValidity: box.uidValidity, sonOkuma: now, hataGun: '' }, { merge: true });
+  if (lines.length) await notify(settings.telegramBotToken, settings.telegramVizeGrupId, `📬 <b>${esc(user)}</b>\n\n${lines.join('\n\n')}`);
+  return res;
+};
+
+exports.parseIdataMail = parseIdataMail;
+exports.matchVisas = matchVisas;
+exports.processInbox = processInbox;
+
+exports.vizeGelenMail = functions
+  .region('europe-west1')
+  .runWith({ timeoutSeconds: 120, memory: '512MB' })
+  .pubsub.schedule('5-59/15 8-20 * * *').timeZone(TZ)
+  .onRun(async () => {
+    const r = await processInbox({ db: getFirestore('paydos') });
+    console.log('[gelenmail]', JSON.stringify(r));
+    return null;
+  });

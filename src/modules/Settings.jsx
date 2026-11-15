@@ -346,6 +346,35 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         ); })}
       </div>
 
+      {(() => { const im = appSettings?.imapVisa || {}; const on = im.on === true; const setIm = (patch) => setAppSettings({ ...appSettings, imapVisa: { ...im, ...patch } });
+        const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' };
+        return (
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📬 Gelen Kutusunu Oku <span style={{ fontSize: '11px', color: on ? '#14b8a6' : '#ef4444', marginLeft: '6px' }}>{on ? 'AÇIK' : 'KAPALI'}</span></h3>
+          <div onClick={() => setIm({ on: !on })}
+            style={{ width: '48px', height: '26px', borderRadius: '13px', cursor: 'pointer', background: on ? '#14b8a6' : 'rgba(255,255,255,0.1)', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+            <div style={{ position: 'absolute', top: '3px', left: on ? '25px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+          </div>
+        </div>
+        <p style={{ margin: '6px 0 12px', fontSize: '12px', color: '#64748b' }}>
+          15 dakikada bir vize posta kutusuna bakılır (08:00–21:00). iDATA randevu maili gelince randevu tarihi, saati ve PNR başvuruya yazılır; isim tek bir açık başvuruyla birebir eşleşmezse yalnız Telegram vize grubuna haber verilir.
+          Müşteriden gelen mail de gruba bildirilir. Mailler silinmez, okundu işaretlenmez, ekler kaydedilmez. Kullanıcı ve şifre Vize SMTP'den alınır. Açıldığı andan önceki mailler işlenmez.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', maxWidth: '380px' }}>
+          <div style={{ flex: '1 1 220px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>IMAP Sunucu (host)</label>
+            <input type="text" value={im.host || ''} onChange={e => setIm({ host: e.target.value.trim() })} placeholder="imap.sirketemail.com" style={inp} />
+          </div>
+          <div style={{ flex: '0 0 90px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Port</label>
+            <input type="text" value={im.port || ''} onChange={e => setIm({ port: e.target.value.replace(/\D/g, '') })} placeholder="993" style={inp} />
+          </div>
+        </div>
+        {on && !im.host && <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#f59e0b' }}>⚠️ IMAP sunucusu girilmeden okuma başlamaz.</p>}
+      </div>
+        ); })()}
+
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#e8f1f8' }}>✉️ Vize Türü Bazlı Mail Şablonları</h3>
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
