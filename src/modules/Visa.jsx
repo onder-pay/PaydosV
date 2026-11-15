@@ -18,6 +18,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const [activeTab, setActiveTab] = useState('calendar');
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState('search');
+  const [typeOpen, setTypeOpen] = useState(false); // detay sayfasında vize türü listesi açık mı (seçiliyken tek satır görünür)
   const [searchQuery, setSearchQuery] = useState('');
   const [visaSearchQuery, setVisaSearchQuery] = useState('');
   const [visaStatusFilter, setVisaStatusFilter] = useState('all');
@@ -414,7 +415,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const month2Days = getMonthDays(month2Year, month2Month);
 
   const resetForm = () => {
-    setFormStep('search');
+    setFormStep('search'); setTypeOpen(false);
     setSearchQuery('');
     setSelectedCustomer(null);
     setRelinkQ('');
@@ -505,7 +506,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 
   const selectCategory = (cat) => {
     setSelectedCategory(cat);
-    setFormStep('details');
+    setFormStep('details'); setTypeOpen(false);
     const today = new Date().toISOString().split('T')[0];
     setFormData({
       customerId: selectedCustomer.id,
@@ -792,7 +793,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     setSelectedCategory(cat);
     setFormData(visa);
     setEditingVisa(visa);
-    setFormStep('details');
+    setFormStep('details'); setTypeOpen(false);
     setShowForm(true);
   };
 
@@ -1167,7 +1168,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               })()}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Yeni başvuruda önce yalnız vize türü seçilir; seçilince detaylar açılır (tür tek satırda, "Değiştir" ile liste) */}
+            <style>{'.visa-pick-only > *:not(:first-child) { display: none !important; }'}</style>
+            <div className={!editingVisa && !formData.visaDuration && (appSettings?.visaDurations?.[selectedCategory.id] || []).length > 0 ? 'visa-pick-only' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Vize Türü — Ayarlardan Otomatik */}
               {(() => {
                 const cat = selectedCategory.id; // 'schengen', 'usa' vs
@@ -1177,10 +1180,25 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <p style={{ margin: 0, fontSize: '12px', color: '#f59e0b' }}>⚠️ Henüz vize türü eklenmemiş. Ayarlar → Vize Türleri ve Fiyatları bölümünden ekleyin.</p>
                   </div>
                 );
+                const cur = types.find(d => (typeof d === 'string' ? d : d.name) === formData.visaDuration);
+                // Tür seçiliyken tek satır + Değiştir
+                if (formData.visaDuration && !typeOpen) return (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Vize Türü *</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: `${selectedCategory.color}25`, border: `2px solid ${selectedCategory.color}`, borderRadius: '10px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: selectedCategory.color }}>{selectedCategory.icon} {formData.visaDuration}</div>
+                        {cur && typeof cur === 'object' && cur.price > 0 && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{cur.price} {cur.currency || '€'}</div>}
+                      </div>
+                      <button type="button" onClick={() => setTypeOpen(true)} style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#e8f1f8', cursor: 'pointer', fontSize: '12px', fontWeight: '600', flexShrink: 0 }}>✏️ Değiştir</button>
+                    </div>
+                  </div>
+                );
                 return (
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
-                      Vize Türü * {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}
+                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+                      <span>{formData.visaDuration ? 'Vize Türü *' : 'Vize türünü seçin *'} {formData.visaDuration && <span style={{ color: selectedCategory.color }}>✓ {formData.visaDuration}</span>}</span>
+                      {formData.visaDuration && <button type="button" onClick={() => setTypeOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>Kapat</button>}
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                       {types.map((d, idx) => {
@@ -1192,9 +1210,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency,
+                            onClick={() => { setTypeOpen(false); setFormData({ ...formData, visaDuration: name, visaPrice: price, visaCurrency: currency,
                               // Yeni başvuruda tür seçilince o türe özel varsayılan maliyetler gelir; mevcut başvurunun maliyetine dokunulmaz
-                              ...(!editingVisa ? { costs: getVisaCostDefaults(appSettings, selectedCategory.id, name) } : {}) })}
+                              ...(!editingVisa ? { costs: getVisaCostDefaults(appSettings, selectedCategory.id, name) } : {}) }); }}
                             style={{
                               padding: '12px 10px', textAlign: 'left',
                               background: selected ? `${selectedCategory.color}25` : 'rgba(255,255,255,0.05)',
@@ -1533,13 +1551,13 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               })()}
             </div>
 
-            <LoadingButton 
+            {(editingVisa || formData.visaDuration || (appSettings?.visaDurations?.[selectedCategory.id] || []).length === 0) && <LoadingButton 
               onClick={handleSubmit} 
               loading={saving}
               style={{ width: '100%', marginTop: '18px', padding: '15px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}
             >
               {editingVisa ? '💾 Değişiklikleri Kaydet' : '✅ Başvuruyu Kaydet'}
-            </LoadingButton>
+            </LoadingButton>}
 
             {editingVisa && (
               <div style={{ textAlign: 'center', marginTop: '14px' }}>
