@@ -304,9 +304,12 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {sureli_evraklar}
 
+{suresiz_evraklar}
+
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  sureli: `Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+  sureli: `SÜRELİ EVRAKLAR
+Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
 
 • SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
 • Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
@@ -316,4 +319,5 @@ Paydos Turizm`,
 • Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
 
 Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };

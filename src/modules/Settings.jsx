@@ -378,24 +378,25 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         ); })()}
 
       {(() => { const tp = appSettings?.randevuMailTemplate || {}; const D = RANDEVU_MAIL_DEFAULT; const has = (x) => !!String(x || '').trim();
-        const custom = has(tp.subject) || has(tp.body) || has(tp.sureli);
-        const subject = has(tp.subject) ? tp.subject : D.subject, body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli;
-        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { subject, body, sureli, ...patch } });
+        const custom = has(tp.subject) || has(tp.body) || has(tp.sureli) || has(tp.suresiz);
+        const subject = has(tp.subject) ? tp.subject : D.subject, body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli, suresiz = tp.suresiz || '';
+        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { subject, body, sureli, suresiz, ...patch } });
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
         const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
         // Önizleme: botla aynı kurallar, örnek bilgilerle (Schengen, ticari değil)
         const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026' };
-        const sureliTxt = sureli.split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
-        const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt };
-        const fill = (x) => String(x).replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar)\}/g, (m, k) => sample[k]);
+        const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+        const sureliTxt = blockTxt(sureli), suresizTxt = blockTxt(suresiz);
+        const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt, suresiz_evraklar: suresizTxt };
+        const fill = (x) => String(x).replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar)\}/g, (m, k) => sample[k]).replace(/\n{3,}/g, '\n\n');
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📅 Randevu Maili Şablonu <span style={{ fontSize: '11px', color: custom ? '#f59e0b' : '#64748b', marginLeft: '6px' }}>{custom ? 'DÜZENLENDİ' : 'VARSAYILAN'}</span></h3>
-          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { subject: '', body: '', sureli: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
+          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { subject: '', body: '', sureli: '', suresiz: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
         </div>
         <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
-          Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{sureli_evraklar}'}</code>.
+          Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{sureli_evraklar}'}</code> <code>{'{suresiz_evraklar}'}</code>.
           Değeri boş gelen alanın satırı (ör. PNR girilmediyse "PNR: {'{pnr}'}") mailden çıkarılır.
         </p>
         <label style={lbl}>Konu</label>
@@ -408,6 +409,8 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
           Randevuya göre hesaplanan tarihler: <code>{'{on_dort_gun}'}</code> (14 gün kuralı), <code>{'{uc_ay}'}</code>, <code>{'{alti_ay}'}</code>, <code>{'{son_gun}'}</code> (randevudan bir gün önce).
           Başına <code>[ticari]</code> yazılan satır yalnız ticari / fuar vizesinde çıkar.
         </p>
+        <label style={lbl}>Süresiz evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{suresiz_evraklar}'} yerine konur (boş bırakılırsa mailde yer almaz)</label>
+        <textarea value={suresiz} onChange={e => setTp({ suresiz: e.target.value })} rows={8} placeholder={'SÜRESİZ EVRAKLAR\n• Pasaport\n• …\n[ticari] • yalnız ticari vizede çıkacak satır'} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ marginTop: '12px', fontSize: '11px', color: '#94a3b8' }}>Önizleme (örnek Schengen başvurusu)</div>
         <div style={{ marginTop: '4px', padding: '12px 14px', background: '#ffffff', borderRadius: '8px', color: '#1f2937', fontSize: '13px' }}>
           <div style={{ fontWeight: '700', marginBottom: '8px' }}>{fill(subject)}</div>

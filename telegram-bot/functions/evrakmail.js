@@ -62,7 +62,7 @@ const buildTemplateMail = (v, cust, settings) => {
 // 2. aşama: randevu maili — randevu bilgisi (tarih, saat, ofis, PNR) + Schengen'de süreli evraklar, TEK mailde.
 // Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { subject, body, sureli }); boş alan varsayılana düşer.
 // Varsayılanlar CRM src/lib/data.js RANDEVU_MAIL_DEFAULT ile birebir aynı olmalı.
-// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar}; süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
+// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen); süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
 // Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
 const RANDEVU_MAIL_DEFAULT = {
   subject: '{ulke} vize randevunuz — {tarih} {saat}',
@@ -79,9 +79,12 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {sureli_evraklar}
 
+{suresiz_evraklar}
+
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  sureli: `Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
+  sureli: `SÜRELİ EVRAKLAR
+Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
 
 • SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
 • Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
@@ -91,6 +94,7 @@ Paydos Turizm`,
 • Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
 
 Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const pick = (x, def) => (String(x || '').trim() ? String(x) : def);
@@ -103,15 +107,17 @@ const buildRandevuMail = (v, cust, today, tpl) => {
     on_dort_gun: from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`,
     uc_ay: trDate(addMonths(appt, -3)), alti_ay: trDate(addMonths(appt, -6)), son_gun: trDate(addDays(appt, -1)),
   };
-  const sureli = !isSchengen(v) ? '' : pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli).replace(/\r\n/g, '\n').split('\n')
+  const block = (x) => !isSchengen(v) ? '' : String(x || '').replace(/\r\n/g, '\n').split('\n')
     .filter(l => ticari || !/^\s*\[ticari\]/.test(l)).map(l => l.replace(/^\s*\[ticari\]\s*/, ''))
     .join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+  const sureli = block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli));
+  const suresiz = block(tpl?.suresiz);
   const office = String(v.idataOffice || '').trim();
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
-    ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli,
+    ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz,
   };
-  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar)\}/g;
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
   const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
   const text = pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body).replace(/\r\n/g, '\n').split('\n')
