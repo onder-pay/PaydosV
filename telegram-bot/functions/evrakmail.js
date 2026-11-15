@@ -29,11 +29,13 @@ const addMonths = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTC
 const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 const closed = (v) => /onay|red|iptal/.test(normTr(v.status)); // 'IPTAL' tr-lower'da 'ıptal' olurdu
 
+// Vize işlemlerinin acente adresi (CRM data.js VISA_EMAIL ile aynı): yanıt adresi ve alt bilgi
+const VISA_EMAIL = 'vize@paydostur.com';
 // CRM'deki mailHtml ile aynı görünüm
 const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
 <div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
 <pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
-<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com · <a href="mailto:${VISA_EMAIL}" style="color:#6b7280">${VISA_EMAIL}</a></div></div></div>`;
 
 const custName = (v, cust) => titleTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
 
@@ -103,7 +105,7 @@ const sendMail = async (smtp, { to, subject, text, html, attachments }) => {
     } catch (e) { console.warn('[evrakmail] ek indirilemedi:', a.filename, e.message); }
   }
   const from = validEmail(smtp.from) ? smtp.from.trim() : smtp.user.trim();
-  return transporter.sendMail({ from, to, subject, text, html, attachments: files.length ? files : undefined });
+  return transporter.sendMail({ from, to, replyTo: VISA_EMAIL, subject, text, html, attachments: files.length ? files : undefined });
 };
 
 const tg = async (token, chatId, text) => {

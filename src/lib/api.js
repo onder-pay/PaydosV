@@ -15,10 +15,11 @@ export const claudeRequest = async ({ headers = {}, ...opts }) => {
 // Müşteri maillerinin gövdesi — beyaz kart + üstte Paydos logosu. Mail istemcileri göreli yolu çözemez, adres tam olmalı.
 export const MAIL_LOGO_URL = 'https://crm.paydostur.com/icons/paydos-wordmark.png';
 
-export const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+// contact: alt bilgide gösterilecek e-posta (vize maillerinde vize@paydostur.com)
+export const mailHtml = (bodyText, contact = '') => `<div style="background:#f4f5f7;padding:24px 12px"><div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
 <div style="padding:18px 24px;border-bottom:3px solid #FF4141"><img src="${MAIL_LOGO_URL}" alt="Paydos Turizm" width="150" height="58" style="display:block;width:150px;height:58px;border:0"></div>
 <pre style="margin:0;padding:22px 24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;">${bodyText}</pre>
-<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com</div></div></div>`;
+<div style="padding:12px 24px;background:#fafafa;border-top:1px solid #eee;font-family:Arial,sans-serif;font-size:11px;color:#6b7280">Paydos Turizm · 0 258 263 71 76 · www.paydostur.com${contact ? ` · <a href="mailto:${contact}" style="color:#6b7280">${contact}</a>` : ''}</div></div></div>`;
 
 export const sendMailRequest = async ({ headers = {}, ...opts }) => {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';

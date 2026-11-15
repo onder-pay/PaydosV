@@ -10,7 +10,7 @@ import { formatDate, formatWhatsAppPhone, generateUniqueId, safeParseObj, waUrl 
 import { pdfExtractPages, pdfPagesText, addCanvasPaged, loadHtml2Canvas, pdfFileText } from '../lib/pdf.js';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
 import { DEFAULT_BANK } from '../lib/banks.js';
-import { SOZLESME_SABIT, VIZE_DURUM } from '../lib/data.js';
+import { SOZLESME_SABIT, VIZE_DURUM, VISA_EMAIL } from '../lib/data.js';
 import { jsPDF } from '../lib/heavy.js';
 import { FINGERPRINT_MONTHS, fingerprintLabel } from '../lib/travel.js';
 
@@ -484,7 +484,7 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
 
     const subject = replace(template.subject || '');
     const bodyText = replace(template.body || '');
-    const html = mailHtml(bodyText);
+    const html = mailHtml(bodyText, VISA_EMAIL);
 
     // Vize türüne bağlı ekleri bul
     const allAttachments = appSettings?.attachments || [];
@@ -499,6 +499,7 @@ export async function sendVisaEmail({ visa, customer, appSettings }) {
         html,
         text: bodyText,
         attachments: linkedAttachments.map(a => ({ filename: a.name, url: a.url })),
+        replyTo: VISA_EMAIL, // müşteri "Yanıtla" deyince vize adresine gelsin (gönderen hesap farklı olsa da)
         smtp: appSettings?.smtpVisa
       })
     });
