@@ -14,6 +14,8 @@ export const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı
 
 // Vize işlemlerinin acente adresi: müşteriler buraya yazar; vize maillerinin yanıt adresi ve alt bilgisi
 export const VISA_EMAIL = 'vize@paydostur.com';
+// Vize bölümü kullanım kılavuzu (Vize ekranındaki 📖 düğmesi). Ayarlar'da appSettings.vizeKilavuzUrl ile değiştirilebilir.
+export const VIZE_KILAVUZ_URL = 'https://claude.ai/artifact/1FJjMuLbQGHNuR1RnyBAeh';
 export const FOREIGN_PASSPORT = 'Yabancı Pasaport';
 export const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)', FOREIGN_PASSPORT];
 
