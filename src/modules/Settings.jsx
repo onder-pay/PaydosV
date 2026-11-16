@@ -11,6 +11,17 @@ import { normEmail, normalizeTr, trHas } from '../lib/turkish.js';
 import { useMemo, useState } from 'react';
 
 
+// Mail eki yükleme (Firebase Storage mail-attachments/) — Dosya Ekleri sekmesi ve şablon editörü ortak kullanır
+const uploadMailAttachment = async (file) => {
+  if (file.size > 10 * 1024 * 1024) throw new Error('Dosya 10MB\'dan büyük olamaz');
+  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+  const path = `mail-attachments/${Date.now()}_${file.name}`;
+  const storageRef = ref(getStorage(), path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  return { id: Date.now().toString(), name: file.name, url, path, size: file.size, linkedTypes: [] };
+};
+
 export function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -32,17 +43,9 @@ export function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast
 
   const uploadFile = async (file) => {
     if (!file) return;
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
     setUploading(true);
     try {
-      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-      const storage = getStorage();
-      const path = `mail-attachments/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const newAtt = { id: Date.now().toString(), name: file.name, url, path, size: file.size, linkedTypes: [] };
+      const newAtt = await uploadMailAttachment(file);
       setAppSettings({ ...appSettings, attachments: [...attachments, newAtt] });
       showToast?.(`✅ ${file.name} yüklendi`, 'success');
     } catch (err) {
@@ -244,6 +247,23 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
     });
   };
 
+  // Seçili vize türünün ekleri (appSettings.attachments[].linkedTypes) — Dosya Ekleri sekmesiyle aynı kayıt
+  const [attBusy, setAttBusy] = useState(false);
+  const allAtts = appSettings?.attachments || [];
+  const typeAtts = allAtts.filter(a => a.linkedTypes?.includes(activeKey));
+  const otherAtts = allAtts.filter(a => !a.linkedTypes?.includes(activeKey));
+  const setLink = (attId, on) => setAppSettings({ ...appSettings, attachments: allAtts.map(a => a.id !== attId ? a : { ...a, linkedTypes: on ? [...new Set([...(a.linkedTypes || []), activeKey])] : (a.linkedTypes || []).filter(t => t !== activeKey) }) });
+  const uploadForType = async (file) => {
+    if (!file || !activeKey) return;
+    setAttBusy(true);
+    try {
+      const att = await uploadMailAttachment(file);
+      setAppSettings({ ...appSettings, attachments: [...allAtts, { ...att, linkedTypes: [activeKey] }] });
+      showToast?.(`📎 ${file.name} yüklendi ve ${activeKey} türüne eklendi`, 'success');
+    } catch (e) { showToast?.('Ek yüklenemedi: ' + e.message, 'error'); }
+    finally { setAttBusy(false); }
+  };
+
   const sendTest = async () => {
     if (!testEmail.trim()) return;
     setTestSending(true);
@@ -405,11 +425,11 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
         const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
         // Önizleme: botla aynı kurallar, örnek bilgilerle (Schengen, ticari değil)
-        const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026' };
-        const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+        const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026', sureli_son_tarih: '06.11.2026 Cuma', suresiz_son_tarih: '26.11.2026 Perşembe' };
+        const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
         const sureliTxt = blockTxt(sureli), suresizTxt = blockTxt(suresiz);
         const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt, suresiz_evraklar: suresizTxt, evrak_linki: 'https://vize.paydostur.com/#/yukle/örnek' };
-        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki)\}/g, (m, k) => sample[k]).replace(/\n{3,}/g, '\n\n');
+        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -428,6 +448,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <textarea value={sureli} onChange={e => setTp({ sureli: e.target.value })} rows={10} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
         <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
           Randevuya göre hesaplanan tarihler: <code>{'{on_dort_gun}'}</code> (14 gün kuralı), <code>{'{uc_ay}'}</code>, <code>{'{alti_ay}'}</code>, <code>{'{son_gun}'}</code> (randevudan bir gün önce).
+          Son teslim: <code>{'{sureli_son_tarih}'}</code> (randevu atandıktan 2 gün sonra; randevu 14 günden uzaksa randevuya 12 gün kala), <code>{'{suresiz_son_tarih}'}</code> (Atama Bekliyor'dan 10 gün sonra).
           Başına <code>[ticari]</code> yazılan satır yalnız ticari / fuar vizesinde çıkar.
         </p>
         <label style={lbl}>Süresiz evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{suresiz_evraklar}'} yerine konur (boş bırakılırsa mailde yer almaz)</label>
@@ -445,7 +466,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
           Her vize türü için ayrı şablon. Vize Ayarları'nda yeni tür eklenince burada otomatik görünür.<br/>
           Değişkenler:{" "}
-          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{evrak_linki}'].map(v => (
+          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{vize_ucreti}','{suresiz_son_tarih}','{evrak_linki}'].map(v => (
             <code key={v} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', marginRight: '4px' }}>{v}</code>
           ))}
         </p>
@@ -481,6 +502,32 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
                     <textarea value={currentTemplate.body} onChange={e => updateTemplate('body', e.target.value)} rows={14}
                       style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }} placeholder="Mail içeriği..." />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📎 Ekler — bu türün bilgilendirme mailine eklenir</label>
+                    {typeAtts.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>Bu türe bağlı dosya yok.</div>}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                      {typeAtts.map(a => (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '8px' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: '#e8f1f8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {a.name}</span>
+                          <button type="button" onClick={() => window.open(a.url, '_blank')} style={{ padding: '4px 8px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>Görüntüle</button>
+                          <button type="button" onClick={() => setLink(a.id, false)} title="Bu türden çıkar (dosya silinmez)" style={{ padding: '4px 8px', background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>Çıkar</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ padding: '8px 12px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.4)', borderRadius: '8px', color: '#c084fc', cursor: attBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                        {attBusy ? '⏳ Yükleniyor…' : '📤 Dosya yükle'}
+                        <input type="file" disabled={attBusy} style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; e.target.value = ''; uploadForType(f); }} />
+                      </label>
+                      {otherAtts.length > 0 && (
+                        <select value="" onChange={e => e.target.value && setLink(e.target.value, true)} style={{ flex: '1 1 200px', padding: '8px 10px', background: '#0a1626', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '12px' }}>
+                          <option value="">Yüklü bir dosyayı ekle…</option>
+                          {otherAtts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>PDF, Word, Excel · en fazla 10MB. Aynı dosya birden çok türe eklenebilir; tüm dosyalar Ayarlar → 📎 Dosya Ekleri'nde.</div>
                   </div>
                 </>
               ) : (

@@ -322,6 +322,6 @@ Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge 
 • Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
 • Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
 
-Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
   suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };

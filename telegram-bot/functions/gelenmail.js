@@ -7,7 +7,7 @@
 // Test: grupta /mailtest → son 5 mail okunur, ne yapılacağı yazılır; HİÇBİR ŞEY kaydedilmez, müşteriye mail gitmez
 //    (örnek randevu maili acentenin kendi adresine gider). Okuma kapalıyken de çalışır.
 // 2) Müşteriden gelen mail: gönderen adresi CRM'deki müşteri e-postasıyla eşleşirse gruba "mail geldi" bildirimi. Ek KAYDEDİLMEZ.
-// 3) Tanınmayan gönderen: yalnız bildirilir. Otomatik/toplu mailler (noreply, bülten) sessizce geçilir.
+// 3) Tanınmayan gönderen: yalnız bildirilir. Otomatik/toplu mailler (noreply, bülten) ve iDATA doğrulama kodları sessizce geçilir.
 // Ayar: app_settings/main.imapVisa = { on, host, port } — kullanıcı/şifre Vize SMTP'den (smtpVisa) alınır.
 // İlk çalışmada kutudaki eski mailler işlenmez; yalnız o andan sonra gelenler okunur.
 // Okuma konumu bot_state/imapVisa'da durur (app_settings/main'i CRM bütün olarak yazdığı için orada tutulmaz — eski konumla ezilirdi).
@@ -89,7 +89,9 @@ const matchVisas = (row, visas) => {
 
 // ---- Gönderen sınıflandırma ----
 const isIdataSender = (addr) => /(^|[@.])idata\.com\.tr$/.test(addr);
-const isAutoMail = (m) => /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
+// iDATA'nın doğrulama kodu mailleri (randevu alırken gelen tek kullanımlık kod) bildirilmez
+const isIdataCode = (m) => isIdataSender(m.from) && (/^verify@/.test(m.from) || /dogrulama kodu|verification code|verifizierungscode/.test(normTr(m.subject)));
+const isAutoMail = (m) => isIdataCode(m) || /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
   || !!m.listUnsubscribe || /bulk|junk|list/.test(String(m.precedence || '')) || (m.autoSubmitted && !/^no$/i.test(m.autoSubmitted));
 
 // ---- IMAP ----
@@ -247,6 +249,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
       const konu = esc((m.subject || '(konu yok)').slice(0, 120));
       const who = await custByEmail(m.from);
       if (who) { res.musteri++; lines.push(`📩 <b>${esc(who)}</b> mail gönderdi: ${konu}${ek}`); }
+      else if (isIdataSender(m.from)) { res.taninmayan++; lines.push(`📨 iDATA bildirimi (randevu tablosu yok): ${konu}${ek}`); } // ör. iptal / değişiklik maili
       else { res.taninmayan++; lines.push(`✉️ Tanınmayan gönderen ${esc(m.fromName ? `${m.fromName} ` : '')}&lt;${esc(m.from)}&gt;: ${konu}${ek}`); }
     } catch (e) { console.warn('[gelenmail] mail işlenemedi uid', m.uid, e.message); }
   }
