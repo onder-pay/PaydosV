@@ -465,7 +465,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
           Her vize türü için ayrı şablon. Vize Ayarları'nda yeni tür eklenince burada otomatik görünür.<br/>
           Değişkenler:{" "}
-          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{evrak_linki}'].map(v => (
+          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{vize_ucreti}','{evrak_linki}'].map(v => (
             <code key={v} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', marginRight: '4px' }}>{v}</code>
           ))}
         </p>

@@ -28,6 +28,18 @@ export const visaMailSubject = (v, cust) => {
 // Müşterinin e-postası (müşteri kartı önce)
 export const visaMailTo = (v, cust) => [cust?.email, v?.customerEmail].map(normEmail).find(validEmail) || '';
 
+// {vize_ucreti}: başvurudaki satış fiyatı; yoksa Ayarlar'daki tür fiyatı. "250 €" biçiminde, yoksa boş (bot visaFee ile aynı)
+export const visaFee = (v, appSettings) => {
+  let price = parseFloat(v.visaPrice || v.price) || 0, cur = v.visaCurrency || v.currency || '';
+  if (!price) {
+    const name = normalizeTr(v.visaDuration || v.visaType || '');
+    const list = (appSettings?.visaDurations || {})[v.categoryId || v.category || 'schengen'] || [];
+    const t = list.find(d => d && typeof d === 'object' && normalizeTr(d.name) === name);
+    if (t) { price = parseFloat(t.price) || 0; cur = t.currency || ''; }
+  }
+  return price > 0 ? `${price.toLocaleString('tr-TR')} ${cur || '€'}` : '';
+};
+
 // 1. aşama — bilgilendirme maili: vize türü şablonu + bağlı ekler + evrak linki. Döner { subject, text, attachments } ya da { error }
 export const buildInfoMail = (v, cust, appSettings) => {
   const vize_turu = v.visaDuration || v.visaType || '';
@@ -43,6 +55,7 @@ export const buildInfoMail = (v, cust, appSettings) => {
     .replace(/{saat}/g, v.appointmentTime || '')
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
     .replace(/{vize_turu}/g, vize_turu)
+    .replace(/{vize_ucreti}/g, visaFee(v, appSettings))
     .replace(/{evrak_linki}/g, link);
   const linkEk = link && !/{evrak_linki}/.test(String(t.body || '')) ? `\n\nEvraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:\n${link}\nBağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.` : '';
   const attachments = (appSettings?.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vize_turu)).map(a => ({ filename: a.name, url: a.url }));

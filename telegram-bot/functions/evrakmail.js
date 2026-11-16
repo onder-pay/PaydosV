@@ -47,6 +47,19 @@ const mailSubject = (v, cust) => {
   return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
 };
 
+// {vize_ucreti}: başvurudaki satış fiyatı (vize türü seçilince gelir); yoksa Ayarlar'daki tür fiyatı. "250 €" biçiminde, yoksa boş.
+// CRM src/lib/visamail.js visaFee ile aynı.
+const visaFee = (v, settings) => {
+  let price = parseFloat(v.visaPrice || v.price) || 0, cur = v.visaCurrency || v.currency || '';
+  if (!price) {
+    const name = normTr(v.visaDuration || v.visaType || '');
+    const list = (settings?.visaDurations || {})[v.categoryId || v.category || 'schengen'] || [];
+    const t = list.find(d => d && typeof d === 'object' && normTr(d.name) === name);
+    if (t) { price = parseFloat(t.price) || 0; cur = t.currency || ''; }
+  }
+  return price > 0 ? `${price.toLocaleString('tr-TR')} ${cur || '€'}` : '';
+};
+
 // 1. aşama: CRM şablonu (sendVisaEmail ile aynı kurallar)
 const buildTemplateMail = (v, cust, settings) => {
   const vize_turu = v.visaDuration || v.visaType || '';
@@ -62,6 +75,7 @@ const buildTemplateMail = (v, cust, settings) => {
     .replace(/{saat}/g, v.appointmentTime || '')
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
     .replace(/{vize_turu}/g, vize_turu)
+    .replace(/{vize_ucreti}/g, visaFee(v, settings))
     .replace(/{evrak_linki}/g, evrakLinkOf(v));
   // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (CRM sendVisaEmail ile aynı metin)
   const link = evrakLinkOf(v);
@@ -257,6 +271,8 @@ exports.buildRandevuMail = buildRandevuMail;
 exports.RANDEVU_MAIL_DEFAULT = RANDEVU_MAIL_DEFAULT;
 exports.istDate = istDate;
 exports.mailSubject = mailSubject;
+exports.buildTemplateMail = buildTemplateMail;
+exports.visaFee = visaFee;
 
 exports.vizeEvrakMail = functions
   .region('europe-west1')
