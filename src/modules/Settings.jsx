@@ -11,6 +11,17 @@ import { normEmail, normalizeTr, trHas } from '../lib/turkish.js';
 import { useMemo, useState } from 'react';
 
 
+// Mail eki yükleme (Firebase Storage mail-attachments/) — Dosya Ekleri sekmesi ve şablon editörü ortak kullanır
+const uploadMailAttachment = async (file) => {
+  if (file.size > 10 * 1024 * 1024) throw new Error('Dosya 10MB\'dan büyük olamaz');
+  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+  const path = `mail-attachments/${Date.now()}_${file.name}`;
+  const storageRef = ref(getStorage(), path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  return { id: Date.now().toString(), name: file.name, url, path, size: file.size, linkedTypes: [] };
+};
+
 export function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -32,17 +43,9 @@ export function AttachmentSettingsPanel({ appSettings, setAppSettings, showToast
 
   const uploadFile = async (file) => {
     if (!file) return;
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) { showToast?.('Dosya 10MB\'dan büyük olamaz', 'error'); return; }
     setUploading(true);
     try {
-      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-      const storage = getStorage();
-      const path = `mail-attachments/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const newAtt = { id: Date.now().toString(), name: file.name, url, path, size: file.size, linkedTypes: [] };
+      const newAtt = await uploadMailAttachment(file);
       setAppSettings({ ...appSettings, attachments: [...attachments, newAtt] });
       showToast?.(`✅ ${file.name} yüklendi`, 'success');
     } catch (err) {
@@ -242,6 +245,23 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         [activeKey]: { ...currentTemplate, [field]: value }
       }
     });
+  };
+
+  // Seçili vize türünün ekleri (appSettings.attachments[].linkedTypes) — Dosya Ekleri sekmesiyle aynı kayıt
+  const [attBusy, setAttBusy] = useState(false);
+  const allAtts = appSettings?.attachments || [];
+  const typeAtts = allAtts.filter(a => a.linkedTypes?.includes(activeKey));
+  const otherAtts = allAtts.filter(a => !a.linkedTypes?.includes(activeKey));
+  const setLink = (attId, on) => setAppSettings({ ...appSettings, attachments: allAtts.map(a => a.id !== attId ? a : { ...a, linkedTypes: on ? [...new Set([...(a.linkedTypes || []), activeKey])] : (a.linkedTypes || []).filter(t => t !== activeKey) }) });
+  const uploadForType = async (file) => {
+    if (!file || !activeKey) return;
+    setAttBusy(true);
+    try {
+      const att = await uploadMailAttachment(file);
+      setAppSettings({ ...appSettings, attachments: [...allAtts, { ...att, linkedTypes: [activeKey] }] });
+      showToast?.(`📎 ${file.name} yüklendi ve ${activeKey} türüne eklendi`, 'success');
+    } catch (e) { showToast?.('Ek yüklenemedi: ' + e.message, 'error'); }
+    finally { setAttBusy(false); }
   };
 
   const sendTest = async () => {
@@ -481,6 +501,32 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>
                     <textarea value={currentTemplate.body} onChange={e => updateTemplate('body', e.target.value)} rows={14}
                       style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' }} placeholder="Mail içeriği..." />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📎 Ekler — bu türün bilgilendirme mailine eklenir</label>
+                    {typeAtts.length === 0 && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>Bu türe bağlı dosya yok.</div>}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                      {typeAtts.map(a => (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '8px' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: '#e8f1f8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {a.name}</span>
+                          <button type="button" onClick={() => window.open(a.url, '_blank')} style={{ padding: '4px 8px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>Görüntüle</button>
+                          <button type="button" onClick={() => setLink(a.id, false)} title="Bu türden çıkar (dosya silinmez)" style={{ padding: '4px 8px', background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#f87171', cursor: 'pointer', fontSize: '11px' }}>Çıkar</button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ padding: '8px 12px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.4)', borderRadius: '8px', color: '#c084fc', cursor: attBusy ? 'wait' : 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                        {attBusy ? '⏳ Yükleniyor…' : '📤 Dosya yükle'}
+                        <input type="file" disabled={attBusy} style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; e.target.value = ''; uploadForType(f); }} />
+                      </label>
+                      {otherAtts.length > 0 && (
+                        <select value="" onChange={e => e.target.value && setLink(e.target.value, true)} style={{ flex: '1 1 200px', padding: '8px 10px', background: '#0a1626', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '12px' }}>
+                          <option value="">Yüklü bir dosyayı ekle…</option>
+                          {otherAtts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>PDF, Word, Excel · en fazla 10MB. Aynı dosya birden çok türe eklenebilir; tüm dosyalar Ayarlar → 📎 Dosya Ekleri'nde.</div>
                   </div>
                 </>
               ) : (
