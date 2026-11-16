@@ -425,11 +425,11 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
         const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
         // Önizleme: botla aynı kurallar, örnek bilgilerle (Schengen, ticari değil)
-        const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026' };
-        const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+        const sv = { on_dort_gun: '04.11.2026 tarihinden ÖNCE ALMAYINIZ', uc_ay: '18.08.2026', alti_ay: '18.05.2026', son_gun: '17.11.2026', sureli_son_tarih: '06.11.2026 Cuma', suresiz_son_tarih: '26.11.2026 Perşembe' };
+        const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
         const sureliTxt = blockTxt(sureli), suresizTxt = blockTxt(suresiz);
         const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt, suresiz_evraklar: suresizTxt, evrak_linki: 'https://vize.paydostur.com/#/yukle/örnek' };
-        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki)\}/g, (m, k) => sample[k]).replace(/\n{3,}/g, '\n\n');
+        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -448,6 +448,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <textarea value={sureli} onChange={e => setTp({ sureli: e.target.value })} rows={10} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
         <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
           Randevuya göre hesaplanan tarihler: <code>{'{on_dort_gun}'}</code> (14 gün kuralı), <code>{'{uc_ay}'}</code>, <code>{'{alti_ay}'}</code>, <code>{'{son_gun}'}</code> (randevudan bir gün önce).
+          Son teslim: <code>{'{sureli_son_tarih}'}</code> (randevu atandıktan 2 gün sonra; randevu 14 günden uzaksa randevuya 12 gün kala), <code>{'{suresiz_son_tarih}'}</code> (Atama Bekliyor'dan 10 gün sonra).
           Başına <code>[ticari]</code> yazılan satır yalnız ticari / fuar vizesinde çıkar.
         </p>
         <label style={lbl}>Süresiz evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{suresiz_evraklar}'} yerine konur (boş bırakılırsa mailde yer almaz)</label>
@@ -465,7 +466,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
           Her vize türü için ayrı şablon. Vize Ayarları'nda yeni tür eklenince burada otomatik görünür.<br/>
           Değişkenler:{" "}
-          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{vize_ucreti}','{evrak_linki}'].map(v => (
+          {['{isim}','{ulke}','{tarih}','{ref_no}','{vize_turu}','{vize_ucreti}','{suresiz_son_tarih}','{evrak_linki}'].map(v => (
             <code key={v} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 5px', borderRadius: '4px', fontSize: '11px', marginRight: '4px' }}>{v}</code>
           ))}
         </p>

@@ -26,6 +26,26 @@ const istDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone:
 const trDate = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(ymd || ''); };
 const addDays = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const addMonths = (ymd, n) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); };
+const GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const trDateDay = (ymd) => `${trDate(ymd)} ${GUNLER[new Date(`${ymd}T12:00:00Z`).getUTCDay()]}`; // "26.11.2026 Perşembe"
+const isoDay = (x) => /^\d{4}-\d{2}-\d{2}T/.test(String(x || '')) ? istDate(new Date(x)) : '';
+// Evrak son teslim tarihleri (CRM src/lib/visamail.js evrakDeadlines ile aynı):
+//  süresiz evraklar: Atama Bekliyor gününden (= ilk bilgilendirme mailinin günü) itibaren 10 gün
+//  süreli evraklar: randevu atandığı günden (= ilk randevu mailinin günü) itibaren 2 gün. Süreli evrak randevudan en fazla
+//  14 gün önce alınabildiği için randevu 14 günden uzaksa süre "randevuya 14 gün kala"dan başlar; randevudan bir gün öncesini geçmez.
+const evrakDeadlines = (v, today) => {
+  const suresiz = addDays(isoDay(v.evrakMailAt) || today, 10);
+  const appt = String(v.appointmentDate || '').slice(0, 10);
+  let sureli = '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(appt)) {
+    const atandi = (v.sureliMailFor === appt && isoDay(v.sureliMailAt)) || today;
+    const from14 = addDays(appt, -14);
+    sureli = addDays(atandi > from14 ? atandi : from14, 2);
+    const last = addDays(appt, -1);
+    if (sureli > last) sureli = last;
+  }
+  return { suresiz_son_tarih: trDateDay(suresiz), sureli_son_tarih: sureli ? trDateDay(sureli) : '' };
+};
 const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 const closed = (v) => /onay|red|iptal/.test(normTr(v.status)); // 'IPTAL' tr-lower'da 'ıptal' olurdu
 
@@ -76,6 +96,7 @@ const buildTemplateMail = (v, cust, settings) => {
     .replace(/{ref_no}/g, String(v.id || '').slice(-8).toUpperCase() || '-')
     .replace(/{vize_turu}/g, vize_turu)
     .replace(/{vize_ucreti}/g, visaFee(v, settings))
+    .replace(/{suresiz_son_tarih}/g, evrakDeadlines(v, istDate()).suresiz_son_tarih)
     .replace(/{evrak_linki}/g, evrakLinkOf(v));
   // Vize Evrak yükleme linki: şablonda {evrak_linki} yoksa metnin sonuna kendiliğinden eklenir (CRM sendVisaEmail ile aynı metin)
   const link = evrakLinkOf(v);
@@ -88,7 +109,8 @@ const buildTemplateMail = (v, cust, settings) => {
 // 2. aşama: randevu maili — randevu bilgisi (tarih, saat, ofis, PNR) + Schengen'de süreli evraklar, TEK mailde.
 // Şablon Ayarlar → Vize mail → Randevu Maili Şablonu (app_settings.randevuMailTemplate = { body, sureli, suresiz }); boş alan varsayılana düşer.
 // Varsayılanlar CRM src/lib/data.js RANDEVU_MAIL_DEFAULT ile birebir aynı olmalı.
-// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen); süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
+// Alanlar: {isim} {ulke} {tarih} {saat} {ofis} {pnr} {sureli_evraklar} {suresiz_evraklar} (ikisi de yalnız Schengen) {sureli_son_tarih} {suresiz_son_tarih};
+// süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
 // {evrak_linki}: başvurudaki Vize Evrak yükleme linki (visa_applications.evrakLink). "[link]" ile başlayan satır yalnız link varsa,
 // "[linkyok]" ile başlayan yalnız link yoksa çıkar.
 // Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
@@ -125,7 +147,7 @@ Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge 
 • Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
 • Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
 
-Tüm belgeler en geç {son_gun} tarihinde hazır olmalıdır.`,
+📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
   suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };
 // Vize Evrak yükleme linki: yalnız https ve boşluksuz ise kullanılır
@@ -140,21 +162,23 @@ const buildRandevuMail = (v, cust, today, tpl) => {
   const sv = {
     on_dort_gun: from14 <= today ? 'bugünden itibaren alabilirsiniz' : `${trDate(from14)} tarihinden ÖNCE ALMAYINIZ`,
     uc_ay: trDate(addMonths(appt, -3)), alti_ay: trDate(addMonths(appt, -6)), son_gun: trDate(addDays(appt, -1)),
+    ...evrakDeadlines(v, today),
   };
   const link = evrakLinkOf(v);
   // Satır başı koşulları: [ticari] [link] [linkyok]
   const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
     .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
     .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
-  const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sv[k]).trim();
+  const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
   const sureli = block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli));
   const suresiz = block(tpl?.suresiz);
   const office = String(v.idataOffice || '').trim();
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
     ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz, evrak_linki: link,
+    sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih,
   };
-  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki)\}/g;
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
   const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
@@ -273,6 +297,7 @@ exports.istDate = istDate;
 exports.mailSubject = mailSubject;
 exports.buildTemplateMail = buildTemplateMail;
 exports.visaFee = visaFee;
+exports.evrakDeadlines = evrakDeadlines;
 
 exports.vizeEvrakMail = functions
   .region('europe-west1')
