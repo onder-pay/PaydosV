@@ -214,7 +214,8 @@ const tg = async (token, chatId, text) => {
 const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
   const settingsRef = db.collection('app_settings').doc('main');
   const settings = (await settingsRef.get()).data() || {};
-  const res = { atama: 0, sureli: 0, epostaYok: [], sablonYok: [], hata: [] };
+  const res = { atama: 0, sureli: 0, epostaYok: [], sablonYok: [], hata: [], kisiler: [] }; // kisiler: { tur: 'bilgi'|'randevu', ad, ok, neden }
+  const kisi = (tur, ad, ok, neden = '') => res.kisiler.push({ tur, ad, ok, neden });
   const atamaOn = settings.autoEmailOnVisa !== false;
   const sureliOn = settings.autoSureliMail !== false;
   const smtp = settings.smtpVisa || {};
@@ -240,11 +241,11 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     if (firstRun || !atamaOn) { await d.ref.set({ evrakMailAt: firstRun ? 'ilk-kurulum-atlandi' : 'kapali-atlandi' }, { merge: true }); continue; }
     const cust = await getCust(v);
     const to = emailOf(v, cust);
-    if (!to) { if (!v.evrakMailEpostaYokAt) { res.epostaYok.push(custName(v, cust)); await d.ref.set({ evrakMailEpostaYokAt: now }, { merge: true }); } continue; }
+    if (!to) { if (!v.evrakMailEpostaYokAt) { res.epostaYok.push(custName(v, cust)); kisi('bilgi', custName(v, cust), false, 'e-posta yok'); await d.ref.set({ evrakMailEpostaYokAt: now }, { merge: true }); } continue; }
     const mail = buildTemplateMail(v, cust, settings);
-    if (!mail) { if (!v.evrakMailSablonYokAt) { res.sablonYok.push(v.visaDuration || v.visaType || v.categoryId || '?'); await d.ref.set({ evrakMailSablonYokAt: now }, { merge: true }); } continue; }
-    try { await send(smtp, { to, ...mail }); await d.ref.set({ evrakMailAt: now, evrakMailTo: to }, { merge: true }); res.atama++; }
-    catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); }
+    if (!mail) { if (!v.evrakMailSablonYokAt) { const tur = v.visaDuration || v.visaType || v.categoryId || '?'; res.sablonYok.push(tur); kisi('bilgi', custName(v, cust), false, `şablon yok: ${tur}`); await d.ref.set({ evrakMailSablonYokAt: now }, { merge: true }); } continue; }
+    try { await send(smtp, { to, ...mail }); await d.ref.set({ evrakMailAt: now, evrakMailTo: to }, { merge: true }); res.atama++; kisi('bilgi', custName(v, cust), true); }
+    catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); kisi('bilgi', custName(v, cust), false, `hata: ${e.message} — tekrar denenecek`); }
   }
 
   // 2) Randevusu girilmiş başvurular → randevu maili (randevu değişirse yeniden)
@@ -261,9 +262,9 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     if (firstRun || !sureliOn) { await d.ref.set({ sureliMailFor: appt, sureliMailAt: firstRun ? 'ilk-kurulum-atlandi' : 'kapali-atlandi' }, { merge: true }); continue; }
     const cust = await getCust(v);
     const to = emailOf(v, cust);
-    if (!to) { if (v.sureliEpostaYokFor !== appt) { res.epostaYok.push(`${custName(v, cust)} (randevu ${trDate(appt)})`); await d.ref.set({ sureliEpostaYokFor: appt }, { merge: true }); } continue; }
-    try { await send(smtp, { to, ...buildRandevuMail(v, cust, today, settings.randevuMailTemplate) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; }
-    catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); }
+    if (!to) { if (v.sureliEpostaYokFor !== appt) { res.epostaYok.push(`${custName(v, cust)} (randevu ${trDate(appt)})`); kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, false, 'e-posta yok'); await d.ref.set({ sureliEpostaYokFor: appt }, { merge: true }); } continue; }
+    try { await send(smtp, { to, ...buildRandevuMail(v, cust, today, settings.randevuMailTemplate) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, true); }
+    catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, false, `hata: ${e.message} — tekrar denenecek`); }
   }
 
   // Haftalık özet için sistem hata kaydı (isim yazılmaz)
@@ -279,11 +280,18 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
 
   // Gruba özet (sadece bir şey olduysa)
   const lines = [];
-  if (res.atama) lines.push(`📧 Evrak maili gönderildi: <b>${res.atama}</b> kişi`);
-  if (res.sureli) lines.push(`📅 Randevu maili gönderildi: <b>${res.sureli}</b> kişi`);
-  if (res.epostaYok.length) lines.push(`⚠️ E-postası olmadığı için mail gidemedi — CRM'e e-posta ekleyin, sonraki turda gider:\n${res.epostaYok.map(n => `• ${esc(n)}`).join('\n')}`);
-  if (res.sablonYok.length) lines.push(`⚠️ Şablonu olmayan vize türü (Ayarlar → Vize Türü Bazlı Mail Şablonları):\n${[...new Set(res.sablonYok)].map(n => `• ${esc(n)}`).join('\n')}`);
-  if (res.hata.length) lines.push(`❌ Gönderilemedi (tekrar denenecek):\n${res.hata.slice(0, 10).map(n => `• ${esc(n)}`).join('\n')}`);
+  // Kişi kişi: adın yanında gönderildi / gönderilemedi (+ neden)
+  const satir = (k) => `• ${esc(k.ad)} — ${k.ok ? '✅ gönderildi' : `❌ gönderilemedi (${esc(k.neden)})`}`;
+  for (const [tur, baslik] of [['bilgi', '📧 Bilgilendirme maili'], ['randevu', '📅 Randevu maili']]) {
+    const ks = res.kisiler.filter(k => k.tur === tur);
+    if (!ks.length) continue;
+    const n = ks.filter(k => k.ok).length;
+    lines.push(`<b>${baslik}</b> — ${n} gönderildi${ks.length - n ? `, ${ks.length - n} gönderilemedi` : ''}\n${[...ks.filter(k => k.ok), ...ks.filter(k => !k.ok)].slice(0, 40).map(satir).join('\n')}${ks.length > 40 ? `\n… ve ${ks.length - 40} kişi daha` : ''}`);
+  }
+  const notlar = [];
+  if (res.epostaYok.length) notlar.push('E-postası olmayanlara CRM\'de e-posta ekleyin; sonraki turda gider.');
+  if (res.sablonYok.length) notlar.push(`Şablonu olmayan tür: ${[...new Set(res.sablonYok)].map(esc).join(', ')} (Ayarlar → Vize Mail Ayarları). Şablon yazılınca sonraki turda gider.`);
+  if (notlar.length) lines.push(`ℹ️ ${notlar.join('\n')}`);
   if (lines.length) await notify(settings.telegramBotToken, settings.telegramVizeGrupId, lines.join('\n\n'));
   return res;
 };
