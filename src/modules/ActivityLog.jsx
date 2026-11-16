@@ -33,6 +33,7 @@ export function ActivityLogModule({ isMobile, showToast, currentUser }) {
     if (a === 'delete') return { ikon: '🗑️', renk: '#ef4444', et: 'Silindi' };
     if (a === 'status') return { ikon: '🔄', renk: '#f59e0b', et: 'Durum değişti' };
     if (a === 'error') return { ikon: '⚠️', renk: '#ef4444', et: 'Hata' };
+    if (a === 'mail') return { ikon: '✉️', renk: '#14b8a6', et: 'Mail gönderildi' };
     return { ikon: '📌', renk: '#94a3b8', et: a };
   };
   const modulIkon = (m) => ({ 'Müşteri': '👥', 'Vize': '🌍', 'Amerika Vize': '🇺🇸', 'Tur': '🎫', 'Pasaport': '📘', 'Otel': '🏨', 'Teklif': '📄', 'Ödeme': '💵' }[m] || '📋');
