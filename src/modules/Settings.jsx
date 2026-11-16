@@ -420,7 +420,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
 
       {(() => { const tp = appSettings?.randevuMailTemplate || {}; const D = RANDEVU_MAIL_DEFAULT; const has = (x) => !!String(x || '').trim();
         const custom = has(tp.body) || has(tp.sureli) || has(tp.suresiz);
-        const subject = 'Mustafa Karakuzu - Almanya - Ticari', body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli, suresiz = tp.suresiz || '';
+        const subject = 'Mustafa Karakuzu - Almanya Ticari Vize Başvurusu', body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli, suresiz = tp.suresiz || '';
         const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { body, sureli, suresiz, ...patch } });
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
         const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
@@ -441,7 +441,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
           Başına <code>[link]</code> yazılan satır yalnız başvuruda evrak yükleme linki varsa, <code>[linkyok]</code> yazılan yalnız link yoksa çıkar.
           Değeri boş gelen alanın satırı (ör. PNR girilmediyse "PNR: {'{pnr}'}") mailden çıkarılır.
         </p>
-        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>📌 Konu sabittir: <strong>Ad Soyad - Ülke - Vize türü</strong> (tüm vize maillerinde aynı).</p>
+        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>📌 Konu sabittir: <strong>Ad Soyad - Ülke Vize türü Vize Başvurusu</strong> (tüm vize maillerinde aynı).</p>
         <label style={lbl}>Mail metni</label>
         <textarea value={body} onChange={e => setTp({ body: e.target.value })} rows={14} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
         <label style={lbl}>Süreli evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{sureli_evraklar}'} yerine konur</label>
@@ -496,7 +496,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
-                    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>Sabit: <strong style={{ color: '#e8f1f8' }}>Ad Soyad - Ülke - Vize türü</strong> (tüm vize maillerinde aynı)</div>
+                    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>Sabit: <strong style={{ color: '#e8f1f8' }}>Ad Soyad - Ülke Vize türü Vize Başvurusu</strong> (tüm vize maillerinde aynı)</div>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>

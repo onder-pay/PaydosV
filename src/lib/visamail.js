@@ -39,11 +39,16 @@ export const evrakLinkOf = (v) => { const l = String(v?.evrakLink || '').trim();
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const custName = (v, cust) => titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
 
-// Konu her vize mailinde aynı: "Ad Soyad - Ülke - Vize türü" (tür ülkeyi içeriyorsa ülke yinelenmez)
+// Konu her vize mailinde aynı: "Ad Soyad - Ülke Vize türü Vize Başvurusu" (bot mailSubject ile aynı).
+// Tür ülkeyi içeriyorsa ülke yinelenmez; türün sonundaki "Vize" atılır ("Turistik Vize" → "… Turistik Vize Başvurusu").
 export const visaMailSubject = (v, cust) => {
   const tur = titleCaseTr(String(v.visaDuration || v.visaType || '').trim());
   const ulke = titleCaseTr(String(v.country || '').trim());
-  return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+  const w = tur.split(' ').filter(Boolean);
+  if (w.length && /^vize(si)?$/.test(normalizeTr(w[w.length - 1]))) w.pop();
+  const konu = [ulke && !trHas(tur, ulke) ? ulke : '', w.join(' ')].filter(Boolean).join(' ');
+  const isim = custName(v, cust);
+  return `${isim ? `${isim} - ` : ''}${konu ? `${konu} ` : ''}Vize Başvurusu`;
 };
 
 // Müşterinin e-postası (müşteri kartı önce)

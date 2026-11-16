@@ -59,12 +59,16 @@ const mailHtml = (bodyText) => `<div style="background:#f4f5f7;padding:24px 12px
 
 const custName = (v, cust) => titleTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
 
-// Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke - Vize türü" (şablondaki konu kullanılmaz; CRM sendVisaEmail ile aynı).
-// Vize türü ülkeyi zaten içeriyorsa ("ALMANYA TİCARİ") ülke yinelenmez.
+// Konu her vize mailinde aynı kalıp: "Ad Soyad - Ülke Vize türü Vize Başvurusu" (şablondaki konu kullanılmaz; CRM visaMailSubject ile aynı).
+// Örn. "Önder Taşçı - Almanya Ticari Vize Başvurusu". Tür ülkeyi zaten içeriyorsa ("ALMANYA TİCARİ") ülke yinelenmez; türün sonundaki "Vize" atılır.
 const mailSubject = (v, cust) => {
   const tur = titleTr(String(v.visaDuration || v.visaType || '').trim());
   const ulke = titleTr(String(v.country || '').trim());
-  return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+  const w = tur.split(' ').filter(Boolean);
+  if (w.length && /^vize(si)?$/.test(normTr(w[w.length - 1]))) w.pop(); // "Turistik Vize" → "Turistik" (sonda "Vize Başvurusu" var)
+  const konu = [ulke && !trHas(tur, ulke) ? ulke : '', w.join(' ')].filter(Boolean).join(' ');
+  const isim = custName(v, cust);
+  return `${isim ? `${isim} - ` : ''}${konu ? `${konu} ` : ''}Vize Başvurusu`;
 };
 
 // {vize_ucreti}: başvurudaki satış fiyatı (vize türü seçilince gelir); yoksa Ayarlar'daki tür fiyatı. "250 €" biçiminde, yoksa boş.
