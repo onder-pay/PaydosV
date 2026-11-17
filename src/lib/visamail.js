@@ -111,7 +111,7 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
     ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '',
-    pnr: String(v.pnr || '').trim(), sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih, sureli_evraklar: block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli)), suresiz_evraklar: block(tpl?.suresiz), evrak_linki: link,
+    pnr: String(v.pnr || '').trim(), sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih, sureli_evraklar: block(RANDEVU_MAIL_DEFAULT.sureli), suresiz_evraklar: '', evrak_linki: link, // süreli/süresiz bölümleri Ayarlar'dan düzenlenmez (bot ile aynı)
   };
   const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);

@@ -305,8 +305,6 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {sureli_evraklar}
 
-{suresiz_evraklar}
-
 [link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
 [link] {evrak_linki}
 [link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
@@ -314,16 +312,7 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  sureli: `SÜRELİ EVRAKLAR
-Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
-
-• SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
-• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
-[ticari] • Oda kaydı faaliyet belgesi — {uc_ay} tarihinden sonra alınmış olmalı (son 3 ay).
-• Maaş bordrosu (çalışanlar için) — son 3 ay: {uc_ay} sonrası dönemler.
-• Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
-• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
-
+  // Süreli evraklar: ayrıntı evrak listesinde (ek). Mailde yalnız kısa not + son teslim tarihi. Ayarlar'dan düzenlenmez (2026-11-17 kararı).
+  sureli: `📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
 📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
-  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };
