@@ -303,7 +303,8 @@ PNR: {pnr}
 
 Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
-{sureli_evraklar}
+[schengen] 📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
+[schengen] 📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}
 
 [ek] Hazırlamanız gereken evrakların listesi bu e-postanın ekinde yeniden gönderilmiştir.
 
@@ -314,7 +315,4 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  // Süreli evraklar: ayrıntı evrak listesinde (ek). Mailde yalnız kısa not + son teslim tarihi. Ayarlar'dan düzenlenmez (2026-11-17 kararı).
-  sureli: `📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
-📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
 };

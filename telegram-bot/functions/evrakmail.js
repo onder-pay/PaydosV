@@ -117,6 +117,9 @@ const buildTemplateMail = (v, cust, settings) => {
 // süreli bölümde: {on_dort_gun} {uc_ay} {alti_ay} {son_gun}.
 // {evrak_linki}: başvurudaki Vize Evrak yükleme linki (visa_applications.evrakLink). "[link]" ile başlayan satır yalnız link varsa,
 // "[linkyok]" ile başlayan yalnız link yoksa çıkar.
+// Varsayılan metin süreli evrak notunu (iki satır) doğrudan içerir; "[schengen]" ile başlayan satır yalnız Schengen'de çıkar. Ayrı süreli/süresiz
+// bölüm kutuları kaldırıldı (2026-11-17). Eski kayıtlı şablondaki {sureli_evraklar} aynı iki satırı verir; {suresiz_evraklar} boş kalır.
+// {sureli_evraklar} eski kayıtlı şablonlar için desteklenir. {on_dort_gun} {uc_ay} {alti_ay} {son_gun} metinde de kullanılabilir.
 // Değeri boş alanın yalnız etiketten oluşan satırı ("Saat: {saat}") atılır. "[ticari]" ile başlayan satır yalnız ticari/fuar vizesinde çıkar.
 const RANDEVU_MAIL_DEFAULT = {
   body: `Sayın {isim},
@@ -130,7 +133,8 @@ PNR: {pnr}
 
 Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
-{sureli_evraklar}
+[schengen] 📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
+[schengen] 📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}
 
 [ek] Hazırlamanız gereken evrakların listesi bu e-postanın ekinde yeniden gönderilmiştir.
 
@@ -141,12 +145,10 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  // Süreli evraklar: ayrıntı evrak listesinde (ek). Mailde yalnız kısa not + son teslim tarihi. Ayarlar'dan düzenlenmez (2026-11-17 kararı).
-  sureli: `📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
-📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
 };
 // Vize Evrak yükleme linki: yalnız https ve boşluksuz ise kullanılır
 const evrakLinkOf = (v) => { const l = String(v.evrakLink || '').trim(); return /^https:\/\/\S+$/.test(l) ? l : ''; };
+const SURELI_NOT = '📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.\n📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}';
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const pick = (x, def) => (String(x || '').trim() ? String(x) : def);
 // settings verilirse vize türüne bağlı ekler (evrak listesi) bu maile de eklenir; "[ek]" ile başlayan satır yalnız ek varsa çıkar.
@@ -165,19 +167,19 @@ const buildRandevuMail = (v, cust, today, tpl, settings) => {
   const link = evrakLinkOf(v);
   // Satır başı koşulları: [ticari] [link] [linkyok]
   const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
-    .filter(l => { const m = /^\s*\[(ticari|linkyok|link|ek)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : m[1] === 'ek' ? attachments.length > 0 : !link); })
-    .map(l => l.replace(/^\s*\[(ticari|linkyok|link|ek)\]\s*/, '')).join('\n');
+    .filter(l => { const m = /^\s*\[(ticari|linkyok|link|ek|schengen)\]/.exec(l); return !m || (m[1] === 'schengen' ? isSchengen(v) : m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : m[1] === 'ek' ? attachments.length > 0 : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|linkyok|link|ek|schengen)\]\s*/, '')).join('\n');
   const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
-  // Süreli/süresiz bölümleri Ayarlar'dan düzenlenmez: kayıtlı eski metin (tpl.sureli / tpl.suresiz) yok sayılır
-  const sureli = block(RANDEVU_MAIL_DEFAULT.sureli);
+  // Eski kayıtlı şablondaki {sureli_evraklar}: varsayılan metindeki iki satırlık not (yalnız Schengen); {suresiz_evraklar} boş kalır
+  const sureli = isSchengen(v) ? SURELI_NOT.replace(/\{(on_dort_gun|sureli_son_tarih)\}/g, (m, k) => sv[k]) : '';
   const suresiz = '';
   const office = String(v.idataOffice || '').trim();
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
     ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '', pnr: String(v.pnr || '').trim(), sureli_evraklar: sureli, suresiz_evraklar: suresiz, evrak_linki: link,
-    sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih,
+    sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih, on_dort_gun: sv.on_dort_gun, uc_ay: sv.uc_ay, alti_ay: sv.alti_ay, son_gun: sv.son_gun,
   };
-  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g;
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih|on_dort_gun|uc_ay|alti_ay|son_gun)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
   const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
