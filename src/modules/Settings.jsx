@@ -352,7 +352,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>15 dakikada bir kontrol edilir (08:00–21:00). E-postası olmayanlar Telegram vize grubuna yazılır. Kapalıyken gelen başvurulara, tekrar açınca geriye dönük mail gitmez.</p>
         {[
           { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
-          { key: 'autoSureliMail', title: '📅 Randevu → randevu maili', desc: "Randevu tarihi başvuruya yazılınca (elle ya da iDATA mailinden) müşteriye tarih, saat, ofis ve PNR maili gider; Schengen'de SGK / banka dökümü gibi süreli evraklar aynı mailde yer alır. Şablonu aşağıda." },
+          { key: 'autoSureliMail', title: '📅 Randevu → randevu maili', desc: "Randevu tarihi başvuruya yazılınca (elle ya da iDATA mailinden) ilgili kişiye randevu tarihi, saati, ofis ve PNR maili gider; vize türüne bağlı evrak listesi (ekler) yeniden eklenir, Schengen'de süreli evrak son teslim tarihi yazılır. Şablonu aşağıda." },
         ].map(t => { const on = appSettings?.[t.key] !== false; return (
           <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div>
@@ -429,7 +429,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
         const sureliTxt = blockTxt(sureli), suresizTxt = blockTxt(suresiz);
         const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt, suresiz_evraklar: suresizTxt, evrak_linki: 'https://vize.paydostur.com/#/yukle/örnek' };
-        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
+        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link|ek)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -438,7 +438,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         </div>
         <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
           Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{sureli_evraklar}'}</code> <code>{'{evrak_linki}'}</code> <code>{'{sureli_son_tarih}'}</code> <code>{'{suresiz_son_tarih}'}</code>.
-          Başına <code>[link]</code> yazılan satır yalnız başvuruda evrak yükleme linki varsa, <code>[linkyok]</code> yazılan yalnız link yoksa çıkar.
+          Başına <code>[link]</code> yazılan satır yalnız başvuruda evrak yükleme linki varsa, <code>[linkyok]</code> yazılan yalnız link yoksa, <code>[ek]</code> yazılan yalnız maile evrak listesi eklendiyse çıkar.
           Değeri boş gelen alanın satırı (ör. PNR girilmediyse "PNR: {'{pnr}'}") mailden çıkarılır.
         </p>
         <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>📌 Konu sabittir: <strong>Ad Soyad - Ülke Vize türü Vize Başvurusu</strong> (tüm vize maillerinde aynı).</p>

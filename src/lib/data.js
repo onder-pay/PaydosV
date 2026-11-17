@@ -305,6 +305,8 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {sureli_evraklar}
 
+[ek] Hazırlamanız gereken evrakların listesi bu e-postanın ekinde yeniden gönderilmiştir.
+
 [link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
 [link] {evrak_linki}
 [link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.

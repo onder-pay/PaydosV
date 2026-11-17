@@ -228,7 +228,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             else if (!test) mailNote = `randevu maili 15 dakika içinde gider: ${esc(custTo)}`;
             if (test && randevuMailOn) {
               try {
-                await send(smtp, { to: user, ...buildRandevuMail({ ...v, ...patch }, cust, istDate(), settings.randevuMailTemplate) });
+                await send(smtp, { to: user, ...buildRandevuMail({ ...v, ...patch }, cust, istDate(), settings.randevuMailTemplate, settings) });
                 res.randevuMail++;
                 mailNote = `${mailNote ? `${mailNote}\n✉️ ` : `gerçekte müşteriye giderdi: ${esc(custTo)}\n✉️ `}örnek randevu maili ${esc(user)} adresine gönderildi (müşteriye gitmedi)`;
               } catch (e) { mailNote = `❌ örnek randevu maili gönderilemedi: ${esc(e.message)}`; }

@@ -132,6 +132,8 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 {sureli_evraklar}
 
+[ek] Hazırlamanız gereken evrakların listesi bu e-postanın ekinde yeniden gönderilmiştir.
+
 [link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
 [link] {evrak_linki}
 [link] Bağlantı çalışmazsa lütfen evraklarınızı bu maile cevap olarak gönderiniz.
@@ -147,7 +149,10 @@ Paydos Turizm`,
 const evrakLinkOf = (v) => { const l = String(v.evrakLink || '').trim(); return /^https:\/\/\S+$/.test(l) ? l : ''; };
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const pick = (x, def) => (String(x || '').trim() ? String(x) : def);
-const buildRandevuMail = (v, cust, today, tpl) => {
+// settings verilirse vize türüne bağlı ekler (evrak listesi) bu maile de eklenir; "[ek]" ile başlayan satır yalnız ek varsa çıkar.
+const buildRandevuMail = (v, cust, today, tpl, settings) => {
+  const vtur = v.visaDuration || v.visaType || '';
+  const attachments = (settings?.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vtur)).map(a => ({ filename: a.name, url: a.url }));
   const appt = String(v.appointmentDate || '').slice(0, 10);
   // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz (İ≠i) — önce ASCII küçük harfe indir
   const ticari = /ticari|fuar|\bis\b/.test(normTr(`${v.visaDuration || ''} ${v.visaType || ''}`));
@@ -160,8 +165,8 @@ const buildRandevuMail = (v, cust, today, tpl) => {
   const link = evrakLinkOf(v);
   // Satır başı koşulları: [ticari] [link] [linkyok]
   const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
-    .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
-    .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
+    .filter(l => { const m = /^\s*\[(ticari|linkyok|link|ek)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : m[1] === 'ek' ? attachments.length > 0 : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|linkyok|link|ek)\]\s*/, '')).join('\n');
   const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
   // Süreli/süresiz bölümleri Ayarlar'dan düzenlenmez: kayıtlı eski metin (tpl.sureli / tpl.suresiz) yok sayılır
   const sureli = block(RANDEVU_MAIL_DEFAULT.sureli);
@@ -178,7 +183,7 @@ const buildRandevuMail = (v, cust, today, tpl) => {
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
     .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
     .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { subject: mailSubject(v, cust), text, html: mailHtml(esc(text)), attachments: [] };
+  return { subject: mailSubject(v, cust), text, html: mailHtml(esc(text)), attachments };
 };
 
 const sendMail = async (smtp, { to, subject, text, html, attachments }) => {
@@ -257,7 +262,7 @@ const processEvrakMails = async ({ db, send = sendMail, notify = tg } = {}) => {
     const cust = await getCust(v);
     const to = emailOf(v, cust);
     if (!to) { if (v.sureliEpostaYokFor !== appt) { res.epostaYok.push(`${custName(v, cust)} (randevu ${trDate(appt)})`); kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, false, 'e-posta yok'); await d.ref.set({ sureliEpostaYokFor: appt }, { merge: true }); } continue; }
-    try { await send(smtp, { to, ...buildRandevuMail(v, cust, today, settings.randevuMailTemplate) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, true); }
+    try { await send(smtp, { to, ...buildRandevuMail(v, cust, today, settings.randevuMailTemplate, settings) }); await d.ref.set({ sureliMailFor: appt, sureliMailAt: now, sureliMailTo: to }, { merge: true }); res.sureli++; kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, true); }
     catch (e) { res.hata.push(`${custName(v, cust)}: ${e.message}`); kisi('randevu', `${custName(v, cust)} (randevu ${trDate(appt)})`, false, `hata: ${e.message} — tekrar denenecek`); }
   }
 

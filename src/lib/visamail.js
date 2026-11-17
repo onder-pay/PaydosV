@@ -94,6 +94,9 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   const appt = String(v.appointmentDate || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(appt)) return { error: 'Randevu tarihi girilmemiş' };
   const tpl = appSettings?.randevuMailTemplate;
+  // Vize türüne bağlı ekler (evrak listesi) randevu mailine de eklenir (bot ile aynı); "[ek]" satırı yalnız ek varsa çıkar
+  const vtur = v.visaDuration || v.visaType || '';
+  const attachments = (appSettings?.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vtur)).map(a => ({ filename: a.name, url: a.url }));
   // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz — önce ASCII küçük harfe indir
   const ticari = /ticari|fuar|\bis\b/.test(normalizeTr(`${v.visaDuration || ''} ${v.visaType || ''}`));
   const from14 = addDays(appt, -14);
@@ -104,8 +107,8 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   };
   const link = evrakLinkOf(v);
   const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
-    .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
-    .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
+    .filter(l => { const m = /^\s*\[(ticari|linkyok|link|ek)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : m[1] === 'ek' ? attachments.length > 0 : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|linkyok|link|ek)\]\s*/, '')).join('\n');
   const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
   const office = String(v.idataOffice || '').trim();
   const vals = {
@@ -119,7 +122,7 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
     .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
     .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { subject: visaMailSubject(v, cust), text, attachments: [] };
+  return { subject: visaMailSubject(v, cust), text, attachments };
 };
 
 // Elle gönderim — Vize SMTP, yanıt adresi vize@. Metin düz yazıdır; şablonda HTML etiketi varsa olduğu gibi bırakılır (otomatik mailde de öyle).
