@@ -14,6 +14,8 @@ export const turkishProvinces = ['Adana', 'Adıyaman', 'Afyonkarahisar', 'Ağrı
 
 // Vize işlemlerinin acente adresi: müşteriler buraya yazar; vize maillerinin yanıt adresi ve alt bilgisi
 export const VISA_EMAIL = 'vize@paydostur.com';
+// Vize bölümü kullanım kılavuzu (Vize ekranındaki 📖 düğmesi). Ayarlar'da appSettings.vizeKilavuzUrl ile değiştirilebilir.
+export const VIZE_KILAVUZ_URL = 'https://claude.ai/artifact/1FJjMuLbQGHNuR1RnyBAeh';
 export const FOREIGN_PASSPORT = 'Yabancı Pasaport';
 export const passportTypes = ['Bordo Pasaport (Umuma Mahsus)', 'Yeşil Pasaport (Hususi)', 'Gri Pasaport (Hizmet)', 'Siyah Pasaport (Diplomatik)', FOREIGN_PASSPORT];
 
@@ -301,9 +303,10 @@ PNR: {pnr}
 
 Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınızın tamamı ile birlikte ofiste hazır bulununuz.
 
-{sureli_evraklar}
+[schengen] 📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.
+[schengen] 📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}
 
-{suresiz_evraklar}
+[ek] Hazırlamanız gereken evrakların listesi bu e-postanın ekinde yeniden gönderilmiştir.
 
 [link] Evraklarınızı aşağıdaki bağlantıdan yükleyebilirsiniz:
 [link] {evrak_linki}
@@ -312,16 +315,4 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
-  sureli: `SÜRELİ EVRAKLAR
-Aşağıdaki belgelerin geçerlilik süresi sınırlıdır. Erken alınan belge konsoloslukta kabul edilmez; lütfen tarihlere dikkat ediniz:
-
-• SGK hizmet dökümü (e-Devlet, barkodlu) — {on_dort_gun}. Randevudan en fazla 14 gün önce alınmış olmalı.
-• Banka hesap dökümü (son 4 ay, kaşeli/onaylı) — {on_dort_gun}. 14 gün geçerlidir.
-[ticari] • Oda kaydı faaliyet belgesi — {uc_ay} tarihinden sonra alınmış olmalı (son 3 ay).
-• Maaş bordrosu (çalışanlar için) — son 3 ay: {uc_ay} sonrası dönemler.
-• Biyometrik fotoğraf — {alti_ay} tarihinden sonra çekilmiş olmalı (son 6 ay).
-• Seyahat sağlık sigortası — tüm seyahat tarihlerini kapsamalı.
-
-📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}`,
-  suresiz: '', // süresiz evraklar: acente Ayarlar'dan yazar; boşsa bölüm mailde yer almaz
 };

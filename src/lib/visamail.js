@@ -36,14 +36,21 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 export const validEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
 export const evrakLinkOf = (v) => { const l = String(v?.evrakLink || '').trim(); return /^https:\/\/\S+$/.test(l) ? l : ''; };
+// Eski kayıtlı şablondaki {sureli_evraklar} için (bot evrakmail.js SURELI_NOT ile aynı)
+const SURELI_NOT = '📌 Süreli evraklar (SGK hizmet dökümü, banka hesap dökümü, maaş bordrosu, oda kaydı): {on_dort_gun}.\n📅 Süreli evrakların son teslim tarihi: {sureli_son_tarih}';
 const isSchengen = (v) => (v.categoryId || v.category || 'schengen') === 'schengen';
 const custName = (v, cust) => titleCaseTr(`${cust?.firstName || ''} ${cust?.lastName || ''}`.trim() || v.customerName || '');
 
-// Konu her vize mailinde aynı: "Ad Soyad - Ülke - Vize türü" (tür ülkeyi içeriyorsa ülke yinelenmez)
+// Konu her vize mailinde aynı: "Ad Soyad - Ülke Vize türü Vize Başvurusu" (bot mailSubject ile aynı).
+// Tür ülkeyi içeriyorsa ülke yinelenmez; türün sonundaki "Vize" atılır ("Turistik Vize" → "… Turistik Vize Başvurusu").
 export const visaMailSubject = (v, cust) => {
   const tur = titleCaseTr(String(v.visaDuration || v.visaType || '').trim());
   const ulke = titleCaseTr(String(v.country || '').trim());
-  return [custName(v, cust), ulke && !trHas(tur, ulke) ? ulke : '', tur].filter(Boolean).join(' - ') || 'Vize başvurunuz';
+  const w = tur.split(' ').filter(Boolean);
+  if (w.length && /^vize(si)?$/.test(normalizeTr(w[w.length - 1]))) w.pop();
+  const konu = [ulke && !trHas(tur, ulke) ? ulke : '', w.join(' ')].filter(Boolean).join(' ');
+  const isim = custName(v, cust);
+  return `${isim ? `${isim} - ` : ''}${konu ? `${konu} ` : ''}Vize Başvurusu`;
 };
 
 // Müşterinin e-postası (müşteri kartı önce)
@@ -89,6 +96,9 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   const appt = String(v.appointmentDate || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(appt)) return { error: 'Randevu tarihi girilmemiş' };
   const tpl = appSettings?.randevuMailTemplate;
+  // Vize türüne bağlı ekler (evrak listesi) randevu mailine de eklenir (bot ile aynı); "[ek]" satırı yalnız ek varsa çıkar
+  const vtur = v.visaDuration || v.visaType || '';
+  const attachments = (appSettings?.attachments || []).filter(a => a && a.url && a.linkedTypes?.includes(vtur)).map(a => ({ filename: a.name, url: a.url }));
   // Türkçe karakter kuralı: "ALMANYA TİCARİ" /ticari/i ile tanınmaz — önce ASCII küçük harfe indir
   const ticari = /ticari|fuar|\bis\b/.test(normalizeTr(`${v.visaDuration || ''} ${v.visaType || ''}`));
   const from14 = addDays(appt, -14);
@@ -99,22 +109,21 @@ export const buildRandevuMail = (v, cust, appSettings, today = istToday()) => {
   };
   const link = evrakLinkOf(v);
   const cond = (x) => String(x || '').replace(/\r\n/g, '\n').split('\n')
-    .filter(l => { const m = /^\s*\[(ticari|link|linkyok)\]/.exec(l); return !m || (m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : !link); })
-    .map(l => l.replace(/^\s*\[(ticari|link|linkyok)\]\s*/, '')).join('\n');
-  const block = (x) => !isSchengen(v) ? '' : cond(x).replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
+    .filter(l => { const m = /^\s*\[(ticari|linkyok|link|ek|schengen)\]/.exec(l); return !m || (m[1] === 'schengen' ? isSchengen(v) : m[1] === 'ticari' ? ticari : m[1] === 'link' ? !!link : m[1] === 'ek' ? attachments.length > 0 : !link); })
+    .map(l => l.replace(/^\s*\[(ticari|linkyok|link|ek|schengen)\]\s*/, '')).join('\n');
   const office = String(v.idataOffice || '').trim();
   const vals = {
     isim: custName(v, cust), ulke: v.country || 'Vize', tarih: trDate(appt), saat: v.appointmentTime || '',
     ofis: office ? (v.processor && !trHas(office, v.processor) ? `${trHas(v.processor, 'idata') ? 'iDATA' : v.processor} ${office}` : office) : '',
-    pnr: String(v.pnr || '').trim(), sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih, sureli_evraklar: block(pick(tpl?.sureli, RANDEVU_MAIL_DEFAULT.sureli)), suresiz_evraklar: block(tpl?.suresiz), evrak_linki: link,
+    pnr: String(v.pnr || '').trim(), sureli_son_tarih: sv.sureli_son_tarih, suresiz_son_tarih: sv.suresiz_son_tarih, on_dort_gun: sv.on_dort_gun, uc_ay: sv.uc_ay, alti_ay: sv.alti_ay, son_gun: sv.son_gun, sureli_evraklar: isSchengen(v) ? SURELI_NOT.replace(/\{(on_dort_gun|sureli_son_tarih)\}/g, (m, k) => sv[k]) : '', suresiz_evraklar: '', evrak_linki: link, // süreli/süresiz bölümleri Ayarlar'dan düzenlenmez (bot ile aynı)
   };
-  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g;
+  const KEYS = /\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih|on_dort_gun|uc_ay|alti_ay|son_gun)\}/g;
   const fill = (str) => String(str).replace(KEYS, (m, k) => vals[k]);
   const emptyKey = (line) => (line.match(KEYS) || []).some(k => !vals[k.slice(1, -1)]);
   const text = cond(pick(tpl?.body, RANDEVU_MAIL_DEFAULT.body)).split('\n')
     .filter(l => !(emptyKey(l) && /^[^:{}]{0,30}:?[^:{}]{0,12}(\{\w+\}\s*)+$/.test(l.trim())))
     .map(fill).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { subject: visaMailSubject(v, cust), text, attachments: [] };
+  return { subject: visaMailSubject(v, cust), text, attachments };
 };
 
 // Elle gönderim — Vize SMTP, yanıt adresi vize@. Metin düz yazıdır; şablonda HTML etiketi varsa olduğu gibi bırakılır (otomatik mailde de öyle).

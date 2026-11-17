@@ -1,6 +1,6 @@
 // 🌍 Vize modülü
 import { LoadingButton, inputStyle, selectStyle } from '../components/ui';
-import { PAYMENT_METHODS, VIZE_DURUM } from '../lib/data.js';
+import { PAYMENT_METHODS, VIZE_DURUM, VIZE_KILAVUZ_URL } from '../lib/data.js';
 import { VISA_COST_CATEGORIES, getVisaCostItems, visaAppBelongsTo, FingerprintBox } from '../components/shared';
 import { XLSX } from '../lib/heavy.js';
 import { db } from '../lib/firebase.js';
@@ -1760,6 +1760,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
               </button>
             );
           })()}
+          {/* Vize bölümü kullanım kılavuzu (Ayarlar'dan değiştirilebilir: appSettings.vizeKilavuzUrl) */}
+          <button onClick={() => window.open(appSettings?.vizeKilavuzUrl || VIZE_KILAVUZ_URL, '_blank', 'noopener')} title="Paydos CRM — Vize Bölümü: Özellikler ve Kullanım Kılavuzu" style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#60a5fa', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📖 Kullanım Kılavuzu</button>
           <button onClick={() => { setShowIdataModal(true); setIdataText(''); setIdataParsed([]); }} style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: '10px', padding: '10px 16px', color: '#a78bfa', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📧 iDATA Randevu İşle</button>
           <button onClick={exportToExcel} style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '10px', padding: '10px 16px', color: '#10b981', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>📥 Excel</button>
           <button onClick={openNewForm} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '10px', padding: '10px 20px', color: '#0c1929', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>➕ Yeni Başvuru</button>

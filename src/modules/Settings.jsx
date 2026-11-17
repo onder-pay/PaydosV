@@ -352,7 +352,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#64748b' }}>15 dakikada bir kontrol edilir (08:00–21:00). E-postası olmayanlar Telegram vize grubuna yazılır. Kapalıyken gelen başvurulara, tekrar açınca geriye dönük mail gitmez.</p>
         {[
           { key: 'autoEmailOnVisa', title: '📧 Atama Bekliyor → evrak maili', desc: 'Durum Atama Bekliyor olunca vize türünün şablonu (aşağıda) ve bağlı ekleri gider.' },
-          { key: 'autoSureliMail', title: '📅 Randevu → randevu maili', desc: "Randevu tarihi başvuruya yazılınca (elle ya da iDATA mailinden) müşteriye tarih, saat, ofis ve PNR maili gider; Schengen'de SGK / banka dökümü gibi süreli evraklar aynı mailde yer alır. Şablonu aşağıda." },
+          { key: 'autoSureliMail', title: '📅 Randevu → randevu maili', desc: "Randevu tarihi başvuruya yazılınca (elle ya da iDATA mailinden) ilgili kişiye randevu tarihi, saati, ofis ve PNR maili gider; vize türüne bağlı evrak listesi (ekler) yeniden eklenir, Schengen'de süreli evrak son teslim tarihi yazılır. Şablonu aşağıda." },
         ].map(t => { const on = appSettings?.[t.key] !== false; return (
           <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div>
@@ -419,9 +419,9 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         ); })()}
 
       {(() => { const tp = appSettings?.randevuMailTemplate || {}; const D = RANDEVU_MAIL_DEFAULT; const has = (x) => !!String(x || '').trim();
-        const custom = has(tp.body) || has(tp.sureli) || has(tp.suresiz);
-        const subject = 'Mustafa Karakuzu - Almanya - Ticari', body = has(tp.body) ? tp.body : D.body, sureli = has(tp.sureli) ? tp.sureli : D.sureli, suresiz = tp.suresiz || '';
-        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { body, sureli, suresiz, ...patch } });
+        const custom = has(tp.body);
+        const subject = 'Mustafa Karakuzu - Almanya Ticari Vize Başvurusu', body = has(tp.body) ? tp.body : D.body, sureli = '', suresiz = '';
+        const setTp = (patch) => setAppSettings({ ...appSettings, randevuMailTemplate: { body, ...patch } });
         const inp = { width: '100%', padding: '10px 12px', background: '#0a1626', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' };
         const lbl = { display: 'block', fontSize: '11px', color: '#94a3b8', margin: '10px 0 4px' };
         // Önizleme: botla aynı kurallar, örnek bilgilerle (Schengen, ticari değil)
@@ -429,30 +429,21 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
         const blockTxt = (x) => String(x).split('\n').filter(l => !/^\s*\[ticari\]/.test(l)).join('\n').replace(/\{(on_dort_gun|uc_ay|alti_ay|son_gun|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sv[k]).trim();
         const sureliTxt = blockTxt(sureli), suresizTxt = blockTxt(suresiz);
         const sample = { isim: 'Mustafa Karakuzu', ulke: 'Almanya', tarih: '18.11.2026', saat: '15:50', ofis: 'iDATA İzmir Ofis', pnr: 'SDP9CV82NMP', sureli_evraklar: sureliTxt, suresiz_evraklar: suresizTxt, evrak_linki: 'https://vize.paydostur.com/#/yukle/örnek' };
-        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
+        const fill = (x) => String(x).split('\n').filter(l => !/^\s*\[linkyok\]/.test(l)).map(l => l.replace(/^\s*\[(ticari|link|ek|schengen)\]\s*/, '')).join('\n').replace(/\{(isim|ulke|tarih|saat|ofis|pnr|sureli_evraklar|suresiz_evraklar|evrak_linki|sureli_son_tarih|suresiz_son_tarih|on_dort_gun|uc_ay|alti_ay|son_gun)\}/g, (m, k) => sample[k] ?? sv[k]).replace(/\n{3,}/g, '\n\n');
         return (
       <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, fontSize: '15px', color: '#e8f1f8' }}>📅 Randevu Maili Şablonu <span style={{ fontSize: '11px', color: custom ? '#f59e0b' : '#64748b', marginLeft: '6px' }}>{custom ? 'DÜZENLENDİ' : 'VARSAYILAN'}</span></h3>
-          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { body: '', sureli: '', suresiz: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
+          {custom && <button type="button" onClick={() => { if (window.confirm('Şablon varsayılan metne dönsün mü?')) setAppSettings({ ...appSettings, randevuMailTemplate: { body: '' } }); }} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}>↺ Varsayılana dön</button>}
         </div>
         <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
-          Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{sureli_evraklar}'}</code> <code>{'{suresiz_evraklar}'}</code> <code>{'{evrak_linki}'}</code>.
-          Başına <code>[link]</code> yazılan satır yalnız başvuruda evrak yükleme linki varsa, <code>[linkyok]</code> yazılan yalnız link yoksa çıkar.
+          Randevu tarihi başvuruya yazılınca müşteriye giden mail. Alanlar: <code>{'{isim}'}</code> <code>{'{ulke}'}</code> <code>{'{tarih}'}</code> <code>{'{saat}'}</code> <code>{'{ofis}'}</code> <code>{'{pnr}'}</code> <code>{'{evrak_linki}'}</code> <code>{'{on_dort_gun}'}</code> (süreli evrak hangi tarihten önce alınmaz) <code>{'{sureli_son_tarih}'}</code> <code>{'{suresiz_son_tarih}'}</code>.
+          Başına <code>[link]</code> yazılan satır yalnız başvuruda evrak yükleme linki varsa, <code>[linkyok]</code> yazılan yalnız link yoksa, <code>[ek]</code> yazılan yalnız maile evrak listesi eklendiyse, <code>[schengen]</code> yazılan yalnız Schengen başvurusunda çıkar.
           Değeri boş gelen alanın satırı (ör. PNR girilmediyse "PNR: {'{pnr}'}") mailden çıkarılır.
         </p>
-        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>📌 Konu sabittir: <strong>Ad Soyad - Ülke - Vize türü</strong> (tüm vize maillerinde aynı).</p>
+        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>📌 Konu sabittir: <strong>Ad Soyad - Ülke Vize türü Vize Başvurusu</strong> (tüm vize maillerinde aynı).</p>
         <label style={lbl}>Mail metni</label>
         <textarea value={body} onChange={e => setTp({ body: e.target.value })} rows={14} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
-        <label style={lbl}>Süreli evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{sureli_evraklar}'} yerine konur</label>
-        <textarea value={sureli} onChange={e => setTp({ sureli: e.target.value })} rows={10} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
-        <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
-          Randevuya göre hesaplanan tarihler: <code>{'{on_dort_gun}'}</code> (14 gün kuralı), <code>{'{uc_ay}'}</code>, <code>{'{alti_ay}'}</code>, <code>{'{son_gun}'}</code> (randevudan bir gün önce).
-          Son teslim: <code>{'{sureli_son_tarih}'}</code> (randevu atandıktan 2 gün sonra; randevu 14 günden uzaksa randevuya 12 gün kala), <code>{'{suresiz_son_tarih}'}</code> (Atama Bekliyor'dan 10 gün sonra).
-          Başına <code>[ticari]</code> yazılan satır yalnız ticari / fuar vizesinde çıkar.
-        </p>
-        <label style={lbl}>Süresiz evraklar bölümü — yalnız Schengen başvurularında, metindeki {'{suresiz_evraklar}'} yerine konur (boş bırakılırsa mailde yer almaz)</label>
-        <textarea value={suresiz} onChange={e => setTp({ suresiz: e.target.value })} rows={8} placeholder={'SÜRESİZ EVRAKLAR\n• Pasaport\n• …\n[ticari] • yalnız ticari vizede çıkacak satır'} style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ marginTop: '12px', fontSize: '11px', color: '#94a3b8' }}>Önizleme (örnek Schengen başvurusu)</div>
         <div style={{ marginTop: '4px', padding: '12px 14px', background: '#ffffff', borderRadius: '8px', color: '#1f2937', fontSize: '13px' }}>
           <div style={{ fontWeight: '700', marginBottom: '8px' }}>{subject}</div>
@@ -496,7 +487,7 @@ export function MailSettingsPanel({ mode = 'visa', appSettings, setAppSettings, 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📌 Mail Konusu</label>
-                    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>Sabit: <strong style={{ color: '#e8f1f8' }}>Ad Soyad - Ülke - Vize türü</strong> (tüm vize maillerinde aynı)</div>
+                    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>Sabit: <strong style={{ color: '#e8f1f8' }}>Ad Soyad - Ülke Vize türü Vize Başvurusu</strong> (tüm vize maillerinde aynı)</div>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>📝 Mail İçeriği</label>

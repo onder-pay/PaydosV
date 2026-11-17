@@ -1,7 +1,8 @@
 // ===== Vize: gelen kutusunu okuma (vize@paydostur.com) =====
 // 15 dakikada bir IMAP ile gelen kutusuna bakar. Mailler SİLİNMEZ, okundu işaretlenmez.
 // 1) iDATA randevu maili (gönderen idata.com.tr): tablodaki AD SOYAD / PNR / OFİS / RANDEVU TARİHİ okunur.
-//    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır; eşleşmezse yalnız gruba haber verilir.
+//    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır, durum "Atama Bekliyor" ise "Evrak Topluyor" olur;
+//    eşleşmezse yalnız gruba haber verilir.
 //    Müşteriye randevu mailini evrakmail.js gönderir (randevu tarihi yazılan her başvuruya, en geç 15 dk içinde;
 //    app_settings.autoSureliMail === false ise ya da başvuruda autoMailOff varsa gitmez).
 // Test: grupta /mailtest → son 5 mail okunur, ne yapılacağı yazılır; HİÇBİR ŞEY kaydedilmez, müşteriye mail gitmez
@@ -16,7 +17,7 @@ const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 if (!admin.apps.length) admin.initializeApp();
 const { getFirestore } = require('firebase-admin/firestore');
-const { normTr, titleCaseTr, normEmail, dmy } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
+const { normTr, titleCaseTr, normEmail, dmy, trHas, statusLabels } = require('./tr'); // Türkçe karakter kuralı (CLAUDE.md)
 const { sendMail, buildRandevuMail } = require('./evrakmail');
 
 const TZ = 'Europe/Istanbul';
@@ -218,6 +219,15 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now };
             if (row.office) patch.idataOffice = row.office;
             if (!v.processor) patch.processor = 'İdata';
+            // Randevu atandı: "Atama Bekliyor" (ya da "Randevu Bekliyor") → "Evrak Topluyor". Başka durumdaki başvurunun durumuna dokunulmaz.
+            // Hedef etiket Ayarlar'daki yazımıyla ("EVRAK TOPLUYOR" vb.) yazılır.
+            let durumNote = '';
+            if (trHas(v.status, 'atama bekliyor', 'randevu bekliyor')) {
+              const lbls = statusLabels(settings, 'Evrak Topluyor');
+              patch.status = lbls.find(x => x !== 'Evrak Topluyor') || 'Evrak Topluyor';
+              patch.updatedAt = now;
+              durumNote = `\n🔄 durum: ${esc(v.status)} → ${esc(patch.status)}${test ? ' (olurdu)' : ''}`;
+            }
             // Randevu mailini evrakmail.js gönderir; burada yalnız ne olacağı yazılır. Testte örnek mail acentenin kendi adresine gider.
             let mailNote = '';
             const cust = await getCust(v);
@@ -228,14 +238,14 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             else if (!test) mailNote = `randevu maili 15 dakika içinde gider: ${esc(custTo)}`;
             if (test && randevuMailOn) {
               try {
-                await send(smtp, { to: user, ...buildRandevuMail({ ...v, ...patch }, cust, istDate(), settings.randevuMailTemplate) });
+                await send(smtp, { to: user, ...buildRandevuMail({ ...v, ...patch }, cust, istDate(), settings.randevuMailTemplate, settings) });
                 res.randevuMail++;
                 mailNote = `${mailNote ? `${mailNote}\n✉️ ` : `gerçekte müşteriye giderdi: ${esc(custTo)}\n✉️ `}örnek randevu maili ${esc(user)} adresine gönderildi (müşteriye gitmedi)`;
               } catch (e) { mailNote = `❌ örnek randevu maili gönderilemedi: ${esc(e.message)}`; }
             }
             if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
             res.randevu++;
-            lines.push(`📅 <b>${esc(titleCaseTr(v.customerName))}</b> ${test ? 'randevusu başvuruya işlenirdi' : 'randevusu başvuruya işlendi'}${old}\n${info}\n✉️ ${mailNote}${test && !trusted ? '\n⚠️ Bu mail iDATA adresinden gelmedi (iletilmiş); gerçek çalışmada işlenmez, yalnız bildirilir.' : ''}`);
+            lines.push(`📅 <b>${esc(titleCaseTr(v.customerName))}</b> ${test ? 'randevusu başvuruya işlenirdi' : 'randevusu başvuruya işlendi'}${old}\n${info}${durumNote}\n✉️ ${mailNote}${test && !trusted ? '\n⚠️ Bu mail iDATA adresinden gelmedi (iletilmiş); gerçek çalışmada işlenmez, yalnız bildirilir.' : ''}`);
           } else {
             res.eslesmeyen++;
             const why = !trusted ? 'mail iDATA adresinden gelmedi (iletilmiş olabilir)' : hits.length ? `${hits.length} başvuru eşleşti` : 'eşleşen açık başvuru yok';
