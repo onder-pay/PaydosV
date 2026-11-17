@@ -841,6 +841,13 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
       const gercek = TR_GUNLER[d.getDay()];
       if (yazilan && yazilan !== gercek) w.push(`${lab} tarihi: ${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${d.getFullYear()} ${gercek} günüdür ("${yazilan}" yazılmış).`);
     });
+    // Gece yarısından sonra (03:00'ten önce) kalkış: bilette yazan tarih kalkış günüdür, toplanma bir önceki akşamdır — yanlış güne yazılmasın
+    [[fo, dOut, 'Gidiş'], [fr, dRet, 'Dönüş']].forEach(([f, d, lab]) => {
+      const dep = hhmm(f?.legs?.[0]?.dep);
+      if (!d || dep == null || dep >= 180) return;
+      const once = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+      w.push(`${lab}: kalkış gece yarısından sonra (${f.legs[0].dep.split('·').pop().trim()}). Uçuş tarihi ${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${TR_GUNLER[d.getDay()]}, havalimanında toplanma bir önceki akşam (${once.getDate()} ${TR_AYLAR[once.getMonth()]} ${TR_GUNLER[once.getDay()]}). Biletteki tarih bu değilse düzeltin.`);
+    });
     if (dOut && dRet && dOut > dRet) w.push('Gidiş tarihi dönüşten sonra görünüyor — kontrol edin.');
     // Uçuş tarihleri seçilen tur aralığında mı?
     if (o.startDate && o.endDate) {
@@ -1933,18 +1940,39 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
 }
 
 // Uçuş maddelerinin günlere dağılımı: { out|ret: Map(günSırası → { items, shifted }) }. shifted: uçuş tarihinden sonraki güne düşen kısım.
+// Her madde kendi gerçek tarihinin gününe yerleşir (uçuş tarihi + shift; gece yarısından sonraki kalkışta toplanma shift -1 = önceki akşam).
+// O tarihe ait gün programda yoksa en yakın güne konur ve maddenin başına gerçek tarihi yazılır ("24 Nisan Cumartesi: …") —
+// yoksa müşteri ertesi günkü uçuşu/varışı o gün sanıyordu.
 export const autoBlocks = (p) => {
   const days = p.days || [], res = { out: new Map(), ret: new Map() };
   if (!days.length) return res;
-  const dayFor = (f, fallback) => { const fd = parseTrDate(f?.date); if (fd) { const k = days.findIndex(d => { const x = parseTrDate(d.date); return x && x.d.getMonth() === fd.d.getMonth() && x.d.getDate() === fd.d.getDate(); }); if (k >= 0) return k; } return fallback; };
+  const dd = days.map(d => parseTrDate(d.date)?.d || null);
+  const same = (a, b) => !!(a && b && a.getMonth() === b.getMonth() && a.getDate() === b.getDate());
+  const idxOf = (dt) => dt ? dd.findIndex(x => same(x, dt)) : -1;
+  const label = (dt) => `${dt.getDate()} ${TR_AYLAR[dt.getMonth()]} ${TR_GUNLER[dt.getDay()]}`;
   [['out', p.flightOut, false], ['ret', p.flightRet, true]].forEach(([dir, f, ret]) => {
     const all = flightAutoItems(f, ret);
     if (!all.length) return;
-    const maxShift = all.reduce((m, x) => Math.max(m, x.shift || 0), 0);
-    // Dönüşte ertesi güne sarkan uçuş varsa ve gün eşleşmesi yoksa: son gün = varış günü
-    const k = dayFor(f, ret ? Math.max(0, days.length - 1 - maxShift) : 0);
-    if (k < 0 || (ret && days.length < 2 && k === 0)) return;
-    all.forEach(({ shift, ...x }) => { const kk = Math.min(k + (shift || 0), days.length - 1); const g = res[dir].get(kk) || { items: [], shifted: false }; g.items.push({ ...x, dir }); if (shift) g.shifted = true; res[dir].set(kk, g); });
+    const fd = parseTrDate(f?.date)?.d || null;
+    const shifts = all.map(x => x.shift || 0), minShift = Math.min(...shifts), maxShift = Math.max(...shifts);
+    // Uçuş gününün sırası: tarih eşleşirse o gün; yoksa dönüşte son gün = varış günü, gidişte ilk gün
+    const k0 = idxOf(fd);
+    const base = k0 >= 0 ? k0 : (ret ? Math.max(0, days.length - 1 - maxShift) : -minShift);
+    if (ret && days.length < 2 && base === 0 && k0 < 0) return;
+    all.forEach(({ shift = 0, ...x }) => {
+      const actual = fd ? new Date(fd.getFullYear(), fd.getMonth(), fd.getDate() + shift) : null;
+      let kk = idxOf(actual);
+      let text = x.text;
+      if (kk < 0) {
+        kk = Math.max(0, Math.min(base + shift, days.length - 1));
+        if (actual && dd[kk] && !same(dd[kk], actual)) text = `${label(actual)}: ${text}`;
+      }
+      const g = res[dir].get(kk) || { items: [], hasBase: false, hasLater: false };
+      g.items.push({ ...x, text, dir });
+      if (shift > minShift) g.hasLater = true; else g.hasBase = true;
+      g.shifted = g.hasLater && !g.hasBase; // yalnız ertesi güne sarkan kısım (varış günü)
+      res[dir].set(kk, g);
+    });
   });
   return res;
 };
@@ -2031,8 +2059,10 @@ export const flightAutoItems = (f, ret) => {
   const out = [];
   // shift: uçuş tarihinden kaç gün sonra (aktarma gece yarısını geçerse ya da varış (+1) ise ertesi güne düşer)
   let shift = 0, prevArr = null;
-  if (ret) out.push({ time: '', text: 'Otelden çıkış ve havalimanına transfer.', auto: true, shift: 0 });
-  out.push({ time: hm(hhmm(legs[0].dep) - 180), text: `${first.city || 'Havalimanı'}${first.iata ? ` (${first.iata})` : ''} havalimanında toplanma ve check-in işlemleri (uçuştan 3 saat önce).`, auto: true, shift: 0 });
+  // Kalkış 03:00'ten önceyse toplanma (ve otelden çıkış) bir önceki akşamdır: shift -1
+  const pre = hhmm(legs[0].dep) - 180 < 0 ? -1 : 0;
+  if (ret) out.push({ time: '', text: 'Otelden çıkış ve havalimanına transfer.', auto: true, shift: pre });
+  out.push({ time: hm(hhmm(legs[0].dep) - 180), text: `${first.city || 'Havalimanı'}${first.iata ? ` (${first.iata})` : ''} havalimanında toplanma ve check-in işlemleri (uçuştan 3 saat önce).`, auto: true, shift: pre });
   legs.forEach((l, i) => {
     const to = pt(l.arr), last = i === legs.length - 1, dep = hhmm(l.dep), arr = hhmm(l.arr);
     if (prevArr != null && dep != null && dep < prevArr) shift++;
