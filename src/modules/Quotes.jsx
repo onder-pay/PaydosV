@@ -835,7 +835,9 @@ export function QuotesModule({ quotes, setQuotes, customers, isMobile, showToast
     // Yazılan gün adı tarihle uyuşuyor mu ("21 Mart 2027 Cumartesi" → aslında Pazar)
     [[fo.date, dOut, 'Gidiş'], [fr.date, dRet, 'Dönüş']].forEach(([txt, d, lab]) => {
       if (!d) return;
-      const yazilan = TR_GUNLER.find(g => trHas(txt, g) && !(g === 'Pazar' && trHas(txt, 'Pazartesi')));
+      // Tam kelime eşleşmesi: "Cumartesi" içinde "Cuma", "Pazartesi" içinde "Pazar" geçiyor — alt dize araması yanlış uyarı veriyordu
+      const kelimeler = normalizeTr(txt).split(/[^a-z]+/);
+      const yazilan = TR_GUNLER.find(g => kelimeler.includes(normalizeTr(g)));
       const gercek = TR_GUNLER[d.getDay()];
       if (yazilan && yazilan !== gercek) w.push(`${lab} tarihi: ${d.getDate()} ${TR_AYLAR[d.getMonth()]} ${d.getFullYear()} ${gercek} günüdür ("${yazilan}" yazılmış).`);
     });
