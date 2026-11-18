@@ -1209,6 +1209,12 @@ const saveVisaApplication = async (db, cust, catId, typeObj, status) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  // Varsayılan maliyet kalemleri (CRM getVisaCostDefaults ile aynı: kategori varsayılanı + türe özel değerler)
+  try {
+    const s = (await db.collection('app_settings').doc('main').get()).data() || {};
+    rec.costs = { ...((s.visaCostDefaults || {})[catId] || {}), ...((((s.visaCostTypeDefaults || {})[catId]) || {})[typeObj.name] || {}) };
+    rec.costCurrency = (s.visaCostDefaultCurrency || {})[catId] || '₺';
+  } catch (e) { console.warn('[BOT] varsayılan maliyetler okunamadı:', e.message); }
   await db.collection('visa_applications').doc(String(id)).set(rec);
   return rec;
 };

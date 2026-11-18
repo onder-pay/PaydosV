@@ -1399,7 +1399,28 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', padding: '14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                       <h4 style={{ margin: 0, fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>💰 Mali Bilgiler (Maliyet Kalemleri)</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {(() => {
+                          // Ayarlar'daki varsayılanlarla yalnız BOŞ (0) kalemleri doldurur; girilmiş tutarlara dokunmaz
+                          const catId = formData.categoryId || formData.category || selectedCategory?.id || 'schengen';
+                          const defs = getVisaCostDefaults(appSettings, catId, formData.visaDuration || formData.visaType);
+                          const fillable = Object.entries(defs).filter(([k, val]) => (parseFloat(val) || 0) > 0 && !(parseFloat(costs[k]) || 0));
+                          return (
+                            <button type="button" onClick={() => {
+                              if (!Object.values(defs).some(val => (parseFloat(val) || 0) > 0)) { showToast?.('Bu vize türü için Ayarlar → Vize Maliyet Kalemleri\'nde varsayılan değer girilmemiş', 'warning'); return; }
+                              if (!fillable.length) { showToast?.('Boş kalem yok — girilmiş tutarlar değiştirilmedi', 'info'); return; }
+                              const defCur = (appSettings?.visaCostDefaultCurrency || {})[catId];
+                              const hasVals = Object.values(costs).some(x => parseFloat(x));
+                              const curNow = formData.costCurrency || saleCurrency;
+                              if (hasVals && defCur && defCur !== curNow) { showToast?.(`Varsayılanlar ${defCur}, bu başvurunun kalemleri ${curNow} — karışmasın diye doldurulmadı. Para birimini ${defCur} yapıp tekrar deneyin.`, 'warning'); return; }
+                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, ...(!hasVals && defCur ? { costCurrency: defCur } : {}) });
+                              showToast?.(`${fillable.length} kalem varsayılan değerle dolduruldu`, 'success');
+                            }} title="Ayarlar'daki varsayılan maliyetlerle yalnız boş kalemleri doldurur"
+                              style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '7px', color: '#10b981', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                              ↺ Varsayılanları doldur{fillable.length ? ` (${fillable.length})` : ''}
+                            </button>
+                          );
+                        })()}
                         <span style={{ fontSize: '11px', color: '#94a3b8' }}>Tüm kalemler için para birimi:</span>
                         <select value={formData.costCurrency || saleCurrency}
                           onChange={e => setFormData({ ...formData, costCurrency: e.target.value })}
