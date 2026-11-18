@@ -1359,12 +1359,15 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>Vize Ücreti</label>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   {paymentStatuses.map(ps => (
-                    <button key={ps} type="button" onClick={() => setFormData({...formData, paymentStatus: ps})} style={{ flex: 1, padding: '10px', background: formData.paymentStatus === ps ? (ps === 'Ödendi' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)') : 'rgba(255,255,255,0.05)', border: formData.paymentStatus === ps ? `2px solid ${ps === 'Ödendi' ? '#10b981' : '#ef4444'}` : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: formData.paymentStatus === ps ? (ps === 'Ödendi' ? '#10b981' : '#ef4444') : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: formData.paymentStatus === ps ? '600' : '400' }}>
+                    <button key={ps} type="button" onClick={() => setFormData({...formData, paymentStatus: ps, paymentStatusManual: true})} style={{ flex: 1, padding: '10px', background: formData.paymentStatus === ps ? (ps === 'Ödendi' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)') : 'rgba(255,255,255,0.05)', border: formData.paymentStatus === ps ? `2px solid ${ps === 'Ödendi' ? '#10b981' : '#ef4444'}` : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: formData.paymentStatus === ps ? (ps === 'Ödendi' ? '#10b981' : '#ef4444') : '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: formData.paymentStatus === ps ? '600' : '400' }}>
                       {ps === 'Ödendi' ? '✓' : '✗'} {ps}
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '-4px' }}>Aşağıda "Müşteri Ödemeleri"ne tutar girince kendiliğinden değişir (tahsilat vize bedelini karşılayınca Ödendi).</div>
+                {formData.paymentStatusManual
+                  ? <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '-4px' }}>Elle seçildi — aşağıdaki ödemeler bu durumu değiştirmez.{' '}
+                      <button type="button" onClick={() => { const fd = { ...formData, paymentStatusManual: false }; setFormData({ ...fd, paymentStatus: visaPaidStatus(fd) }); }} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', cursor: 'pointer', fontSize: '10px', textDecoration: 'underline' }}>Ödemelere göre hesapla</button></div>
+                  : <div style={{ fontSize: '10px', color: '#64748b', marginTop: '-4px' }}>Aşağıda "Müşteri Ödemeleri"ne tutar girince kendiliğinden değişir (tahsilat vize bedelini karşılayınca Ödendi). Elle seçerseniz seçiminiz korunur.</div>}
               </div>
 
               {/* MALİ BİLGİLER */}
@@ -1925,8 +1928,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   </button>
                   <span style={{ fontSize: '13px', fontWeight: 700, color: '#93c5fd' }}>{selectedIds.length} seçili</span>
                   <div style={{ flex: 1 }} />
-                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödendi' }, 'Ödendi')} style={btn('#10b981', '#fff')}>💰 Ödendi</button>
-                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödenmedi' }, 'Ödenmedi')} style={btn('rgba(239,68,68,0.2)', '#ef4444')}>Ödenmedi</button>
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödendi', paymentStatusManual: true }, 'Ödendi')} style={btn('#10b981', '#fff')}>💰 Ödendi</button>
+                  <button disabled={!selectedIds.length || bulkBusy} onClick={() => bulkUpdateVisas({ paymentStatus: 'Ödenmedi', paymentStatusManual: true }, 'Ödenmedi')} style={btn('rgba(239,68,68,0.2)', '#ef4444')}>Ödenmedi</button>
                   <select disabled={!selectedIds.length || bulkBusy} value="" onChange={e => { if (e.target.value) bulkUpdateVisas({ status: e.target.value }, e.target.value); }} style={{ ...btn('rgba(255,255,255,0.08)', '#e8f1f8'), border: '1px solid rgba(255,255,255,0.15)' }}>
                     <option value="" style={{ background: '#0c1929' }}>Durum değiştir…</option>
                     {visaStatuses.map(st => <option key={st} value={st} style={{ background: '#0c1929' }}>{st}</option>)}

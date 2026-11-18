@@ -94,7 +94,10 @@ export const isValidTc = (tc) => {
 // Vize ödeme durumu: müşteri ödemeleri vize bedelini karşılıyor mu?
 // Vize bedeliyle aynı para birimindeki ödemeler bedele (indirim düşülmüş), ₺ ödemeler bedelin TL karşılığına oranlanır.
 // TL karşılığı = bedel × vizeci/muhasebecinin elle yazdığı kur (visaKur). Otomatik kur alınmaz. Ödeme yoksa mevcut durum korunur.
+// Elle seçilen durum (paymentStatusManual) ödemelerden yeniden hesaplanmaz: "Ödendi" tıklandıktan sonra tutar yazılırken
+// "Ödenmedi"ye dönüyordu. Otomatiğe dönmek için paymentStatusManual kaldırılır.
 export const visaPaidStatus = (v) => {
+  if (v.paymentStatusManual) return v.paymentStatus || 'Ödenmedi';
   const list = (() => { try { return typeof v.payments === 'string' ? JSON.parse(v.payments || '[]') : (v.payments || []); } catch { return []; } })();
   const cur = v.visaCurrency || '€';
   const net = (parseFloat(v.visaPrice) || 0) - (parseFloat(v.visaDiscount) || 0);
