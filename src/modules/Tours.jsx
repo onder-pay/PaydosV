@@ -22,7 +22,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
   const openTourProgram = (tour) => {
     const o = tour.offerData;
     if (!o) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
-    const html = genOfferHTML(o);
+    const html = genOfferHTML(o, { hidePrices: tour.hidePrices ?? !!o.hidePrices });
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
     else showToast?.('Açılır pencere engellendi — izin verin', 'error');
@@ -47,6 +47,22 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
       showToast?.(`✅ Program teklife bağlandı${n ? ` · ${n} müşteri linki güncellendi` : ''}`, 'success');
     } catch (e) { showToast?.('❌ Bağlanamadı: ' + e.message, 'error'); }
     finally { setLinkBusy(''); }
+  };
+  // 💲 Tur programı PDF'inde fiyat göster/gizle — paylaşılmış müşteri linklerindeki PDF de yenilenir
+  const [priceBusy, setPriceBusy] = useState('');
+  const toggleTourPrices = async (tour, hide) => {
+    setPriceBusy(tour.id);
+    const upd = { ...tour, hidePrices: hide };
+    try {
+      setTours(prev => prev.map(t => t.id === tour.id ? upd : t));
+      if (selectedTour?.id === tour.id) setSelectedTour(upd);
+      const sd = { ...upd }; delete sd._docId;
+      await setDoc(doc(db, 'tours', tour._docId || String(tour.id)), sd, { merge: true });
+      let n = 0;
+      try { n = await refreshTourShareLinks(upd); } catch (e) { showToast?.('⚠️ Kaydedildi ama müşteri linkleri yenilenemedi: ' + e.message, 'warning'); return; }
+      showToast?.(`${hide ? '🚫 Tur programı artık fiyatsız' : '💲 Tur programında fiyatlar görünür'}${n ? ` · ${n} müşteri linki güncellendi` : ''}`, 'success');
+    } catch (e) { showToast?.('❌ Kaydedilemedi: ' + e.message, 'error'); }
+    finally { setPriceBusy(''); }
   };
   const downloadTourProgram = async (tour) => {
     if (!tour.offerData) { showToast?.('Bu turda program bilgisi yok (tekliften aktarılmadı)', 'warning'); return; }
@@ -1654,6 +1670,10 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                       .map(q => <option key={q.id} value={String(q.id)} style={{ background: '#1a3a5c', color: '#e8f1f8' }}>{q.subject || q.offer?.title}{q.offer?.startDate ? ` · ${formatDate(q.offer.startDate)}` : ''}</option>)}
                   </select>
                 )}
+                {tour.offerData && (() => { const hid = tour.hidePrices ?? !!tour.offerData.hidePrices; return (
+                  <button onClick={() => toggleTourPrices(tour, !hid)} disabled={priceBusy === tour.id} title="Tur programı PDF'inde (indirme ve müşteri linki) otel fiyatları görünsün mü"
+                    style={{ padding: '8px 14px', background: hid ? 'rgba(148,163,184,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${hid ? 'rgba(148,163,184,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: '8px', color: hid ? '#94a3b8' : '#10b981', cursor: priceBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600 }}>
+                    {priceBusy === tour.id ? '⏳…' : hid ? '🚫 PDF fiyatsız' : '💲 PDF fiyatlı'}</button>); })()}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => setExcelTour(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Excel</button>

@@ -1508,6 +1508,9 @@ KURALLAR:
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={secTitle}>★ Otel Seçenekleri</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: offer.hidePrices ? '#f59e0b' : '#94a3b8', cursor: 'pointer', marginLeft: 'auto', marginRight: '8px' }} title="Teklif ve tur programı PDF'inde otel fiyat tablosu çıkmaz (otel adı kalır)">
+              <input type="checkbox" checked={!!offer.hidePrices} onChange={e => setOffer({ ...offer, hidePrices: e.target.checked })} /> PDF'te fiyat gösterme
+            </label>
             <button style={addBtn} onClick={() => setOffer(p => ({...p, hotels: [...p.hotels, { name: '', stars: '5★', priceDouble: '', priceSingle: '', priceExtraBed: '', priceBaby: '', priceChild1: '', priceChild2: '', currency: 'USD', note: '' }]}))}>+ Otel Ekle</button>
           </div>
           {offer.hotels.map((h, i) => (

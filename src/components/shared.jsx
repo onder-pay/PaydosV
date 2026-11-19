@@ -607,7 +607,9 @@ ${secTitle(S.m14[0])}${body(S.m14)}
 </body></html>`;
 };
 
-export const genOfferHTML = (o) => {
+// opts.hidePrices (yoksa o.hidePrices): otel kartları fiyat tablosu olmadan — müşteriye fiyatsız program
+export const genOfferHTML = (o, opts = {}) => {
+  const hidePrices = opts.hidePrices ?? !!o.hidePrices;
   const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const flightCard = (f, label) => {
     const legs = (f.legs || []).filter(l => l.airline || l.dep || l.arr);
@@ -635,7 +637,7 @@ export const genOfferHTML = (o) => {
   const hotelsHTML = o.hotels.map(h => `
     <div class="hcard">
       <div class="hhead">${esc(h.name)} <span class="stars">${esc(h.stars)}</span>${h.note?`<div class="hnote">${esc(h.note)}</div>`:''}</div>
-      <table class="ptable">
+      ${hidePrices ? '' : `<table class="ptable">
         <tr>
           <th>İki Kişilik Oda<br><small>Kişi Başı</small></th>
           <th>Tek Kişilik Oda</th>
@@ -652,7 +654,7 @@ export const genOfferHTML = (o) => {
           <td>${priceCell(h.priceChild1, h.currency)}</td>
           <td>${priceCell(h.priceChild2, h.currency)}</td>
         </tr>
-      </table>
+      </table>`}
     </div>`).join('');
   const incHTML = o.included.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="ok">✔</span> ${esc(x)}</div>`).join('');
   const excHTML = o.excluded.filter(x=>x.trim()).map(x=>`<div class="sitem"><span class="no">✘</span> ${esc(x)}</div>`).join('');
@@ -801,7 +803,7 @@ export const makeTourProgramPdf = async (tour, returnBlob = false) => {
   let holder = null;
   try {
     const html2canvas = await loadHtml2Canvas();
-    const full = genOfferHTML(o);
+    const full = genOfferHTML(o, { hidePrices: tour.hidePrices ?? !!o.hidePrices });
     const b = full.match(/<body>([\s\S]*)<\/body>/), st = full.match(/<style>([\s\S]*?)<\/style>/);
     holder = document.createElement('div');
     holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;background:#fff;z-index:-1';
