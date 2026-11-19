@@ -1,5 +1,5 @@
 // 🎫 Turlar modülü
-import { DEFAULT_SHARE_MSG, RES_LINK_DOCS, TavsiyelerModal, genContractHTML, genOfferHTML, makeTourProgramPdf, refreshTourShareLinks, resFlightList, visaAppBelongsTo, vizeSartiBul, addTourToCustomerLink, customerLinkSlug, pdfUrlText, publishCustomerLink, ticketFlightsOf } from '../components/shared';
+import { DEFAULT_SHARE_MSG, RES_LINK_DOCS, TavsiyelerModal, genContractHTML, genOfferHTML, makeTourProgramPdf, offerEnKey, translateOfferEn, refreshTourShareLinks, resFlightList, visaAppBelongsTo, vizeSartiBul, addTourToCustomerLink, customerLinkSlug, pdfUrlText, publishCustomerLink, ticketFlightsOf } from '../components/shared';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { MEAL_CONCEPTS, MEAL_EN, VIZE_DURUM, placeTr, schengenCountries, tourCountries } from '../lib/data.js';
 import { XLSX, jsPDF } from '../lib/heavy.js';
@@ -47,6 +47,29 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
       showToast?.(`✅ Program teklife bağlandı${n ? ` · ${n} müşteri linki güncellendi` : ''}`, 'success');
     } catch (e) { showToast?.('❌ Bağlanamadı: ' + e.message, 'error'); }
     finally { setLinkBusy(''); }
+  };
+  // 🇬🇧 İngilizce tur programı: AI çevirisi turda saklanır (offerDataEn); Türkçe program değişince yeniden çevrilir
+  const [enView, setEnView] = useState(null); // { tour, data, busy, pdfBusy, err }
+  const openEnglish = async (tour, force = false) => {
+    const key = offerEnKey(tour.offerData);
+    if (!force && tour.offerDataEn && tour.offerDataEnKey === key) { setEnView({ tour, data: tour.offerDataEn }); return; }
+    setEnView({ tour, data: null, busy: true });
+    try {
+      const data = await translateOfferEn(tour.offerData);
+      const upd = { ...tour, offerDataEn: data, offerDataEnKey: key };
+      setTours(prev => prev.map(t => t.id === tour.id ? upd : t));
+      if (selectedTour?.id === tour.id) setSelectedTour(upd);
+      setEnView({ tour: upd, data });
+      try { await setDoc(doc(db, 'tours', tour._docId || String(tour.id)), { offerDataEn: data, offerDataEnKey: key }, { merge: true }); }
+      catch (e) { showToast?.('⚠️ Çeviri hazır ama kaydedilemedi: ' + e.message, 'warning'); }
+    } catch (e) { setEnView({ tour, data: null, err: e.message }); }
+  };
+  const enPdf = async () => {
+    if (!enView?.data) return;
+    setEnView(v => ({ ...v, pdfBusy: true }));
+    try { await tourProgramPdf(enView.tour, false, { offer: enView.data, lang: 'en' }); showToast?.('🇬🇧 English PDF indirildi', 'success'); }
+    catch (e) { showToast?.('PDF oluşturulamadı: ' + e.message, 'error'); }
+    finally { setEnView(v => v ? { ...v, pdfBusy: false } : v); }
   };
   // 💲 Tur programı PDF'inde fiyat göster/gizle — paylaşılmış müşteri linklerindeki PDF de yenilenir
   const [priceBusy, setPriceBusy] = useState('');
@@ -1487,6 +1510,23 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
 
   return (
     <div style={{ padding: isMobile ? '16px' : '24px' }}>
+      {enView && (() => { const hid = enView.tour.hidePrices ?? !!enView.tour.offerData?.hidePrices; const btn = { padding: '9px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }; return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '8px' : '20px' }}>
+          <div style={{ background: '#0f2744', borderRadius: '12px', width: '100%', maxWidth: '900px', height: '92vh', display: 'flex', flexDirection: 'column', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', flex: 1, minWidth: '160px' }}>🇬🇧 {enView.tour.name} — English</h3>
+              <button onClick={enPdf} disabled={!enView.data || enView.pdfBusy} style={{ ...btn, background: enView.data ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'rgba(255,255,255,0.08)', color: '#fff', cursor: enView.data && !enView.pdfBusy ? 'pointer' : 'wait' }}>{enView.pdfBusy ? '⏳ PDF…' : '📄 PDF Yap'}</button>
+              <button onClick={() => openEnglish(enView.tour, true)} disabled={enView.busy} style={{ ...btn, background: 'rgba(59,130,246,0.18)', color: '#60a5fa' }} title="Türkçe programı yeniden çevir">🔄 Yeniden çevir</button>
+              <button onClick={() => setEnView(null)} style={{ ...btn, background: 'rgba(255,255,255,0.1)', color: '#94a3b8' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, background: enView.data ? '#fff' : 'transparent', overflow: 'hidden', borderRadius: '0 0 12px 12px' }}>
+              {enView.busy && <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>⏳ Program İngilizceye çevriliyor… (20–40 sn)</div>}
+              {enView.err && <div style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>❌ Çevrilemedi: {enView.err}</div>}
+              {enView.data && <iframe title="English program" srcDoc={genOfferHTML(enView.data, { lang: 'en', hidePrices: hid })} style={{ width: '100%', height: '100%', border: 'none' }} />}
+            </div>
+            {enView.data && <div style={{ padding: '6px 14px', fontSize: '11px', color: '#94a3b8' }}>AI çevirisidir — göndermeden önce okuyun. {hid ? '🚫 Fiyatsız (turdaki ayar).' : '💲 Fiyatlı (turdaki ayar).'} Türkçe program değişirse açınca yeniden çevrilir.</div>}
+          </div>
+        </div>); })()}
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h2 style={{ fontSize: '20px', margin: 0 }}>🎫 Turlar ({tours.length})</h2>
@@ -1674,6 +1714,7 @@ export function ToursModule({ tours, setTours, customers, setCustomers, visaAppl
                   <button onClick={() => toggleTourPrices(tour, !hid)} disabled={priceBusy === tour.id} title="Tur programı PDF'inde (indirme ve müşteri linki) otel fiyatları görünsün mü"
                     style={{ padding: '8px 14px', background: hid ? 'rgba(148,163,184,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${hid ? 'rgba(148,163,184,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: '8px', color: hid ? '#94a3b8' : '#10b981', cursor: priceBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600 }}>
                     {priceBusy === tour.id ? '⏳…' : hid ? '🚫 PDF fiyatsız' : '💲 PDF fiyatlı'}</button>); })()}
+                {tour.offerData && <button onClick={() => openEnglish(tour)} title="Tur programının İngilizce hâli (AI çevirisi) — içinden PDF yapılır" style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '8px', color: '#60a5fa', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>🇬🇧 İngilizce</button>}
                 {tour.offerData && <button onClick={() => openTourProgram(tour)} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>📄 Tur Programı</button>}
                 {tour.offerData && <button onClick={() => downloadTourProgram(tour)} disabled={progBusy === tour.id} style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: progBusy === tour.id ? 'wait' : 'pointer', fontSize: '12px' }}>{progBusy === tour.id ? '⏳ İndiriliyor...' : '⬇️ PDF İndir'}</button>}
                 <button onClick={() => setExcelTour(tour)} style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Excel</button>
