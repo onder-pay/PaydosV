@@ -1721,8 +1721,13 @@ KURALLAR:
           isMobile={isMobile}
           showToast={showToast}
           onClose={() => { setShowCostCalc(false); setCostQuote(null); }}
-          onSave={async (cost) => {
-            const updated = { ...costQuote, cost };
+          onSave={async (cost, link) => {
+            let updated = { ...costQuote, cost };
+            // 🔗 Satış fiyatı teklifteki otel fiyatına da yazılır (tek yerde girilsin)
+            if (link && updated.offer?.hotels?.[link.idx]) {
+              const hotels = updated.offer.hotels.map((h, i) => i === link.idx ? { ...h, priceDouble: link.priceDouble, priceSingle: link.priceSingle } : h);
+              updated = { ...updated, offer: { ...updated.offer, hotels } };
+            }
             setQuotes(prev => prev.map(q => q.id === costQuote.id ? updated : q));
             try {
               const docId = costQuote._docId || String(costQuote.id);
@@ -1761,7 +1766,32 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
     sellTwin: '', sellSingle: '',
     estTwin: 20, estSingle: 5,
   };
-  const [c, setC] = useState(initial?.cost ? { ...emptyCost, ...initial.cost } : { ...emptyCost, tourName: initial?.title || initial?.subject || '' });
+  // 🔗 Satış fiyatı teklifteki otel fiyatıyla (İki Kişilik / Tek Kişilik) bağlı: tek yerde girilir, iki yerde görünür.
+  // Para birimi farklıysa bağ kurulmaz (USD fiyatı TL maliyetle karşılaştırılamaz) — uyarı gösterilir.
+  const offerHotels = initial?.offer?.hotels || [];
+  const OCUR = { USD: '$', EUR: '€', TRY: 'TL', GBP: '£' };
+  const firstPriced = Math.max(0, offerHotels.findIndex(h => h.priceDouble || h.priceSingle));
+  const [linkIdx, setLinkIdx] = useState(Number.isInteger(initial?.cost?.linkIdx) && offerHotels[initial.cost.linkIdx] ? initial.cost.linkIdx : firstPriced);
+  const [c, setC] = useState(() => {
+    const base = initial?.cost ? { ...emptyCost, ...initial.cost } : { ...emptyCost, tourName: initial?.title || initial?.subject || '' };
+    const h = offerHotels[Number.isInteger(initial?.cost?.linkIdx) && offerHotels[initial.cost.linkIdx] ? initial.cost.linkIdx : firstPriced];
+    if (!h) return base;
+    const hc = OCUR[h.currency] || h.currency || 'TL';
+    if (!initial?.cost) base.currency = hc;
+    if (base.currency === hc) {
+      if (String(h.priceDouble || '').trim()) base.sellTwin = h.priceDouble;
+      if (String(h.priceSingle || '').trim()) base.sellSingle = h.priceSingle;
+    }
+    return base;
+  });
+  const linkHotel = offerHotels[linkIdx];
+  const linkCur = linkHotel ? (OCUR[linkHotel.currency] || linkHotel.currency || 'TL') : '';
+  const linked = !!linkHotel && linkCur === (c.currency || 'TL');
+  const pickLink = (i) => {
+    setLinkIdx(i);
+    const h = offerHotels[i]; const hc = h ? (OCUR[h.currency] || h.currency || 'TL') : '';
+    if (h && hc === (c.currency || 'TL')) setC(x => ({ ...x, sellTwin: h.priceDouble || '', sellSingle: h.priceSingle || '' }));
+  };
   const n = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
   const cur = c.currency || 'TL';
 
@@ -1820,7 +1850,8 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tur Adı</label><input value={c.tourName} onChange={e => setC({ ...c, tourName: e.target.value })} style={inp} /></div>
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Kişi Sayısı</label><input type="number" value={c.peopleCount} onChange={e => setC({ ...c, peopleCount: e.target.value })} style={inp} /></div>
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Para Birimi</label>
-              <select value={c.currency} onChange={e => setC({ ...c, currency: e.target.value })} style={inp}>{['TL','€','$','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}</select>
+              <select value={c.currency} onChange={e => { const cu = e.target.value; const h = offerHotels[linkIdx]; const hc = h ? (OCUR[h.currency] || h.currency || 'TL') : '';
+                setC(x => ({ ...x, currency: cu, ...(h && hc === cu ? { sellTwin: h.priceDouble || x.sellTwin, sellSingle: h.priceSingle || x.sellSingle } : {}) })); }} style={inp}>{['TL','€','$','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}</select>
             </div>
           </div>
         </div>
@@ -1906,6 +1937,18 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
               <thead><tr><th style={th}></th><th style={th}>Twin</th><th style={th}>Single</th></tr></thead>
               <tbody>
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Toplam Maliyet</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costTwin)}</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costSingle)}</td></tr>
+                {linkHotel && (
+                  <tr><td colSpan={3} style={{ ...td, fontSize: '11px', color: linked ? '#10b981' : '#f59e0b', paddingBottom: '6px' }}>
+                    {offerHotels.length > 1 && (
+                      <select value={linkIdx} onChange={e => pickLink(parseInt(e.target.value, 10))} style={{ ...inp, width: 'auto', maxWidth: '100%', marginBottom: '4px', fontSize: '11px' }}>
+                        {offerHotels.map((h, i) => <option key={i} value={i} style={{ background: '#0c1929' }}>{h.name || `${i + 1}. otel`}{h.stars ? ` ${h.stars}` : ''}</option>)}
+                      </select>
+                    )}
+                    {linked
+                      ? <div>🔗 Satış fiyatı teklifteki "{linkHotel.name || 'otel'}" fiyatıyla bağlı — burada değiştirirseniz teklifte de değişir.</div>
+                      : <div>⚠️ Teklifteki fiyat {linkHotel.currency || '?'} ({linkHotel.priceDouble || '—'} / {linkHotel.priceSingle || '—'}), maliyet {c.currency} — para birimi aynı olmadığı için bağlanmadı. Para birimini {linkCur} yaparsanız bağlanır.</div>}
+                  </td></tr>
+                )}
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Satış Fiyatı</td>
                   <td style={td}><input type="number" value={c.sellTwin} onChange={e => setC({ ...c, sellTwin: e.target.value })} style={{ ...inp, width: isMobile ? '100%' : '110px' }} /></td>
                   <td style={td}><input type="number" value={c.sellSingle} onChange={e => setC({ ...c, sellSingle: e.target.value })} style={{ ...inp, width: isMobile ? '100%' : '110px' }} /></td>
@@ -1934,7 +1977,7 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>Kapat</button>
-          <button onClick={() => onSave(c)} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
+          <button onClick={() => onSave({ ...c, linkIdx }, linked ? { idx: linkIdx, priceDouble: String(c.sellTwin ?? ''), priceSingle: String(c.sellSingle ?? '') } : null)} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
         </div>
       </div>
     </div>
