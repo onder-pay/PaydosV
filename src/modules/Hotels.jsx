@@ -173,7 +173,7 @@ ${raw.slice(0, 6000)}`;
           pkgs.push(next[idx]);
         } else {
           const pk = { ...emptyPackage, id: Date.now() + 1000 + ri, createdAt: new Date().toISOString(), customerId: hr.customerId || '', customerName: titleCaseTr(hr.customerName || ''), tag: hr.tag || '',
-            title: `${hotel.name} + ${fl.from}→${fl.to}`, items: [hotelItem, ...flightItems] };
+            title: `${hotel.name} + ${fl.from}→${fl.to}`, items: [...withDiscItem(hotelItem, hr), ...flightItems] };
           next.push(pk); pkgs.push(pk);
         }
       });
@@ -1103,7 +1103,7 @@ ${raw.slice(0, 6000)}`;
     let anyFlight = false;
     const pkgs = resList.map(r => {
       const names = new Set([r.customerName, ...(r.guestNames || [])].filter(n => n && String(n).trim()).map(n => normalizeTr(n)));
-      const items = [{ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }];
+      const items = withDiscItem({ kind: 'hotel', refId: `${hotel.id}-${r.id}`, label: `🏨 ${hotel.name} · ${formatDate(r.checkIn)} – ${formatDate(r.checkOut)} · ${r.roomType || ''} ${conceptTxt(r.concept)}`.replace(/\s+/g, ' '), amount: parseFloat(r.price) || 0, currency: r.currency || '€' }, r);
       // ✍️ Münferit uçuşlar (elle yazılan) — kendi fiyatıyla ayrı satır
       resExtras(r).forEach(x => { anyFlight = true; items.push({ kind: x.kind, refId: `${hotel.id}-${r.id}-${x.key}`, label: `${x.icon} ${x.name} · ${x.text}${x.qty > 1 ? ` · ${x.qty} kişi × ${x.unitPrice.toLocaleString('tr-TR')}` : ''}`, amount: x.price, currency: r.currency || '€' }); });
       linkedResItems(hotel, r).forEach(x => { anyFlight = true; items.push(x); });
@@ -1233,7 +1233,7 @@ ${raw.slice(0, 6000)}`;
 
       reservations.forEach((r, i) => {
         const nights = calcNights(r.checkIn, r.checkOut);
-        const totalForRes = parseFloat(r.price) || 0;
+        const totalForRes = (parseFloat(r.price) || 0) + resDiscShown(r);
         const perNight = nights > 0 ? totalForRes / nights : totalForRes;
         subtotal += totalForRes;
 
@@ -1289,6 +1289,12 @@ ${raw.slice(0, 6000)}`;
       doc.text('Ara Toplam:', 145, yPos);
       doc.text(`${subtotal.toFixed(2)} ${currencyCode}`, 193, yPos, { align: 'right' });
       yPos += 6;
+      const discSum = reservations.reduce((t, r) => t + resDiscShown(r), 0);
+      if (discSum > 0) {
+        doc.text(tr('İndirim:'), 145, yPos);
+        doc.text(`-${discSum.toFixed(2)} ${currencyCode}`, 193, yPos, { align: 'right' });
+        yPos += 6;
+      }
       doc.text('KDV (0%):', 145, yPos);
       doc.text(`0.00 ${currencyCode}`, 193, yPos, { align: 'right' });
       yPos += 8;
@@ -1298,7 +1304,7 @@ ${raw.slice(0, 6000)}`;
       doc.setFontSize(12);
       doc.setTextColor(255);
       doc.text('TOPLAM:', 145, yPos + 2);
-      doc.text(`${subtotal.toFixed(2)} ${currencyCode}`, 193, yPos + 2, { align: 'right' });
+      doc.text(`${(subtotal - discSum).toFixed(2)} ${currencyCode}`, 193, yPos + 2, { align: 'right' });
 
       yPos += 18;
 
@@ -3906,6 +3912,12 @@ ${raw.slice(0, 6000)}`;
                       {(parseFloat(resData.discount) || 0) > 0
                         ? <>İndirimsiz: <b style={{ color: '#e2e8f0' }}>{((parseFloat(resData.price) || 0) + (parseFloat(resData.discount) || 0)).toFixed(2)} {resData.currency}</b> − İndirim <b style={{ color: '#a855f7' }}>{(parseFloat(resData.discount) || 0).toFixed(2)}</b> = Satış <b style={{ color: '#10b981' }}>{(parseFloat(resData.price) || 0).toFixed(2)} {resData.currency}</b></>
                         : 'İndirim girince satış fiyatından düşülür.'}
+                      {(parseFloat(resData.discount) || 0) > 0 && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', cursor: 'pointer', color: '#c4b5fd' }}>
+                          <input type="checkbox" checked={!!resData.discountShow} onChange={e => setResData({...resData, discountShow: e.target.checked})} />
+                          Proformada indirimi ayrı satır olarak göster
+                        </label>
+                      )}
                     </div>
                   </div>
                   {(() => {
@@ -4363,6 +4375,13 @@ Kurallar:
 };
 
 // Müşteriden alınacak toplam: otel + elle eklenen kalemler (ödendi/kalan bununla hesaplanır)
+// 🏷️ İndirim proformada ayrı satır olarak gösterilsin mi (rezervasyonda seçenek). price her zaman indirim düşülmüş satıştır.
+export const resDiscShown = (r) => (r?.discountShow && (parseFloat(r?.discount) || 0) > 0) ? (parseFloat(r.discount) || 0) : 0;
+const withDiscItem = (hotelItem, r) => {
+  const d = resDiscShown(r);
+  if (!d) return [hotelItem];
+  return [{ ...hotelItem, amount: (parseFloat(hotelItem.amount) || 0) + d }, { kind: 'discount', refId: `${hotelItem.refId}-disc`, label: '🏷️ İndirim', amount: -d, currency: hotelItem.currency }];
+};
 export const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
 
 // Kâr: otel + alışı girilmiş kalemler (alışı boş kalemin kârı bilinmiyor → katılmaz)
