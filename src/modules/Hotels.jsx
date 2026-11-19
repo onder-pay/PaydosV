@@ -3749,7 +3749,7 @@ ${raw.slice(0, 6000)}`;
                       }
                       const calc = calcReservationPrice(h, ci, co, rt, concept);
                       setResData({...resData, checkIn: ci, checkOut: co,
-                        price: (resData.priceManual ? resData.price : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : Math.max(0, calc.totalSell - (parseFloat(resData.discount) || 0))),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -3761,7 +3761,7 @@ ${raw.slice(0, 6000)}`;
                       const rt = resData.roomType, concept = resData.concept || 'bb';
                       const calc = calcReservationPrice(h, resData.checkIn, co, rt, concept);
                       setResData({...resData, checkOut: co,
-                        price: (resData.priceManual ? resData.price : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : Math.max(0, calc.totalSell - (parseFloat(resData.discount) || 0))),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={inputStyle} />
@@ -3813,7 +3813,7 @@ ${raw.slice(0, 6000)}`;
                       const gn = (resData.guestNames || []).slice(0, Math.max(0, cap - 1));
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
                       setResData({...resData, roomType: rt, guests: cap, guestNames: gn,
-                        price: (resData.priceManual ? resData.price : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : Math.max(0, calc.totalSell - (parseFloat(resData.discount) || 0))),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
@@ -3829,7 +3829,7 @@ ${raw.slice(0, 6000)}`;
                       const rt = resData.roomType;
                       const calc = calcReservationPrice(h, resData.checkIn, resData.checkOut, rt, concept);
                       setResData({...resData, concept,
-                        price: (resData.priceManual ? resData.price : calc.totalSell),
+                        price: (resData.priceManual ? resData.price : Math.max(0, calc.totalSell - (parseFloat(resData.discount) || 0))),
                         buyPrice: calc.totalBuy > 0 ? calc.totalBuy : resData.buyPrice,
                         currency: calc.currency || resData.currency});
                     }} style={selectStyle}>
@@ -3875,8 +3875,9 @@ ${raw.slice(0, 6000)}`;
                       <input type="number" value={resData.price} onChange={e => setResData({...resData, price: parseFloat(e.target.value) || 0, priceManual: true})} style={{...inputStyle, border: '1px solid rgba(16,185,129,0.25)'}} />
                       {resData.priceManual && (() => {
                         const c = calcReservationPrice(h, resData.checkIn, resData.checkOut, resData.roomType, resData.concept || 'bb');
-                        if (c.totalSell > 0 && Math.abs((parseFloat(resData.price) || 0) - c.totalSell) > 0.5) {
-                          return <button type="button" onClick={() => setResData({...resData, price: c.totalSell, priceManual: false})} style={{ marginTop: '4px', width: '100%', padding: '4px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>↺ Hesaba dön ({c.totalSell.toFixed(0)} {c.currency})</button>;
+                        const net = Math.max(0, c.totalSell - (parseFloat(resData.discount) || 0));
+                        if (c.totalSell > 0 && Math.abs((parseFloat(resData.price) || 0) - net) > 0.5) {
+                          return <button type="button" onClick={() => setResData({...resData, price: net, priceManual: false})} style={{ marginTop: '4px', width: '100%', padding: '4px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>↺ Hesaba dön ({net.toFixed(0)} {c.currency})</button>;
                         }
                         return null;
                       })()}
@@ -3889,6 +3890,22 @@ ${raw.slice(0, 6000)}`;
                         <option value="£">£</option>
                         <option value="₺">₺</option>
                       </select>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px', marginBottom: '10px', alignItems: 'end' }}>
+                    <div>
+                      <label style={{...labelStyle, color: '#a855f7'}}>İndirim</label>
+                      <input type="number" min="0" value={resData.discount || 0} onChange={e => {
+                        const nd = Math.max(0, parseFloat(e.target.value) || 0);
+                        const od = parseFloat(resData.discount) || 0;
+                        const gross = (parseFloat(resData.price) || 0) + od;
+                        setResData({...resData, discount: nd, price: Math.max(0, +(gross - nd).toFixed(2))});
+                      }} style={{...inputStyle, border: '1px solid rgba(168,85,247,0.3)'}} />
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', paddingBottom: '8px' }}>
+                      {(parseFloat(resData.discount) || 0) > 0
+                        ? <>İndirimsiz: <b style={{ color: '#e2e8f0' }}>{((parseFloat(resData.price) || 0) + (parseFloat(resData.discount) || 0)).toFixed(2)} {resData.currency}</b> − İndirim <b style={{ color: '#a855f7' }}>{(parseFloat(resData.discount) || 0).toFixed(2)}</b> = Satış <b style={{ color: '#10b981' }}>{(parseFloat(resData.price) || 0).toFixed(2)} {resData.currency}</b></>
+                        : 'İndirim girince satış fiyatından düşülür.'}
                     </div>
                   </div>
                   {(() => {
