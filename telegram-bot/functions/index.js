@@ -1294,6 +1294,12 @@ exports.telegramBot = functions
         // Telegram'a "aldım" bildir (spinner kapansın)
         await tg(T, 'answerCallbackQuery', { callback_query_id: cq.id });
 
+        if (parts[0] === 'tr') {
+          try { await require('./turekle').handleCallback({ db: cfg.db, token: T, chatId: cbChatId, msgId: cbMsgId, parts }); }
+          catch (e) { console.error('[BOT] tura ekle:', e); await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Tura eklenemedi: ' + e.message }); }
+          return res.status(200).send('OK');
+        }
+
         if (parts[0] === 'pp') {
           try { await require('./pasaport').handleCallback({ db: cfg.db, token: T, chatId: cbChatId, parts }); }
           catch (e) { console.error('[BOT] pasaport düğmesi:', e); await tg(T, 'sendMessage', { chat_id: cbChatId, text: '❌ Pasaport gönderilemedi: ' + e.message }); }
@@ -1697,7 +1703,8 @@ exports.telegramBot = functions
     if (passportCust) {
       editPayload.reply_markup = {
         inline_keyboard: [[
-          { text: '➕ Vize Başvurusu Ekle', callback_data: `va|cust|${passportCust.id}` }
+          { text: '➕ Vize Başvurusu Ekle', callback_data: `va|cust|${passportCust.id}` },
+          { text: '🎫 Tura Ekle', callback_data: `tr|c|${passportCust.id}` }
         ], [
           // Yanlış okunan alanı elle düzeltmek için CRM'de müşteri kartını açar
           { text: '👤 Müşteri kartını aç (düzelt)', url: `https://crm.paydostur.com/?musteri=${encodeURIComponent(passportCust.id)}` }
