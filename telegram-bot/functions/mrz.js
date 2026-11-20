@@ -18,6 +18,13 @@ const COUNTRY = { TUR: 'Türkiye', D: 'Almanya', DEU: 'Almanya', BEL: 'Belçika'
   SVK: 'Slovakya', SVN: 'Slovenya', EST: 'Estonya', LVA: 'Letonya', LTU: 'Litvanya', MLT: 'Malta', CYP: 'Kıbrıs', ISL: 'İzlanda', LIE: 'Liechtenstein', GBR: 'İngiltere', USA: 'Amerika Birleşik Devletleri',
   RUS: 'Rusya', UKR: 'Ukrayna', AZE: 'Azerbaycan', KAZ: 'Kazakistan', GEO: 'Gürcistan', IRN: 'İran', IRQ: 'Irak', SYR: 'Suriye', CHN: 'Çin', CAN: 'Kanada', AUS: 'Avustralya', SRB: 'Sırbistan', BIH: 'Bosna Hersek',
   MKD: 'Kuzey Makedonya', ALB: 'Arnavutluk', MNE: 'Karadağ', UZB: 'Özbekistan', TKM: 'Türkmenistan', KGZ: 'Kırgızistan' };
+// TC kimlik no algoritması (11 hane, ilk hane 0 değil, 10. ve 11. hane kontrolü)
+const tcValid = (t) => {
+  if (!/^[1-9]\d{10}$/.test(t)) return false;
+  const d = t.split('').map(Number);
+  const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
+  return ((d10 + 10) % 10) === d[9] && (d.slice(0, 10).reduce((a, b) => a + b, 0) % 10) === d[10];
+};
 const countryOf = (code) => { const c = String(code || '').replace(/</g, '').toUpperCase(); return COUNTRY[c] || c; };
 
 // Döner: null (okunamadı) ya da { code, country, foreign, lastName, firstName, passportNo, noOk, birthDate, birthOk, expiryDate, expiryOk, gender }
@@ -34,7 +41,9 @@ const parseMrz = (l1, l2) => {
     passportNo: no.replace(/</g, ''), noOk: check(no) === b[9],
     birthDate: ymd(birth, false), birthOk: check(birth) === b[19],
     expiryDate: ymd(exp, true), expiryOk: check(exp) === b[27],
-    gender: b[20] === 'F' ? 'F' : b[20] === 'M' ? 'M' : ''
+    gender: b[20] === 'F' ? 'F' : b[20] === 'M' ? 'M' : '',
+    // Türk pasaportunda kişisel numara alanı = TC kimlik no
+    tc: (() => { const t = (b.slice(28, 42).match(/^\d{11}/) || [''])[0]; return code === 'TUR' && tcValid(t) ? t : ''; })()
   };
 };
 
@@ -44,9 +53,17 @@ const applyMrz = (json) => {
   const m = parseMrz(json.mrz1, json.mrz2);
   delete json.mrz1; delete json.mrz2;
   if (!m) return [];
+  json.mrzOk = m.noOk && m.expiryOk; // MRZ okundu ve numara + bitiş kontrol basamakları tuttu
   const fixes = [];
   // Bitiş tarihi: kontrol basamağı tutuyorsa MRZ kesindir (AI veriliş tarihine yıl ekleyip tahmin edebiliyor)
   if (m.expiryOk && m.expiryDate && json.expiryDate !== m.expiryDate) { fixes.push(`bitiş ${json.expiryDate || '-'} → ${m.expiryDate}`); json.expiryDate = m.expiryDate; }
+  // Türk pasaportu: numara/doğum/TC görselden okunur, ama MRZ kontrol basamağı tutuyorsa MRZ kesindir
+  // (AI çocuk pasaportunda TC'yi numaraya karıştırabiliyor: "U" + TC → "U31282400684")
+  if (!m.foreign) {
+    if (m.noOk && m.passportNo && json.passportNo !== m.passportNo) { fixes.push(`no ${json.passportNo || '-'} → ${m.passportNo}`); json.passportNo = m.passportNo; }
+    if (m.birthOk && m.birthDate && json.birthDate !== m.birthDate) { fixes.push(`doğum ${json.birthDate || '-'} → ${m.birthDate}`); json.birthDate = m.birthDate; }
+    if (m.tc && json.tcKimlik !== m.tc && !tcValid(String(json.tcKimlik || ''))) { fixes.push(`TC ${json.tcKimlik || '-'} → ${m.tc}`); json.tcKimlik = m.tc; }
+  }
   if (m.foreign) {
     json.nationality = m.country;
     json.foreign = true;
@@ -60,4 +77,14 @@ const applyMrz = (json) => {
   return fixes;
 };
 
-module.exports = { parseMrz, applyMrz, countryOf };
+// MRZ doğrulanamadıysa okunan pasaportta bariz hata var mı? Döner: sorun listesi (boşsa sorun yok)
+const passportSuspicious = (json) => {
+  if (json.mrzOk) return [];
+  const out = [];
+  const no = String(json.passportNo || '').trim();
+  if (!json.foreign && no && !/^[A-Z]\d{8}$/.test(no)) out.push(`pasaport no "${no}" Türk pasaportu biçiminde değil (1 harf + 8 rakam)`);
+  if (json.issueDate && json.expiryDate && json.expiryDate <= json.issueDate) out.push('bitiş tarihi veriliş tarihiyle aynı ya da önce okundu');
+  return out;
+};
+
+module.exports = { parseMrz, applyMrz, countryOf, passportSuspicious, tcValid };
