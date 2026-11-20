@@ -347,6 +347,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
         'Başvuru Tarihi': formatDate(v.applicationDate) || '',
         'Randevu Tarihi': formatDate(v.appointmentDate) || '',
         'Randevu Saati': v.appointmentTime || '',
+        'Muhtemel Seyahat': (v.travelStart || v.travelEnd) ? `${v.travelStart ? formatDate(v.travelStart) : ''} – ${v.travelEnd ? formatDate(v.travelEnd) : ''}` : '',
+        'Fuar': [v.fuarAdi, (v.fuarStart || v.fuarEnd) ? `${v.fuarStart ? formatDate(v.fuarStart) : ''} – ${v.fuarEnd ? formatDate(v.fuarEnd) : ''}` : ''].filter(Boolean).join(' · '),
+        'Fuar Linki': v.fuarLink || '',
         'PNR': v.pnr || '',
         'İşlem': v.processor || '',
         'Ödeme Durumu': v.paymentStatus || '',
@@ -1330,6 +1333,59 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 </div>
               </div>
 
+              {/* Muhtemel seyahat tarihleri + (ticari / fuar türlerinde) fuar bilgisi */}
+              {(() => {
+                const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
+                const lbl = { display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' };
+                const ticari = isTicariVisa(formData);
+                const link = String(formData.fuarLink || '').trim();
+                const linkOk = /^https?:\/\/\S+\.\S+/.test(link);
+                const tersTarih = formData.travelStart && formData.travelEnd && formData.travelEnd < formData.travelStart;
+                return (<>
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={lbl}>Muhtemel seyahat — gidiş</label>
+                        <input type="date" value={formData.travelStart || ''} onChange={e => setFormData({ ...formData, travelStart: e.target.value })} style={fld} />
+                      </div>
+                      <div>
+                        <label style={lbl}>Muhtemel seyahat — dönüş</label>
+                        <input type="date" min={formData.travelStart || undefined} value={formData.travelEnd || ''} onChange={e => setFormData({ ...formData, travelEnd: e.target.value })} style={fld} />
+                      </div>
+                    </div>
+                    {tersTarih && <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>⚠️ Dönüş tarihi gidişten önce görünüyor.</div>}
+                    {formData.travelStart && formData.travelEnd && !tersTarih && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{formatDate(formData.travelStart)} – {formatDate(formData.travelEnd)} · {Math.round((new Date(formData.travelEnd) - new Date(formData.travelStart)) / 86400000) + 1} gün</div>}
+                  </div>
+                  {ticari && (
+                    <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ fontSize: '13px', color: '#f59e0b', fontWeight: '600' }}>🎪 Fuar bilgisi</div>
+                      <div>
+                        <label style={lbl}>Fuar adı</label>
+                        <input type="text" value={formData.fuarAdi || ''} onChange={e => setFormData({ ...formData, fuarAdi: e.target.value })} placeholder="Örn. Canton Fair, IFA Berlin" style={fld} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={lbl}>Fuar başlangıç</label>
+                          <input type="date" value={formData.fuarStart || ''} onChange={e => setFormData({ ...formData, fuarStart: e.target.value })} style={fld} />
+                        </div>
+                        <div>
+                          <label style={lbl}>Fuar bitiş</label>
+                          <input type="date" min={formData.fuarStart || undefined} value={formData.fuarEnd || ''} onChange={e => setFormData({ ...formData, fuarEnd: e.target.value })} style={fld} />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={lbl}>Fuar linki</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input type="url" value={formData.fuarLink || ''} onChange={e => setFormData({ ...formData, fuarLink: e.target.value.trim() })} placeholder="https://…" style={{ ...fld, flex: 1, minWidth: 0 }} />
+                          {linkOk && <a href={link} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', textDecoration: 'none', whiteSpace: 'nowrap', alignSelf: 'center' }}>↗ Aç</a>}
+                        </div>
+                        {link && !linkOk && <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px' }}>Link https:// ile başlamalı.</div>}
+                      </div>
+                    </div>
+                  )}
+                </>);
+              })()}
+
               {/* Randevu Tarihi ve Saati */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
@@ -1399,7 +1455,28 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', padding: '14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                       <h4 style={{ margin: 0, fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>💰 Mali Bilgiler (Maliyet Kalemleri)</h4>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {(() => {
+                          // Ayarlar'daki varsayılanlarla yalnız BOŞ (0) kalemleri doldurur; girilmiş tutarlara dokunmaz
+                          const catId = formData.categoryId || formData.category || selectedCategory?.id || 'schengen';
+                          const defs = getVisaCostDefaults(appSettings, catId, formData.visaDuration || formData.visaType);
+                          const fillable = Object.entries(defs).filter(([k, val]) => (parseFloat(val) || 0) > 0 && !(parseFloat(costs[k]) || 0));
+                          return (
+                            <button type="button" onClick={() => {
+                              if (!Object.values(defs).some(val => (parseFloat(val) || 0) > 0)) { showToast?.('Bu vize türü için Ayarlar → Vize Maliyet Kalemleri\'nde varsayılan değer girilmemiş', 'warning'); return; }
+                              if (!fillable.length) { showToast?.('Boş kalem yok — girilmiş tutarlar değiştirilmedi', 'info'); return; }
+                              const defCur = (appSettings?.visaCostDefaultCurrency || {})[catId];
+                              const hasVals = Object.values(costs).some(x => parseFloat(x));
+                              const curNow = formData.costCurrency || saleCurrency;
+                              if (hasVals && defCur && defCur !== curNow) { showToast?.(`Varsayılanlar ${defCur}, bu başvurunun kalemleri ${curNow} — karışmasın diye doldurulmadı. Para birimini ${defCur} yapıp tekrar deneyin.`, 'warning'); return; }
+                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, ...(!hasVals && defCur ? { costCurrency: defCur } : {}) });
+                              showToast?.(`${fillable.length} kalem varsayılan değerle dolduruldu`, 'success');
+                            }} title="Ayarlar'daki varsayılan maliyetlerle yalnız boş kalemleri doldurur"
+                              style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '7px', color: '#10b981', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                              ↺ Varsayılanları doldur{fillable.length ? ` (${fillable.length})` : ''}
+                            </button>
+                          );
+                        })()}
                         <span style={{ fontSize: '11px', color: '#94a3b8' }}>Tüm kalemler için para birimi:</span>
                         <select value={formData.costCurrency || saleCurrency}
                           onChange={e => setFormData({ ...formData, costCurrency: e.target.value })}
@@ -2205,6 +2282,20 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   {selectedVisa.pnr && <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>PNR: {selectedVisa.pnr}</p>}
                 </div>
               )}
+              {(selectedVisa.travelStart || selectedVisa.travelEnd) && (
+                <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>✈️ Muhtemel seyahat</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '14px', fontWeight: '600' }}>{formatDate(selectedVisa.travelStart) || '?'} – {formatDate(selectedVisa.travelEnd) || '?'}</p>
+                </div>
+              )}
+              {isTicariVisa(selectedVisa) && (selectedVisa.fuarAdi || selectedVisa.fuarLink || selectedVisa.fuarStart) && (
+                <div style={{ background: 'rgba(245,158,11,0.08)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.25)' }}>
+                  <p style={{ margin: 0, fontSize: '10px', color: '#f59e0b' }}>🎪 Fuar</p>
+                  {selectedVisa.fuarAdi && <p style={{ margin: '2px 0 0', fontSize: '14px', fontWeight: '600' }}>{selectedVisa.fuarAdi}</p>}
+                  {(selectedVisa.fuarStart || selectedVisa.fuarEnd) && <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8' }}>{formatDate(selectedVisa.fuarStart) || '?'} – {formatDate(selectedVisa.fuarEnd) || '?'}</p>}
+                  {/^https?:\/\/\S+\.\S+/.test(String(selectedVisa.fuarLink || '').trim()) && <a href={String(selectedVisa.fuarLink).trim()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: '4px', fontSize: '12px', color: '#fbbf24', wordBreak: 'break-all' }}>↗ {String(selectedVisa.fuarLink).trim()}</a>}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div style={{ background: `rgba(${selectedVisa.paymentStatus === 'Ödendi' ? '16,185,129' : '239,68,68'},0.1)`, padding: '10px', borderRadius: '8px' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>Vize Ücreti</p>
@@ -2248,6 +2339,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     </div>
   );
 }
+
+// Ticari / iş / fuar vize türü mü (bot evrakmail.js ile aynı kural; Türkçe karakter kuralı: önce ASCII küçük harf)
+export const isTicariVisa = (v) => /ticari|fuar|\bis\b/.test(normalizeTr(`${v?.visaDuration || ''} ${v?.visaType || ''}`));
 
 // Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
 export const getVisaCostDefaults = (appSettings, category, typeName) => ({

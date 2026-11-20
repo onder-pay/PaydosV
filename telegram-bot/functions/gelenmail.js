@@ -32,7 +32,9 @@ const stripTags = (s) => String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<
   .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/\s+/g, ' ').trim();
 const DATE_RE = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/;
 const TIME_RE = /(\d{1,2}):(\d{2})/;
-const PNR_RE = /^(?=.*\d)(?=.*[A-Z])[A-Z0-9]{6,16}$/;
+// PNR: harf + rakam karışık (SDPU3JPFTE9) ya da iDATA'nın "SDP" ile başlayan rakamsız kodu (SDPRPTZGYDU).
+// Rakamsız ve SDP'siz büyük harf kelime ("STANDART") PNR sayılmaz.
+const PNR_RE = /^(?=[A-Z0-9]{6,16}$)(?:(?=.*\d)(?=.*[A-Z])|SDP[A-Z0-9]{5,})/;
 
 const rowFromCells = (cells) => {
   const pi = cells.findIndex(c => PNR_RE.test(c));
@@ -79,13 +81,48 @@ const parseIdataMail = ({ html, text } = {}) => {
 };
 
 const nameKey = (s) => normTr(s).split(/\s+/).filter(Boolean).sort().join(' ');
-// İsim birebir (kelime sırası serbest) + ülke uyumlu + kapanmamış başvurular
+const words = (s) => normTr(s).split(/[^a-z]+/).filter(Boolean);
+// Tek harf farkı (eksik/fazla/değişik): "sarkaya" ~ "sarikaya"
+const lev1 = (a, b) => {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, d = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++d > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return d + (a.length - i) + (b.length - j) <= 1;
+};
+const wordEq = (a, b) => a === b || (a.length >= 4 && b.length >= 4 && lev1(a, b));
+// Kısa addaki her kelime (en az 2) uzun adda karşılık bulur: ikinci ad / ek soyad / tek harf yazım farkı
+const nameNear = (a, b) => {
+  const A = words(a), B = words(b);
+  const [s, l] = A.length <= B.length ? [A, B] : [B, A];
+  if (s.length < 2) return false;
+  const used = new Set();
+  return s.every(w => { const k = l.findIndex((x, j) => !used.has(j) && wordEq(w, x)); if (k < 0) return false; used.add(k); return true; });
+};
+const countryOk = (v, purpose) => !v.country || !purpose || purpose.includes(normTr(v.country)) || normTr(v.country).includes(purpose.split(/\s*-\s*/)[0]);
+// Eşleşme sırası: aynı PNR → isim birebir (kelime sırası serbest) → isim yakın (ikinci ad, ek soyad, tek harf farkı).
+// Her adımda ülke uyumlu + kapanmamış başvurular. Yakın eşleşmede dönen dizide .yakin = true (bildirimde belirtilir).
+// Yazma yalnız TEK aday varsa yapılır (çağıran taraf); birden çok adayda hiçbir şey yazılmaz.
 const matchVisas = (row, visas) => {
   const samePnr = visas.filter(v => v.pnr && String(v.pnr).trim().toUpperCase() === row.pnr);
   if (samePnr.length === 1) return samePnr;
   const key = nameKey(row.name);
   const purpose = normTr(row.purpose);
-  return visas.filter(v => !closed(v) && nameKey(v.customerName) === key && (!v.country || !purpose || purpose.includes(normTr(v.country)) || normTr(v.country).includes(purpose.split(/\s*-\s*/)[0])));
+  const open = visas.filter(v => !closed(v) && countryOk(v, purpose));
+  const exact = open.filter(v => nameKey(v.customerName) === key);
+  if (exact.length) return exact;
+  const near = open.filter(v => nameNear(v.customerName, row.name));
+  near.yakin = true;
+  return near;
+};
+// Eşleşme yoksa: aynı ülkede ad ya da soyadı tutan açık başvurular (en çok 3) — gruba "benzer" diye gösterilir
+const similarVisas = (row, visas) => {
+  const W = words(row.name).filter(w => w.length >= 3), purpose = normTr(row.purpose);
+  return visas.filter(v => !closed(v) && countryOk(v, purpose) && words(v.customerName).some(x => W.some(w => wordEq(w, x)))).slice(0, 3);
 };
 
 // ---- Gönderen sınıflandırma ----
@@ -245,13 +282,22 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             }
             if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
             res.randevu++;
-            lines.push(`📅 <b>${esc(titleCaseTr(v.customerName))}</b> ${test ? 'randevusu başvuruya işlenirdi' : 'randevusu başvuruya işlendi'}${old}\n${info}${durumNote}\n✉️ ${mailNote}${test && !trusted ? '\n⚠️ Bu mail iDATA adresinden gelmedi (iletilmiş); gerçek çalışmada işlenmez, yalnız bildirilir.' : ''}`);
+            const yakin = hits.yakin ? `\n🔎 isim birebir değil: iDATA'da "${esc(titleCaseTr(row.name))}", CRM'de "${esc(titleCaseTr(v.customerName))}" — doğru kişi mi kontrol edin` : '';
+            lines.push(`📅 <b>${esc(titleCaseTr(v.customerName))}</b> ${test ? 'randevusu başvuruya işlenirdi' : 'randevusu başvuruya işlendi'}${old}\n${info}${yakin}${durumNote}\n✉️ ${mailNote}${test && !trusted ? '\n⚠️ Bu mail iDATA adresinden gelmedi (iletilmiş); gerçek çalışmada işlenmez, yalnız bildirilir.' : ''}`);
           } else {
             res.eslesmeyen++;
             const why = !trusted ? 'mail iDATA adresinden gelmedi (iletilmiş olabilir)' : hits.length ? `${hits.length} başvuru eşleşti` : 'eşleşen açık başvuru yok';
-            lines.push(`⚠️ <b>${esc(titleCaseTr(row.name))}</b> iDATA randevusu — ${why}, elle girin\n${info}`);
+            const benzer = hits.length ? hits.slice(0, 3) : similarVisas(row, await loadVisas());
+            const benzerTxt = benzer.length ? `\n${hits.length ? 'Eşleşenler' : 'Benzer adlı açık başvurular'}: ${benzer.map(v => `${esc(titleCaseTr(v.customerName))} (${esc(v.visaDuration || v.country || '')}${v.status ? `, ${esc(v.status)}` : ''})`).join(' · ')}` : '';
+            lines.push(`⚠️ <b>${esc(titleCaseTr(row.name))}</b> iDATA randevusu — ${why}, elle girin\n${info}${benzerTxt}`);
           }
         }
+        continue;
+      }
+      // iDATA'nın randevu maili gibi görünüp tablosu okunamayan mail sessizce geçilmez (ör. rakamsız PNR yüzünden atlanıyordu)
+      if (isIdataSender(m.from) && !isIdataCode(m) && /randevu|termin/.test(normTr(m.subject)) && /\bpnr\b/.test(normTr(`${m.text || ''} ${stripTags(m.html)}`))) {
+        res.eslesmeyen++;
+        lines.push(`⚠️ iDATA randevu maili okunamadı — elle kontrol edin: ${esc((m.subject || '').slice(0, 120))}`);
         continue;
       }
       if (isAutoMail(m)) { res.atlanan++; if (test) lines.push(`➖ Otomatik/toplu mail, geçilirdi: ${esc(m.from)} — ${esc((m.subject || '').slice(0, 80))}`); continue; }
@@ -277,6 +323,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
 
 exports.parseIdataMail = parseIdataMail;
 exports.matchVisas = matchVisas;
+exports.similarVisas = similarVisas;
 exports.processInbox = processInbox;
 
 exports.vizeGelenMail = functions

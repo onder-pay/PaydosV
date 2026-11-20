@@ -186,7 +186,7 @@ export function AgenciesModule({ agencies, setAgencies, isMobile, showToast, add
           )}
           
           {/* Table Rows */}
-          <div style={{ maxHeight: isMobile ? 'none' : '600px', overflowY: 'auto' }}>
+          <div>
             {filteredAgencies.map((agency, idx) => (
               <div key={agency.id} style={{ display: isMobile ? 'block' : 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 120px 160px 220px 180px 100px', gap: '12px', padding: '14px 20px', borderBottom: idx < filteredAgencies.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', alignItems: 'center' }}>
                 

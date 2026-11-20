@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const genId = () => crypto.randomUUID();
 // Türkçe karakter yardımcıları (ortak — bkz. tr.js / CLAUDE.md): "MEHMET AKKÖSE" → "Mehmet Akköse", "İSMAİL" → "İsmail"
-const { applyMrz } = require('./mrz');
+const { applyMrz, passportSuspicious } = require('./mrz');
 const { dmy, normTr, trHas, titleCaseTr, nameForSave, namePairForSave, normEmail, TR_DOTTED, TR_LETTERS } = require('./tr');
 // Bottaki her console.error aynı zamanda sistem hata kaydına düşer (haftalık özet için; bkz. syslog.js). Kişisel veri içermesin diye 300 karakterle sınırlı.
 const { logError, flushErrors } = require('./syslog');
@@ -722,6 +722,9 @@ const saveIdCard = async (db, custs, json) => {
 };
 
 const savePassport = async (db, custs, json, img) => {
+  // MRZ doğrulanamadı ve okunan veride bariz hata var → yanlış numara/tarih kaydetme, yeniden istet
+  const sus = passportSuspicious(json);
+  if (sus.length) return { text: `⚠️ *Pasaport net okunamadı — kaydedilmedi*\n👤 ${json.firstName || ''} ${json.lastName || ''}\n• ${sus.join('\n• ')}\n\n📸 Alttaki iki MRZ satırı (<<<< olan satırlar) tam ve net görünecek şekilde tekrar gönderin.`, custId: null };
   if (json.birthPlace) json.birthPlace = placeTr(json.birthPlace);
   const bpLine = json.birthPlace ? `\n📍 Doğum yeri: ${json.birthPlace}` : '';
   const ref = db.collection('customers');
@@ -1209,6 +1212,12 @@ const saveVisaApplication = async (db, cust, catId, typeObj, status) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  // Varsayılan maliyet kalemleri (CRM getVisaCostDefaults ile aynı: kategori varsayılanı + türe özel değerler)
+  try {
+    const s = (await db.collection('app_settings').doc('main').get()).data() || {};
+    rec.costs = { ...((s.visaCostDefaults || {})[catId] || {}), ...((((s.visaCostTypeDefaults || {})[catId]) || {})[typeObj.name] || {}) };
+    rec.costCurrency = (s.visaCostDefaultCurrency || {})[catId] || '₺';
+  } catch (e) { console.warn('[BOT] varsayılan maliyetler okunamadı:', e.message); }
   await db.collection('visa_applications').doc(String(id)).set(rec);
   return rec;
 };
@@ -1689,6 +1698,9 @@ exports.telegramBot = functions
       editPayload.reply_markup = {
         inline_keyboard: [[
           { text: '➕ Vize Başvurusu Ekle', callback_data: `va|cust|${passportCust.id}` }
+        ], [
+          // Yanlış okunan alanı elle düzeltmek için CRM'de müşteri kartını açar
+          { text: '👤 Müşteri kartını aç (düzelt)', url: `https://crm.paydostur.com/?musteri=${encodeURIComponent(passportCust.id)}` }
         ]]
       };
     }

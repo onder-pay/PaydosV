@@ -1508,6 +1508,9 @@ KURALLAR:
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div style={secTitle}>★ Otel Seçenekleri</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: offer.hidePrices ? '#f59e0b' : '#94a3b8', cursor: 'pointer', marginLeft: 'auto', marginRight: '8px' }} title="Teklif ve tur programı PDF'inde otel fiyat tablosu çıkmaz (otel adı kalır)">
+              <input type="checkbox" checked={!!offer.hidePrices} onChange={e => setOffer({ ...offer, hidePrices: e.target.checked })} /> PDF'te fiyat gösterme
+            </label>
             <button style={addBtn} onClick={() => setOffer(p => ({...p, hotels: [...p.hotels, { name: '', stars: '5★', priceDouble: '', priceSingle: '', priceExtraBed: '', priceBaby: '', priceChild1: '', priceChild2: '', currency: 'USD', note: '' }]}))}>+ Otel Ekle</button>
           </div>
           {offer.hotels.map((h, i) => (
@@ -1543,7 +1546,7 @@ KURALLAR:
           <div><label style={lbl}>Ek Not (opsiyonel)</label><input style={inS} value={offer.extraNote} onChange={e => setOffer({...offer, extraNote: e.target.value})} placeholder="Ek: Ankara gidiş-geliş otobüs 65 USD" /></div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <div style={{...secTitle, color: '#10b981'}}>✔ Fiyata Dahil</div>
@@ -1721,8 +1724,13 @@ KURALLAR:
           isMobile={isMobile}
           showToast={showToast}
           onClose={() => { setShowCostCalc(false); setCostQuote(null); }}
-          onSave={async (cost) => {
-            const updated = { ...costQuote, cost };
+          onSave={async (cost, link) => {
+            let updated = { ...costQuote, cost };
+            // 🔗 Satış fiyatı teklifteki otel fiyatına da yazılır (tek yerde girilsin)
+            if (link && updated.offer?.hotels?.[link.idx]) {
+              const hotels = updated.offer.hotels.map((h, i) => i === link.idx ? { ...h, priceDouble: link.priceDouble, priceSingle: link.priceSingle } : h);
+              updated = { ...updated, offer: { ...updated.offer, hotels } };
+            }
             setQuotes(prev => prev.map(q => q.id === costQuote.id ? updated : q));
             try {
               const docId = costQuote._docId || String(costQuote.id);
@@ -1761,7 +1769,32 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
     sellTwin: '', sellSingle: '',
     estTwin: 20, estSingle: 5,
   };
-  const [c, setC] = useState(initial?.cost ? { ...emptyCost, ...initial.cost } : { ...emptyCost, tourName: initial?.title || initial?.subject || '' });
+  // 🔗 Satış fiyatı teklifteki otel fiyatıyla (İki Kişilik / Tek Kişilik) bağlı: tek yerde girilir, iki yerde görünür.
+  // Para birimi farklıysa bağ kurulmaz (USD fiyatı TL maliyetle karşılaştırılamaz) — uyarı gösterilir.
+  const offerHotels = initial?.offer?.hotels || [];
+  const OCUR = { USD: '$', EUR: '€', TRY: 'TL', GBP: '£' };
+  const firstPriced = Math.max(0, offerHotels.findIndex(h => h.priceDouble || h.priceSingle));
+  const [linkIdx, setLinkIdx] = useState(Number.isInteger(initial?.cost?.linkIdx) && offerHotels[initial.cost.linkIdx] ? initial.cost.linkIdx : firstPriced);
+  const [c, setC] = useState(() => {
+    const base = initial?.cost ? { ...emptyCost, ...initial.cost } : { ...emptyCost, tourName: initial?.title || initial?.subject || '' };
+    const h = offerHotels[Number.isInteger(initial?.cost?.linkIdx) && offerHotels[initial.cost.linkIdx] ? initial.cost.linkIdx : firstPriced];
+    if (!h) return base;
+    const hc = OCUR[h.currency] || h.currency || 'TL';
+    if (!initial?.cost) base.currency = hc;
+    if (base.currency === hc) {
+      if (String(h.priceDouble || '').trim()) base.sellTwin = h.priceDouble;
+      if (String(h.priceSingle || '').trim()) base.sellSingle = h.priceSingle;
+    }
+    return base;
+  });
+  const linkHotel = offerHotels[linkIdx];
+  const linkCur = linkHotel ? (OCUR[linkHotel.currency] || linkHotel.currency || 'TL') : '';
+  const linked = !!linkHotel && linkCur === (c.currency || 'TL');
+  const pickLink = (i) => {
+    setLinkIdx(i);
+    const h = offerHotels[i]; const hc = h ? (OCUR[h.currency] || h.currency || 'TL') : '';
+    if (h && hc === (c.currency || 'TL')) setC(x => ({ ...x, sellTwin: h.priceDouble || '', sellSingle: h.priceSingle || '' }));
+  };
   const n = (v) => { const x = parseFloat(String(v).replace(',', '.')); return isNaN(x) ? 0 : x; };
   const cur = c.currency || 'TL';
 
@@ -1795,8 +1828,10 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
 
   const fmt = (v) => (Math.round(v * 100) / 100).toLocaleString('tr') + ' ' + cur;
   const inp = { width: '100%', padding: '7px 9px', background: '#0f2744', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' };
-  const th = { padding: '6px 8px', textAlign: 'left', color: '#94a3b8', fontSize: '10px', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.1)' };
-  const td = { padding: '4px 6px' };
+  const th = { padding: isMobile ? '4px 2px' : '6px 8px', boxSizing: 'border-box', textAlign: 'left', color: '#94a3b8', fontSize: '10px', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.1)' };
+  const td = { padding: isMobile ? '3px 2px' : '4px 6px', boxSizing: 'border-box' };
+  const tblMin = (w) => (isMobile ? 0 : w);
+  const W = isMobile ? { qty: '44px', unit: '64px', tot: '58px', del: '32px' } : { qty: '70px', unit: '100px', tot: '90px', del: '30px' };
   const sectionTitle = { fontSize: '13px', fontWeight: '700', color: '#e8912a', margin: '0 0 8px' };
   const card = { background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '14px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.06)' };
 
@@ -1818,7 +1853,8 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tur Adı</label><input value={c.tourName} onChange={e => setC({ ...c, tourName: e.target.value })} style={inp} /></div>
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Kişi Sayısı</label><input type="number" value={c.peopleCount} onChange={e => setC({ ...c, peopleCount: e.target.value })} style={inp} /></div>
             <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Para Birimi</label>
-              <select value={c.currency} onChange={e => setC({ ...c, currency: e.target.value })} style={inp}>{['TL','€','$','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}</select>
+              <select value={c.currency} onChange={e => { const cu = e.target.value; const h = offerHotels[linkIdx]; const hc = h ? (OCUR[h.currency] || h.currency || 'TL') : '';
+                setC(x => ({ ...x, currency: cu, ...(h && hc === cu ? { sellTwin: h.priceDouble || x.sellTwin, sellSingle: h.priceSingle || x.sellSingle } : {}) })); }} style={inp}>{['TL','€','$','£'].map(x => <option key={x} value={x} style={{ background: '#0c1929' }}>{x}</option>)}</select>
             </div>
           </div>
         </div>
@@ -1827,16 +1863,16 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
         <div style={card}>
           <p style={sectionTitle}>🏨 Otel Bilgileri</p>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
-              <thead><tr><th style={th}>Otel Adı</th><th style={th}>Gece</th><th style={th}>Single (kişi)</th><th style={th}>Twin (kişi)</th><th style={th}></th></tr></thead>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: tblMin('480px'), tableLayout: isMobile ? 'fixed' : 'auto' }}>
+              <thead><tr><th style={th}>Otel Adı</th><th style={{ ...th, width: W.qty }}>Gece</th><th style={{ ...th, width: W.unit }}>Single{isMobile ? '' : ' (kişi)'}</th><th style={{ ...th, width: W.unit }}>Twin{isMobile ? '' : ' (kişi)'}</th><th style={{ ...th, width: W.del }}></th></tr></thead>
               <tbody>
                 {c.hotels.map((h, i) => (
                   <tr key={i}>
                     <td style={td}><input value={h.name} onChange={e => setHotel(i, 'name', e.target.value)} style={inp} placeholder="Otel adı" /></td>
-                    <td style={{ ...td, width: '70px' }}><input type="number" value={h.nights} onChange={e => setHotel(i, 'nights', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '100px' }}><input type="number" value={h.single} onChange={e => setHotel(i, 'single', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '100px' }}><input type="number" value={h.twin} onChange={e => setHotel(i, 'twin', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '30px' }}>{c.hotels.length > 1 && <button onClick={() => setC({ ...c, hotels: c.hotels.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>}</td>
+                    <td style={{ ...td, width: W.qty }}><input type="number" value={h.nights} onChange={e => setHotel(i, 'nights', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: W.unit }}><input type="number" value={h.single} onChange={e => setHotel(i, 'single', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: W.unit }}><input type="number" value={h.twin} onChange={e => setHotel(i, 'twin', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: W.del }}>{c.hotels.length > 1 && <button onClick={() => setC({ ...c, hotels: c.hotels.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1850,16 +1886,16 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
         <div style={card}>
           <p style={sectionTitle}>👤 Kişi Başı Giderler</p>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '420px' }}>
-              <thead><tr><th style={th}>Gider Kalemi</th><th style={th}>Adet</th><th style={th}>Birim Fiyat</th><th style={th}>Toplam</th><th style={th}></th></tr></thead>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: tblMin('420px'), tableLayout: isMobile ? 'fixed' : 'auto' }}>
+              <thead><tr><th style={th}>Gider Kalemi</th><th style={{ ...th, width: W.qty }}>Adet</th><th style={{ ...th, width: W.unit }}>{isMobile ? 'Birim' : 'Birim Fiyat'}</th><th style={{ ...th, width: W.tot }}>Toplam</th><th style={{ ...th, width: W.del }}></th></tr></thead>
               <tbody>
                 {c.perPerson.map((r, i) => (
                   <tr key={i}>
                     <td style={td}><input value={r.name} onChange={e => setPP(i, 'name', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '70px' }}><input type="number" value={r.qty} onChange={e => setPP(i, 'qty', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '100px' }}><input type="number" value={r.unit} onChange={e => setPP(i, 'unit', e.target.value)} style={inp} /></td>
-                    <td style={{ ...td, width: '90px', color: '#e8f1f8' }}>{fmt(n(r.qty) * n(r.unit))}</td>
-                    <td style={{ ...td, width: '30px' }}><button onClick={() => setC({ ...c, perPerson: c.perPerson.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
+                    <td style={{ ...td, width: W.qty }}><input type="number" value={r.qty} onChange={e => setPP(i, 'qty', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: W.unit }}><input type="number" value={r.unit} onChange={e => setPP(i, 'unit', e.target.value)} style={inp} /></td>
+                    <td style={{ ...td, width: W.tot, color: '#e8f1f8', fontSize: isMobile ? '11px' : undefined, wordBreak: 'break-word' }}>{fmt(n(r.qty) * n(r.unit))}</td>
+                    <td style={{ ...td, width: W.del }}><button onClick={() => setC({ ...c, perPerson: c.perPerson.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -1873,8 +1909,8 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
         <div style={card}>
           <p style={sectionTitle}>👥 Ortak Giderler (Grup)</p>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '420px' }}>
-              <thead><tr><th style={th}>Gider Kalemi</th><th style={th}>Adet/Gün</th><th style={th}>Birim Fiyat</th><th style={th}>Toplam</th><th style={th}></th></tr></thead>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: tblMin('420px'), tableLayout: isMobile ? 'fixed' : 'auto' }}>
+              <thead><tr><th style={th}>Gider Kalemi</th><th style={{ ...th, width: W.qty }}>{isMobile ? 'Adet' : 'Adet/Gün'}</th><th style={{ ...th, width: W.unit }}>{isMobile ? 'Birim' : 'Birim Fiyat'}</th><th style={{ ...th, width: W.tot }}>Toplam</th><th style={{ ...th, width: W.del }}></th></tr></thead>
               <tbody>
                 {c.shared.map((r, i) => {
                   const isFreePax = /free pax/.test(normalizeTr(r.name));
@@ -1882,10 +1918,10 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
                   return (
                     <tr key={i}>
                       <td style={td}><input value={r.name} onChange={e => setSH(i, 'name', e.target.value)} style={inp} /></td>
-                      <td style={{ ...td, width: '70px' }}><input type="number" value={r.qty} onChange={e => setSH(i, 'qty', e.target.value)} style={inp} /></td>
-                      <td style={{ ...td, width: '100px' }}>{isFreePax ? <span style={{ fontSize: '11px', color: '#64748b' }} title="Otomatik: otel+uçak+fuar">{fmt(freePaxUnit)} (oto)</span> : <input type="number" value={r.unit} onChange={e => setSH(i, 'unit', e.target.value)} style={inp} />}</td>
-                      <td style={{ ...td, width: '90px', color: '#e8f1f8' }}>{fmt(n(r.qty) * unit)}</td>
-                      <td style={{ ...td, width: '30px' }}><button onClick={() => setC({ ...c, shared: c.shared.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
+                      <td style={{ ...td, width: W.qty }}><input type="number" value={r.qty} onChange={e => setSH(i, 'qty', e.target.value)} style={inp} /></td>
+                      <td style={{ ...td, width: W.unit }}>{isFreePax ? <span style={{ fontSize: '11px', color: '#64748b' }} title="Otomatik: otel+uçak+fuar">{fmt(freePaxUnit)} (oto)</span> : <input type="number" value={r.unit} onChange={e => setSH(i, 'unit', e.target.value)} style={inp} />}</td>
+                      <td style={{ ...td, width: W.tot, color: '#e8f1f8', fontSize: isMobile ? '11px' : undefined, wordBreak: 'break-word' }}>{fmt(n(r.qty) * unit)}</td>
+                      <td style={{ ...td, width: W.del }}><button onClick={() => setC({ ...c, shared: c.shared.filter((_, j) => j !== i) })} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button></td>
                     </tr>
                   );
                 })}
@@ -1900,13 +1936,25 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
         <div style={{ ...card, background: 'rgba(232,145,42,0.06)', border: '1px solid rgba(232,145,42,0.25)' }}>
           <p style={sectionTitle}>📊 Maliyet & Kâr Özeti (kişi başı)</p>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '380px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: tblMin('380px'), tableLayout: isMobile ? 'fixed' : 'auto' }}>
               <thead><tr><th style={th}></th><th style={th}>Twin</th><th style={th}>Single</th></tr></thead>
               <tbody>
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Toplam Maliyet</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costTwin)}</td><td style={{ ...td, color: '#ef4444', fontWeight: '600' }}>{fmt(costSingle)}</td></tr>
+                {linkHotel && (
+                  <tr><td colSpan={3} style={{ ...td, fontSize: '11px', color: linked ? '#10b981' : '#f59e0b', paddingBottom: '6px' }}>
+                    {offerHotels.length > 1 && (
+                      <select value={linkIdx} onChange={e => pickLink(parseInt(e.target.value, 10))} style={{ ...inp, width: 'auto', maxWidth: '100%', marginBottom: '4px', fontSize: '11px' }}>
+                        {offerHotels.map((h, i) => <option key={i} value={i} style={{ background: '#0c1929' }}>{h.name || `${i + 1}. otel`}{h.stars ? ` ${h.stars}` : ''}</option>)}
+                      </select>
+                    )}
+                    {linked
+                      ? <div>🔗 Satış fiyatı teklifteki "{linkHotel.name || 'otel'}" fiyatıyla bağlı — burada değiştirirseniz teklifte de değişir.</div>
+                      : <div>⚠️ Teklifteki fiyat {linkHotel.currency || '?'} ({linkHotel.priceDouble || '—'} / {linkHotel.priceSingle || '—'}), maliyet {c.currency} — para birimi aynı olmadığı için bağlanmadı. Para birimini {linkCur} yaparsanız bağlanır.</div>}
+                  </td></tr>
+                )}
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Satış Fiyatı</td>
-                  <td style={td}><input type="number" value={c.sellTwin} onChange={e => setC({ ...c, sellTwin: e.target.value })} style={{ ...inp, width: '110px' }} /></td>
-                  <td style={td}><input type="number" value={c.sellSingle} onChange={e => setC({ ...c, sellSingle: e.target.value })} style={{ ...inp, width: '110px' }} /></td>
+                  <td style={td}><input type="number" value={c.sellTwin} onChange={e => setC({ ...c, sellTwin: e.target.value })} style={{ ...inp, width: isMobile ? '100%' : '110px' }} /></td>
+                  <td style={td}><input type="number" value={c.sellSingle} onChange={e => setC({ ...c, sellSingle: e.target.value })} style={{ ...inp, width: isMobile ? '100%' : '110px' }} /></td>
                 </tr>
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Kişi Başı Kâr</td><td style={{ ...td, color: profitTwin >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{fmt(profitTwin)}</td><td style={{ ...td, color: profitSingle >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{fmt(profitSingle)}</td></tr>
                 <tr><td style={{ ...td, color: '#94a3b8' }}>Kâr Marjı</td><td style={{ ...td, color: '#3b82f6' }}>%{marginTwin.toFixed(1)}</td><td style={{ ...td, color: '#3b82f6' }}>%{marginSingle.toFixed(1)}</td></tr>
@@ -1919,8 +1967,8 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
         <div style={{ ...card, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)' }}>
           <p style={{ ...sectionTitle, color: '#10b981' }}>💵 Tahmini Toplam Gelir & Kâr</p>
           <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
-            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tahmini Twin kişi</label><input type="number" value={c.estTwin} onChange={e => setC({ ...c, estTwin: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
-            <div><label style={{ fontSize: '10px', color: '#94a3b8' }}>Tahmini Single kişi</label><input type="number" value={c.estSingle} onChange={e => setC({ ...c, estSingle: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
+            <div><label style={{ display: 'block', fontSize: '10px', color: '#94a3b8' }}>Tahmini Twin kişi</label><input type="number" value={c.estTwin} onChange={e => setC({ ...c, estTwin: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
+            <div><label style={{ display: 'block', fontSize: '10px', color: '#94a3b8' }}>Tahmini Single kişi</label><input type="number" value={c.estSingle} onChange={e => setC({ ...c, estSingle: e.target.value })} style={{ ...inp, width: '90px' }} /></div>
             <div style={{ fontSize: '11px', color: '#94a3b8', alignSelf: 'end' }}>Toplam: <b style={{ color: '#e8f1f8' }}>{n(c.estTwin) + n(c.estSingle)} kişi</b></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px' }}>
@@ -1932,7 +1980,7 @@ export function CostCalculator({ initial, onSave, onClose, showToast, isMobile }
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '8px', color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>Kapat</button>
-          <button onClick={() => onSave(c)} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
+          <button onClick={() => onSave({ ...c, linkIdx }, linked ? { idx: linkIdx, priceDouble: String(c.sellTwin ?? ''), priceSingle: String(c.sellSingle ?? '') } : null)} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #e8912a, #d97706)', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>💾 Kaydet</button>
         </div>
       </div>
     </div>
