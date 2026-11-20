@@ -1698,6 +1698,9 @@ exports.telegramBot = functions
       editPayload.reply_markup = {
         inline_keyboard: [[
           { text: '➕ Vize Başvurusu Ekle', callback_data: `va|cust|${passportCust.id}` }
+        ], [
+          // Yanlış okunan alanı elle düzeltmek için CRM'de müşteri kartını açar
+          { text: '👤 Müşteri kartını aç (düzelt)', url: `https://crm.paydostur.com/?musteri=${encodeURIComponent(passportCust.id)}` }
         ]]
       };
     }

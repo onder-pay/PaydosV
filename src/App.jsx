@@ -212,6 +212,17 @@ function AppInner() {
     return () => { stop = true; clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
   }, []);
   const [customers, setCustomers] = useState(defaultCustomers);
+  // 🔗 Doğrudan müşteri kartı linki: crm.paydostur.com/?musteri=<kayıt no> (bot pasaport mesajındaki "Müşteri kartı" butonu)
+  const deepCust = useRef(new URLSearchParams(window.location.search).get('musteri'));
+  useEffect(() => {
+    const k = deepCust.current;
+    if (!k || !customers.length) return;
+    const c = customers.find(x => String(x._docId || '') === k || String(x.id) === k);
+    if (!c) return; // önbellekteki eski listede yoksa Firestore'dan gelince tekrar bakılır
+    deepCust.current = null;
+    try { const u = new URL(window.location.href); u.searchParams.delete('musteri'); window.history.replaceState(null, '', u.toString()); } catch (e) { /* adres çubuğu temizlenemedi */ }
+    setOpenCustomerId(c.id); setActiveModule('customers');
+  }, [customers]);
   const [visaApplications, setVisaApplications] = useState([]);
   const [ds160Applications, setDs160Applications] = useState([]);
   const [tours, setTours] = useState([]);
