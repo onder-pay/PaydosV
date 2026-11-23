@@ -3,6 +3,7 @@
 // 1) iDATA randevu maili (gönderen idata.com.tr): tablodaki AD SOYAD / PNR / OFİS / RANDEVU TARİHİ okunur.
 //    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır, durum "Atama Bekliyor" ise "Evrak Topluyor" olur;
 //    eşleşmezse yalnız gruba haber verilir.
+//    Randevu TALEBİ maili (tarih yerine "Atama Bekliyor"): yalnız PNR + ofis yazılır; durum "Başvuru Yapılacak" ise "Atama Bekliyor" olur.
 //    Müşteriye randevu mailini evrakmail.js gönderir (randevu tarihi yazılan her başvuruya, en geç 15 dk içinde;
 //    app_settings.autoSureliMail === false ise ya da başvuruda autoMailOff varsa gitmez).
 // Test: grupta /mailtest → son 5 mail okunur, ne yapılacağı yazılır; HİÇBİR ŞEY kaydedilmez, müşteriye mail gitmez
@@ -34,17 +35,21 @@ const DATE_RE = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/;
 const TIME_RE = /(\d{1,2}):(\d{2})/;
 // PNR: harf + rakam karışık (SDPU3JPFTE9) ya da iDATA'nın "SDP" ile başlayan rakamsız kodu (SDPRPTZGYDU).
 // Rakamsız ve SDP'siz büyük harf kelime ("STANDART") PNR sayılmaz.
+const WAIT_RE = /atama bekl/;
 const PNR_RE = /^(?=[A-Z0-9]{6,16}$)(?:(?=.*\d)(?=.*[A-Z])|SDP[A-Z0-9]{5,})/;
 
 const rowFromCells = (cells) => {
   const pi = cells.findIndex(c => PNR_RE.test(c));
-  const di = cells.findIndex(c => DATE_RE.test(c));
+  // Randevu talebi mailinde (iDATA "... Randevu Talebi") tarih yerine "Atama Bekliyor" yazar: PNR alınmış, tarih henüz yok
+  const di = cells.findIndex(c => DATE_RE.test(c) || WAIT_RE.test(normTr(c)));
   if (pi < 1 || di < 0 || di <= pi) return null;
+  const waiting = !DATE_RE.test(cells[di]);
   const dm = DATE_RE.exec(cells[di]);
   const tm = TIME_RE.exec(cells.slice(di).join(' ').replace(DATE_RE, ' '));
   const mid = cells.slice(pi + 1, di);
   const name = cells.slice(0, pi).join(' ').replace(/\s+/g, ' ').trim();
   if (name.length < 3 || /\d/.test(name)) return null;
+  if (waiting) return { name, pnr: cells[pi], purpose: mid[0] || '', office: mid[1] || '', serviceType: mid[2] || '', appointmentDate: '', appointmentTime: '', waiting: true };
   return {
     name, pnr: cells[pi], purpose: mid[0] || '', office: mid[1] || '', serviceType: mid[2] || '',
     appointmentDate: `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`,
@@ -71,6 +76,7 @@ const parseIdataMail = ({ html, text } = {}) => {
   for (const c of cells) {
     if (/^(secilen|randevunuzu|sayin)/.test(normTr(c))) break;
     buf.push(c);
+    if (WAIT_RE.test(normTr(c)) && !DATE_RE.test(c)) { add(rowFromCells(buf)); buf = []; continue; }
     if (DATE_RE.test(c)) {
       if (!TIME_RE.test(c.replace(DATE_RE, ' '))) continue; // saat ayrı hücrede olabilir
       add(rowFromCells(buf)); buf = [];
@@ -247,9 +253,29 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
       if (rows.length) {
         const trusted = isIdataSender(m.from);
         for (const row of rows) {
-          const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}</b>, PNR <code>${esc(row.pnr)}</code>`;
+          const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${row.waiting ? 'tarih atama bekliyor' : `${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}`}</b>, PNR <code>${esc(row.pnr)}</code>`;
           const hits = matchVisas(row, await loadVisas());
-          if ((trusted || test) && hits.length === 1) {
+          // Randevu talebi (tarih yok): yalnız PNR + ofis yazılır; durum "Başvuru Yapılacak" ise "Atama Bekliyor" olur. Randevu tarihine/mailine dokunulmaz.
+          if (row.waiting && (trusted || test) && hits.length === 1) {
+            const v = hits[0];
+            const patch = { pnr: row.pnr, idataMailAt: now };
+            if (row.office) patch.idataOffice = row.office;
+            if (!v.processor) patch.processor = 'İdata';
+            let durumNote = '';
+            if (trHas(v.status, 'basvuru yapilacak') && !trHas(v.status, 'atama bekliyor')) {
+              const lbls = statusLabels(settings, 'Atama Bekliyor');
+              patch.status = lbls.find(x => x !== 'Atama Bekliyor') || 'Atama Bekliyor';
+              patch.updatedAt = now;
+              durumNote = `\n🔄 durum: ${esc(v.status)} → ${esc(patch.status)}${test ? ' (olurdu)' : ''}`;
+            }
+            const oldPnr = v.pnr && String(v.pnr).trim().toUpperCase() !== row.pnr ? ` (önceki PNR: ${esc(v.pnr)})` : '';
+            if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+            res.randevu++;
+            const yakin = hits.yakin ? `\n🔎 isim birebir değil: iDATA'da "${esc(titleCaseTr(row.name))}", CRM'de "${esc(titleCaseTr(v.customerName))}" — doğru kişi mi kontrol edin` : '';
+            lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> iDATA randevu talebi ${test ? 'işlenirdi' : 'işlendi'} — PNR kaydedildi${oldPnr}\n${info}${yakin}${durumNote}`);
+            continue;
+          }
+          if (!row.waiting && (trusted || test) && hits.length === 1) {
             const v = hits[0];
             const old = v.appointmentDate && (String(v.appointmentDate).slice(0, 10) !== row.appointmentDate || (v.appointmentTime || '') !== row.appointmentTime)
               ? ` (önceki: ${dmy(String(v.appointmentDate).slice(0, 10))}${v.appointmentTime ? ` ${v.appointmentTime}` : ''})` : '';
