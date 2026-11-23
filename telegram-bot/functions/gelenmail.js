@@ -38,8 +38,15 @@ const TIME_RE = /(\d{1,2}):(\d{2})/;
 const WAIT_RE = /atama bekl/;
 const PNR_RE = /^(?=[A-Z0-9]{6,16}$)(?:(?=.*\d)(?=.*[A-Z])|SDP[A-Z0-9]{5,})/;
 
-const rowFromCells = (cells) => {
+// invite: "randevu tarih ve saatinizi belirleyebilirsiniz" maili — tabloda tarih sütunu yok (AD SOYAD / PNR / GİDİŞ AMACI / OFİS ADI)
+const rowFromCells = (cells, invite = false) => {
   const pi = cells.findIndex(c => PNR_RE.test(c));
+  if (invite) {
+    if (pi < 1 || cells.some(c => DATE_RE.test(c))) return null;
+    const name = cells.slice(0, pi).join(' ').replace(/\s+/g, ' ').trim();
+    if (name.length < 3 || /\d/.test(name)) return null;
+    return { name, pnr: cells[pi], purpose: cells[pi + 1] || '', office: cells[pi + 2] || '', serviceType: '', appointmentDate: '', appointmentTime: '', invite: true };
+  }
   // Randevu talebi mailinde (iDATA "... Randevu Talebi") tarih yerine "Atama Bekliyor" yazar: PNR alınmış, tarih henüz yok
   const di = cells.findIndex(c => DATE_RE.test(c) || WAIT_RE.test(normTr(c)));
   if (pi < 1 || di < 0 || di <= pi) return null;
@@ -58,15 +65,26 @@ const rowFromCells = (cells) => {
 };
 
 // Döner: [{ name, pnr, purpose, office, serviceType, appointmentDate (YYYY-AA-GG), appointmentTime }]
+// Tarih seçme daveti: "... randevu tarih ve saatinizi belirleyebileceğinizi ..." — aralık ve son gün metinden okunur
+const inviteInfo = (html, text) => {
+  const t = normTr(`${stripTags(html)} ${text || ''}`);
+  if (!/belirleyebilece|tarihinizi olustur/.test(t)) return null;
+  const ymd = (d) => { const m = DATE_RE.exec(d); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+  const r = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s*ile\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/.exec(t);
+  const s = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s*(\d{1,2}:\d{2})?\s*'?\s*a kadar/.exec(t);
+  return { from: r ? ymd(r[1]) : '', to: r ? ymd(r[2]) : '', son: s ? ymd(s[1]) : '', sonSaat: s && s[2] ? s[2] : '' };
+};
+
 const parseIdataMail = ({ html, text } = {}) => {
   const rows = [];
   const add = (r) => { if (r && !rows.some(x => x.pnr === r.pnr)) rows.push(r); };
+  const inv = inviteInfo(html, text);
   // 1) HTML tablo satırları
   for (const tr of String(html || '').match(/<tr[\s\S]*?<\/tr>/gi) || []) {
     const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map(stripTags).filter(Boolean);
-    if (cells.length >= 4) add(rowFromCells(cells));
+    if (cells.length >= 4) add(inv ? (rowFromCells(cells, true) && { ...rowFromCells(cells, true), ...inv }) : rowFromCells(cells));
   }
-  if (rows.length) return rows;
+  if (rows.length || inv) return rows;
   // 2) Düz metin: başlık satırından sonraki hücreler (sekme / satır / 2+ boşlukla ayrılmış)
   const t = String(text || '');
   const m = /RANDEVU\s+TAR[İI]H[İI]/.exec(t.toLocaleUpperCase('tr-TR')); // görüntülenen başlık; eşleşme konumu için
@@ -255,6 +273,27 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
         for (const row of rows) {
           const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${row.waiting ? 'tarih atama bekliyor' : `${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}`}</b>, PNR <code>${esc(row.pnr)}</code>`;
           const hits = matchVisas(row, await loadVisas());
+          // Tarih seçme daveti: PNR + ofis + seçim aralığı/son gün yazılır; gruba "tarih seçilmeli" uyarısı. Durum değişmez.
+          if (row.invite) {
+            const son = row.son ? `${dmy(row.son)}${row.sonSaat ? ` ${row.sonSaat}` : ''}` : '';
+            const aralik = row.from && row.to ? `${dmy(row.from)} – ${dmy(row.to)}` : '';
+            const uyari = `iDATA randevu tarihi SEÇİLMELİ${son ? ` — son gün <b>${son}</b>` : ''}${aralik ? ` (seçilebilir: ${aralik})` : ''}. Seçilmezse randevu hakkı iptal olur.`;
+            const pinfo = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — PNR <code>${esc(row.pnr)}</code>`;
+            if ((trusted || test) && hits.length === 1) {
+              const v = hits[0];
+              const patch = { pnr: row.pnr, idataMailAt: now, idataSecim: { from: row.from || '', to: row.to || '', son: row.son || '', sonSaat: row.sonSaat || '', at: now } };
+              if (row.office) patch.idataOffice = row.office;
+              if (!v.processor) patch.processor = 'İdata';
+              if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+              res.randevu++;
+              const yakin = hits.yakin ? `\n🔎 isim birebir değil: iDATA'da "${esc(titleCaseTr(row.name))}", CRM'de "${esc(titleCaseTr(v.customerName))}"` : '';
+              lines.push(`⏰ <b>${esc(titleCaseTr(v.customerName))}</b> — ${uyari}\n${pinfo}${yakin}\n${test ? 'PNR başvuruya yazılırdı' : 'PNR başvuruya yazıldı'}`);
+            } else {
+              res.eslesmeyen++;
+              lines.push(`⏰ <b>${esc(titleCaseTr(row.name))}</b> — ${uyari}\n${pinfo}\n⚠️ ${!trusted ? 'mail iDATA adresinden gelmedi' : hits.length ? `${hits.length} başvuru eşleşti` : 'eşleşen açık başvuru yok'} — PNR'yi elle girin`);
+            }
+            continue;
+          }
           // Randevu talebi (tarih yok): yalnız PNR + ofis yazılır; durum "Başvuru Yapılacak" ise "Atama Bekliyor" olur. Randevu tarihine/mailine dokunulmaz.
           if (row.waiting && (trusted || test) && hits.length === 1) {
             const v = hits[0];
@@ -279,7 +318,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
             const v = hits[0];
             const old = v.appointmentDate && (String(v.appointmentDate).slice(0, 10) !== row.appointmentDate || (v.appointmentTime || '') !== row.appointmentTime)
               ? ` (önceki: ${dmy(String(v.appointmentDate).slice(0, 10))}${v.appointmentTime ? ` ${v.appointmentTime}` : ''})` : '';
-            const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now };
+            const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now, idataSecim: null }; // tarih seçildi → seçim uyarısı kalkar
             if (row.office) patch.idataOffice = row.office;
             if (!v.processor) patch.processor = 'İdata';
             // Randevu atandı: "Atama Bekliyor" (ya da "Randevu Bekliyor") → "Evrak Topluyor". Başka durumdaki başvurunun durumuna dokunulmaz.

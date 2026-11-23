@@ -1218,6 +1218,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       </div>
                     );
                   })()}
+              {idataSecimText(formData) && (
+                <div style={{ marginTop: '8px', padding: '8px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', fontSize: '12px', color: '#f87171', fontWeight: 700 }}>
+                  {idataSecimText(formData)}{formData.pnr ? ` · PNR ${formData.pnr}` : ''} — iDATA'dan tarih seçip randevuyu girin.
+                </div>
+              )}
               {/* Vize Evrak yükleme linki — otomatik maillerde {evrak_linki} */}
               {(() => { const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
                 const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
@@ -2034,6 +2039,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
+                      {idataSecimText(v) && <span title="iDATA tarih seçme maili geldi — iDATA'dan randevu tarihi seçilmezse hak iptal olur" style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)' }}>{idataSecimText(v)}</span>}
                       {visaFutureDate(v) && (
                         <span style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}>
                           ⏳ Başvuru {formatDate(v.processDate)} tarihinde yapılacak · {getDaysLeft(v.processDate)} gün
@@ -2275,6 +2281,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   )}
                 </div>
                 ); })()}
+              {idataSecimText(selectedVisa) && (
+                <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.35)', fontSize: '12px', color: '#f87171', fontWeight: 700 }}>
+                  {idataSecimText(selectedVisa)}{selectedVisa.pnr ? ` · PNR ${selectedVisa.pnr}` : ''}
+                </div>
+              )}
               {selectedVisa.appointmentDate && (
                 <div style={{ background: 'rgba(59,130,246,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#3b82f6' }}>📅 Randevu</p>
@@ -2341,6 +2352,12 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 }
 
 // Ticari / iş / fuar vize türü mü (bot evrakmail.js ile aynı kural; Türkçe karakter kuralı: önce ASCII küçük harf)
+// ⏰ iDATA "randevu tarihinizi seçin" maili geldi, tarih henüz girilmedi → son gün uyarısı (bot idataSecim yazar; randevu gelince siler)
+export const idataSecimText = (v) => {
+  const s = v?.idataSecim;
+  if (!s || v.appointmentDate) return '';
+  return `⏰ iDATA tarih seçilmeli${s.son ? ` — son ${formatDate(s.son)}${s.sonSaat ? ` ${s.sonSaat}` : ''}` : ''}${s.from && s.to ? ` (aralık ${formatDate(s.from)}–${formatDate(s.to)})` : ''}`;
+};
 export const isTicariVisa = (v) => /ticari|fuar|\bis\b/.test(normalizeTr(`${v?.visaDuration || ''} ${v?.visaType || ''}`));
 
 // Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
