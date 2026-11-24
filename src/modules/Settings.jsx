@@ -6,7 +6,7 @@ import { deleteDoc, deleteField, doc, setDoc } from 'firebase/firestore';
 import { generateUniqueId, waUrl } from '../lib/format.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
-import { RANDEVU_MAIL_DEFAULT } from '../lib/data.js';
+import { RANDEVU_MAIL_DEFAULT, PASSPORT_WARN_DEFAULT, SCHENGEN_WARN_DEFAULT, BIRTHDAY_DEFAULT, passportWarnText, schengenWarnText, birthdayText } from '../lib/data.js';
 import { normEmail, normalizeTr, trHas } from '../lib/turkish.js';
 import { useMemo, useState } from 'react';
 
@@ -1645,6 +1645,45 @@ export function SettingsModule({ visaApplications, setVisaApplications, users, s
 
       {/* PROFİLİM */}
       {/* 👤 PROFİL + ŞİFRE + KULLANICILAR — tek düzen */}
+      {activeTab === 'musteri' && isAdmin && (() => {
+        // 💬 Ana sayfadaki listelerin WhatsApp hazır mesajları (Pasaport Uyarısı / Schengen Bitiyor / Doğum Günü)
+        const ornek = { firstName: 'Ahmet', lastName: 'Yılmaz' };
+        const inAy = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+        const items = [
+          { key: 'passportWarnTemplate', title: '⚠️ Pasaport Uyarısı (6 ay)', def: PASSPORT_WARN_DEFAULT, vars: '{isim} {pasaport_no} {bitis_tarihi} {kalan_gun}',
+            preview: (t) => passportWarnText(t, ornek, { passportNo: 'U12345678', expiryDate: inAy(120) }) },
+          { key: 'schengenWarnTemplate', title: '🇪🇺 Schengen Vizesi Bitiyor (3 ay)', def: SCHENGEN_WARN_DEFAULT, vars: '{isim} {ulke} {bitis_tarihi} {kalan_gun}',
+            preview: (t) => schengenWarnText(t, ornek, { country: 'Almanya', endDate: inAy(45) }) },
+          { key: 'birthdayTemplate', title: '🎂 Doğum Günü', def: BIRTHDAY_DEFAULT, vars: '{isim} {yas}',
+            preview: (t) => birthdayText(t, ornek, 40) },
+        ];
+        const box = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical' };
+        return (
+          <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#25d366' }}>💬 WhatsApp Hazır Mesajları</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>Ana sayfadaki listelerde kişinin yanındaki 💬 WhatsApp düğmesi bu metni açar; göndermeden önce WhatsApp'ta ayrıca değiştirilebilir. Boş bırakılırsa varsayılan metin kullanılır.</p>
+            {items.map(it => {
+              const val = appSettings?.[it.key] || '';
+              return (
+                <div key={it.key} style={{ marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                    <b style={{ fontSize: '13px', color: '#e8f1f8' }}>{it.title}</b>
+                    <button onClick={() => setAppSettings({ ...appSettings, [it.key]: '' })} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>↺ Varsayılana dön</button>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>Değişkenler: <b>{it.vars}</b></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                    <textarea value={val || it.def} onChange={e => setAppSettings({ ...appSettings, [it.key]: e.target.value })} rows={8} style={box} />
+                    <div style={{ ...box, background: 'rgba(37,211,102,0.06)', border: '1px solid rgba(37,211,102,0.2)', whiteSpace: 'pre-wrap', fontSize: '12px', color: '#cbd5e1' }}>
+                      <div style={{ fontSize: '10px', color: '#25d366', marginBottom: '6px' }}>Önizleme (örnek müşteri)</div>{it.preview(val)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {activeTab === 'users' && (() => {
         const roleOf = (r) => r === 'admin' ? { label: 'Yönetici', icon: '👑', color: '#a78bfa', bg: 'rgba(139,92,246,0.15)', grad: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }
           : r === 'muhasebe' ? { label: 'Muhasebe', icon: '🧮', color: '#34d399', bg: 'rgba(16,185,129,0.15)', grad: 'linear-gradient(135deg, #10b981, #059669)' }

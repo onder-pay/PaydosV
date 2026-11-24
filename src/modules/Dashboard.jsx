@@ -6,6 +6,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { trHas, fullNameTr } from '../lib/turkish.js';
 import { isGreenPassport } from '../lib/travel.js';
 import { useState } from 'react';
+import { passportWarnText, schengenWarnText, birthdayText } from '../lib/data.js';
 import { BulkDocInbox, userShortcuts } from '../components/shared';
 
 
@@ -38,18 +39,31 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
   });
   // 6 ay içinde biten pasaport (listede ve WhatsApp mesajında gösterilen)
   const expPassport = (c) => safeParseJSON(c.passports).find(x => { const d = getDaysLeft(x.expiryDate); return d !== null && d > 0 && d <= 180; });
-  // 💬 Pasaport uyarısı WhatsApp mesajı — WhatsApp'ta gönderilmeden önce düzenlenebilir; gönderim tarihi müşteri kaydına yazılır (tekrar gönderilmesin diye listede görünür)
-  const passportWaText = (c) => {
-    const p = expPassport(c) || {};
-    return `Sayın ${fullNameTr(c)},\n\n${p.passportNo ? `${p.passportNo} numaralı ` : ''}pasaportunuzun geçerlilik süresi ${formatDate(p.expiryDate)} tarihinde sona erecektir.\n\nBirçok ülke, geçerlilik süresinin bitmesine 6 aydan az kalan pasaportları kabul etmemektedir. Seyahatlerinizde sorun yaşamamanız için pasaportunuzu yenilemenizi öneririz.\n\nPaydos Turizm`;
+  // Schengen vizesi 90 gün içinde bitecekler (daha uzun geçerli başka Schengen vizesi olan hariç)
+  const expSchengen = (c) => {
+    const vs = safeParseJSON(c.schengenVisas).filter(v => v.endDate);
+    if (vs.some(v => (getDaysLeft(v.endDate) ?? -1) > 90)) return null;
+    return vs.filter(v => { const d = getDaysLeft(v.endDate); return d !== null && d > 0 && d <= 90; }).sort((a, b) => String(a.endDate).localeCompare(String(b.endDate)))[0] || null;
   };
-  const sendPassportWa = async (c) => {
-    window.open(waUrl(formatWhatsAppPhone(c.phone), passportWaText(c)), '_blank');
+  const expiringSchengen = customers.filter(expSchengen);
+  // 💬 WhatsApp hazır mesajı (metin Ayarlar → Müşteri'den düzenlenir; WhatsApp'ta göndermeden önce de değiştirilebilir).
+  // Gönderim tarihi müşteri kaydına yazılır (field) — listede "Gönderildi" görünür, aynı kişiye tekrar yazılmaz.
+  const sendWa = async (c, text, field) => {
+    window.open(waUrl(formatWhatsAppPhone(c.phone), text), '_blank');
     const at = new Date().toISOString();
-    setCustomers?.(prev => prev.map(x => x === c || (x._docId && x._docId === c._docId) || (x.id != null && x.id === c.id) ? { ...x, passportWarnAt: at } : x));
-    setModal(m => m ? { ...m, list: m.list.map(x => x === c ? { ...x, passportWarnAt: at } : x) } : m);
-    try { await setDoc(doc(db, 'customers', String(c._docId || c.id)), { passportWarnAt: at }, { merge: true }); }
+    const same = (x) => x === c || (x._docId && x._docId === c._docId) || (x.id != null && x.id === c.id);
+    setCustomers?.(prev => prev.map(x => same(x) ? { ...x, [field]: at } : x));
+    setModal(m => m ? { ...m, list: m.list.map(x => same(x) ? { ...x, [field]: at } : x) } : m);
+    try { await setDoc(doc(db, 'customers', String(c._docId || c.id)), { [field]: at }, { merge: true }); }
     catch (e) { showToast?.('WhatsApp açıldı ama gönderim kaydı yazılamadı: ' + e.message, 'warning'); }
+  };
+  // sinceYmd: bu tarihten önceki gönderim sayılmaz (doğum günü her yıl yeniden)
+  const WaBtn = ({ c, text, field, sinceYmd = '' }) => {
+    if (!c.phone) return <span style={{ flexShrink: 0, fontSize: '11px', color: '#64748b' }}>telefon yok</span>;
+    const sent = c[field] && String(c[field]).slice(0, 10) >= sinceYmd ? String(c[field]).slice(0, 10) : '';
+    return <button onClick={e => { e.stopPropagation(); sendWa(c, text, field); }} title="WhatsApp'ta hazır mesaj açılır (göndermeden önce düzenleyebilirsiniz) — metin: Ayarlar → Müşteri"
+      style={{ flexShrink: 0, background: sent ? 'rgba(148,163,184,0.15)' : 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: sent ? '#94a3b8' : '#25d366', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      💬 {sent ? `Gönderildi ${formatDate(sent)}` : 'WhatsApp'}</button>;
   };
   // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
@@ -188,11 +202,12 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
           sublabel="→ 6 ay içinde bitenler"
           onClick={() => setModal({ title: '⚠️ Pasaport Uyarısı (6 ay)', color: '#ef4444', list: expiringPassports,
             renderItem: c => { const p = expPassport(c); return `${fullNameTr(c)} — ${p?.passportNo || ''} · ${formatDate(p?.expiryDate)} (${getDaysLeft(p?.expiryDate)} gün)`; },
-            action: c => c.phone
-              ? <button onClick={e => { e.stopPropagation(); sendPassportWa(c); }} title="WhatsApp'ta pasaport uyarı mesajı açılır (göndermeden önce düzenleyebilirsiniz)"
-                  style={{ flexShrink: 0, background: c.passportWarnAt ? 'rgba(148,163,184,0.15)' : 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: c.passportWarnAt ? '#94a3b8' : '#25d366', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  💬 {c.passportWarnAt ? `Gönderildi ${formatDate(String(c.passportWarnAt).slice(0, 10))}` : 'WhatsApp'}</button>
-              : <span style={{ flexShrink: 0, fontSize: '11px', color: '#64748b' }}>telefon yok</span> })} />
+            action: c => <WaBtn c={c} field="passportWarnAt" text={passportWarnText(appSettings?.passportWarnTemplate, c, expPassport(c))} /> })} />
+        <StatCard value={expiringSchengen.length} label="Schengen Bitiyor" color="#f97316"
+          sublabel="→ 3 ay içinde bitenler"
+          onClick={() => setModal({ title: '🇪🇺 Schengen Vizesi Bitiyor (3 ay)', color: '#f97316', list: expiringSchengen,
+            renderItem: c => { const v = expSchengen(c); return `${fullNameTr(c)} — ${v?.country || 'Schengen'} · ${formatDate(v?.endDate)} (${getDaysLeft(v?.endDate)} gün)`; },
+            action: c => <WaBtn c={c} field="schengenWarnAt" text={schengenWarnText(appSettings?.schengenWarnTemplate, c, expSchengen(c))} /> })} />
         <StatCard value={withGreenPassport.length} label="Yeşil Pasaport" color="#059669"
           sublabel="→ Listele"
           onClick={() => setModal({ title: '🟢 Yeşil Pasaport', color: '#059669', list: withGreenPassport,
@@ -271,9 +286,7 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
                       <div style={{ fontWeight: '600', fontSize: '14px' }}>🎂 {fullNameTr(c)}</div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>{c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                     </div>
-                    {c.phone && (
-                      <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noreferrer" style={{ background: 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: '#25d366', padding: '6px 10px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer' }}>💬 Kutla</a>
-                    )}
+                    <WaBtn c={c} field="birthdayWaAt" sinceYmd={`${new Date().getFullYear()}-01-01`} text={birthdayText(appSettings?.birthdayTemplate, c, getAge(c.birthDate))} />
                   </div>
                 ))
               )}
@@ -294,9 +307,7 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
                         <div style={{ fontWeight: '600', fontSize: '14px' }}>{fullNameTr(c)}</div>
                         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{bday} · {c.phone || '—'} · {getAge(c.birthDate)} yaşında</div>
                       </div>
-                      {c.phone && (
-                        <a href={`https://wa.me/${formatWhatsAppPhone(c.phone)}`} target="_blank" rel="noreferrer" style={{ background: 'rgba(37,211,102,0.15)', border: 'none', borderRadius: '8px', color: '#25d366', padding: '6px 10px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer' }}>💬 WA</a>
-                      )}
+                      <WaBtn c={c} field="birthdayWaAt" sinceYmd={`${new Date().getFullYear()}-01-01`} text={birthdayText(appSettings?.birthdayTemplate, c, getAge(c.birthDate))} />
                     </div>
                   );
                 })
