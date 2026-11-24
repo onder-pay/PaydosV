@@ -380,7 +380,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
       const bilgi = parseIdataBilgi(m);
       if (bilgi) {
         const hit = (await loadVisas()).filter(v => v.takipNo && takipKey(v.takipNo) === bilgi.no);
-        const ne = bilgi.tip === 'geldi' ? '🛂 pasaport iDATA\'ya geldi — teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir'
+        const ne = bilgi.tip === 'geldi' ? '🎉 <b>VİZESİ ÇIKMIŞTIR</b> — pasaport iDATA\'ya geldi; teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir (vaspayment.idata.com.tr)'
           : bilgi.tip === 'teslim' ? `✅ pasaport teslim edildi${bilgi.alan ? ` (teslim alan: ${esc(bilgi.alan)})` : ''}` : `ℹ️ ${esc(bilgi.ozet)}`;
         if (hit.length === 1) {
           const v = hit[0];
