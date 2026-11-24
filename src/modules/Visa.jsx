@@ -2366,10 +2366,9 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 }
 
 // Ticari / iş / fuar vize türü mü (bot evrakmail.js ile aynı kural; Türkçe karakter kuralı: önce ASCII küçük harf)
-// 🛂 iDATA bilgilendirme maili (bot takip no ile yazar): pasaport iDATA'ya geldi / teslim edildi
+// 🛂 iDATA bilgilendirme maili (bot takip no ile yazar): pasaport iDATA'ya geldi
 export const idataPasaportText = (v) => {
   const d = (x) => x ? formatDate(String(x).slice(0, 10)) : '';
-  if (v?.idataPasaport === 'teslim') return `✅ Pasaport teslim edildi ${d(v.idataTeslimAt)}${v.idataTeslimAlan ? ` · ${v.idataTeslimAlan}` : ''}`;
   if (v?.idataPasaport === 'geldi') return `🛂 Pasaportu teslim alabilirsiniz — iDATA'da (${d(v.idataGeldiAt)})`;
   return '';
 };

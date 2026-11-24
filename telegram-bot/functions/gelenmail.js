@@ -158,7 +158,7 @@ const isAutoMail = (m) => isIdataCode(m) || /no-?reply|mailer-daemon|postmaster|
 
 // iDATA "Bilgilendirme <no>" maili — başvuru takip numarasıyla (teslim fişindeki S4092386; mailde S'siz 4092386):
 //   "… no'lu başvurunuz iDATA'ya gelmiştir …"           → pasaport iDATA'da (kargo talimatı ya da fişle teslim alınır)
-//   "… no'lu başvurunuz OĞ***** ÜN** isimli kişiye teslim edilmiştir" → pasaport teslim edildi
+//   "… no'lu başvurunuz OĞ***** ÜN** isimli kişiye teslim edilmiştir" → tanınır ama bildirilmez (gerek yok)
 // Döner: null ya da { no, tip: 'geldi'|'teslim'|'diger', alan, ozet }
 const parseIdataBilgi = (m) => {
   if (!isIdataSender(m.from)) return null;
@@ -378,13 +378,15 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
       }
       // iDATA bilgilendirme (pasaport iDATA'ya geldi / teslim edildi): Başvuru Takip No ile eşleşir
       const bilgi = parseIdataBilgi(m);
+      // "… isimli kişiye teslim edilmiştir" bildirilmez (kullanıcı tercihi) — sessizce geçilir
+      if (bilgi && bilgi.tip === 'teslim') { res.atlanan++; if (test) lines.push(`➖ iDATA teslim bildirimi (takip ${esc(bilgi.no)}), geçilirdi`); continue; }
       if (bilgi) {
         const hit = (await loadVisas()).filter(v => v.takipNo && takipKey(v.takipNo) === bilgi.no);
         const ne = bilgi.tip === 'geldi' ? '🛂 <b>Pasaportu teslim alabilirsiniz</b> — başvuru iDATA\'ya geldi; teslim fişinin aslıyla iDATA\'dan alınabilir ya da kargo talimatı verilebilir (vaspayment.idata.com.tr)'
-          : bilgi.tip === 'teslim' ? `✅ pasaport teslim edildi${bilgi.alan ? ` (teslim alan: ${esc(bilgi.alan)})` : ''}` : `ℹ️ ${esc(bilgi.ozet)}`;
+          : `ℹ️ ${esc(bilgi.ozet)}`;
         if (hit.length === 1) {
           const v = hit[0];
-          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: now } : bilgi.tip === 'teslim' ? { idataPasaport: 'teslim', idataTeslimAt: now, idataTeslimAlan: bilgi.alan } : null;
+          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: now } : null;
           if (patch && !test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
           res.randevu++;
           lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> (takip ${esc(v.takipNo)}) — ${ne}${patch && test ? ' (başvuruya yazılırdı)' : ''}`);
