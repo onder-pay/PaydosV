@@ -1,6 +1,8 @@
 // 📊 Ana sayfa (Dashboard) modülü
 import { StatCard } from '../components/ui';
-import { formatWhatsAppPhone, getDaysLeft, safeParseDate, safeParseJSON, safeParseObj } from '../lib/format.js';
+import { formatDate, formatWhatsAppPhone, getDaysLeft, safeParseDate, safeParseJSON, safeParseObj, waUrl } from '../lib/format.js';
+import { db } from '../lib/firebase.js';
+import { doc, setDoc } from 'firebase/firestore';
 import { trHas, fullNameTr } from '../lib/turkish.js';
 import { isGreenPassport } from '../lib/travel.js';
 import { useState } from 'react';
@@ -34,6 +36,21 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
       return days !== null && days > 0 && days <= 180;
     });
   });
+  // 6 ay içinde biten pasaport (listede ve WhatsApp mesajında gösterilen)
+  const expPassport = (c) => safeParseJSON(c.passports).find(x => { const d = getDaysLeft(x.expiryDate); return d !== null && d > 0 && d <= 180; });
+  // 💬 Pasaport uyarısı WhatsApp mesajı — WhatsApp'ta gönderilmeden önce düzenlenebilir; gönderim tarihi müşteri kaydına yazılır (tekrar gönderilmesin diye listede görünür)
+  const passportWaText = (c) => {
+    const p = expPassport(c) || {};
+    return `Sayın ${fullNameTr(c)},\n\n${p.passportNo ? `${p.passportNo} numaralı ` : ''}pasaportunuzun geçerlilik süresi ${formatDate(p.expiryDate)} tarihinde sona erecektir.\n\nBirçok ülke, geçerlilik süresinin bitmesine 6 aydan az kalan pasaportları kabul etmemektedir. Seyahatlerinizde sorun yaşamamanız için pasaportunuzu yenilemenizi öneririz.\n\nPaydos Turizm`;
+  };
+  const sendPassportWa = async (c) => {
+    window.open(waUrl(formatWhatsAppPhone(c.phone), passportWaText(c)), '_blank');
+    const at = new Date().toISOString();
+    setCustomers?.(prev => prev.map(x => x === c || (x._docId && x._docId === c._docId) || (x.id != null && x.id === c.id) ? { ...x, passportWarnAt: at } : x));
+    setModal(m => m ? { ...m, list: m.list.map(x => x === c ? { ...x, passportWarnAt: at } : x) } : m);
+    try { await setDoc(doc(db, 'customers', String(c._docId || c.id)), { passportWarnAt: at }, { merge: true }); }
+    catch (e) { showToast?.('WhatsApp açıldı ama gönderim kaydı yazılamadı: ' + e.message, 'warning'); }
+  };
   // Yeşil Pasaportlu Olanlar (passportType veya pasaport no S ile başlıyor)
   const withGreenPassport = customers.filter(c => {
     const pList = safeParseJSON(c.passports);
@@ -170,7 +187,12 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
         <StatCard value={expiringPassports.length} label="Pasaport Uyarı" color="#ef4444"
           sublabel="→ 6 ay içinde bitenler"
           onClick={() => setModal({ title: '⚠️ Pasaport Uyarısı (6 ay)', color: '#ef4444', list: expiringPassports,
-            renderItem: c => { const p = safeParseJSON(c.passports).find(x=>{const d=getDaysLeft(x.expiryDate);return d!==null&&d>0&&d<=180;}); return `${c.firstName} ${c.lastName} (${getDaysLeft(p?.expiryDate)} gün)`; } })} />
+            renderItem: c => { const p = expPassport(c); return `${fullNameTr(c)} — ${p?.passportNo || ''} · ${formatDate(p?.expiryDate)} (${getDaysLeft(p?.expiryDate)} gün)`; },
+            action: c => c.phone
+              ? <button onClick={e => { e.stopPropagation(); sendPassportWa(c); }} title="WhatsApp'ta pasaport uyarı mesajı açılır (göndermeden önce düzenleyebilirsiniz)"
+                  style={{ flexShrink: 0, background: c.passportWarnAt ? 'rgba(148,163,184,0.15)' : 'rgba(37,211,102,0.2)', border: 'none', borderRadius: '8px', color: c.passportWarnAt ? '#94a3b8' : '#25d366', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  💬 {c.passportWarnAt ? `Gönderildi ${formatDate(String(c.passportWarnAt).slice(0, 10))}` : 'WhatsApp'}</button>
+              : <span style={{ flexShrink: 0, fontSize: '11px', color: '#64748b' }}>telefon yok</span> })} />
         <StatCard value={withGreenPassport.length} label="Yeşil Pasaport" color="#059669"
           sublabel="→ Listele"
           onClick={() => setModal({ title: '🟢 Yeşil Pasaport', color: '#059669', list: withGreenPassport,
@@ -216,8 +238,11 @@ export function DashboardModule({ customers, setCustomers, appSettings, showToas
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
                 >
-                  <span style={{ marginRight: '8px', fontSize: '11px', color: '#64748b' }}>→</span>
-                  {modal.renderItem(c)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>→</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>{modal.renderItem(c)}</span>
+                    {modal.action && modal.action(c)}
+                  </div>
                 </div>
               ))}
             </div>
