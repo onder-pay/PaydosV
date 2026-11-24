@@ -2047,6 +2047,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
                       {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
+                      {idataPasaportText(v) && <span style={{ display: 'inline-block', marginTop: '6px', marginRight: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: v.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24', border: `1px solid ${v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}` }}>{idataPasaportText(v)}</span>}
                       {idataSecimText(v) && <span title="iDATA tarih seçme maili geldi — iDATA'dan randevu tarihi seçilmezse hak iptal olur" style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)' }}>{idataSecimText(v)}</span>}
                       {visaFutureDate(v) && (
                         <span style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}>
@@ -2302,6 +2303,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 </div>
               )}
               {selectedVisa.takipNo && !selectedVisa.appointmentDate && <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>🧾 Başvuru Takip No: <b style={{ color: '#e8f1f8' }}>{selectedVisa.takipNo}</b></p>}
+              {idataPasaportText(selectedVisa) && <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: selectedVisa.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24' }}>{idataPasaportText(selectedVisa)}</p>}
               {(selectedVisa.travelStart || selectedVisa.travelEnd) && (
                 <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>✈️ Muhtemel seyahat</p>
@@ -2361,6 +2363,13 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 }
 
 // Ticari / iş / fuar vize türü mü (bot evrakmail.js ile aynı kural; Türkçe karakter kuralı: önce ASCII küçük harf)
+// 🛂 iDATA bilgilendirme maili (bot takip no ile yazar): pasaport iDATA'ya geldi / teslim edildi
+export const idataPasaportText = (v) => {
+  const d = (x) => x ? formatDate(String(x).slice(0, 10)) : '';
+  if (v?.idataPasaport === 'teslim') return `✅ Pasaport teslim edildi ${d(v.idataTeslimAt)}${v.idataTeslimAlan ? ` · ${v.idataTeslimAlan}` : ''}`;
+  if (v?.idataPasaport === 'geldi') return `🛂 Pasaport iDATA'da (${d(v.idataGeldiAt)}) — fişle alınacak`;
+  return '';
+};
 // ⏰ iDATA "randevu tarihinizi seçin" maili geldi, tarih henüz girilmedi → son gün uyarısı (bot idataSecim yazar; randevu gelince siler)
 export const idataSecimText = (v) => {
   const s = v?.idataSecim;

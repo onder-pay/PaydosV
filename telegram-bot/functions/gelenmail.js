@@ -156,6 +156,23 @@ const isIdataCode = (m) => isIdataSender(m.from) && (/^verify@/.test(m.from) || 
 const isAutoMail = (m) => isIdataCode(m) || /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
   || !!m.listUnsubscribe || /bulk|junk|list/.test(String(m.precedence || '')) || (m.autoSubmitted && !/^no$/i.test(m.autoSubmitted));
 
+// iDATA "Bilgilendirme <no>" maili — başvuru takip numarasıyla (teslim fişindeki S4092386; mailde S'siz 4092386):
+//   "… no'lu başvurunuz iDATA'ya gelmiştir …"           → pasaport iDATA'da (kargo talimatı ya da fişle teslim alınır)
+//   "… no'lu başvurunuz OĞ***** ÜN** isimli kişiye teslim edilmiştir" → pasaport teslim edildi
+// Döner: null ya da { no, tip: 'geldi'|'teslim'|'diger', alan, ozet }
+const parseIdataBilgi = (m) => {
+  if (!isIdataSender(m.from)) return null;
+  const body = `${stripTags(m.html)} ${m.text || ''}`.replace(/\s+/g, ' ');
+  const t = normTr(body);
+  const n = /(\d{5,10})\s*no'?\s*lu basvurunuz/.exec(t) || (/bilgilendirme/.test(normTr(m.subject)) && /(\d{5,10})/.exec(String(m.subject || '')));
+  if (!n) return null;
+  const tip = /teslim edilmis/.test(t) ? 'teslim' : /idata'?\s*ya gelmis/.test(t) ? 'geldi' : 'diger';
+  const a = /no'?\s*lu başvurunuz\s+(.+?)\s+isimli kişiye/.exec(body);
+  const ozetM = /(\d{5,10}\s*no'?\s*lu başvurunuz[^.]*\.)/.exec(body);
+  return { no: n[1], tip, alan: a ? a[1].trim() : '', ozet: ozetM ? ozetM[1].trim() : (m.subject || '') };
+};
+const takipKey = (x) => String(x || '').replace(/\D/g, '');
+
 // ---- IMAP ----
 // Döner: { uidValidity, lastUid, mails: [{ uid, from, fromName, subject, text, html, attachments:[{filename,size}], ... }] }
 const fetchInbox = async ({ host, port, user, pass }, state) => {
@@ -359,6 +376,24 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
         }
         continue;
       }
+      // iDATA bilgilendirme (pasaport iDATA'ya geldi / teslim edildi): Başvuru Takip No ile eşleşir
+      const bilgi = parseIdataBilgi(m);
+      if (bilgi) {
+        const hit = (await loadVisas()).filter(v => v.takipNo && takipKey(v.takipNo) === bilgi.no);
+        const ne = bilgi.tip === 'geldi' ? '🛂 pasaport iDATA\'ya geldi — teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir'
+          : bilgi.tip === 'teslim' ? `✅ pasaport teslim edildi${bilgi.alan ? ` (teslim alan: ${esc(bilgi.alan)})` : ''}` : `ℹ️ ${esc(bilgi.ozet)}`;
+        if (hit.length === 1) {
+          const v = hit[0];
+          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: now } : bilgi.tip === 'teslim' ? { idataPasaport: 'teslim', idataTeslimAt: now, idataTeslimAlan: bilgi.alan } : null;
+          if (patch && !test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+          res.randevu++;
+          lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> (takip ${esc(v.takipNo)}) — ${ne}${patch && test ? ' (başvuruya yazılırdı)' : ''}`);
+        } else {
+          res.eslesmeyen++;
+          lines.push(`🧾 iDATA takip <b>${esc(bilgi.no)}</b> — ${ne}\n⚠️ ${hit.length ? `${hit.length} başvuruda bu takip no var` : 'bu takip no CRM\'de yok'} — başvuruya "Başvuru Takip No" girin`);
+        }
+        continue;
+      }
       // iDATA'nın randevu maili gibi görünüp tablosu okunamayan mail sessizce geçilmez (ör. rakamsız PNR yüzünden atlanıyordu)
       if (isIdataSender(m.from) && !isIdataCode(m) && /randevu|termin/.test(normTr(m.subject)) && /\bpnr\b/.test(normTr(`${m.text || ''} ${stripTags(m.html)}`))) {
         res.eslesmeyen++;
@@ -387,6 +422,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
 };
 
 exports.parseIdataMail = parseIdataMail;
+exports.parseIdataBilgi = parseIdataBilgi;
 exports.matchVisas = matchVisas;
 exports.similarVisas = similarVisas;
 exports.processInbox = processInbox;
