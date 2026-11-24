@@ -583,6 +583,10 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
   };
   const setKatDeger = (key, val) => setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
   const setKatCur = (cur) => setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+  // 💱 Her kalemin kendi para birimi (yoksa kategori birimi) — ör. konsolosluk €, koordinasyon ₺
+  const tumItemCur = appSettings?.visaCostItemCurrency || {};
+  const katItemCur = tumItemCur[aktifKat] || {};
+  const setItemCur = (key, cur) => setAppSettings({ ...appSettings, visaCostItemCurrency: { ...tumItemCur, [aktifKat]: { ...katItemCur, [key]: cur } } });
 
   const kalemEkle = () => {
     const label = (yeniKalem || '').trim();
@@ -611,7 +615,7 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} para birimi:</span>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} varsayılan para birimi:</span>
         <select value={katCur} onChange={e => setKatCur(e.target.value)}
           style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
           <option value="€" style={{ background: '#0c1929' }}>€</option>
@@ -650,7 +654,10 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
               <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
                 style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
             )}
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '14px', flexShrink: 0 }}>{katCur}</span>
+            <select value={katItemCur[it.key] || katCur} onChange={e => setItemCur(it.key, e.target.value)} title="Bu kalemin para birimi"
+              style={{ flexShrink: 0, padding: '5px 4px', background: katItemCur[it.key] && katItemCur[it.key] !== katCur ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '5px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+              {['€', '$', '£', '₺'].map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+            </select>
             <button onClick={() => { if (!window.confirm(`"${it.label}" kalemini ${katAd} kategorisinden silmek istiyor musun?`)) return; setKatItems(items.filter((_, i) => i !== idx)); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}>🗑️</button>
           </div>
         ))}

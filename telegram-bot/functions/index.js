@@ -1223,6 +1223,9 @@ const saveVisaApplication = async (db, cust, catId, typeObj, status) => {
     const s = (await db.collection('app_settings').doc('main').get()).data() || {};
     rec.costs = { ...((s.visaCostDefaults || {})[catId] || {}), ...((((s.visaCostTypeDefaults || {})[catId]) || {})[typeObj.name] || {}) };
     rec.costCurrency = (s.visaCostDefaultCurrency || {})[catId] || '₺';
+    // Her kalemin kendi para birimi (CRM getVisaCostDefaultCurrencies ile aynı: kalem birimi yoksa kategori birimi)
+    const ownCur = (s.visaCostItemCurrency || {})[catId] || {};
+    rec.costCurrencies = Object.fromEntries(Object.keys(rec.costs).map(k => [k, ownCur[k] || (s.visaCostDefaultCurrency || {})[catId] || '€']));
   } catch (e) { console.warn('[BOT] varsayılan maliyetler okunamadı:', e.message); }
   await db.collection('visa_applications').doc(String(id)).set(rec);
   return rec;

@@ -315,13 +315,12 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     const data = visaApplications.map(v => {
       const costs = v.costs || {};
       const satisCur = v.visaCurrency || v.currency || '€';
-      const costCur = v.costCurrency || satisCur;
       // Maliyet kalemleri: her biri "tutar para birimi" olarak ayrı sütun
       const maliyetSutunlari = {};
       const toplamPB = {};
       costItems.forEach(f => {
         const tutar = parseFloat(costs[f.key]) || 0;
-        maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCur}` : '';
+        maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCurOf(v, f.key)}` : '';
       });
       Object.assign(toplamPB, sumVisaCosts(v));
       // Ödemeler
@@ -467,7 +466,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
       processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
       price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
-      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺', costCurrencies: getVisaCostDefaultCurrencies(appSettings, bv.cat.id),
       id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
     }));
     let fail = 0;
@@ -536,7 +535,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       currency: '€',
       // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
       costs: getVisaCostDefaults(appSettings, cat.id),
-      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺'
+      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺',
+      costCurrencies: getVisaCostDefaultCurrencies(appSettings, cat.id)
     });
   };
 
@@ -1451,13 +1451,14 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 const discount = parseFloat(formData.visaDiscount) || 0;
                 const netSale = salePrice - discount;
 
-                // Tüm kalemler tek para biriminde (formData.costCurrency)
+                // Her kalemin kendi para birimi (formData.costCurrencies[key]; yoksa eski ortak birim)
+                const curOf = (key) => (formData.costCurrencies || {})[key] || formData.costCurrency || saleCurrency;
                 const costCur = formData.costCurrency || saleCurrency;
                 const totalsByCurrency = {};
                 costFields.forEach(f => {
                   const amount = parseFloat(costs[f.key]) || 0;
                   if (amount === 0) return;
-                  totalsByCurrency[costCur] = (totalsByCurrency[costCur] || 0) + amount;
+                  totalsByCurrency[curOf(f.key)] = (totalsByCurrency[curOf(f.key)] || 0) + amount;
                 });
                 // Satışla aynı para birimindeki toplam (kâr/zarar için)
                 const totalSameCurrency = totalsByCurrency[saleCurrency] || 0;
@@ -1478,11 +1479,10 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                             <button type="button" onClick={() => {
                               if (!Object.values(defs).some(val => (parseFloat(val) || 0) > 0)) { showToast?.('Bu vize türü için Ayarlar → Vize Maliyet Kalemleri\'nde varsayılan değer girilmemiş', 'warning'); return; }
                               if (!fillable.length) { showToast?.('Boş kalem yok — girilmiş tutarlar değiştirilmedi', 'info'); return; }
-                              const defCur = (appSettings?.visaCostDefaultCurrency || {})[catId];
-                              const hasVals = Object.values(costs).some(x => parseFloat(x));
-                              const curNow = formData.costCurrency || saleCurrency;
-                              if (hasVals && defCur && defCur !== curNow) { showToast?.(`Varsayılanlar ${defCur}, bu başvurunun kalemleri ${curNow} — karışmasın diye doldurulmadı. Para birimini ${defCur} yapıp tekrar deneyin.`, 'warning'); return; }
-                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, ...(!hasVals && defCur ? { costCurrency: defCur } : {}) });
+                              // Doldurulan kalem Ayarlar'daki kendi para birimini alır; girilmiş kalemlerin birimine dokunulmaz
+                              const defCurs = getVisaCostDefaultCurrencies(appSettings, catId);
+                              const curs = { ...Object.fromEntries(costFields.map(f => [f.key, curOf(f.key)])), ...Object.fromEntries(fillable.map(([k]) => [k, defCurs[k] || curOf(k)])) };
+                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, costCurrencies: curs });
                               showToast?.(`${fillable.length} kalem varsayılan değerle dolduruldu`, 'success');
                             }} title="Ayarlar'daki varsayılan maliyetlerle yalnız boş kalemleri doldurur"
                               style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '7px', color: '#10b981', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
@@ -1490,15 +1490,6 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                             </button>
                           );
                         })()}
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Tüm kalemler için para birimi:</span>
-                        <select value={formData.costCurrency || saleCurrency}
-                          onChange={e => setFormData({ ...formData, costCurrency: e.target.value })}
-                          style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                          <option value="€" style={{ background: '#0c1929' }}>€</option>
-                          <option value="$" style={{ background: '#0c1929' }}>$</option>
-                          <option value="£" style={{ background: '#0c1929' }}>£</option>
-                          <option value="₺" style={{ background: '#0c1929' }}>₺</option>
-                        </select>
                       </div>
                     </div>
 
@@ -1511,7 +1502,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                               onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})}
                               placeholder="0"
                               style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', minWidth: 0 }} />
-                            <span style={{ fontSize: '12px', color: '#94a3b8', flexShrink: 0 }}>{formData.costCurrency || saleCurrency}</span>
+                            <select value={curOf(f.key)} title="Bu kalemin para birimi"
+                              onChange={e => setFormData({ ...formData, costCurrencies: { ...Object.fromEntries(costFields.map(x => [x.key, curOf(x.key)])), [f.key]: e.target.value } })}
+                              style={{ flexShrink: 0, padding: '6px 4px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                              {['€', '$', '£', '₺'].map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+                            </select>
                           </div>
                         </div>
                       ))}
@@ -1586,7 +1581,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 const _costCur = formData.costCurrency || _saleCur;
                 const _costItems = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
                 const maliyetPB = {};
-                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
+                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; const c = (formData.costCurrencies || {})[f.key] || _costCur; maliyetPB[c] = (maliyetPB[c] || 0) + a; });
 
                 return (
                   <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
@@ -2380,6 +2375,14 @@ export const idataSecimText = (v) => {
 };
 export const isTicariVisa = (v) => /ticari|fuar|\bis\b/.test(normalizeTr(`${v?.visaDuration || ''} ${v?.visaType || ''}`));
 
+// 💱 Maliyet kaleminin para birimi: kalemin kendi birimi (costCurrencies) → başvurunun eski ortak birimi (costCurrency) → satış birimi
+export const costCurOf = (v, key) => (v?.costCurrencies || {})[key] || v?.costCurrency || v?.visaCurrency || v?.currency || '€';
+// Ayarlar'daki kalem para birimleri (kalemin kendi birimi yoksa kategori birimi)
+export const getVisaCostDefaultCurrencies = (appSettings, category) => {
+  const katCur = (appSettings?.visaCostDefaultCurrency || {})[category] || '€';
+  const own = (appSettings?.visaCostItemCurrency || {})[category] || {};
+  return Object.fromEntries(getVisaCostItems(appSettings, category).map(it => [it.key, own[it.key] || katCur]));
+};
 // Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
 export const getVisaCostDefaults = (appSettings, category, typeName) => ({
   ...((appSettings?.visaCostDefaults || {})[category] || {}),
@@ -2397,9 +2400,9 @@ export const nextBizDay = (ymd) => {
 // Bir başvurunun maliyetlerini para birimi bazında toplar. Kalem listesinden bağımsız olarak
 // kayıttaki tüm tutarları sayar — ayarlardan kaldırılan bir kalem kâr/zarardan düşmesin.
 export const sumVisaCosts = (visa) => {
-  const cur = visa?.costCurrency || visa?.visaCurrency || visa?.currency || '€';
-  const total = Object.values(visa?.costs || {}).reduce((t, v) => t + (parseFloat(v) || 0), 0);
-  return total ? { [cur]: total } : {};
+  const out = {};
+  Object.entries(visa?.costs || {}).forEach(([k, v]) => { const a = parseFloat(v) || 0; if (!a) return; const c = costCurOf(visa, k); out[c] = (out[c] || 0) + a; });
+  return out;
 };
 
 // İleri tarihli: elle ileri bir işlem tarihi verilmiş ve başvuru henüz ilerlememiş (PNR/randevu yok, sonraki aşamada değil)
