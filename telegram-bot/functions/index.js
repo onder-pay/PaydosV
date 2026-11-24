@@ -490,6 +490,12 @@ Pasaport:
   Ulke kodu "D" = Almanya. Pasaport no harf+rakam karisik 9 karakterdir (orn C4WTYZH4V).
 - expiryDate: "GECERLILIK TARIHI / DATE OF EXPIRY" alaninda YAZAN tarih. Verilis tarihine 10 yil ekleyerek TAHMIN ETME.
 
+iDATA teslim fisi (kagit fis; ustte "Pasaportunuz bu fis ile teslim edilecektir", "BAŞVURU TAKİP NO", sag ustte iDATA logosu — PASAPORT DEGILDIR, uzerinde pasaport no yazsa bile type "idatafis"):
+{"type":"idatafis","takipNo":"","firstName":"","lastName":"","passportNo":"","basvuruTarihi":"YYYY-MM-DD","seyahatTarihi":"YYYY-MM-DD","birthDate":"YYYY-MM-DD"}
+- takipNo: "BAŞVURU TAKİP NO" yanindaki kod AYNEN (orn S4092386 — bastaki harf dahil)
+- lastName: "SOYADI", firstName: "ADI", passportNo: "PASAPORT NO"; tarihler GG/AA/YYYY -> YYYY-MM-DD (basvuruTarihi: "BAŞVURU TARİHİ", seyahatTarihi: "SEYAHAT TARİHİ", birthDate: "DOĞUM TARİHİ")
+- Ucret satirlarini (KOORDINASYON, KONSOLOSLUK BEDELI, SMS) YAZMA
+
 Schengen vize:
 {"type":"schengen","firstName":"","lastName":"","passportNo":"","country":"","visaNumber":"","entryType":"","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","stayDuration":""}
 
@@ -550,7 +556,7 @@ GG-AA-YYYY -> direkt kullan
   if (!m) return { dtype: null, json: null };
   try {
     const json = JSON.parse(m[0]);
-    const dtype = json.type === 'residence' ? 'residence' : json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
+    const dtype = json.type === 'idatafis' ? 'idatafis' : json.type === 'residence' ? 'residence' : json.type === 'idcard' ? 'idcard' : json.type === 'passport' ? 'passport' : json.type === 'schengen' ? 'schengen' : json.type === 'usa' ? 'usa' : (json.passportNo ? 'passport' : json.visaNumber ? 'schengen' : json.endDate ? 'usa' : null);
     // MRZ doğrulaması: bitiş tarihi (kontrol basamağı tutuyorsa) ve yabancı pasaportta ad/soyad/uyruk/numara
     if (dtype === 'passport') { const fx = applyMrz(json); if (fx.length) console.log('MRZ düzeltme:', fx.join(' | ')); } else { delete json.mrz1; delete json.mrz2; }
     console.log('Detected:', dtype, 'Name:', json.firstName, json.lastName);
@@ -1616,6 +1622,13 @@ exports.telegramBot = functions
     const { dtype, json } = await detectType(K, b64);
     if (!dtype || !json) {
       await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text: lastAiError ? ('❌ Okunamadı.\nSebep: ' + lastAiError) : '❌ Tanınamadı. Pasaport, kimlik kartı, oturma izni veya vize yükleyin.' });
+      return res.status(200).send('OK');
+    }
+
+    // 🧾 iDATA teslim fişi: kişiyi/başvuruyu bul, takip no + fiş görseli yaz, gruba bildir (ücret yazılmaz) — bkz. idatafis.js
+    if (dtype === 'idatafis') {
+      const text = await require('./idatafis').handleIdataFis({ db: cfg.db, json, b64, toStorage });
+      await tg(T, 'editMessageText', { chat_id: chatId, message_id: lmid, text, parse_mode: 'Markdown' });
       return res.status(200).send('OK');
     }
 

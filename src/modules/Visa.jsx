@@ -1415,6 +1415,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Başvuru Takip No</label>
                   <input type="text" value={formData.takipNo || ''} onChange={e => setFormData({...formData, takipNo: e.target.value.toUpperCase().replace(/\s+/g, '')})} placeholder="iDATA fişi, örn. S4092386" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                  {formData.idataFisUrl && <a href={formData.idataFisUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: '4px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişini aç</a>}
                 </div>
                 <div style={isMobile ? { gridColumn: '1 / -1' } : undefined}>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Etiket</label>
@@ -2047,6 +2048,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
                       {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
+                      {v.idataFisUrl && <a href={v.idataFisUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: 'inline-block', marginTop: '4px', marginRight: '8px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişi</a>}
                       {idataPasaportText(v) && <span style={{ display: 'inline-block', marginTop: '6px', marginRight: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: v.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24', border: `1px solid ${v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}` }}>{idataPasaportText(v)}</span>}
                       {idataSecimText(v) && <span title="iDATA tarih seçme maili geldi — iDATA'dan randevu tarihi seçilmezse hak iptal olur" style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)' }}>{idataSecimText(v)}</span>}
                       {visaFutureDate(v) && (
@@ -2303,6 +2305,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 </div>
               )}
               {selectedVisa.takipNo && !selectedVisa.appointmentDate && <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>🧾 Başvuru Takip No: <b style={{ color: '#e8f1f8' }}>{selectedVisa.takipNo}</b></p>}
+              {selectedVisa.idataFisUrl && <a href={selectedVisa.idataFisUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: '#60a5fa' }}>📎 iDATA teslim fişini aç</a>}
               {idataPasaportText(selectedVisa) && <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: selectedVisa.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24' }}>{idataPasaportText(selectedVisa)}</p>}
               {(selectedVisa.travelStart || selectedVisa.travelEnd) && (
                 <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
