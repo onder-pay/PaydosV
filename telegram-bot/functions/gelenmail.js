@@ -199,7 +199,7 @@ const fetchInbox = async ({ host, port, user, pass }, state) => {
         for await (const msg of client.fetch(`${out.lastUid + 1}:*`, { uid: true }, { uid: true })) if (msg.uid > out.lastUid) uids.push(msg.uid);
       }
       uids.sort((a, b) => a - b);
-      for (const uid of uids.slice(0, MAX_PER_RUN)) {
+      for (const uid of uids.slice(0, state.max || MAX_PER_RUN)) {
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         out.lastUid = uid;
         if (!msg || !msg.source) continue;
@@ -216,15 +216,29 @@ const fetchInbox = async ({ host, port, user, pass }, state) => {
   return out;
 };
 
+// Telegram mesaj sınırı 4096: uzun bildirim paragraf sınırından (\n\n) parçalanır — ortadan kesmek HTML etiketini bozup mesajı tamamen düşürüyordu
+const splitMsg = (text, max = 3800) => {
+  const out = []; let cur = '';
+  for (const part of String(text).split('\n\n')) {
+    const p = part.length > max ? part.slice(0, max) : part;
+    if (cur && cur.length + 2 + p.length > max) { out.push(cur); cur = p; } else cur = cur ? `${cur}\n\n${p}` : p;
+  }
+  if (cur) out.push(cur);
+  return out;
+};
 const tg = async (token, chatId, text) => {
   if (!token || !chatId) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 3900), parse_mode: 'HTML', disable_web_page_preview: true }) });
-  } catch (e) { console.warn('[gelenmail] telegram:', e.message); }
+  for (const chunk of splitMsg(text)) {
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'HTML', disable_web_page_preview: true }) });
+    } catch (e) { console.warn('[gelenmail] telegram:', e.message); }
+  }
 };
 
 // Döner: { okunan, randevu, eslesmeyen, musteri, taninmayan, atlanan, hata }
-const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = sendMail, test = false, chatId = '' } = {}) => {
+// reprocess = N: /idatayeniden komutu — son N mail GERÇEKTEN yeniden işlenir ama yalnız iDATA mailleri (müşteri/tanınmayan bildirimleri tekrarlanmaz);
+// okuma konumu (bot_state) değişmez, sonuç komutu yazan sohbete gider. Bot eski sürümdeyken "okunamadı" denen mailleri sonradan işlemek için.
+const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = sendMail, test = false, chatId = '', reprocess = 0 } = {}) => {
   const settingsRef = db.collection('app_settings').doc('main');
   const settings = (await settingsRef.get()).data() || {};
   const cfg = settings.imapVisa || {};
@@ -232,8 +246,8 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   const stateRef = db.collection('bot_state').doc('imapVisa');
   const st = (await stateRef.get()).data() || {};
   const res = { okunan: 0, randevu: 0, randevuMail: 0, eslesmeyen: 0, musteri: 0, taninmayan: 0, atlanan: 0, hata: '' };
-  if (!test && cfg.on !== true) return res;
-  const target = test ? chatId : settings.telegramVizeGrupId;
+  if (!test && !reprocess && cfg.on !== true) return res;
+  const target = test || reprocess ? chatId : settings.telegramVizeGrupId;
   const randevuMailOn = settings.autoSureliMail !== false;
   const host = String(cfg.host || '').trim();
   const user = String(cfg.user || smtp.user || '').trim();
@@ -246,12 +260,12 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   }
 
   let box;
-  try { box = await fetchMails({ host, port, user, pass }, test ? { testLast: 5 } : { lastUid: st.lastUid, uidValidity: st.uidValidity }); }
+  try { box = await fetchMails({ host, port, user, pass }, test ? { testLast: 5 } : reprocess ? { testLast: reprocess, max: reprocess } : { lastUid: st.lastUid, uidValidity: st.uidValidity }); }
   catch (e) {
     res.hata = e.message || String(e);
     if (!test) { const { logError, flushErrors } = require('./syslog'); logError('gelenmail', `Gelen kutusu okunamadı: ${res.hata}`, db); await flushErrors(); }
     // Aynı hata her 15 dakikada gruba yazılmasın: günde bir kez
-    if (test) await notify(settings.telegramBotToken, target, `🧪 ❌ Gelen kutusuna bağlanılamadı (${esc(user)} @ ${esc(host)}:${port}): ${esc(res.hata)}`);
+    if (test || reprocess) await notify(settings.telegramBotToken, target, `🧪 ❌ Gelen kutusuna bağlanılamadı (${esc(user)} @ ${esc(host)}:${port}): ${esc(res.hata)}`);
     else if (st.hataGun !== istDate()) {
       await stateRef.set({ hataGun: istDate() }, { merge: true });
       await notify(settings.telegramBotToken, settings.telegramVizeGrupId, `❌ Gelen kutusu okunamadı (${esc(user)}): ${esc(res.hata)}\nAyarlar → Vize mail → Gelen kutusu bilgilerini kontrol edin.`);
@@ -282,6 +296,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   };
 
   for (const m of box.mails) {
+    if (reprocess && !isIdataSender(m.from)) continue;
     res.okunan++;
     try {
       const rows = parseIdataMail(m);
@@ -418,12 +433,17 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
     await notify(settings.telegramBotToken, target, `${head}\n\n${lines.length ? lines.join('\n\n') : 'Son maillerde işlenecek bir şey yok.'}`);
     return res;
   }
+  if (reprocess) {
+    await notify(settings.telegramBotToken, target, `🔁 <b>iDATA mailleri yeniden işlendi</b> (son ${box.mails.length} mail içinde ${res.okunan} iDATA maili)\n\n${lines.length ? lines.join('\n\n') : 'İşlenecek iDATA maili yok.'}`);
+    return res;
+  }
   await stateRef.set({ lastUid: box.lastUid, uidValidity: box.uidValidity, sonOkuma: now, hataGun: '' }, { merge: true });
   if (lines.length) await notify(settings.telegramBotToken, settings.telegramVizeGrupId, `📬 <b>${esc(user)}</b>\n\n${lines.join('\n\n')}`);
   return res;
 };
 
 exports.parseIdataMail = parseIdataMail;
+exports.splitMsg = splitMsg;
 exports.parseIdataBilgi = parseIdataBilgi;
 exports.matchVisas = matchVisas;
 exports.similarVisas = similarVisas;
