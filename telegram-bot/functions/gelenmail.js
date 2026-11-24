@@ -3,6 +3,7 @@
 // 1) iDATA randevu maili (gönderen idata.com.tr): tablodaki AD SOYAD / PNR / OFİS / RANDEVU TARİHİ okunur.
 //    İsim + ülke TEK bir açık başvuruyla birebir eşleşirse randevu ve PNR başvuruya yazılır, durum "Atama Bekliyor" ise "Evrak Topluyor" olur;
 //    eşleşmezse yalnız gruba haber verilir.
+//    Randevu TALEBİ maili (tarih yerine "Atama Bekliyor"): yalnız PNR + ofis yazılır; durum "Başvuru Yapılacak" ise "Atama Bekliyor" olur.
 //    Müşteriye randevu mailini evrakmail.js gönderir (randevu tarihi yazılan her başvuruya, en geç 15 dk içinde;
 //    app_settings.autoSureliMail === false ise ya da başvuruda autoMailOff varsa gitmez).
 // Test: grupta /mailtest → son 5 mail okunur, ne yapılacağı yazılır; HİÇBİR ŞEY kaydedilmez, müşteriye mail gitmez
@@ -34,17 +35,28 @@ const DATE_RE = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/;
 const TIME_RE = /(\d{1,2}):(\d{2})/;
 // PNR: harf + rakam karışık (SDPU3JPFTE9) ya da iDATA'nın "SDP" ile başlayan rakamsız kodu (SDPRPTZGYDU).
 // Rakamsız ve SDP'siz büyük harf kelime ("STANDART") PNR sayılmaz.
+const WAIT_RE = /atama bekl/;
 const PNR_RE = /^(?=[A-Z0-9]{6,16}$)(?:(?=.*\d)(?=.*[A-Z])|SDP[A-Z0-9]{5,})/;
 
-const rowFromCells = (cells) => {
+// invite: "randevu tarih ve saatinizi belirleyebilirsiniz" maili — tabloda tarih sütunu yok (AD SOYAD / PNR / GİDİŞ AMACI / OFİS ADI)
+const rowFromCells = (cells, invite = false) => {
   const pi = cells.findIndex(c => PNR_RE.test(c));
-  const di = cells.findIndex(c => DATE_RE.test(c));
+  if (invite) {
+    if (pi < 1 || cells.some(c => DATE_RE.test(c))) return null;
+    const name = cells.slice(0, pi).join(' ').replace(/\s+/g, ' ').trim();
+    if (name.length < 3 || /\d/.test(name)) return null;
+    return { name, pnr: cells[pi], purpose: cells[pi + 1] || '', office: cells[pi + 2] || '', serviceType: '', appointmentDate: '', appointmentTime: '', invite: true };
+  }
+  // Randevu talebi mailinde (iDATA "... Randevu Talebi") tarih yerine "Atama Bekliyor" yazar: PNR alınmış, tarih henüz yok
+  const di = cells.findIndex(c => DATE_RE.test(c) || WAIT_RE.test(normTr(c)));
   if (pi < 1 || di < 0 || di <= pi) return null;
+  const waiting = !DATE_RE.test(cells[di]);
   const dm = DATE_RE.exec(cells[di]);
   const tm = TIME_RE.exec(cells.slice(di).join(' ').replace(DATE_RE, ' '));
   const mid = cells.slice(pi + 1, di);
   const name = cells.slice(0, pi).join(' ').replace(/\s+/g, ' ').trim();
   if (name.length < 3 || /\d/.test(name)) return null;
+  if (waiting) return { name, pnr: cells[pi], purpose: mid[0] || '', office: mid[1] || '', serviceType: mid[2] || '', appointmentDate: '', appointmentTime: '', waiting: true };
   return {
     name, pnr: cells[pi], purpose: mid[0] || '', office: mid[1] || '', serviceType: mid[2] || '',
     appointmentDate: `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`,
@@ -53,15 +65,26 @@ const rowFromCells = (cells) => {
 };
 
 // Döner: [{ name, pnr, purpose, office, serviceType, appointmentDate (YYYY-AA-GG), appointmentTime }]
+// Tarih seçme daveti: "... randevu tarih ve saatinizi belirleyebileceğinizi ..." — aralık ve son gün metinden okunur
+const inviteInfo = (html, text) => {
+  const t = normTr(`${stripTags(html)} ${text || ''}`);
+  if (!/belirleyebilece|tarihinizi olustur/.test(t)) return null;
+  const ymd = (d) => { const m = DATE_RE.exec(d); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+  const r = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s*ile\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/.exec(t);
+  const s = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s*(\d{1,2}:\d{2})?\s*'?\s*a kadar/.exec(t);
+  return { from: r ? ymd(r[1]) : '', to: r ? ymd(r[2]) : '', son: s ? ymd(s[1]) : '', sonSaat: s && s[2] ? s[2] : '' };
+};
+
 const parseIdataMail = ({ html, text } = {}) => {
   const rows = [];
   const add = (r) => { if (r && !rows.some(x => x.pnr === r.pnr)) rows.push(r); };
+  const inv = inviteInfo(html, text);
   // 1) HTML tablo satırları
   for (const tr of String(html || '').match(/<tr[\s\S]*?<\/tr>/gi) || []) {
     const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map(stripTags).filter(Boolean);
-    if (cells.length >= 4) add(rowFromCells(cells));
+    if (cells.length >= 4) add(inv ? (rowFromCells(cells, true) && { ...rowFromCells(cells, true), ...inv }) : rowFromCells(cells));
   }
-  if (rows.length) return rows;
+  if (rows.length || inv) return rows;
   // 2) Düz metin: başlık satırından sonraki hücreler (sekme / satır / 2+ boşlukla ayrılmış)
   const t = String(text || '');
   const m = /RANDEVU\s+TAR[İI]H[İI]/.exec(t.toLocaleUpperCase('tr-TR')); // görüntülenen başlık; eşleşme konumu için
@@ -71,6 +94,7 @@ const parseIdataMail = ({ html, text } = {}) => {
   for (const c of cells) {
     if (/^(secilen|randevunuzu|sayin)/.test(normTr(c))) break;
     buf.push(c);
+    if (WAIT_RE.test(normTr(c)) && !DATE_RE.test(c)) { add(rowFromCells(buf)); buf = []; continue; }
     if (DATE_RE.test(c)) {
       if (!TIME_RE.test(c.replace(DATE_RE, ' '))) continue; // saat ayrı hücrede olabilir
       add(rowFromCells(buf)); buf = [];
@@ -131,6 +155,23 @@ const isIdataSender = (addr) => /(^|[@.])idata\.com\.tr$/.test(addr);
 const isIdataCode = (m) => isIdataSender(m.from) && (/^verify@/.test(m.from) || /dogrulama kodu|verification code|verifizierungscode/.test(normTr(m.subject)));
 const isAutoMail = (m) => isIdataCode(m) || /no-?reply|mailer-daemon|postmaster|bounce|newsletter|bulten|notification/.test(m.from)
   || !!m.listUnsubscribe || /bulk|junk|list/.test(String(m.precedence || '')) || (m.autoSubmitted && !/^no$/i.test(m.autoSubmitted));
+
+// iDATA "Bilgilendirme <no>" maili — başvuru takip numarasıyla (teslim fişindeki S4092386; mailde S'siz 4092386):
+//   "… no'lu başvurunuz iDATA'ya gelmiştir …"           → pasaport iDATA'da (kargo talimatı ya da fişle teslim alınır)
+//   "… no'lu başvurunuz OĞ***** ÜN** isimli kişiye teslim edilmiştir" → tanınır ama bildirilmez (gerek yok)
+// Döner: null ya da { no, tip: 'geldi'|'teslim'|'diger', alan, ozet }
+const parseIdataBilgi = (m) => {
+  if (!isIdataSender(m.from)) return null;
+  const body = `${stripTags(m.html)} ${m.text || ''}`.replace(/\s+/g, ' ');
+  const t = normTr(body);
+  const n = /(\d{5,10})\s*no'?\s*lu basvurunuz/.exec(t) || (/bilgilendirme/.test(normTr(m.subject)) && /(\d{5,10})/.exec(String(m.subject || '')));
+  if (!n) return null;
+  const tip = /teslim edilmis/.test(t) ? 'teslim' : /idata'?\s*ya gelmis/.test(t) ? 'geldi' : 'diger';
+  const a = /no'?\s*lu başvurunuz\s+(.+?)\s+isimli kişiye/.exec(body);
+  const ozetM = /(\d{5,10}\s*no'?\s*lu başvurunuz[^.]*\.)/.exec(body);
+  return { no: n[1], tip, alan: a ? a[1].trim() : '', ozet: ozetM ? ozetM[1].trim() : (m.subject || '') };
+};
+const takipKey = (x) => String(x || '').replace(/\D/g, '');
 
 // ---- IMAP ----
 // Döner: { uidValidity, lastUid, mails: [{ uid, from, fromName, subject, text, html, attachments:[{filename,size}], ... }] }
@@ -247,13 +288,54 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
       if (rows.length) {
         const trusted = isIdataSender(m.from);
         for (const row of rows) {
-          const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}</b>, PNR <code>${esc(row.pnr)}</code>`;
+          const info = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — <b>${row.waiting ? 'tarih atama bekliyor' : `${dmy(row.appointmentDate)}${row.appointmentTime ? ` ${row.appointmentTime}` : ''}`}</b>, PNR <code>${esc(row.pnr)}</code>`;
           const hits = matchVisas(row, await loadVisas());
-          if ((trusted || test) && hits.length === 1) {
+          // Tarih seçme daveti: PNR + ofis + seçim aralığı/son gün yazılır; gruba "tarih seçilmeli" uyarısı. Durum değişmez.
+          if (row.invite) {
+            const son = row.son ? `${dmy(row.son)}${row.sonSaat ? ` ${row.sonSaat}` : ''}` : '';
+            const aralik = row.from && row.to ? `${dmy(row.from)} – ${dmy(row.to)}` : '';
+            const uyari = `iDATA randevu tarihi SEÇİLMELİ${son ? ` — son gün <b>${son}</b>` : ''}${aralik ? ` (seçilebilir: ${aralik})` : ''}. Seçilmezse randevu hakkı iptal olur.`;
+            const pinfo = `${esc(row.purpose || 'iDATA')}${row.office ? `, ${esc(row.office)}` : ''} — PNR <code>${esc(row.pnr)}</code>`;
+            if ((trusted || test) && hits.length === 1) {
+              const v = hits[0];
+              const patch = { pnr: row.pnr, idataMailAt: now, idataSecim: { from: row.from || '', to: row.to || '', son: row.son || '', sonSaat: row.sonSaat || '', at: now } };
+              if (row.office) patch.idataOffice = row.office;
+              if (!v.processor) patch.processor = 'İdata';
+              if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+              res.randevu++;
+              const yakin = hits.yakin ? `\n🔎 isim birebir değil: iDATA'da "${esc(titleCaseTr(row.name))}", CRM'de "${esc(titleCaseTr(v.customerName))}"` : '';
+              lines.push(`⏰ <b>${esc(titleCaseTr(v.customerName))}</b> — ${uyari}\n${pinfo}${yakin}\n${test ? 'PNR başvuruya yazılırdı' : 'PNR başvuruya yazıldı'}`);
+            } else {
+              res.eslesmeyen++;
+              lines.push(`⏰ <b>${esc(titleCaseTr(row.name))}</b> — ${uyari}\n${pinfo}\n⚠️ ${!trusted ? 'mail iDATA adresinden gelmedi' : hits.length ? `${hits.length} başvuru eşleşti` : 'eşleşen açık başvuru yok'} — PNR'yi elle girin`);
+            }
+            continue;
+          }
+          // Randevu talebi (tarih yok): yalnız PNR + ofis yazılır; durum "Başvuru Yapılacak" ise "Atama Bekliyor" olur. Randevu tarihine/mailine dokunulmaz.
+          if (row.waiting && (trusted || test) && hits.length === 1) {
+            const v = hits[0];
+            const patch = { pnr: row.pnr, idataMailAt: now };
+            if (row.office) patch.idataOffice = row.office;
+            if (!v.processor) patch.processor = 'İdata';
+            let durumNote = '';
+            if (trHas(v.status, 'basvuru yapilacak') && !trHas(v.status, 'atama bekliyor')) {
+              const lbls = statusLabels(settings, 'Atama Bekliyor');
+              patch.status = lbls.find(x => x !== 'Atama Bekliyor') || 'Atama Bekliyor';
+              patch.updatedAt = now;
+              durumNote = `\n🔄 durum: ${esc(v.status)} → ${esc(patch.status)}${test ? ' (olurdu)' : ''}`;
+            }
+            const oldPnr = v.pnr && String(v.pnr).trim().toUpperCase() !== row.pnr ? ` (önceki PNR: ${esc(v.pnr)})` : '';
+            if (!test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+            res.randevu++;
+            const yakin = hits.yakin ? `\n🔎 isim birebir değil: iDATA'da "${esc(titleCaseTr(row.name))}", CRM'de "${esc(titleCaseTr(v.customerName))}" — doğru kişi mi kontrol edin` : '';
+            lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> iDATA randevu talebi ${test ? 'işlenirdi' : 'işlendi'} — PNR kaydedildi${oldPnr}\n${info}${yakin}${durumNote}`);
+            continue;
+          }
+          if (!row.waiting && (trusted || test) && hits.length === 1) {
             const v = hits[0];
             const old = v.appointmentDate && (String(v.appointmentDate).slice(0, 10) !== row.appointmentDate || (v.appointmentTime || '') !== row.appointmentTime)
               ? ` (önceki: ${dmy(String(v.appointmentDate).slice(0, 10))}${v.appointmentTime ? ` ${v.appointmentTime}` : ''})` : '';
-            const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now };
+            const patch = { pnr: row.pnr, appointmentDate: row.appointmentDate, appointmentTime: row.appointmentTime, idataMailAt: now, idataSecim: null }; // tarih seçildi → seçim uyarısı kalkar
             if (row.office) patch.idataOffice = row.office;
             if (!v.processor) patch.processor = 'İdata';
             // Randevu atandı: "Atama Bekliyor" (ya da "Randevu Bekliyor") → "Evrak Topluyor". Başka durumdaki başvurunun durumuna dokunulmaz.
@@ -294,6 +376,26 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
         }
         continue;
       }
+      // iDATA bilgilendirme (pasaport iDATA'ya geldi / teslim edildi): Başvuru Takip No ile eşleşir
+      const bilgi = parseIdataBilgi(m);
+      // "… isimli kişiye teslim edilmiştir" bildirilmez (kullanıcı tercihi) — sessizce geçilir
+      if (bilgi && bilgi.tip === 'teslim') { res.atlanan++; if (test) lines.push(`➖ iDATA teslim bildirimi (takip ${esc(bilgi.no)}), geçilirdi`); continue; }
+      if (bilgi) {
+        const hit = (await loadVisas()).filter(v => v.takipNo && takipKey(v.takipNo) === bilgi.no);
+        const ne = bilgi.tip === 'geldi' ? '🛂 <b>Pasaportu teslim alabilirsiniz</b> — başvuru iDATA\'ya geldi; teslim fişinin aslıyla iDATA\'dan alınabilir ya da kargo talimatı verilebilir (vaspayment.idata.com.tr)'
+          : `ℹ️ ${esc(bilgi.ozet)}`;
+        if (hit.length === 1) {
+          const v = hit[0];
+          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: now } : null;
+          if (patch && !test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
+          res.randevu++;
+          lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> (takip ${esc(v.takipNo)}) — ${ne}${patch && test ? ' (başvuruya yazılırdı)' : ''}`);
+        } else {
+          res.eslesmeyen++;
+          lines.push(`🧾 iDATA takip <b>${esc(bilgi.no)}</b> — ${ne}\n⚠️ ${hit.length ? `${hit.length} başvuruda bu takip no var` : 'bu takip no CRM\'de yok'} — başvuruya "Başvuru Takip No" girin`);
+        }
+        continue;
+      }
       // iDATA'nın randevu maili gibi görünüp tablosu okunamayan mail sessizce geçilmez (ör. rakamsız PNR yüzünden atlanıyordu)
       if (isIdataSender(m.from) && !isIdataCode(m) && /randevu|termin/.test(normTr(m.subject)) && /\bpnr\b/.test(normTr(`${m.text || ''} ${stripTags(m.html)}`))) {
         res.eslesmeyen++;
@@ -322,6 +424,7 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
 };
 
 exports.parseIdataMail = parseIdataMail;
+exports.parseIdataBilgi = parseIdataBilgi;
 exports.matchVisas = matchVisas;
 exports.similarVisas = similarVisas;
 exports.processInbox = processInbox;

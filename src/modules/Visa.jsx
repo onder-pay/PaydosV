@@ -137,6 +137,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       v.customerPhone?.includes(visaSearchQuery) ||
       normalizeTr(v.country).includes(normalizeTr(visaSearchQuery)) ||
       normalizeTr(v.pnr).includes(normalizeTr(visaSearchQuery)) ||
+      normalizeTr(v.takipNo).includes(normalizeTr(visaSearchQuery)) ||
       normalizeTr(v.label).includes(normalizeTr(visaSearchQuery))
     );
     const matchStatus = visaStatusFilter === 'all' ? true
@@ -351,6 +352,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
         'Fuar': [v.fuarAdi, (v.fuarStart || v.fuarEnd) ? `${v.fuarStart ? formatDate(v.fuarStart) : ''} – ${v.fuarEnd ? formatDate(v.fuarEnd) : ''}` : ''].filter(Boolean).join(' · '),
         'Fuar Linki': v.fuarLink || '',
         'PNR': v.pnr || '',
+        'Başvuru Takip No': v.takipNo || '',
         'İşlem': v.processor || '',
         'Ödeme Durumu': v.paymentStatus || '',
         'Durum': v.status || '',
@@ -622,6 +624,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 ${detayRow('Başvuru Tarihi', visa.applicationDate ? formatDate(visa.applicationDate) : '')}
                 ${detayRow('Randevu', visa.appointmentDate ? `${formatDate(visa.appointmentDate)} ${visa.appointmentTime || ''}`.trim() : '')}
                 ${detayRow('PNR', visa.pnr)}
+                ${detayRow('Başvuru Takip No', visa.takipNo)}
               </table>
             </div>
           </div>
@@ -1218,6 +1221,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       </div>
                     );
                   })()}
+              {idataSecimText(formData) && (
+                <div style={{ marginTop: '8px', padding: '8px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', fontSize: '12px', color: '#f87171', fontWeight: 700 }}>
+                  {idataSecimText(formData)}{formData.pnr ? ` · PNR ${formData.pnr}` : ''} — iDATA'dan tarih seçip randevuyu girin.
+                </div>
+              )}
               {/* Vize Evrak yükleme linki — otomatik maillerde {evrak_linki} */}
               {(() => { const isSch = (formData.categoryId || formData.category || selectedCategory?.id || 'schengen') === 'schengen';
                 const fld = { width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' };
@@ -1398,13 +1406,18 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 </div>
               </div>
 
-              {/* PNR + Etiket */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* PNR + Başvuru Takip No (iDATA teslim fişindeki "S4092386") + Etiket */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>PNR / Referans No</label>
                   <input type="text" value={formData.pnr || ''} onChange={e => setFormData({...formData, pnr: e.target.value})} placeholder="Randevu PNR numarası" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
                 </div>
                 <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Başvuru Takip No</label>
+                  <input type="text" value={formData.takipNo || ''} onChange={e => setFormData({...formData, takipNo: e.target.value.toUpperCase().replace(/\s+/g, '')})} placeholder="iDATA fişi, örn. S4092386" style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
+                  {formData.idataFisUrl && <a href={formData.idataFisUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: '4px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişini aç</a>}
+                </div>
+                <div style={isMobile ? { gridColumn: '1 / -1' } : undefined}>
                   <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Etiket</label>
                   <input type="text" value={formData.label || ''} onChange={e => setFormData({...formData, label: e.target.value})} placeholder="Örn: VIP, Acil..." style={{ width: '100%', padding: '12px', background: '#0d1f33', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff', fontSize: '14px', boxSizing: 'border-box' }} />
                 </div>
@@ -2033,7 +2046,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
-                      {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}</p>}
+                      {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
+                      {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
+                      {v.idataFisUrl && <a href={v.idataFisUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: 'inline-block', marginTop: '4px', marginRight: '8px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişi</a>}
+                      {idataPasaportText(v) && <span style={{ display: 'inline-block', marginTop: '6px', marginRight: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', color: v.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24', border: `1px solid ${v.idataPasaport === 'teslim' ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}` }}>{idataPasaportText(v)}</span>}
+                      {idataSecimText(v) && <span title="iDATA tarih seçme maili geldi — iDATA'dan randevu tarihi seçilmezse hak iptal olur" style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)' }}>{idataSecimText(v)}</span>}
                       {visaFutureDate(v) && (
                         <span style={{ display: 'inline-block', marginTop: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}>
                           ⏳ Başvuru {formatDate(v.processDate)} tarihinde yapılacak · {getDaysLeft(v.processDate)} gün
@@ -2275,13 +2292,21 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                   )}
                 </div>
                 ); })()}
+              {idataSecimText(selectedVisa) && (
+                <div style={{ background: 'rgba(239,68,68,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.35)', fontSize: '12px', color: '#f87171', fontWeight: 700 }}>
+                  {idataSecimText(selectedVisa)}{selectedVisa.pnr ? ` · PNR ${selectedVisa.pnr}` : ''}
+                </div>
+              )}
               {selectedVisa.appointmentDate && (
                 <div style={{ background: 'rgba(59,130,246,0.1)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#3b82f6' }}>📅 Randevu</p>
                   <p style={{ margin: '2px 0 0', fontSize: '14px', fontWeight: '600' }}>{formatDate(selectedVisa.appointmentDate)} {selectedVisa.appointmentTime && `• ${selectedVisa.appointmentTime}`}</p>
-                  {selectedVisa.pnr && <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>PNR: {selectedVisa.pnr}</p>}
+                  {selectedVisa.pnr && <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>PNR: {selectedVisa.pnr}{selectedVisa.takipNo && ` · Başvuru Takip No: ${selectedVisa.takipNo}`}</p>}
                 </div>
               )}
+              {selectedVisa.takipNo && !selectedVisa.appointmentDate && <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>🧾 Başvuru Takip No: <b style={{ color: '#e8f1f8' }}>{selectedVisa.takipNo}</b></p>}
+              {selectedVisa.idataFisUrl && <a href={selectedVisa.idataFisUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: '#60a5fa' }}>📎 iDATA teslim fişini aç</a>}
+              {idataPasaportText(selectedVisa) && <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: selectedVisa.idataPasaport === 'teslim' ? '#34d399' : '#fbbf24' }}>{idataPasaportText(selectedVisa)}</p>}
               {(selectedVisa.travelStart || selectedVisa.travelEnd) && (
                 <div style={{ background: 'rgba(255,255,255,0.04)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <p style={{ margin: 0, fontSize: '10px', color: '#94a3b8' }}>✈️ Muhtemel seyahat</p>
@@ -2341,6 +2366,18 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 }
 
 // Ticari / iş / fuar vize türü mü (bot evrakmail.js ile aynı kural; Türkçe karakter kuralı: önce ASCII küçük harf)
+// 🛂 iDATA bilgilendirme maili (bot takip no ile yazar): pasaport iDATA'ya geldi
+export const idataPasaportText = (v) => {
+  const d = (x) => x ? formatDate(String(x).slice(0, 10)) : '';
+  if (v?.idataPasaport === 'geldi') return `🛂 Pasaportu teslim alabilirsiniz — iDATA'da (${d(v.idataGeldiAt)})`;
+  return '';
+};
+// ⏰ iDATA "randevu tarihinizi seçin" maili geldi, tarih henüz girilmedi → son gün uyarısı (bot idataSecim yazar; randevu gelince siler)
+export const idataSecimText = (v) => {
+  const s = v?.idataSecim;
+  if (!s || v.appointmentDate) return '';
+  return `⏰ iDATA tarih seçilmeli${s.son ? ` — son ${formatDate(s.son)}${s.sonSaat ? ` ${s.sonSaat}` : ''}` : ''}${s.from && s.to ? ` (aralık ${formatDate(s.from)}–${formatDate(s.to)})` : ''}`;
+};
 export const isTicariVisa = (v) => /ticari|fuar|\bis\b/.test(normalizeTr(`${v?.visaDuration || ''} ${v?.visaType || ''}`));
 
 // Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
