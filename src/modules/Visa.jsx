@@ -2370,7 +2370,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
 export const idataPasaportText = (v) => {
   const d = (x) => x ? formatDate(String(x).slice(0, 10)) : '';
   if (v?.idataPasaport === 'teslim') return `✅ Pasaport teslim edildi ${d(v.idataTeslimAt)}${v.idataTeslimAlan ? ` · ${v.idataTeslimAlan}` : ''}`;
-  if (v?.idataPasaport === 'geldi') return `🎉 Vizesi çıktı — pasaport iDATA'da (${d(v.idataGeldiAt)}), fişle alınacak`;
+  if (v?.idataPasaport === 'geldi') return `🛂 Pasaportu teslim alabilirsiniz — iDATA'da (${d(v.idataGeldiAt)})`;
   return '';
 };
 // ⏰ iDATA "randevu tarihinizi seçin" maili geldi, tarih henüz girilmedi → son gün uyarısı (bot idataSecim yazar; randevu gelince siler)
