@@ -1036,7 +1036,7 @@ ${raw.slice(0, 6000)}`;
         doc.text(pdfFit(doc, tr(r.customerName), 60, 9, 7), 22, y);
         doc.setTextColor(80);
         doc.text(pdfFit(doc, `${tr(fl.from)}-${tr(fl.to)} ${formatDate(fl.date)} ${fl.depTime || ''}`, 48, 8, 6.5), 85, y);
-        doc.text(pdfFit(doc, tr((r.extras || []).map(e => e.type).join(', ')) || '-', 30, 8, 6.5), 135, y);
+        doc.text(pdfFit(doc, tr((r.extras || []).map(extraLabel).join(', ')) || '-', 30, 8, 6.5), 135, y);
         doc.setFontSize(9); doc.setTextColor(40);
         doc.text(`${tot.toLocaleString('tr-TR')} ${currencyCode}`, 193, y, { align: 'right' });
         y += 10;
@@ -2165,8 +2165,9 @@ ${raw.slice(0, 6000)}`;
                     </div>
                   </div>
                   {(r.extras || []).map((ex, i) => (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: ex.type === 'Ekstra Bagaj' ? '1.2fr 70px 1fr 1fr auto' : '1.2fr 1fr 1fr auto', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
                       <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{extraIcon(ex.type)} {ex.type}</span>
+                      {ex.type === 'Ekstra Bagaj' && <input type="number" min="0" style={inS} value={ex.kg || ''} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, kg: e.target.value } : x) })} placeholder="kg" title="Bagaj ağırlığı (kg)" />}
                       <input type="number" style={inS} value={ex.buy} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, buy: e.target.value } : x) })} placeholder="Alış" />
                       <input type="number" style={inS} value={ex.sell} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, sell: e.target.value } : x) })} placeholder="Satış" />
                       <button onClick={() => setR({ extras: r.extras.filter((_, j) => j !== i) })} style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>×</button>
@@ -2219,7 +2220,7 @@ ${raw.slice(0, 6000)}`;
                       'Telefon': r.phone || cust.phone || '',
                       'Satış': flightResTotal(r),
                       'Para Birimi': fl.currency,
-                      'Ekstralar': (r.extras || []).map(e => e.type).join(', '),
+                      'Ekstralar': (r.extras || []).map(extraLabel).join(', '),
                       'Paket Otel': r.packageHotelName || '',
                       'Ödeme': r.paid ? 'Ödedi' : 'Ödemedi',
                       'Not': r.notes || '',
@@ -2274,7 +2275,7 @@ ${raw.slice(0, 6000)}`;
                         <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
                         <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{dups.has(r.id) && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', borderRadius: '3px', fontSize: '10px', fontWeight: '700' }}>⚠️ TEKRAR ×{dups.get(r.id)}</span>}{r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
-                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => extraIcon(e.type)).join(' ') || '—'}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => extraIcon(e.type) + (e.type === 'Ekstra Bagaj' && e.kg ? `${e.kg}kg` : '')).join(' ') || '—'}</td>
                         <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
                         <td style={{ padding: '8px' }}>{r.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
                         <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
@@ -4384,6 +4385,8 @@ const withDiscItem = (hotelItem, r) => {
   return [{ ...hotelItem, amount: (parseFloat(hotelItem.amount) || 0) + d }, { kind: 'discount', refId: `${hotelItem.refId}-disc`, label: '🏷️ İndirim', amount: -d, currency: hotelItem.currency }];
 };
 // Uçuş rezervasyonu ekstraları: koltuk / bagaj / yemek
+// Bagajda kg yazılır: "Ekstra Bagaj 20 kg"
+const extraLabel = (e) => `${e.type}${e.type === 'Ekstra Bagaj' && e.kg ? ` ${e.kg} kg` : ''}`;
 const extraIcon = (t) => t === 'Ekstra Koltuk' ? '💺' : t === 'Yemek' ? '🍽️' : '🧳';
 export const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
 
