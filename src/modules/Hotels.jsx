@@ -105,7 +105,7 @@ ${raw.slice(0, 6000)}`;
     customerId: '', customerName: '', phone: '',
     sellPrice: '', buyPrice: '', currency: '€',
     paid: false, notes: '', tag: '', // tag: firma/grup etiketi (otel rezervasyonundan gelir)
-    extras: [], // [{type:'Ekstra Koltuk'|'Ekstra Bagaj', buy:'', sell:''}]
+    extras: [], // [{type:'Ekstra Koltuk'|'Ekstra Bagaj'|'Yemek', buy:'', sell:''}]
     packageHotelId: '', packageHotelName: '' // otel paketi bağlantısı
   };
   // ✈️ Otel rezervasyonundan grup uçuşuna ekle (isimleri bir daha yazmamak için)
@@ -2161,11 +2161,12 @@ ${raw.slice(0, 6000)}`;
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => setR({ extras: [...(r.extras || []), { type: 'Ekstra Koltuk', buy: '', sell: '' }] })} style={{ padding: '5px 10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '11px' }}>+ Ekstra Koltuk</button>
                       <button onClick={() => setR({ extras: [...(r.extras || []), { type: 'Ekstra Bagaj', buy: '', sell: '' }] })} style={{ padding: '5px 10px', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '6px', color: '#06b6d4', cursor: 'pointer', fontSize: '11px' }}>+ Ekstra Bagaj</button>
+                      <button onClick={() => setR({ extras: [...(r.extras || []), { type: 'Yemek', buy: '', sell: '' }] })} style={{ padding: '5px 10px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', color: '#f59e0b', cursor: 'pointer', fontSize: '11px' }}>+ Yemek</button>
                     </div>
                   </div>
                   {(r.extras || []).map((ex, i) => (
                     <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{ex.type === 'Ekstra Koltuk' ? '💺' : '🧳'} {ex.type}</span>
+                      <span style={{ fontSize: '12px', color: '#e8f1f8' }}>{extraIcon(ex.type)} {ex.type}</span>
                       <input type="number" style={inS} value={ex.buy} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, buy: e.target.value } : x) })} placeholder="Alış" />
                       <input type="number" style={inS} value={ex.sell} onChange={e => setR({ extras: r.extras.map((x, j) => j === i ? { ...x, sell: e.target.value } : x) })} placeholder="Satış" />
                       <button onClick={() => setR({ extras: r.extras.filter((_, j) => j !== i) })} style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '11px' }}>×</button>
@@ -2273,7 +2274,7 @@ ${raw.slice(0, 6000)}`;
                         <td style={{ padding: '8px' }}><input type="checkbox" checked={selectedFRes.includes(r.id)} onChange={e => setSelectedFRes(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} /></td>
                         <td style={{ padding: '8px', color: '#e8f1f8', fontWeight: '600' }}>{titleCaseTr(r.customerName)}{dups.has(r.id) && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(239,68,68,0.25)', color: '#fca5a5', borderRadius: '3px', fontSize: '10px', fontWeight: '700' }}>⚠️ TEKRAR ×{dups.get(r.id)}</span>}{r.tag && <span style={{ marginLeft: '6px', padding: '2px 6px', background: 'rgba(254,243,199,0.2)', color: '#fbbf24', borderRadius: '3px', fontSize: '10px', fontWeight: '600' }}>🏷️ {r.tag}</span>}{r.notes ? <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '400' }}>{r.notes}</div> : null}</td>
                         <td style={{ padding: '8px', color: '#e8912a' }}>{fmt(flightResTotal(r), fl.currency)}</td>
-                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => e.type === 'Ekstra Koltuk' ? '💺' : '🧳').join(' ') || '—'}</td>
+                        <td style={{ padding: '8px', color: '#94a3b8', fontSize: '11px' }}>{(r.extras || []).map(e => extraIcon(e.type)).join(' ') || '—'}</td>
                         <td style={{ padding: '8px', fontSize: '11px', color: r.packageHotelName ? '#06b6d4' : '#64748b' }}>{r.packageHotelName ? `📦 ${r.packageHotelName}` : '—'}</td>
                         <td style={{ padding: '8px' }}>{r.paid ? <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Ödedi</span> : <span style={{ color: '#ef4444' }}>Ödemedi</span>}</td>
                         <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
@@ -4382,6 +4383,8 @@ const withDiscItem = (hotelItem, r) => {
   if (!d) return [hotelItem];
   return [{ ...hotelItem, amount: (parseFloat(hotelItem.amount) || 0) + d }, { kind: 'discount', refId: `${hotelItem.refId}-disc`, label: '🏷️ İndirim', amount: -d, currency: hotelItem.currency }];
 };
+// Uçuş rezervasyonu ekstraları: koltuk / bagaj / yemek
+const extraIcon = (t) => t === 'Ekstra Koltuk' ? '💺' : t === 'Yemek' ? '🍽️' : '🧳';
 export const resGrand = (r) => (parseFloat(r?.price) || 0) + resExtraSum(r);
 
 // Kâr: otel + alışı girilmiş kalemler (alışı boş kalemin kârı bilinmiyor → katılmaz)
