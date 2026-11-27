@@ -1273,6 +1273,7 @@ const HELP_TEXT = [
   '/atama — atama bekleyen başvurular',
   '/ozet — haftalık sistem özetini (hatalar, işlemler, vize akışı) şimdi e-postayla gönder',
   '/mailtest — vize gelen kutusu testi: son 5 mail okunur, ne yapılacağı yazılır (hiçbir şey kaydedilmez)',
+  '/cikanlar — bugün pasaportu iDATA\'ya gelenlerin listesi (her gün 17:00\'de vize grubuna kendiliğinden de gelir)',
   '/idatayeniden 40 — son 40 maildeki iDATA maillerini YENİDEN işler (kaçan/okunamayan randevu maillerini sonradan işlemek için; en çok 60)',
 ].join('\n');
 
@@ -1567,7 +1568,7 @@ exports.telegramBot = functions
       return res.status(200).send('OK');
     }
     // ===== Grup komutları: /grup (vize duyuru grubunu kaydet), /bugun (bugün başvuru yapılacaklar), /atama (atama bekleyenler) =====
-    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest|idatayeniden|ozet)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
+    const cmd = msg && typeof msg.text === 'string' ? (msg.text.trim().match(/^\/(grup|atama|bugun|bugün|mailtest|idatayeniden|cikanlar|ozet)(?:@\w+)?(?=\s|$)/i) || [])[1] : ''; // komut adları ASCII; 'bugün' ayrıca yazılı
     if (cmd) {
       const chat = msg.chat || {};
       const isGroup = chat.type === 'group' || chat.type === 'supergroup';
@@ -1586,6 +1587,7 @@ exports.telegramBot = functions
         const A = require('./atama');
         if (cmd.toLowerCase() === 'ozet') { const r = await require('./ozet').sendOzet({ db: cfg.db, force: true }); await tg(T, 'sendMessage', { chat_id: chat.id, text: r.ok ? `📊 Haftalık özet maili gönderildi: ${r.to}\n${r.hata} hata · ${r.islem} işlem (son 7 gün)` : `❌ Özet gönderilemedi: ${r.error}` }); }
         else if (cmd.toLowerCase() === 'mailtest') await require('./gelenmail').processInbox({ db: cfg.db, test: true, chatId: chat.id }); // ASCII komut adı
+        else if (cmd.toLowerCase() === 'cikanlar') await require('./gelenmail').pasaportListesi({ db: cfg.db, chatId: chat.id, force: true });
         else if (cmd.toLowerCase() === 'idatayeniden') {
           const n = Math.min(60, Math.max(1, parseInt((msg.text.match(/\d+/) || ['40'])[0], 10) || 40));
           await tg(T, 'sendMessage', { chat_id: chat.id, text: `🔁 Son ${n} mail okunuyor, iDATA mailleri yeniden işlenecek…` });

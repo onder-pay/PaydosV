@@ -442,6 +442,31 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
   return res;
 };
 
+// 🛂 Günlük liste (17:00): bugün "başvurunuz iDATA'ya gelmiştir" maili gelen, yani pasaportu teslim alınabilecek kişiler.
+// vizeGelenMail her çalıştığında bakar; saat 17:00 geçtiyse ve bugün gönderilmediyse vize grubuna bir kez yollar (liste boşsa yollamaz).
+// force (/cikanlar komutu): saate ve "gönderildi" işaretine bakmadan istenen sohbete yollar, boşsa "yok" der.
+const istHour = (d = new Date()) => +new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false }).format(d);
+const pasaportListesi = async ({ db, notify = tg, chatId = '', force = false, now = new Date() } = {}) => {
+  const today = istDate(now);
+  const stRef = db.collection('bot_state').doc('pasaportListe');
+  if (!force) {
+    if (istHour(now) < 17) return 0;
+    const st = (await stRef.get()).data() || {};
+    if (st.gun === today) return 0;
+  }
+  const settings = (await db.collection('app_settings').doc('main').get()).data() || {};
+  const target = force ? chatId : settings.telegramVizeGrupId;
+  const list = (await db.collection('visa_applications').get()).docs.map(d => d.data())
+    .filter(v => v.idataPasaport === 'geldi' && v.idataGeldiAt && istDate(new Date(v.idataGeldiAt)) === today)
+    .sort((a, b) => String(a.customerName || '').localeCompare(String(b.customerName || ''), 'tr'));
+  if (!force) await stRef.set({ gun: today, adet: list.length }, { merge: true });
+  if (!list.length) { if (force) await notify(settings.telegramBotToken, target, `🛂 Bugün (${dmy(today)}) pasaportu iDATA'ya gelen yok.`); return 0; }
+  const rows = list.map((v, i) => `${i + 1}. <b>${esc(titleCaseTr(v.customerName || ''))}</b> — ${esc(v.visaDuration || v.country || 'vize')}${v.takipNo ? ` · takip ${esc(v.takipNo)}` : ''}${v.customerPhone ? ` · ${esc(v.customerPhone)}` : ''}`);
+  await notify(settings.telegramBotToken, target, `🛂 <b>Bugün pasaportu çıkanlar</b> (${dmy(today)}) — ${list.length} kişi\nPasaportlar iDATA'da; teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir.\n\n${rows.join('\n')}`);
+  return list.length;
+};
+
+exports.pasaportListesi = pasaportListesi;
 exports.parseIdataMail = parseIdataMail;
 exports.splitMsg = splitMsg;
 exports.parseIdataBilgi = parseIdataBilgi;
@@ -454,7 +479,9 @@ exports.vizeGelenMail = functions
   .runWith({ timeoutSeconds: 120, memory: '512MB' })
   .pubsub.schedule('5-59/15 8-20 * * *').timeZone(TZ)
   .onRun(async () => {
-    const r = await processInbox({ db: getFirestore('paydos') });
+    const db = getFirestore('paydos');
+    const r = await processInbox({ db });
     console.log('[gelenmail]', JSON.stringify(r));
+    try { const n = await pasaportListesi({ db }); if (n) console.log('[gelenmail] pasaport listesi:', n); } catch (e) { console.warn('[gelenmail] pasaport listesi:', e.message); }
     return null;
   });
