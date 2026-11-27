@@ -6,7 +6,7 @@ import { deleteDoc, deleteField, doc, setDoc } from 'firebase/firestore';
 import { generateUniqueId, waUrl } from '../lib/format.js';
 import { inputStyle, labelStyle, selectStyle } from '../components/ui';
 import { mailHtml, sendMailRequest } from '../lib/api.js';
-import { RANDEVU_MAIL_DEFAULT } from '../lib/data.js';
+import { RANDEVU_MAIL_DEFAULT, PASSPORT_WARN_DEFAULT, SCHENGEN_WARN_DEFAULT, BIRTHDAY_DEFAULT, passportWarnText, schengenWarnText, birthdayText } from '../lib/data.js';
 import { normEmail, normalizeTr, trHas } from '../lib/turkish.js';
 import { useMemo, useState } from 'react';
 
@@ -583,6 +583,10 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
   };
   const setKatDeger = (key, val) => setAppSettings({ ...appSettings, visaCostDefaults: { ...tumDefs, [aktifKat]: { ...katDefs, [key]: parseFloat(val) || 0 } } });
   const setKatCur = (cur) => setAppSettings({ ...appSettings, visaCostDefaultCurrency: { ...tumCur, [aktifKat]: cur } });
+  // 💱 Her kalemin kendi para birimi (yoksa kategori birimi) — ör. konsolosluk €, koordinasyon ₺
+  const tumItemCur = appSettings?.visaCostItemCurrency || {};
+  const katItemCur = tumItemCur[aktifKat] || {};
+  const setItemCur = (key, cur) => setAppSettings({ ...appSettings, visaCostItemCurrency: { ...tumItemCur, [aktifKat]: { ...katItemCur, [key]: cur } } });
 
   const kalemEkle = () => {
     const label = (yeniKalem || '').trim();
@@ -611,7 +615,7 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} para birimi:</span>
+        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{katAd} varsayılan para birimi:</span>
         <select value={katCur} onChange={e => setKatCur(e.target.value)}
           style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
           <option value="€" style={{ background: '#0c1929' }}>€</option>
@@ -650,7 +654,10 @@ export function VarsayilanMaliyetAyari({ appSettings, setAppSettings, isMobile }
               <input type="number" step="0.01" min="0" value={katDefs[it.key] ?? ''} onChange={e => setKatDeger(it.key, e.target.value)} placeholder="0"
                 style={{ width: '90px', flexShrink: 0, padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '5px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
             )}
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '14px', flexShrink: 0 }}>{katCur}</span>
+            <select value={katItemCur[it.key] || katCur} onChange={e => setItemCur(it.key, e.target.value)} title="Bu kalemin para birimi"
+              style={{ flexShrink: 0, padding: '5px 4px', background: katItemCur[it.key] && katItemCur[it.key] !== katCur ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '5px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+              {['€', '$', '£', '₺'].map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+            </select>
             <button onClick={() => { if (!window.confirm(`"${it.label}" kalemini ${katAd} kategorisinden silmek istiyor musun?`)) return; setKatItems(items.filter((_, i) => i !== idx)); }} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '5px', padding: '4px 8px', color: '#ef4444', cursor: 'pointer', fontSize: '11px', flexShrink: 0 }}>🗑️</button>
           </div>
         ))}
@@ -1645,6 +1652,45 @@ export function SettingsModule({ visaApplications, setVisaApplications, users, s
 
       {/* PROFİLİM */}
       {/* 👤 PROFİL + ŞİFRE + KULLANICILAR — tek düzen */}
+      {activeTab === 'musteri' && isAdmin && (() => {
+        // 💬 Ana sayfadaki listelerin WhatsApp hazır mesajları (Pasaport Uyarısı / Schengen Bitiyor / Doğum Günü)
+        const ornek = { firstName: 'Ahmet', lastName: 'Yılmaz' };
+        const inAy = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+        const items = [
+          { key: 'passportWarnTemplate', title: '⚠️ Pasaport Uyarısı (6 ay)', def: PASSPORT_WARN_DEFAULT, vars: '{isim} {pasaport_no} {bitis_tarihi} {kalan_gun}',
+            preview: (t) => passportWarnText(t, ornek, { passportNo: 'U12345678', expiryDate: inAy(120) }) },
+          { key: 'schengenWarnTemplate', title: '🇪🇺 Schengen Vizesi Bitiyor (3 ay)', def: SCHENGEN_WARN_DEFAULT, vars: '{isim} {ulke} {bitis_tarihi} {kalan_gun}',
+            preview: (t) => schengenWarnText(t, ornek, { country: 'Almanya', endDate: inAy(45) }) },
+          { key: 'birthdayTemplate', title: '🎂 Doğum Günü', def: BIRTHDAY_DEFAULT, vars: '{isim} {yas}',
+            preview: (t) => birthdayText(t, ornek, 40) },
+        ];
+        const box = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e8f1f8', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical' };
+        return (
+          <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '15px', color: '#25d366' }}>💬 WhatsApp Hazır Mesajları</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#64748b' }}>Ana sayfadaki listelerde kişinin yanındaki 💬 WhatsApp düğmesi bu metni açar; göndermeden önce WhatsApp'ta ayrıca değiştirilebilir. Boş bırakılırsa varsayılan metin kullanılır.</p>
+            {items.map(it => {
+              const val = appSettings?.[it.key] || '';
+              return (
+                <div key={it.key} style={{ marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                    <b style={{ fontSize: '13px', color: '#e8f1f8' }}>{it.title}</b>
+                    <button onClick={() => setAppSettings({ ...appSettings, [it.key]: '' })} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', fontSize: '11px' }}>↺ Varsayılana dön</button>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>Değişkenler: <b>{it.vars}</b></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                    <textarea value={val || it.def} onChange={e => setAppSettings({ ...appSettings, [it.key]: e.target.value })} rows={8} style={box} />
+                    <div style={{ ...box, background: 'rgba(37,211,102,0.06)', border: '1px solid rgba(37,211,102,0.2)', whiteSpace: 'pre-wrap', fontSize: '12px', color: '#cbd5e1' }}>
+                      <div style={{ fontSize: '10px', color: '#25d366', marginBottom: '6px' }}>Önizleme (örnek müşteri)</div>{it.preview(val)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {activeTab === 'users' && (() => {
         const roleOf = (r) => r === 'admin' ? { label: 'Yönetici', icon: '👑', color: '#a78bfa', bg: 'rgba(139,92,246,0.15)', grad: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }
           : r === 'muhasebe' ? { label: 'Muhasebe', icon: '🧮', color: '#34d399', bg: 'rgba(16,185,129,0.15)', grad: 'linear-gradient(135deg, #10b981, #059669)' }

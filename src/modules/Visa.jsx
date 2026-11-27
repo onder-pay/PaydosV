@@ -315,13 +315,12 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     const data = visaApplications.map(v => {
       const costs = v.costs || {};
       const satisCur = v.visaCurrency || v.currency || '€';
-      const costCur = v.costCurrency || satisCur;
       // Maliyet kalemleri: her biri "tutar para birimi" olarak ayrı sütun
       const maliyetSutunlari = {};
       const toplamPB = {};
       costItems.forEach(f => {
         const tutar = parseFloat(costs[f.key]) || 0;
-        maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCur}` : '';
+        maliyetSutunlari[f.label] = tutar ? `${tutar} ${costCurOf(v, f.key)}` : '';
       });
       Object.assign(toplamPB, sumVisaCosts(v));
       // Ödemeler
@@ -453,6 +452,21 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     const n = normalizeTr(typeName || '');
     return cat.countries.find(c => n.includes(normalizeTr(c))) || '';
   };
+  // 🔁 Aynı kişinin birden çok başvurusu karışmasın: başvurular sırayla numaralanır (1., 2. …), sonuçlananlar (Onay/Red/İptal) soluk gösterilir
+  const visaSeq = (() => {
+    const by = new Map();
+    visaApplications.forEach(v => { const k = v.customerId != null && v.customerId !== '' ? `id:${v.customerId}` : `ad:${normalizeTr(v.customerName)}`; if (!by.has(k)) by.set(k, []); by.get(k).push(v); });
+    const out = new Map();
+    by.forEach(list => {
+      if (list.length < 2) return;
+      const sorted = [...list].sort((a, b) => String(a.applicationDate || a.createdAt || '').localeCompare(String(b.applicationDate || b.createdAt || '')));
+      sorted.forEach((v, i) => out.set(v.id, { n: i + 1, total: sorted.length, others: sorted.filter(x => x !== v) }));
+    });
+    return out;
+  })();
+  const visaClosed = (v) => /(^|\s)(onay|red|iptal)/.test(normalizeTr(v?.status));
+  // Ülke boşsa vize türü adından bulunur ("Almanya Ticari" → Almanya); bot da aynısını yapar (countryFromTypeName)
+  const countryOfVisa = (v) => v?.country || bulkCountryFor(visaCategories.find(c => c.id === (v?.categoryId || v?.category)) || selectedCategory, v?.visaDuration || v?.visaType);
   const createBulkVisas = async () => {
     const bv = bulkVisa; if (!bv?.cat || !bv.type) return;
     const country = bv.country || bulkCountryFor(bv.cat, bv.type.name);
@@ -467,7 +481,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       applicationDate: today, appointmentDate: '', appointmentTime: '', pnr: '', label: '',
       processor: appSettings?.processors?.[0] || 'Paydos', paymentStatus: 'Ödenmedi', status: visaStatuses[0] || 'Evrak Topluyor', notes: '',
       price: bv.type.price || '', cost: '', currency: bv.type.currency || '€',
-      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺',
+      costs: getVisaCostDefaults(appSettings, bv.cat.id, bv.type.name), costCurrency: (appSettings?.visaCostDefaultCurrency || {})[bv.cat.id] || '₺', costCurrencies: getVisaCostDefaultCurrencies(appSettings, bv.cat.id),
       id: generateUniqueId(), createdAt: new Date().toISOString(), createdBy: currentUser?.name || '', bulk: true,
     }));
     let fail = 0;
@@ -536,7 +550,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
       currency: '€',
       // Kategoriye özel varsayılan maliyet kalemleri (Ayarlar → Varsayılan Vize Maliyetleri)
       costs: getVisaCostDefaults(appSettings, cat.id),
-      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺'
+      costCurrency: (appSettings?.visaCostDefaultCurrency || {})[cat.id] || '₺',
+      costCurrencies: getVisaCostDefaultCurrencies(appSettings, cat.id)
     });
   };
 
@@ -707,7 +722,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const formVisa = () => ({
     ...formData, id: editingVisa?.id || formData.id || '', _docId: editingVisa?._docId,
     categoryId: formData.categoryId || selectedCategory?.id || formData.category || 'schengen',
-    country: formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : ''),
+    country: countryOfVisa(formData),
   });
   const sendMailBox = async () => {
     const mb = mailBox; if (!mb || mb.busy) return;
@@ -808,7 +823,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     try {
       if (editingVisa) {
         const oldVisa = visaApplications.find(v => v.id === editingVisa.id);
-        const updatedVisa = { ...formData, id: editingVisa.id, _docId: editingVisa._docId };
+        const updatedVisa = { ...formData, country: countryOfVisa(formData), id: editingVisa.id, _docId: editingVisa._docId };
         const updated = visaApplications.map(v => v.id === editingVisa.id ? updatedVisa : v);
         setVisaApplications(updated);
         addToUndo?.({ type: 'update', undo: () => setVisaApplications(visaApplications.map(v => v.id === editingVisa.id ? oldVisa : v)) });
@@ -822,7 +837,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('status', 'Vize', `${formData.customerName || ''} — ${formData.country || ''} ${formData.status || ''}`.trim(), currentUser);
       } else {
-        const autoCountry = formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : '');
+        const autoCountry = countryOfVisa(formData);
         const newVisa = { ...formData, country: autoCountry, categoryId: selectedCategory?.id || formData.category || 'schengen', id: generateUniqueId(), createdAt: new Date().toISOString() };
         setVisaApplications([...visaApplications, newVisa]);
         // visa_applications'ta silme senkronu yok — geri almada Firestore'dan da sil
@@ -1181,6 +1196,10 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       ? <span>Müşteri: <CustLink c={linked} onOpen={onOpenCustomer}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</CustLink>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
                   </div>
+                  {editingVisa && visaSeq.get(editingVisa.id) && (() => { const q = visaSeq.get(editingVisa.id); return (
+                    <div style={{ marginTop: '8px', padding: '8px 10px', background: visaClosed(editingVisa) ? 'rgba(148,163,184,0.1)' : 'rgba(249,115,22,0.1)', border: `1px solid ${visaClosed(editingVisa) ? 'rgba(148,163,184,0.3)' : 'rgba(249,115,22,0.35)'}`, borderRadius: '8px', fontSize: '12px', color: visaClosed(editingVisa) ? '#94a3b8' : '#fb923c', fontWeight: 600 }}>
+                      {visaClosed(editingVisa) ? `🗄️ Bu ESKİ başvuru (${q.n}/${q.total}) — sonuçlanmış.` : `🔁 Bu kişinin ${q.n}. başvurusu.`} Diğer başvuruları: {q.others.map(x => `${formatDate(String(x.applicationDate || x.createdAt || '').slice(0, 10))} ${x.visaDuration || x.country || ''} (${x.status || '?'})`).join(' · ')}
+                    </div>); })()}
                   {linked && selectedCategory?.id === 'schengen' && <FingerprintBox c={linked} showToast={showToast} compact />}
                   {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
                   {!linked && (
@@ -1451,13 +1470,14 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 const discount = parseFloat(formData.visaDiscount) || 0;
                 const netSale = salePrice - discount;
 
-                // Tüm kalemler tek para biriminde (formData.costCurrency)
+                // Her kalemin kendi para birimi (formData.costCurrencies[key]; yoksa eski ortak birim)
+                const curOf = (key) => (formData.costCurrencies || {})[key] || formData.costCurrency || saleCurrency;
                 const costCur = formData.costCurrency || saleCurrency;
                 const totalsByCurrency = {};
                 costFields.forEach(f => {
                   const amount = parseFloat(costs[f.key]) || 0;
                   if (amount === 0) return;
-                  totalsByCurrency[costCur] = (totalsByCurrency[costCur] || 0) + amount;
+                  totalsByCurrency[curOf(f.key)] = (totalsByCurrency[curOf(f.key)] || 0) + amount;
                 });
                 // Satışla aynı para birimindeki toplam (kâr/zarar için)
                 const totalSameCurrency = totalsByCurrency[saleCurrency] || 0;
@@ -1478,11 +1498,10 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                             <button type="button" onClick={() => {
                               if (!Object.values(defs).some(val => (parseFloat(val) || 0) > 0)) { showToast?.('Bu vize türü için Ayarlar → Vize Maliyet Kalemleri\'nde varsayılan değer girilmemiş', 'warning'); return; }
                               if (!fillable.length) { showToast?.('Boş kalem yok — girilmiş tutarlar değiştirilmedi', 'info'); return; }
-                              const defCur = (appSettings?.visaCostDefaultCurrency || {})[catId];
-                              const hasVals = Object.values(costs).some(x => parseFloat(x));
-                              const curNow = formData.costCurrency || saleCurrency;
-                              if (hasVals && defCur && defCur !== curNow) { showToast?.(`Varsayılanlar ${defCur}, bu başvurunun kalemleri ${curNow} — karışmasın diye doldurulmadı. Para birimini ${defCur} yapıp tekrar deneyin.`, 'warning'); return; }
-                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, ...(!hasVals && defCur ? { costCurrency: defCur } : {}) });
+                              // Doldurulan kalem Ayarlar'daki kendi para birimini alır; girilmiş kalemlerin birimine dokunulmaz
+                              const defCurs = getVisaCostDefaultCurrencies(appSettings, catId);
+                              const curs = { ...Object.fromEntries(costFields.map(f => [f.key, curOf(f.key)])), ...Object.fromEntries(fillable.map(([k]) => [k, defCurs[k] || curOf(k)])) };
+                              setFormData({ ...formData, costs: { ...costs, ...Object.fromEntries(fillable) }, costCurrencies: curs });
                               showToast?.(`${fillable.length} kalem varsayılan değerle dolduruldu`, 'success');
                             }} title="Ayarlar'daki varsayılan maliyetlerle yalnız boş kalemleri doldurur"
                               style={{ padding: '6px 10px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '7px', color: '#10b981', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
@@ -1490,15 +1509,6 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                             </button>
                           );
                         })()}
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Tüm kalemler için para birimi:</span>
-                        <select value={formData.costCurrency || saleCurrency}
-                          onChange={e => setFormData({ ...formData, costCurrency: e.target.value })}
-                          style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                          <option value="€" style={{ background: '#0c1929' }}>€</option>
-                          <option value="$" style={{ background: '#0c1929' }}>$</option>
-                          <option value="£" style={{ background: '#0c1929' }}>£</option>
-                          <option value="₺" style={{ background: '#0c1929' }}>₺</option>
-                        </select>
                       </div>
                     </div>
 
@@ -1511,7 +1521,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                               onChange={e => setFormData({...formData, costs: {...costs, [f.key]: parseFloat(e.target.value) || 0}})}
                               placeholder="0"
                               style={{ flex: 1, padding: '7px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', minWidth: 0 }} />
-                            <span style={{ fontSize: '12px', color: '#94a3b8', flexShrink: 0 }}>{formData.costCurrency || saleCurrency}</span>
+                            <select value={curOf(f.key)} title="Bu kalemin para birimi"
+                              onChange={e => setFormData({ ...formData, costCurrencies: { ...Object.fromEntries(costFields.map(x => [x.key, curOf(x.key)])), [f.key]: e.target.value } })}
+                              style={{ flexShrink: 0, padding: '6px 4px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                              {['€', '$', '£', '₺'].map(c => <option key={c} value={c} style={{ background: '#0c1929' }}>{c}</option>)}
+                            </select>
                           </div>
                         </div>
                       ))}
@@ -1586,7 +1600,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                 const _costCur = formData.costCurrency || _saleCur;
                 const _costItems = getVisaCostItems(appSettings, formData.category || selectedCategory?.id);
                 const maliyetPB = {};
-                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; maliyetPB[_costCur] = (maliyetPB[_costCur] || 0) + a; });
+                _costItems.forEach(f => { const a = parseFloat(_costs[f.key]) || 0; if (!a) return; const c = (formData.costCurrencies || {})[f.key] || _costCur; maliyetPB[c] = (maliyetPB[c] || 0) + a; });
 
                 return (
                   <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '12px', padding: '14px' }}>
@@ -1987,7 +2001,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <div>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{formatDate(v.appointmentDate)} {v.appointmentTime && `• ${v.appointmentTime}`}</p>
-                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{v.country} - {v.visaType}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{countryOfVisa(v)} - {v.visaType}</p>
                     </div>
                     <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', background: daysLeft <= 3 ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)', color: daysLeft <= 3 ? '#ef4444' : '#f59e0b', fontWeight: '600' }}>
                       {daysLeft === 0 ? 'BUGÜN!' : `${daysLeft} gün`}
@@ -2038,14 +2052,19 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
             filteredVisaApplications.map(v => {
               const cat = getCategoryInfo(v.category);
               return (
-                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ opacity: visaSeq.get(v.id) && visaClosed(v) ? 0.55 : 1, background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '10px' }}>
                     {selectMode && (
                       <span style={{ flexShrink: 0, width: '22px', height: '22px', marginTop: '1px', borderRadius: '6px', border: selectedIds.includes(v.id) ? 'none' : '2px solid rgba(255,255,255,0.3)', background: selectedIds.includes(v.id) ? '#3b82f6' : 'transparent', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>{selectedIds.includes(v.id) ? '✓' : ''}</span>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
-                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{countryOfVisa(v)} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
+                      {visaSeq.get(v.id) && (() => { const q = visaSeq.get(v.id); const prev = q.others.filter(x => String(x.applicationDate || x.createdAt || '') <= String(v.applicationDate || v.createdAt || '')).slice(-1)[0];
+                        return <span title={q.others.map(x => `${formatDate(String(x.applicationDate || x.createdAt || '').slice(0, 10))} · ${x.status || ''}`).join('\n')}
+                          style={{ display: 'inline-block', marginTop: '6px', marginRight: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: visaClosed(v) ? 'rgba(148,163,184,0.12)' : 'rgba(249,115,22,0.15)', color: visaClosed(v) ? '#94a3b8' : '#fb923c', border: `1px solid ${visaClosed(v) ? 'rgba(148,163,184,0.3)' : 'rgba(249,115,22,0.4)'}` }}>
+                          {visaClosed(v) ? `🗄️ Eski başvuru (${q.n}/${q.total})` : `🔁 ${q.n}. başvuru`}{!visaClosed(v) && prev ? ` · önceki: ${prev.status || '?'} ${formatDate(String(prev.applicationDate || prev.createdAt || '').slice(0, 10))}` : ''}
+                        </span>; })()}
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
                       {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
                       {v.idataFisUrl && <a href={v.idataFisUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: 'inline-block', marginTop: '4px', marginRight: '8px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişi</a>}
@@ -2380,6 +2399,14 @@ export const idataSecimText = (v) => {
 };
 export const isTicariVisa = (v) => /ticari|fuar|\bis\b/.test(normalizeTr(`${v?.visaDuration || ''} ${v?.visaType || ''}`));
 
+// 💱 Maliyet kaleminin para birimi: kalemin kendi birimi (costCurrencies) → başvurunun eski ortak birimi (costCurrency) → satış birimi
+export const costCurOf = (v, key) => (v?.costCurrencies || {})[key] || v?.costCurrency || v?.visaCurrency || v?.currency || '€';
+// Ayarlar'daki kalem para birimleri (kalemin kendi birimi yoksa kategori birimi)
+export const getVisaCostDefaultCurrencies = (appSettings, category) => {
+  const katCur = (appSettings?.visaCostDefaultCurrency || {})[category] || '€';
+  const own = (appSettings?.visaCostItemCurrency || {})[category] || {};
+  return Object.fromEntries(getVisaCostItems(appSettings, category).map(it => [it.key, own[it.key] || katCur]));
+};
 // Yeni başvuru için varsayılan maliyetler: kategori varsayılanı + (varsa) o vize türüne özel değerler
 export const getVisaCostDefaults = (appSettings, category, typeName) => ({
   ...((appSettings?.visaCostDefaults || {})[category] || {}),
@@ -2397,9 +2424,9 @@ export const nextBizDay = (ymd) => {
 // Bir başvurunun maliyetlerini para birimi bazında toplar. Kalem listesinden bağımsız olarak
 // kayıttaki tüm tutarları sayar — ayarlardan kaldırılan bir kalem kâr/zarardan düşmesin.
 export const sumVisaCosts = (visa) => {
-  const cur = visa?.costCurrency || visa?.visaCurrency || visa?.currency || '€';
-  const total = Object.values(visa?.costs || {}).reduce((t, v) => t + (parseFloat(v) || 0), 0);
-  return total ? { [cur]: total } : {};
+  const out = {};
+  Object.entries(visa?.costs || {}).forEach(([k, v]) => { const a = parseFloat(v) || 0; if (!a) return; const c = costCurOf(visa, k); out[c] = (out[c] || 0) + a; });
+  return out;
 };
 
 // İleri tarihli: elle ileri bir işlem tarihi verilmiş ve başvuru henüz ilerlememiş (PNR/randevu yok, sonraki aşamada değil)

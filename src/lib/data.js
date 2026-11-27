@@ -1,5 +1,6 @@
 // Sabit listeler: pansiyon tipleri, iller, pasaport türleri, Schengen ülkeleri, vize durumu, sözleşme metni, havalimanı/şehir → ülke
-import { normalizeTr, titleCaseTr } from './turkish.js';
+import { normalizeTr, titleCaseTr, fullNameTr } from './turkish.js';
+import { formatDate, getDaysLeft } from './format.js';
 
 // Otel yemek konseptleri — fiyat listesi, rezervasyon, voucher ve Excel aynı listeyi kullanır
 export const MEAL_CONCEPTS = ['ro', 'bb', 'hb', 'fb', 'ai', 'uai'];
@@ -316,3 +317,36 @@ Lütfen randevu saatinden en az 15 dakika önce, pasaportunuz ve evraklarınız�
 Sorularınız için bize ulaşabilirsiniz.
 Paydos Turizm`,
 };
+
+// 💬 Dashboard WhatsApp hazır mesajları — Ayarlar → Müşteri'den değiştirilebilir (boş bırakılırsa varsayılan).
+//   Pasaport Uyarısı (6 ay)  → appSettings.passportWarnTemplate  {isim} {pasaport_no} {bitis_tarihi} {kalan_gun}
+//   Schengen vizesi bitiyor  → appSettings.schengenWarnTemplate  {isim} {ulke} {bitis_tarihi} {kalan_gun}
+//   Doğum günü               → appSettings.birthdayTemplate      {isim} {yas}
+export const PASSPORT_WARN_DEFAULT = `Sayın {isim},
+
+{pasaport_no} numaralı pasaportunuzun geçerlilik süresi {bitis_tarihi} tarihinde sona erecektir.
+
+Birçok ülke, geçerlilik süresinin bitmesine 6 aydan az kalan pasaportları kabul etmemektedir. Seyahatlerinizde sorun yaşamamanız için pasaportunuzu yenilemenizi öneririz.
+
+Paydos Turizm`;
+export const SCHENGEN_WARN_DEFAULT = `Sayın {isim},
+
+{ulke} Schengen vizenizin geçerlilik süresi {bitis_tarihi} tarihinde sona erecektir.
+
+Yeni seyahat planlarınız varsa vize başvurunuzu zamanında yapabilmemiz için bizimle iletişime geçebilirsiniz.
+
+Paydos Turizm`;
+export const BIRTHDAY_DEFAULT = `Sayın {isim},
+
+Doğum gününüzü en içten dileklerimizle kutlar, sağlıklı, mutlu ve bol seyahatli bir yaş dileriz. 🎂
+
+Paydos Turizm`;
+const tplOr = (tpl, def) => (String(tpl || '').trim() ? tpl : def);
+const fillCommon = (t, c, date) => t.replace(/\{isim\}/g, fullNameTr(c)).replace(/\{bitis_tarihi\}/g, formatDate(date)).replace(/\{kalan_gun\}/g, String(getDaysLeft(date) ?? ''));
+// Pasaport no yoksa "{pasaport_no} numaralı " kısmı düşer
+export const passportWarnText = (tpl, c, p = {}) => {
+  const no = p?.passportNo || '';
+  return fillCommon(tplOr(tpl, PASSPORT_WARN_DEFAULT).replace(/\{pasaport_no\} numaralı /g, no ? `${no} numaralı ` : '').replace(/\{pasaport_no\}/g, no), c, p?.expiryDate);
+};
+export const schengenWarnText = (tpl, c, v = {}) => fillCommon(tplOr(tpl, SCHENGEN_WARN_DEFAULT).replace(/\{ulke\} /g, v?.country ? `${v.country} ` : '').replace(/\{ulke\}/g, v?.country || ''), c, v?.endDate);
+export const birthdayText = (tpl, c, yas) => fillCommon(tplOr(tpl, BIRTHDAY_DEFAULT).replace(/\{yas\}/g, yas != null ? String(yas) : ''), c, '');
