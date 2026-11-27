@@ -452,6 +452,8 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     const n = normalizeTr(typeName || '');
     return cat.countries.find(c => n.includes(normalizeTr(c))) || '';
   };
+  // Ülke boşsa vize türü adından bulunur ("Almanya Ticari" → Almanya); bot da aynısını yapar (countryFromTypeName)
+  const countryOfVisa = (v) => v?.country || bulkCountryFor(visaCategories.find(c => c.id === (v?.categoryId || v?.category)) || selectedCategory, v?.visaDuration || v?.visaType);
   const createBulkVisas = async () => {
     const bv = bulkVisa; if (!bv?.cat || !bv.type) return;
     const country = bv.country || bulkCountryFor(bv.cat, bv.type.name);
@@ -707,7 +709,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
   const formVisa = () => ({
     ...formData, id: editingVisa?.id || formData.id || '', _docId: editingVisa?._docId,
     categoryId: formData.categoryId || selectedCategory?.id || formData.category || 'schengen',
-    country: formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : ''),
+    country: countryOfVisa(formData),
   });
   const sendMailBox = async () => {
     const mb = mailBox; if (!mb || mb.busy) return;
@@ -808,7 +810,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     try {
       if (editingVisa) {
         const oldVisa = visaApplications.find(v => v.id === editingVisa.id);
-        const updatedVisa = { ...formData, id: editingVisa.id, _docId: editingVisa._docId };
+        const updatedVisa = { ...formData, country: countryOfVisa(formData), id: editingVisa.id, _docId: editingVisa._docId };
         const updated = visaApplications.map(v => v.id === editingVisa.id ? updatedVisa : v);
         setVisaApplications(updated);
         addToUndo?.({ type: 'update', undo: () => setVisaApplications(visaApplications.map(v => v.id === editingVisa.id ? oldVisa : v)) });
@@ -822,7 +824,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
         } catch(e) { console.warn('Vize Firestore yazma hatası:', e.message); showToast?.('⚠️ Sunucuya kaydedilemedi, tekrar denenecek: ' + e.message, 'warning'); }
         logActivity('status', 'Vize', `${formData.customerName || ''} — ${formData.country || ''} ${formData.status || ''}`.trim(), currentUser);
       } else {
-        const autoCountry = formData.country || (selectedCategory?.countries?.length === 1 ? selectedCategory.countries[0] : '');
+        const autoCountry = countryOfVisa(formData);
         const newVisa = { ...formData, country: autoCountry, categoryId: selectedCategory?.id || formData.category || 'schengen', id: generateUniqueId(), createdAt: new Date().toISOString() };
         setVisaApplications([...visaApplications, newVisa]);
         // visa_applications'ta silme senkronu yok — geri almada Firestore'dan da sil
@@ -1982,7 +1984,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <div>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{formatDate(v.appointmentDate)} {v.appointmentTime && `• ${v.appointmentTime}`}</p>
-                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{v.country} - {v.visaType}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>{countryOfVisa(v)} - {v.visaType}</p>
                     </div>
                     <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', background: daysLeft <= 3 ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)', color: daysLeft <= 3 ? '#ef4444' : '#f59e0b', fontWeight: '600' }}>
                       {daysLeft === 0 ? 'BUGÜN!' : `${daysLeft} gün`}
@@ -2040,7 +2042,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
-                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{v.country} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{countryOfVisa(v)} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
                       {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
                       {v.idataFisUrl && <a href={v.idataFisUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: 'inline-block', marginTop: '4px', marginRight: '8px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişi</a>}
