@@ -52,8 +52,15 @@ const handleIdataFis = async ({ db, json, b64, toStorage }) => {
   const patch = { takipNo: j.takipNo, idataFisUrl: url, idataFisAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   if (ymdOk(j.seyahatTarihi) && !v.travelStart) patch.travelStart = j.seyahatTarihi;
   const eski = v.takipNo && String(v.takipNo) !== j.takipNo ? `\n🔄 önceki takip no: ${v.takipNo}` : '';
+  // Pasaport zaten iDATA'ya gelmiş ama takip no CRM'de olmadığı için kimseyle eşleşmemiş olabilir (gelenmail.js → idata_bekleyen)
+  let geldiNote = '';
+  try {
+    const bRef = db.collection('idata_bekleyen').doc(j.takipNo.replace(/\D/g, ''));
+    const b = (await bRef.get()).data();
+    if (b && b.tip === 'geldi') { patch.idataPasaport = 'geldi'; patch.idataGeldiAt = b.at || patch.idataFisAt; geldiNote = `\n🛂 *Pasaportu teslim alabilirsiniz* — iDATA'ya ${dmy(String(b.at || '').slice(0, 10))} tarihinde gelmiş`; await bRef.delete(); }
+  } catch (e) { console.warn('[idatafis] bekleyen:', e.message); }
   await v._ref.set(patch, { merge: true });
-  return `${head}\n\n✅ *${titleCaseTr(v.customerName || kim)}* başvurusuna işlendi (${v.visaDuration || v.country || 'vize'}${v.status ? `, ${v.status}` : ''})\n📎 Fiş görüntüsü saklandı${patch.travelStart ? `\n✈️ Muhtemel seyahat: ${dmy(patch.travelStart)}` : ''}${eski}\nℹ️ Pasaport iDATA'ya gelince/teslim edilince mailden otomatik haber verilir.`;
+  return `${head}\n\n✅ *${titleCaseTr(v.customerName || kim)}* başvurusuna işlendi (${v.visaDuration || v.country || 'vize'}${v.status ? `, ${v.status}` : ''})${geldiNote}\n📎 Fiş görüntüsü saklandı${patch.travelStart ? `\n✈️ Muhtemel seyahat: ${dmy(patch.travelStart)}` : ''}${eski}\nℹ️ Pasaport iDATA'ya gelince/teslim edilince mailden otomatik haber verilir.`;
 };
 
 module.exports = { handleIdataFis, normalizeFis };

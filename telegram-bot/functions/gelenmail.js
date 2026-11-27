@@ -206,7 +206,7 @@ const fetchInbox = async ({ host, port, user, pass }, state) => {
         const p = await simpleParser(msg.source);
         const f = (p.from && p.from.value && p.from.value[0]) || {};
         out.mails.push({
-          uid, from: normEmail(f.address), fromName: f.name || '', subject: p.subject || '', text: p.text || '', html: typeof p.html === 'string' ? p.html : '',
+          uid, date: p.date ? new Date(p.date).toISOString() : '', from: normEmail(f.address), fromName: f.name || '', subject: p.subject || '', text: p.text || '', html: typeof p.html === 'string' ? p.html : '',
           attachments: (p.attachments || []).filter(a => a.contentDisposition !== 'inline').map(a => ({ filename: a.filename || 'ek', size: a.size || 0 })),
           listUnsubscribe: p.headers.get('list-unsubscribe'), precedence: p.headers.get('precedence'), autoSubmitted: p.headers.get('auto-submitted'),
         });
@@ -401,12 +401,16 @@ const processInbox = async ({ db, fetchMails = fetchInbox, notify = tg, send = s
           : `ℹ️ ${esc(bilgi.ozet)}`;
         if (hit.length === 1) {
           const v = hit[0];
-          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: now } : null;
+          // Gelme zamanı = mailin tarihi (yeniden işlemede eski mail "bugün" sayılmasın)
+          const patch = bilgi.tip === 'geldi' ? { idataPasaport: 'geldi', idataGeldiAt: m.date || now } : null;
           if (patch && !test) { await v.ref.set(patch, { merge: true }); Object.assign(v, patch); }
           res.randevu++;
           lines.push(`🧾 <b>${esc(titleCaseTr(v.customerName))}</b> (takip ${esc(v.takipNo)}) — ${ne}${patch && test ? ' (başvuruya yazılırdı)' : ''}`);
         } else {
           res.eslesmeyen++;
+          // Kime ait olduğu bilinmeyen "pasaport geldi": takip no ile saklanır — 17:00 listesinde numarasıyla görünür;
+          // takip no sonradan CRM'e girilince ya da fiş gruba atılınca kişiyle eşleşir (pasaportListesi / idatafis.js)
+          if (bilgi.tip === 'geldi' && !test) await db.collection('idata_bekleyen').doc(bilgi.no).set({ no: bilgi.no, tip: 'geldi', at: m.date || now }, { merge: true });
           lines.push(`🧾 iDATA takip <b>${esc(bilgi.no)}</b> — ${ne}\n⚠️ ${hit.length ? `${hit.length} başvuruda bu takip no var` : 'bu takip no CRM\'de yok'} — başvuruya "Başvuru Takip No" girin`);
         }
         continue;
@@ -456,14 +460,32 @@ const pasaportListesi = async ({ db, notify = tg, chatId = '', force = false, no
   }
   const settings = (await db.collection('app_settings').doc('main').get()).data() || {};
   const target = force ? chatId : settings.telegramVizeGrupId;
-  const list = (await db.collection('visa_applications').get()).docs.map(d => d.data())
+  const vdocs = (await db.collection('visa_applications').get()).docs;
+  // Takip no'su CRM'de olmadığı için eşleşmeyen "pasaport geldi" mailleri: şimdi eşleşen olursa başvuruya yazılır, olmayan numarasıyla listelenir
+  const bekleyen = [];
+  try {
+    for (const d of (await db.collection('idata_bekleyen').get()).docs) {
+      const b = d.data();
+      const hit = vdocs.filter(x => x.data().takipNo && takipKey(x.data().takipNo) === b.no);
+      if (hit.length === 1) {
+        const patch = { idataPasaport: 'geldi', idataGeldiAt: b.at };
+        await hit[0].ref.set(patch, { merge: true });
+        hit[0]._patch = patch;
+        await d.ref.delete();
+      } else if (b.at && istDate(new Date(b.at)) === today) bekleyen.push(b);
+    }
+  } catch (e) { console.warn('[gelenmail] idata_bekleyen:', e.message); }
+  const list = vdocs.map(x => ({ ...x.data(), ...(x._patch || {}) }))
     .filter(v => v.idataPasaport === 'geldi' && v.idataGeldiAt && istDate(new Date(v.idataGeldiAt)) === today)
     .sort((a, b) => String(a.customerName || '').localeCompare(String(b.customerName || ''), 'tr'));
   if (!force) await stRef.set({ gun: today, adet: list.length }, { merge: true });
-  if (!list.length) { if (force) await notify(settings.telegramBotToken, target, `🛂 Bugün (${dmy(today)}) pasaportu iDATA'ya gelen yok.`); return 0; }
+  const toplam = list.length + bekleyen.length;
+  if (!toplam) { if (force) await notify(settings.telegramBotToken, target, `🛂 Bugün (${dmy(today)}) pasaportu iDATA'ya gelen yok.`); return 0; }
   const rows = list.map((v, i) => `${i + 1}. <b>${esc(titleCaseTr(v.customerName || ''))}</b> — ${esc(v.visaDuration || v.country || 'vize')}${v.takipNo ? ` · takip ${esc(v.takipNo)}` : ''}${v.customerPhone ? ` · ${esc(v.customerPhone)}` : ''}`);
-  await notify(settings.telegramBotToken, target, `🛂 <b>Bugün pasaportu çıkanlar</b> (${dmy(today)}) — ${list.length} kişi\nPasaportlar iDATA'da; teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir.\n\n${rows.join('\n')}`);
-  return list.length;
+  const bRows = bekleyen.sort((a, b) => a.no.localeCompare(b.no)).map((b, i) => `${list.length + i + 1}. ❓ takip <b>${esc(b.no)}</b> — kime ait olduğu bilinmiyor`);
+  const not = bekleyen.length ? `\n\n❓ ${bekleyen.length} takip numarası CRM'de yok. Fişi gruba atın ya da başvuruya "Başvuru Takip No" girin — adıyla eşleşir (/cikanlar ile tekrar bakın).` : '';
+  await notify(settings.telegramBotToken, target, `🛂 <b>Bugün pasaportu çıkanlar</b> (${dmy(today)}) — ${toplam} kişi\nPasaportlar iDATA'da; teslim fişinin aslıyla alınabilir ya da kargo talimatı verilebilir.\n\n${[...rows, ...bRows].join('\n')}${not}`);
+  return toplam;
 };
 
 exports.pasaportListesi = pasaportListesi;
