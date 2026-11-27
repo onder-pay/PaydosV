@@ -452,6 +452,19 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
     const n = normalizeTr(typeName || '');
     return cat.countries.find(c => n.includes(normalizeTr(c))) || '';
   };
+  // 🔁 Aynı kişinin birden çok başvurusu karışmasın: başvurular sırayla numaralanır (1., 2. …), sonuçlananlar (Onay/Red/İptal) soluk gösterilir
+  const visaSeq = (() => {
+    const by = new Map();
+    visaApplications.forEach(v => { const k = v.customerId != null && v.customerId !== '' ? `id:${v.customerId}` : `ad:${normalizeTr(v.customerName)}`; if (!by.has(k)) by.set(k, []); by.get(k).push(v); });
+    const out = new Map();
+    by.forEach(list => {
+      if (list.length < 2) return;
+      const sorted = [...list].sort((a, b) => String(a.applicationDate || a.createdAt || '').localeCompare(String(b.applicationDate || b.createdAt || '')));
+      sorted.forEach((v, i) => out.set(v.id, { n: i + 1, total: sorted.length, others: sorted.filter(x => x !== v) }));
+    });
+    return out;
+  })();
+  const visaClosed = (v) => /(^|\s)(onay|red|iptal)/.test(normalizeTr(v?.status));
   // Ülke boşsa vize türü adından bulunur ("Almanya Ticari" → Almanya); bot da aynısını yapar (countryFromTypeName)
   const countryOfVisa = (v) => v?.country || bulkCountryFor(visaCategories.find(c => c.id === (v?.categoryId || v?.category)) || selectedCategory, v?.visaDuration || v?.visaType);
   const createBulkVisas = async () => {
@@ -1183,6 +1196,10 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                       ? <span>Müşteri: <CustLink c={linked} onOpen={onOpenCustomer}>{titleCaseTr(`${linked.firstName || ''} ${linked.lastName || ''}`)}</CustLink>{linked.tcKimlik ? ` · TC ${linked.tcKimlik}` : ''}</span>
                       : <span style={{ color: '#f87171', fontWeight: '700' }}>⚠️ Bu başvuru CRM'deki bir müşteriye bağlı değil{formData.customerName ? ` (${formData.customerName})` : ''} — müşteri seçin</span>}
                   </div>
+                  {editingVisa && visaSeq.get(editingVisa.id) && (() => { const q = visaSeq.get(editingVisa.id); return (
+                    <div style={{ marginTop: '8px', padding: '8px 10px', background: visaClosed(editingVisa) ? 'rgba(148,163,184,0.1)' : 'rgba(249,115,22,0.1)', border: `1px solid ${visaClosed(editingVisa) ? 'rgba(148,163,184,0.3)' : 'rgba(249,115,22,0.35)'}`, borderRadius: '8px', fontSize: '12px', color: visaClosed(editingVisa) ? '#94a3b8' : '#fb923c', fontWeight: 600 }}>
+                      {visaClosed(editingVisa) ? `🗄️ Bu ESKİ başvuru (${q.n}/${q.total}) — sonuçlanmış.` : `🔁 Bu kişinin ${q.n}. başvurusu.`} Diğer başvuruları: {q.others.map(x => `${formatDate(String(x.applicationDate || x.createdAt || '').slice(0, 10))} ${x.visaDuration || x.country || ''} (${x.status || '?'})`).join(' · ')}
+                    </div>); })()}
                   {linked && selectedCategory?.id === 'schengen' && <FingerprintBox c={linked} showToast={showToast} compact />}
                   {/* Müşteri seçimi yalnızca başvuru sahipsizse (bağlı müşteri silinmiş / bulunamıyor) — normal kayıtta değiştirilemez */}
                   {!linked && (
@@ -2035,7 +2052,7 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
             filteredVisaApplications.map(v => {
               const cat = getCategoryInfo(v.category);
               return (
-                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                <div key={v.id} onClick={() => selectMode ? toggleSelected(v.id) : openEditVisa(v)} style={{ opacity: visaSeq.get(v.id) && visaClosed(v) ? 0.55 : 1, background: selectMode && selectedIds.includes(v.id) ? 'rgba(59,130,246,0.14)' : 'rgba(255,255,255,0.03)', padding: '14px', borderRadius: '10px', border: selectMode && selectedIds.includes(v.id) ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '10px' }}>
                     {selectMode && (
                       <span style={{ flexShrink: 0, width: '22px', height: '22px', marginTop: '1px', borderRadius: '6px', border: selectedIds.includes(v.id) ? 'none' : '2px solid rgba(255,255,255,0.3)', background: selectedIds.includes(v.id) ? '#3b82f6' : 'transparent', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>{selectedIds.includes(v.id) ? '✓' : ''}</span>
@@ -2043,6 +2060,11 @@ export function VisaModule({ customers, visaApplications, setVisaApplications, i
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <h4 style={{ margin: 0, fontSize: '14px' }}>{cat.icon} {titleCaseTr(v.customerName)}{!findVisaCust(v.customerId) && <span title="CRM müşterisine bağlı değil — başvuruyu açıp müşteri seçin" style={{ color: '#f87171', marginLeft: '4px' }}>⚠️</span>}</h4>
                       <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#94a3b8' }}>{countryOfVisa(v)} - {v.visaType} {v.visaDuration && `(${v.visaDuration})`}</p>
+                      {visaSeq.get(v.id) && (() => { const q = visaSeq.get(v.id); const prev = q.others.filter(x => String(x.applicationDate || x.createdAt || '') <= String(v.applicationDate || v.createdAt || '')).slice(-1)[0];
+                        return <span title={q.others.map(x => `${formatDate(String(x.applicationDate || x.createdAt || '').slice(0, 10))} · ${x.status || ''}`).join('\n')}
+                          style={{ display: 'inline-block', marginTop: '6px', marginRight: '6px', fontSize: '11px', padding: '3px 8px', borderRadius: '6px', fontWeight: 700, background: visaClosed(v) ? 'rgba(148,163,184,0.12)' : 'rgba(249,115,22,0.15)', color: visaClosed(v) ? '#94a3b8' : '#fb923c', border: `1px solid ${visaClosed(v) ? 'rgba(148,163,184,0.3)' : 'rgba(249,115,22,0.4)'}` }}>
+                          {visaClosed(v) ? `🗄️ Eski başvuru (${q.n}/${q.total})` : `🔁 ${q.n}. başvuru`}{!visaClosed(v) && prev ? ` · önceki: ${prev.status || '?'} ${formatDate(String(prev.applicationDate || prev.createdAt || '').slice(0, 10))}` : ''}
+                        </span>; })()}
                       {v.appointmentDate && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>📅 {formatDate(v.appointmentDate)} {v.pnr && `• PNR: ${v.pnr}`}{v.takipNo && ` • Takip: ${v.takipNo}`}</p>}
                       {!v.appointmentDate && v.takipNo && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#64748b' }}>🧾 Takip: {v.takipNo}</p>}
                       {v.idataFisUrl && <a href={v.idataFisUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: 'inline-block', marginTop: '4px', marginRight: '8px', fontSize: '11px', color: '#60a5fa' }}>📎 iDATA fişi</a>}
